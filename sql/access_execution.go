@@ -328,8 +328,27 @@ func (s *Schema) accessPaths(where Expression, info *TableInfo) []*accessPath {
 	return paths
 }
 
-// One scratch row per reader. Visitors must copy values they retain.
+// walkAccess keeps map-based consumers on the same physical reader as typed
+// scans. It reuses one scratch row; visitors must copy values they retain.
 func (s *Schema) walkAccess(info *TableInfo, needed map[string]bool, paths []*accessPath, visit func(map[string]Value) error) error {
+	columnCount := 0
+	for _, col := range info.Columns {
+		if needed == nil || needed[col.Name] {
+			columnCount++
+		}
+	}
+	row := make(map[string]Value, columnCount)
+	return s.walkAccessRaw(info, needed, paths, func(data []byte, columns []scanColumn) error {
+		decodeScanRow(data, columns, row)
+		return visit(row)
+	})
+}
+
+// walkAccessRaw visits encoded rows before map materialization. Data belongs to
+// the reader and must be decoded or copied before returning from the callback.
+// Covering payloads use their own column layout; snapshots, cancellation,
+// overlapping-path deduplication and index errors are shared with walkAccess.
+func (s *Schema) walkAccessRaw(info *TableInfo, needed map[string]bool, paths []*accessPath, visit func([]byte, []scanColumn) error) error {
 	columnsFor := func(info *TableInfo) []scanColumn {
 		cols := make([]scanColumn, len(info.Columns))
 		for i, c := range info.Columns {
@@ -338,13 +357,6 @@ func (s *Schema) walkAccess(info *TableInfo, needed map[string]bool, paths []*ac
 		return cols
 	}
 	columns := columnsFor(info)
-	columnCount := 0
-	for _, column := range columns {
-		if column.needed {
-			columnCount++
-		}
-	}
-	row := make(map[string]Value, columnCount)
 	var seen map[string]bool
 	if len(paths) > 1 {
 		seen = make(map[string]bool)
@@ -364,8 +376,7 @@ func (s *Schema) walkAccess(info *TableInfo, needed map[string]bool, paths []*ac
 			}
 			seen[k] = true
 		}
-		decodeScanRow(data, cols, row)
-		return visit(row)
+		return visit(data, cols)
 	}
 	if paths == nil {
 		prefix := []byte(tableDataPrefix(info.Name))
