@@ -439,8 +439,10 @@ func accessCost(rows float64, secondary, covered bool) float64 {
 	if secondary && !covered {
 		// Small probes often reuse cached blocks. Large non-covering ranges
 		// revisit row blocks in secondary-key order; a sequential typed scan
-		// is often cheaper even when the SQL predicate is fairly selective.
-		lookupWeight := 3 + 9*math.Min(1, rows/4096)
+		// is often cheaper for broad predicates. Keep the large-range weight
+		// at six: twelve rejected useful ~15% ranges and scanned/decompressed
+		// the whole table (TPC-H Q6), even with batched cached point lookups.
+		lookupWeight := 3 + 3*math.Min(1, rows/4096)
 		return 4 + rows*lookupWeight
 	}
 	return 2 + rows
