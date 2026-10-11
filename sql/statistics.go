@@ -3,6 +3,7 @@ package sql
 // Distribution statistics are planning hints, never constraints. They describe
 // the ANALYZE statement snapshot and can be stale after later writes.
 import (
+	"bytes"
 	"encoding/json"
 	"math"
 	"sort"
@@ -404,7 +405,31 @@ func (s *Schema) accessEstimate(info *TableInfo, idx *IndexInfo, constraints map
 			}
 			high = c.rangeFraction(op, *b.upper)
 		}
-		f *= clampSelectivity(high - low)
+		fraction := clampSelectivity(high - low)
+		if idx != nil {
+			// Legacy secondary TEXT/BLOB keys do not terminate components.
+			// Correct physical bounds can include much more than the SQL
+			// interval, including proper-prefix delimiter bands. Cost those
+			// actual encoded bounds rather than the residual SQL predicate.
+			intervals, exact := accessRangeIntervals(nil, name, info, idx, b)
+			if !exact {
+				fraction = 1 - c.NullFraction
+				if len(c.Histogram) > 0 {
+					matched := 0
+					for _, sample := range c.Histogram {
+						key := appendAccessValue(nil, Value(sample), idx)
+						for _, interval := range intervals {
+							if bytes.Compare(key, interval.lower) >= 0 && bytes.Compare(key, interval.upper) < 0 {
+								matched++
+								break
+							}
+						}
+					}
+					fraction = float64(matched) / float64(len(c.Histogram)) * (1 - c.NullFraction)
+				}
+			}
+		}
+		f *= fraction
 		break
 	}
 	return math.Max(1, float64(t.Rows)*f), known
@@ -412,7 +437,11 @@ func (s *Schema) accessEstimate(info *TableInfo, idx *IndexInfo, constraints map
 
 func accessCost(rows float64, secondary, covered bool) float64 {
 	if secondary && !covered {
-		return 4 + rows*3
+		// Small probes often reuse cached blocks. Large non-covering ranges
+		// revisit row blocks in secondary-key order; a sequential typed scan
+		// is often cheaper even when the SQL predicate is fairly selective.
+		lookupWeight := 3 + 9*math.Min(1, rows/4096)
+		return 4 + rows*lookupWeight
 	}
 	return 2 + rows
 }

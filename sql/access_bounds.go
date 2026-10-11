@@ -3,6 +3,7 @@ package sql
 import (
 	"bytes"
 	"encoding/hex"
+	"sort"
 )
 
 // Local physical readers use bare column names; evaluation keeps the original
@@ -19,6 +20,78 @@ func localAccessPredicate(expr Expression, table, alias string) Expression {
 		}
 		return expr, false, nil
 	})
+	return out
+}
+
+// Unterminated secondary values need additional bands for shorter proper
+// prefixes whose ':' delimiter sorts after the upper bound's next byte. Keep
+// those bands separate instead of inflating one interval over unrelated values.
+func accessRangeIntervals(start []byte, column string, info *TableInfo, idx *IndexInfo, c *tupleConstraint) ([]coveringInterval, bool) {
+	low, high, exact := accessRangeBounds(start, column, info, idx, c)
+	var intervals []coveringInterval
+	add := func(a, b []byte) {
+		if bytes.Compare(a, b) < 0 {
+			intervals = append(intervals, coveringInterval{a, b})
+		}
+	}
+	var typ ColumnType
+	for _, d := range info.Columns {
+		if d.Name == column {
+			typ = d.ColType
+			break
+		}
+	}
+	if idx == nil || (typ != ColText && typ != ColBlob) || c.upper == nil {
+		add(low, high)
+		return intervals, exact
+	}
+	upper := *c.upper
+	length := len(upper.Text)
+	if typ == ColBlob {
+		length = len(upper.Blob)
+	}
+	// Pathological long bounds keep the existing conservative interval.
+	// They must not create plans proportional to megabytes of input text.
+	if length > 64 {
+		add(low, high)
+		return intervals, false
+	}
+	encoded := appendAccessValue(start, upper, idx)
+	add(low, encoded[:len(encoded)-1])
+	if !c.upperStrict {
+		add(encoded, prefixSuccessor(encoded))
+	}
+	for n := 0; n < length; n++ {
+		var prefix Value
+		if typ == ColBlob {
+			prefix = NewBlobValue(upper.Blob[:n])
+		} else {
+			prefix = NewTextValue(upper.Text[:n])
+		}
+		if c.lower != nil {
+			cmp := ValueCompare(prefix, *c.lower)
+			if cmp < 0 || cmp == 0 && c.lowerStrict {
+				continue
+			}
+		}
+		key := appendAccessValue(start, prefix, idx)
+		add(key, prefixSuccessor(key))
+	}
+	return normalizeAccessIntervals(intervals), false
+}
+
+func normalizeAccessIntervals(intervals []coveringInterval) []coveringInterval {
+	sort.Slice(intervals, func(i, j int) bool { return bytes.Compare(intervals[i].lower, intervals[j].lower) < 0 })
+	out := intervals[:0]
+	for _, interval := range intervals {
+		if len(out) > 0 && bytes.Compare(interval.lower, out[len(out)-1].upper) <= 0 {
+			if bytes.Compare(interval.upper, out[len(out)-1].upper) > 0 {
+				out[len(out)-1].upper = interval.upper
+			}
+		} else {
+			out = append(out, interval)
+		}
+	}
 	return out
 }
 
@@ -76,6 +149,11 @@ func accessRangeBounds(start []byte, column string, info *TableInfo, idx *IndexI
 			step := 1
 			if len(idx.columnNames()) > 1 {
 				step = 2
+			}
+			if len(encoded)-len(start)-len(band) > 64*step {
+				// Avoid quadratic prefix copying for huge bound literals.
+				high = prefixSuccessor(append(copyBytes(start), band...))
+				return low, high, false
 			}
 			for n := len(start) + len(band); n < len(encoded); n += step {
 				candidate := prefixSuccessor(append(copyBytes(encoded[:n]), ':'))

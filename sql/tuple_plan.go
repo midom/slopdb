@@ -330,16 +330,14 @@ func buildTuplePlan(stmt *SelectStmt, info *TableInfo, idx *IndexInfo, constrain
 		if position < len(columns) {
 			c := constraints[columns[position]]
 			if c != nil && (c.lower != nil || c.upper != nil) {
-				low, high, exact := accessRangeBounds(start, columns[position], info, idx, c)
+				intervals, exact := accessRangeIntervals(start, columns[position], info, idx, c)
 				// Legacy secondary TEXT/BLOB components have no terminator.
 				// Their bounds are conservative and require SQL rechecking.
 				if exact {
 					enforced[c.lowerTerm] = true
 					enforced[c.upperTerm] = true
 				}
-				if bytes.Compare(low, high) < 0 {
-					plan.intervals = append(plan.intervals, coveringInterval{low, high})
-				}
+				plan.intervals = append(plan.intervals, intervals...)
 				bounded = true
 				continue
 			}
@@ -351,7 +349,7 @@ func buildTuplePlan(stmt *SelectStmt, info *TableInfo, idx *IndexInfo, constrain
 	if !bounded && (!plan.ordered || len(stmt.OrderBy) == 0 || stmt.Limit < 0) {
 		return nil
 	}
-	sort.Slice(plan.intervals, func(i, j int) bool { return bytes.Compare(plan.intervals[i].lower, plan.intervals[j].lower) < 0 })
+	plan.intervals = normalizeAccessIntervals(plan.intervals)
 	if plan.points != nil {
 		sort.Slice(plan.points, func(i, j int) bool { return bytes.Compare(plan.points[i], plan.points[j]) < 0 })
 		plan.score += 64

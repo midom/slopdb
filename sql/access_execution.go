@@ -183,9 +183,11 @@ func buildAccessPath(info *TableInfo, idx *IndexInfo, constraints map[string]*tu
 		low, high := start, prefixSuccessor(start)
 		if pos < len(columns) {
 			if c := constraints[columns[pos]]; c != nil && (c.lower != nil || c.upper != nil) {
-				low, high, _ = accessRangeBounds(start, columns[pos], info, idx, c)
+				intervals, _ := accessRangeIntervals(start, columns[pos], info, idx, c)
+				p.intervals = append(p.intervals, intervals...)
 				bounded = true
 				p.score += 4
+				continue
 			}
 		}
 		if bytes.Compare(low, high) < 0 {
@@ -195,6 +197,7 @@ func buildAccessPath(info *TableInfo, idx *IndexInfo, constraints map[string]*tu
 	if !bounded {
 		return nil
 	}
+	p.intervals = normalizeAccessIntervals(p.intervals)
 	return p
 }
 
