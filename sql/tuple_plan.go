@@ -33,6 +33,34 @@ type tupleReadPlan struct {
 	score                     int
 }
 
+// SQL parses signed numeric literals as unary expressions. Recognize their
+// exact values without folding row-dependent expressions or hiding overflow.
+func tupleLiteral(expr Expression) (*LiteralExpr, bool) {
+	if literal, ok := expr.(*LiteralExpr); ok {
+		return literal, true
+	}
+	unary, ok := expr.(*UnaryExpr)
+	if !ok || (unary.Op != "+" && unary.Op != "-") {
+		return nil, false
+	}
+	literal, ok := tupleLiteral(unary.Right)
+	if !ok || (!literal.Value.Null && literal.Value.Type != ColInteger && literal.Value.Type != ColReal) {
+		return nil, false
+	}
+	v := literal.Value
+	if unary.Op == "-" && !v.Null {
+		if v.Type == ColInteger {
+			if v.Int == math.MinInt64 {
+				return nil, false
+			}
+			v.Int = -v.Int
+		} else {
+			v.Real = -v.Real
+		}
+	}
+	return &LiteralExpr{Value: v}, true
+}
+
 func tupleConstraints(where Expression, table, alias string, info *TableInfo) map[string]*tupleConstraint {
 	types := make(map[string]ColumnType, len(info.Columns))
 	for _, col := range info.Columns {
@@ -51,6 +79,15 @@ func tupleConstraints(where Expression, table, alias string, info *TableInfo) ma
 	}
 	var visit func(Expression)
 	visit = func(expr Expression) {
+		if between, ok := expr.(*BetweenExpr); ok && !between.Not {
+			// Extract each inclusive bound using the same type checks and
+			// intersection rules as comparisons. Keep the original BETWEEN
+			// as a residual: a bound may be unusable or superseded by another
+			// conjunct, so neither comparison alone enforces the whole term.
+			visit(&BinaryExpr{Op: ">=", Left: between.Expr, Right: between.Low})
+			visit(&BinaryExpr{Op: "<=", Left: between.Expr, Right: between.High})
+			return
+		}
 		if b, ok := expr.(*BinaryExpr); ok {
 			if b.Op == "AND" {
 				visit(b.Left)
@@ -58,11 +95,11 @@ func tupleConstraints(where Expression, table, alias string, info *TableInfo) ma
 				return
 			}
 			col, colOK := b.Left.(*ColumnRefExpr)
-			lit, litOK := b.Right.(*LiteralExpr)
+			lit, litOK := tupleLiteral(b.Right)
 			op := b.Op
 			if !colOK || !litOK {
 				col, colOK = b.Right.(*ColumnRefExpr)
-				lit, litOK = b.Left.(*LiteralExpr)
+				lit, litOK = tupleLiteral(b.Left)
 				switch op {
 				case "<":
 					op = ">"
@@ -359,6 +396,9 @@ func tupleSafePredicate(expr Expression) bool {
 		return true
 	}
 	switch e := expr.(type) {
+	case *UnaryExpr:
+		_, ok := tupleLiteral(e)
+		return ok
 	case *BinaryExpr:
 		return (e.Op == "AND" || e.Op == "OR") && tupleSafePredicate(e.Left) && tupleSafePredicate(e.Right)
 	case *InListExpr:

@@ -87,6 +87,11 @@ ranges scan forward or backward and stop after LIMIT/OFFSET when safe. A
 noncovering secondary lookup fetches the current base row. Aggregation,
 DISTINCT, and residual predicates preserve their ordinary evaluation rules.
 
+BETWEEN supplies inclusive bounds to composite primary-key and secondary-index
+reads, including signed numeric literals and bound parameters. The original
+predicate remains a residual check when only one bound is usable or another
+condition tightens the range, preserving mixed-type and NULL semantics.
+
 UPDATE and DELETE use bounded composite primary-key ranges, collect rows, and
 close their iterators before writing. Transaction overlays merge only private
 keys within the requested range, while the storage read view excludes unrelated
@@ -95,34 +100,33 @@ EXPLAIN reports these ranges, direct lookups, batched reads, and reverse scans.
 
 ## Validation
 
-The focused checks in `/tmp/godb/` follow the repository's temporary-test-file
-convention:
+The focused checks live in `tests/regression/` and run with `go test ./...`;
+see [Testing](../TESTING.md):
 
-- `sql_standard_review.go`: 134 checks for key rejection, atomic rollback,
+- `sql_standard_test.go`: 134 checks for key rejection, atomic rollback,
   foreign keys, concurrent-safe parent changes, renames, casts, numeric errors,
   grouping, scalar subqueries, DDL validation, empty-input DML validation, and
   reopen behavior.
-- `tuple_plan_review.go`: 302 optimized-query versus forced-scan comparisons,
-  including signed bounds, IN duplicates/NULL/mixed types, residual filters,
+- `tuple_read_plans_test.go`: optimized-query versus forced-scan comparisons,
+  including BETWEEN, signed bounds, IN duplicates/NULL/mixed types, residual filters,
   aggregate/DISTINCT handling, ordering, aliases, private writes, and reopen.
-- `sql_differential_review.go`: 599 overlapping SQL cases compared with Python's
+- `between_read_plans_test.go`: prepared BETWEEN reads across the int64 range,
+  NULLs, real bounds, 64-bit pagination, unlimited payload sorting and reopen.
+- `sql_differential_test.go`: 599 overlapping SQL cases compared with Python's
   SQLite reference for three-valued logic, aggregates, GROUP BY, joins, and
   scalar subqueries. Intentional stricter behavior, such as zero division and
   NULL primary keys, is checked separately.
-- `legacy_primary_review.go`: valid old-catalog upgrade and rejection of legacy
+- `legacy_primary_keys_test.go`: valid old-catalog upgrade and rejection of legacy
   NULL primary-key rows.
-- `foreign_concurrency_review.go`: 80 competing child-insert/parent-delete races,
+- `foreign_concurrency_test.go`: 80 competing child-insert/parent-delete races,
   UNIQUE parent locking, and composite queue SKIP LOCKED, also run with `-race`.
 
-Available existing review runners passed 45 general read checks, 177 ordered
+The regression suites passed 45 general read checks, 177 ordered
 read checks, 4,000 concurrent indexed updates and reserved IDs, and 32 workers
 performing atomic 100-row transactions in each of no-fsync, no-WAL, and durable
-modes. Temporary copies use the current `slopdb` import path; the transaction
-runner's raw-key assertions were updated for the existing sortable key format
-and the newly rejected omitted ordinary primary key. Historical tests that
-intentionally inserted mixed types into INTEGER columns are superseded by
-strict-type cases. The four old test runners and the extracted SQLite/MySQL
-suite runners named in the supplied instructions were absent in this workspace.
+modes. Transaction raw-key assertions use the sortable key format and check
+rejection of omitted ordinary primary keys. Historical mixed-type INTEGER
+expectations are superseded by strict-type cases.
 
 `go build -o slopdb .`, `go vet ./...`, and `git diff --check` passed. The
 TPC-C-style workload passed a ten-worker race run, then a sixty-second ordinary
