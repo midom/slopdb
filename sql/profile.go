@@ -14,6 +14,7 @@ import (
 // are inclusive and must not be summed. Go heap counters are process-wide
 // deltas; concurrent statements can contribute to those two counters.
 type QueryProfile struct {
+	SpillRowsRead         int64             `json:"spill_rows_read"`
 	SpillBytes            int64             `json:"spill_bytes"`
 	SpillRuns             int64             `json:"spill_runs"`
 	MemoryLimitBytes      int64             `json:"memory_limit_bytes"`
@@ -250,7 +251,7 @@ func (s *Schema) appendProfileResult(rs *ResultSet) {
 		{Name: "rows_examined", ColType: ColInteger}, {Name: "index_entries_examined", ColType: ColInteger},
 		{Name: "rows_returned", ColType: ColInteger}, {Name: "point_lookups", ColType: ColInteger},
 		{Name: "bytes_read", ColType: ColInteger}, {Name: "elapsed_ms", ColType: ColReal},
-		{Name: "spill_bytes", ColType: ColInteger}, {Name: "spill_runs", ColType: ColInteger}, {Name: "memory_limit_bytes", ColType: ColInteger},
+		{Name: "spill_rows_read", ColType: ColInteger}, {Name: "spill_bytes", ColType: ColInteger}, {Name: "spill_runs", ColType: ColInteger}, {Name: "memory_limit_bytes", ColType: ColInteger},
 		{Name: "lock_wait_ms", ColType: ColReal}, {Name: "process_allocated_bytes", ColType: ColInteger},
 		{Name: "process_allocations", ColType: ColInteger},
 	}
@@ -284,6 +285,7 @@ func (s *Schema) appendProfileResult(rs *ResultSet) {
 		add("Actual"+op.Operator, op.Relation, op)
 	}
 	row := add("QueryProfile", "", OperatorProfile{ID: -1, ParentID: -1, RowsExamined: p.RowsExamined, IndexEntriesExamined: p.IndexEntriesExamined, PointLookups: p.PointLookups, BytesRead: p.BytesRead, ElapsedMS: p.ElapsedMS})
+	row["spill_rows_read"] = NewIntValue(p.SpillRowsRead)
 	row["spill_bytes"] = NewIntValue(p.SpillBytes)
 	row["spill_runs"] = NewIntValue(p.SpillRuns)
 	row["memory_limit_bytes"] = NewIntValue(p.MemoryLimitBytes)

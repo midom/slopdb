@@ -38,9 +38,13 @@ fallback path: oversized fallback aggregation reports an explicit memory-budget
 error rather than changing how often volatile expressions execute.
 
 Equality hash joins incrementally build projected input buckets. Oversized
-buckets move to disk hash partitions, probed one record at a time even for a
-single highly duplicated key. This strategy trades repeated partition reads for
-bounded bucket state. The indexed-probe cache also respects the budget. Legacy
+buckets move to a private WAL-free SlopDB storage index keyed by escaped bucket
+identity and a 64-bit insertion ordinal. Exact bounded seeks decode only the
+matching bucket, one record at a time even for a highly duplicated key. A small
+adjacent-bucket cache avoids repeated decoding of neighboring repeated probes.
+The temporary index caps memtables, decoded block caches and open readers; very
+tiny query budgets retain a minimum 64 KiB memtable/cache allowance as fixed
+engine overhead. The indexed-probe cache also respects the budget. Legacy
 joins can spill their bucket indexes while retaining their existing input-row
 representation. DISTINCT result-key sets and overlapping access-path row-key
 sets use disk-backed strategies when their keys exceed the budget.
@@ -54,10 +58,14 @@ lists can still be materialized. Unsupported aggregation shapes have the
 explicit limit above. Streaming result APIs and more general streaming input
 operators can address those remaining materializations separately.
 
-`EXPLAIN ANALYZE` reports `memory_limit_bytes`, `spill_bytes` and `spill_runs` on
-its `QueryProfile` summary and API profile. Spill bytes count all temporary file
-writes, including merge rewrites; spill runs count generated merge runs and new
-hash partition files. `TopK`, `ExternalSort`, `SpillAggregate` and `SpillHashJoin`
+`EXPLAIN ANALYZE` reports `memory_limit_bytes`, `spill_bytes`, `spill_runs` and `spill_rows_read` on
+its `QueryProfile` summary and API profile. Spill bytes count temporary sorted-run file
+writes (including merge rewrites) plus installed temporary-index SSTable flush
+and compaction output. They do not count logical inserts still in a temporary
+memtable or manifest bytes. Spill runs count generated sorted runs plus completed
+temporary-index flushes/compactions. `spill_rows_read` counts indexed spill
+records actually decoded, excluding cache hits; missing probes decode zero
+records. Metrics include the final temporary-index flush during cleanup. `TopK`, `ExternalSort`, `SpillAggregate` and `SpillHashJoin`
 identify the relevant execution stages. These counters report actual work, not
 only whether the query was eligible to spill.
 
