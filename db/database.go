@@ -93,6 +93,7 @@ func (db *Database) Close() error {
 }
 
 type ExecResult struct {
+	Profile *sql.QueryProfile
 	Columns []sql.ColumnDef
 	Rows    []map[string]sql.Value
 	LastID  int64
@@ -162,6 +163,7 @@ func (db *Database) execSQL(ctx context.Context, sqlText string, schema *sql.Sch
 }
 
 func (db *Database) execStatements(ctx context.Context, stmts []sql.Statement, schema *sql.Schema, transactionBound bool, lockTimeout time.Duration) (*ExecResult, error) {
+	defer schema.StopQueryProfile()
 	if db.closed.Load() {
 		return nil, fmt.Errorf("database closed")
 	}
@@ -176,6 +178,9 @@ func (db *Database) execStatements(ctx context.Context, stmts []sql.Statement, s
 	for _, stmt := range stmts {
 		if stmt == nil {
 			continue
+		}
+		if explain, ok := stmt.(*sql.ExplainStmt); ok && explain.Analyze {
+			schema.StartQueryProfile()
 		}
 		held := db.locks.snapshot(schema)
 		cleanup := func() {
@@ -251,6 +256,10 @@ func (db *Database) execStatements(ctx context.Context, stmts []sql.Statement, s
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
+		if result != nil {
+			result.Profile = schema.QueryProfile()
+		}
+		schema.StopQueryProfile()
 	}
 	return result, nil
 }

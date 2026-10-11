@@ -429,6 +429,10 @@ func (m *lockManager) release(owner *sql.Schema) { m.restore(owner, 0) }
 // Wait without an execution view so Close and the lock owner can proceed.
 // Reacquiring the shared view before returning also protects schema rollback.
 func (db *Database) waitForLock(ctx context.Context, owner *sql.Schema, request sql.LockRequest, deadline time.Time) error {
+	if owner.QueryProfile() != nil {
+		started := time.Now()
+		defer func() { owner.RecordLockWait(time.Since(started)) }()
+	}
 	db.execution.RUnlock()
 	defer func() { _ = db.execution.RLockContext(context.Background()) }()
 	root := db.locks
