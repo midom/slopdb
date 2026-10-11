@@ -1,0 +1,45 @@
+name: Performance measurements
+
+on:
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: Seconds per TPC-C measurement
+        default: '15'
+        required: true
+      repetitions:
+        description: Repetitions per configuration
+        default: '3'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  performance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Run sequential benchmark matrix
+        env:
+          BENCH_SECONDS: ${{ inputs.seconds }}
+          BENCH_REPETITIONS: ${{ inputs.repetitions }}
+        run: >-
+          python3 scripts/run_benchmarks.py
+          --output "$RUNNER_TEMP/slopdb-performance"
+          --seconds "$BENCH_SECONDS"
+          --repetitions "$BENCH_REPETITIONS"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: performance-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/slopdb-performance/*.json
+            ${{ runner.temp }}/slopdb-performance/*.log
+          if-no-files-found: error
+          retention-days: 30
