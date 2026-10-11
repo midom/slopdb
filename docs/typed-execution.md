@@ -27,9 +27,11 @@ empty-input results use the same aggregate states as before.
 Unsupported expressions, including scalar functions, CASE, IN and subqueries,
 retain the general executor. Joins, ordinary nonaggregate projections and final
 group projection/HAVING/ORDER BY continue using their existing execution paths.
-Compilation occurs per statement execution; no mutable registers are shared
-across sessions or prepared executions. This change does not add SIMD, an
-on-disk columnar format or disk spilling.
+Eligible prepared statements reuse the compiled instruction structure; ordinary
+statements compile during execution. Registers belong to each private execution
+tree and are not shared concurrently. The typed kernels do not add SIMD or an
+on-disk columnar format. Operator spilling is described separately in
+[query memory](query-memory.md).
 
 ## Verification and kernel benchmarks
 
