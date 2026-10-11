@@ -217,7 +217,10 @@ func (p *Parser) parseCreateTable() (Statement, error) {
 				p.advance()
 			}
 			if !p.showWord("UNIQUE") {
-				return nil, fmt.Errorf("named inline constraints currently require UNIQUE")
+				if err := p.parseTableConstraint(stmt); err != nil {
+					return nil, err
+				}
+				continue
 			}
 			p.advance()
 			def, err := p.parseInlineIndex(true, name)
@@ -263,6 +266,15 @@ func (p *Parser) parseCreateTable() (Statement, error) {
 		stmt.Columns = append(stmt.Columns, col)
 	}
 
+	inline := 0
+	for _, col := range stmt.Columns {
+		if col.PrimaryKey {
+			inline++
+		}
+	}
+	if inline > 1 || (inline > 0 && len(stmt.PKColumns) > 0) {
+		return nil, fmt.Errorf("multiple PRIMARY KEY declarations")
+	}
 	return stmt, nil
 }
 
@@ -296,6 +308,9 @@ func (p *Parser) parseColumnDef(col *ColumnDef) error {
 			if err := p.expectKeyword("KEY"); err != nil {
 				return err
 			}
+			if col.PrimaryKey {
+				return fmt.Errorf("multiple PRIMARY KEY declarations")
+			}
 			col.PrimaryKey = true
 			if p.cur.Type == TokKeyword {
 				if strings.ToUpper(p.cur.Value) == "ASC" || strings.ToUpper(p.cur.Value) == "DESC" {
@@ -316,7 +331,9 @@ func (p *Parser) parseColumnDef(col *ColumnDef) error {
 			}
 			col.NotNull = true
 			if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "ON" {
-				p.parseConflictClause()
+				if err := p.parseConflictClause(); err != nil {
+					return err
+				}
 			}
 			continue
 		}
@@ -363,7 +380,9 @@ func (p *Parser) parseColumnDef(col *ColumnDef) error {
 			p.advance()
 			col.Unique = true
 			if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "ON" {
-				p.parseConflictClause()
+				if err := p.parseConflictClause(); err != nil {
+					return err
+				}
 			}
 			continue
 		}
@@ -371,26 +390,37 @@ func (p *Parser) parseColumnDef(col *ColumnDef) error {
 		if p.cur.Type == TokKeyword && kw == "REFERENCES" {
 			p.advance()
 			col.RefTable = strings.ToLower(p.cur.Value)
-			p.expect(TokIdent)
+			if err := p.expect(TokIdent); err != nil {
+				return err
+			}
 			if p.cur.Type == TokLParen {
 				p.advance()
-				col.RefColumns = append(col.RefColumns, strings.ToLower(p.cur.Value))
-				p.expect(TokIdent)
-				for p.cur.Type == TokComma {
-					p.advance()
+				for {
 					col.RefColumns = append(col.RefColumns, strings.ToLower(p.cur.Value))
-					p.expect(TokIdent)
+					if err := p.expect(TokIdent); err != nil {
+						return err
+					}
+					if p.cur.Type != TokComma {
+						break
+					}
+					p.advance()
 				}
-				p.expect(TokRParen)
+				if err := p.expect(TokRParen); err != nil {
+					return err
+				}
+			}
+			if err := p.parseReferenceActions(); err != nil {
+				return err
 			}
 			continue
 		}
 
 		if p.cur.Type == TokKeyword && kw == "COLLATE" {
 			p.advance()
-			if p.cur.Type == TokIdent || p.cur.Type == TokKeyword {
-				p.advance()
+			if !strings.EqualFold(p.cur.Value, "BINARY") {
+				return fmt.Errorf("unsupported collation: %s", p.cur.Value)
 			}
+			p.advance()
 			continue
 		}
 
@@ -407,7 +437,7 @@ func (p *Parser) parseColumnDef(col *ColumnDef) error {
 			continue
 		}
 
-		p.advance()
+		return fmt.Errorf("unsupported column constraint: %s", p.cur.Value)
 	}
 
 	return nil
@@ -437,13 +467,8 @@ func (p *Parser) parseTableConstraint(stmt *CreateTableStmt) error {
 		if err := p.expect(TokRParen); err != nil {
 			return err
 		}
-		for _, colName := range cols {
-			for j := range stmt.Columns {
-				if stmt.Columns[j].Name == colName {
-					stmt.Columns[j].PrimaryKey = true
-					break
-				}
-			}
+		if len(stmt.PKColumns) > 0 {
+			return fmt.Errorf("multiple PRIMARY KEY declarations")
 		}
 		stmt.PKColumns = cols
 		return nil
@@ -527,24 +552,27 @@ func (p *Parser) parseTableConstraint(stmt *CreateTableStmt) error {
 		if p.cur.Type == TokIdent || p.cur.Type == TokKeyword {
 			p.advance()
 		}
-		if err := p.expect(TokLParen); err != nil {
-			return err
-		}
 		var refCols []string
-		for {
-			refCols = append(refCols, strings.ToLower(p.cur.Value))
-			if p.cur.Type == TokIdent || p.cur.Type == TokKeyword {
+		if p.cur.Type == TokLParen {
+			p.advance()
+			for {
+				refCols = append(refCols, strings.ToLower(p.cur.Value))
+				if err := p.expect(TokIdent); err != nil {
+					return err
+				}
+				if p.cur.Type != TokComma {
+					break
+				}
 				p.advance()
 			}
-			if p.cur.Type == TokComma {
-				p.advance()
-			} else {
-				break
+			if err := p.expect(TokRParen); err != nil {
+				return err
 			}
 		}
-		if err := p.expect(TokRParen); err != nil {
+		if err := p.parseReferenceActions(); err != nil {
 			return err
 		}
+
 		stmt.ForeignKeys = append(stmt.ForeignKeys, ForeignKeyDef{
 			Columns:    cols,
 			RefTable:   refTable,
@@ -556,16 +584,16 @@ func (p *Parser) parseTableConstraint(stmt *CreateTableStmt) error {
 	return fmt.Errorf("unknown table constraint: %s", kw)
 }
 
-func (p *Parser) parseConflictClause() {
-	if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "ON" {
-		p.advance()
-		if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "CONFLICT" {
-			p.advance()
-			for p.cur.Type == TokKeyword || p.cur.Type == TokIdent {
-				p.advance()
-			}
-		}
+func (p *Parser) parseConflictClause() error {
+	p.advance()
+	if err := p.expectKeyword("CONFLICT"); err != nil {
+		return err
 	}
+	if !strings.EqualFold(p.cur.Value, "ABORT") {
+		return fmt.Errorf("unsupported constraint conflict policy: %s", p.cur.Value)
+	}
+	p.advance()
+	return nil
 }
 
 func (p *Parser) parseCreateIndex() (Statement, error) {
@@ -1693,8 +1721,11 @@ func (p *Parser) parsePrimary() (Expression, error) {
 	}
 
 	if p.cur.Type == TokFloat {
-		f, _ := strconv.ParseFloat(p.cur.Value, 64)
+		f, err := strconv.ParseFloat(p.cur.Value, 64)
 		p.advance()
+		if err != nil {
+			return nil, err
+		}
 		return &LiteralExpr{Value: NewRealValue(f)}, nil
 	}
 
@@ -1744,6 +1775,12 @@ func (p *Parser) parsePrimary() (Expression, error) {
 		if p.cur.Type == TokLParen {
 			p.advance()
 			fc := &FuncCallExpr{Name: strings.ToUpper(name)}
+			if strings.EqualFold(p.cur.Value, "DISTINCT") {
+				fc.Distinct = true
+				p.advance()
+			} else if strings.EqualFold(p.cur.Value, "ALL") {
+				p.advance()
+			}
 			for p.cur.Type != TokRParen && p.cur.Type != TokEOF {
 				arg, err := p.parseExpression()
 				if err != nil {
@@ -1778,6 +1815,12 @@ func (p *Parser) parsePrimary() (Expression, error) {
 			p.advance()
 			p.advance()
 			fc := &FuncCallExpr{Name: strings.ToUpper(name)}
+			if strings.EqualFold(p.cur.Value, "DISTINCT") {
+				fc.Distinct = true
+				p.advance()
+			} else if strings.EqualFold(p.cur.Value, "ALL") {
+				p.advance()
+			}
 			for p.cur.Type != TokRParen && p.cur.Type != TokEOF {
 				arg, err := p.parseExpression()
 				if err != nil {
@@ -2352,7 +2395,11 @@ func formatExpr(e Expression) string {
 		for i, a := range x.Args {
 			parts[i] = formatExpr(a)
 		}
-		return x.Name + "(" + strings.Join(parts, ", ") + ")"
+		modifier := ""
+		if x.Distinct {
+			modifier = "DISTINCT "
+		}
+		return x.Name + "(" + modifier + strings.Join(parts, ", ") + ")"
 	case *SubqueryExpr:
 		return "(" + formatSelectSQL(x.Stmt) + ")"
 	case *InListExpr:
@@ -2387,4 +2434,34 @@ func formatExpr(e Expression) string {
 		return b.String()
 	}
 	return fmt.Sprintf("%T", e)
+}
+
+// NO ACTION and RESTRICT use immediate statement validation. Unsupported
+// referential actions must never be accepted as if they were enforced.
+func (p *Parser) parseReferenceActions() error {
+	seen := make(map[string]bool)
+	for p.showWord("ON") {
+		p.advance()
+		event := strings.ToUpper(p.cur.Value)
+		if event != "DELETE" && event != "UPDATE" {
+			return fmt.Errorf("expected DELETE or UPDATE in foreign key action")
+		}
+		if seen[event] {
+			return fmt.Errorf("duplicate foreign key ON %s", event)
+		}
+		seen[event] = true
+		p.advance()
+		if p.showWord("RESTRICT") {
+			p.advance()
+		} else if p.showWord("NO") {
+			p.advance()
+			if !p.showWord("ACTION") {
+				return fmt.Errorf("expected NO ACTION")
+			}
+			p.advance()
+		} else {
+			return fmt.Errorf("unsupported foreign key action: %s", p.cur.Value)
+		}
+	}
+	return nil
 }

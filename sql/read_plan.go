@@ -518,21 +518,26 @@ func (s *Schema) newIteratorSeek(key []byte) storage.Iterator {
 }
 
 func (s *Schema) newRangeIterator(lower, upper []byte, reverse bool) storage.Iterator {
-	if s.inTx && len(s.txWrites) > 0 {
-		it := s.txNewIterator()
-		if reverse {
-			it.Seek(upper)
-			it.Prev()
-		} else {
-			it.Seek(lower)
-		}
-		return storage.BoundIterator(it, lower, upper)
-	}
+	var base storage.Iterator
+	overlay := s.inTx && len(s.txWrites) > 0
+	// Bounded read views exclude unrelated SSTables and initialize at the
+	// requested range, even when private transaction writes are present.
 	if s.statementActive {
-		return s.lsm.NewIteratorAtRange(s.statementSnapshot, lower, upper, reverse)
+		base = s.lsm.NewIteratorAtRange(s.statementSnapshot, lower, upper, reverse && !overlay)
+	} else {
+		base = s.lsm.NewIteratorRange(lower, upper, reverse && !overlay)
 	}
-	return s.lsm.NewIteratorRange(lower, upper, reverse)
+	if !overlay {
+		return base
+	}
+	it := s.txIterator(base, lower, upper)
+	if reverse {
+		it.Seek(upper)
+		it.Prev()
+	}
+	return storage.BoundIterator(it, lower, upper)
 }
+
 func coveredRangePredicate(e Expression, column, table, alias string) bool {
 	if e == nil {
 		return true

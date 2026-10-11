@@ -175,6 +175,9 @@ func NewSchemaWithOptions(lsm *storage.LSMTree, pageSize int, opt *storage.Optio
 	if err := s.loadSchema(); err != nil {
 		return nil, err
 	}
+	if err := s.upgradePrimaryKeys(); err != nil {
+		return nil, err
+	}
 	if err := s.loadViews(); err != nil {
 		return nil, err
 	}
@@ -183,6 +186,11 @@ func NewSchemaWithOptions(lsm *storage.LSMTree, pageSize int, opt *storage.Optio
 	}
 	if err := s.loadIndexes(); err != nil {
 		return nil, err
+	}
+	for _, info := range s.tables {
+		if err := s.foreignDefinitions(info); err != nil {
+			return nil, err
+		}
 	}
 	s.loadAutoincMax()
 	s.loadStats()
@@ -211,28 +219,34 @@ func (s *Schema) loadSchema() error {
 			col := &info.Columns[i]
 			if col.DefaultSQL != "" && col.Default == nil {
 				expr, err := parseExpr(col.DefaultSQL)
-				if err == nil {
-					col.Default = expr
+				if err != nil {
+					return fmt.Errorf("invalid stored DEFAULT on %s.%s: %w", info.Name, col.Name, err)
 				}
+				col.Default = expr
 			}
 			if col.CheckSQL != "" && col.Check == nil {
 				expr, err := parseExpr(col.CheckSQL)
-				if err == nil {
-					col.Check = expr
+				if err != nil {
+					return fmt.Errorf("invalid stored CHECK on %s.%s: %w", info.Name, col.Name, err)
 				}
+				col.Check = expr
 			}
 		}
 		for i, checkSQL := range info.TableCheckSQL {
 			if checkSQL != "" && (i >= len(info.TableCheck) || info.TableCheck[i] == nil) {
 				expr, err := parseExpr(checkSQL)
-				if err == nil {
-					if i >= len(info.TableCheck) {
-						info.TableCheck = append(info.TableCheck, expr)
-					} else {
-						info.TableCheck[i] = expr
-					}
+				if err != nil {
+					return fmt.Errorf("invalid stored CHECK on %s: %w", info.Name, err)
+				}
+				if i >= len(info.TableCheck) {
+					info.TableCheck = append(info.TableCheck, expr)
+				} else {
+					info.TableCheck[i] = expr
 				}
 			}
+		}
+		if err := validateConstraintExpressions(info); err != nil {
+			return fmt.Errorf("invalid constraints on %s: %w", info.Name, err)
 		}
 	}
 	return nil
@@ -247,6 +261,9 @@ func parseExpr(sql string) (Expression, error) {
 	expr, err := parser.parseExpression()
 	if err != nil {
 		return nil, err
+	}
+	if parser.cur.Type != TokEOF {
+		return nil, fmt.Errorf("unexpected token in stored expression: %q", parser.cur.Value)
 	}
 	return expr, nil
 }
@@ -336,26 +353,6 @@ func (s *Schema) CreateTable(stmt *CreateTableStmt) error {
 		}
 	}
 
-	for _, fk := range stmt.ForeignKeys {
-		refTable := strings.ToLower(fk.RefTable)
-		refInfo, ok := s.tables[refTable]
-		if !ok {
-			return fmt.Errorf("referenced table %q does not exist", refTable)
-		}
-		for _, rc := range fk.RefColumns {
-			found := false
-			for _, refCol := range refInfo.Columns {
-				if strings.ToLower(refCol.Name) == strings.ToLower(rc) {
-					found = true
-					break
-				}
-			}
-			if !found {
-				return fmt.Errorf("referenced column %q not found in table %q", rc, refTable)
-			}
-		}
-	}
-
 	for i := range stmt.Columns {
 		if stmt.Columns[i].Default != nil {
 			stmt.Columns[i].DefaultSQL = formatExpr(stmt.Columns[i].Default)
@@ -387,7 +384,7 @@ func (s *Schema) CreateTable(stmt *CreateTableStmt) error {
 		return err
 	}
 
-	s.tables[name] = &TableInfo{
+	info := &TableInfo{
 		Name:          name,
 		Columns:       stmt.Columns,
 		TableCheck:    tcexpr,
@@ -396,6 +393,13 @@ func (s *Schema) CreateTable(stmt *CreateTableStmt) error {
 		ForeignKeys:   stmt.ForeignKeys,
 		PKColumns:     stmt.PKColumns,
 	}
+	if err := validateConstraintExpressions(info); err != nil {
+		return err
+	}
+	if err := primaryKeyColumns(info); err != nil {
+		return err
+	}
+	s.tables[name] = info
 	if err := s.saveSchema(); err != nil {
 		return err
 	}
@@ -410,11 +414,18 @@ func (s *Schema) CreateTable(stmt *CreateTableStmt) error {
 	for _, idx := range inlineIndexes {
 		s.indexes[idx.Name] = idx
 	}
+	if err := s.foreignDefinitions(info); err != nil {
+		return err
+	}
+	s.catalogLookup = nil
 	return s.saveIndexes()
 }
 
 func (s *Schema) DropTable(stmt *DropTableStmt) error {
 	s.ensureCatalogWritable()
+	if err := s.checkDropReferencedTable(strings.ToLower(stmt.Table)); err != nil {
+		return err
+	}
 	name := strings.ToLower(stmt.Table)
 	if _, ok := s.tables[name]; !ok {
 		return fmt.Errorf("table %q does not exist", name)
@@ -710,7 +721,10 @@ func (s *Schema) getCreateTableSQL(tableName string, inlineIndexes bool) string 
 		}
 	}
 	for _, fk := range info.ForeignKeys {
-		fmt.Fprintf(&b, ", FOREIGN KEY (%s) REFERENCES %s(%s)", quotedNames(fk.Columns), quoteIdent(fk.RefTable), quotedNames(fk.RefColumns))
+		fmt.Fprintf(&b, ", FOREIGN KEY (%s) REFERENCES %s", quotedNames(fk.Columns), quoteIdent(fk.RefTable))
+		if len(fk.RefColumns) > 0 {
+			fmt.Fprintf(&b, "(%s)", quotedNames(fk.RefColumns))
+		}
 	}
 	if inlineIndexes {
 		for _, name := range s.GetIndexList() {
@@ -992,13 +1006,37 @@ func (s *Schema) Explain(stmt *ExplainStmt) (*ResultSet, error) {
 		if tname == "" {
 			tname = "(subquery)"
 		}
-		covering := s.coveringPlan(inner, tname, s.tables[tname])
-		if covering != nil {
-			addRow("OpenIndex", 0, int64(len(covering.info.Columns)), 0, covering.index.Name, "", "using covering index: "+covering.index.Name)
+		info := s.tables[tname]
+		tuple := s.tuplePlan(inner, info)
+		covering := s.coveringPlan(inner, tname, info)
+		_, point := s.primaryKeyLookup(inner.Where, tname, info)
+		ordered := false
+		if tuple != nil {
+			ordered = tuple.ordered
+			opcode := "OpenRead"
+			if tuple.index != nil {
+				opcode = "OpenIndex"
+			}
+			addRow(opcode, 0, columnCount, 0, tuple.description(), "", "table="+tname)
+			seek := "SeekGE"
+			if tuple.reverse {
+				seek = "SeekLT"
+			}
+			if tuple.points != nil {
+				seek = "MultiGet"
+			}
+			addRow(seek, 0, 0, 0, tuple.description(), "", "bounded tuple access")
+		} else if point {
+			ordered = true
+			addRow("OpenRead", 0, columnCount, 0, "PRIMARY", "", "table="+tname)
+			addRow("PointLookup", 0, 0, 0, "PRIMARY", "", "single primary key")
+		} else if covering != nil {
+			ordered = covering.ordered
+			addRow("OpenIndex", 0, columnCount, 0, covering.index.Name, "", "covering index")
 		} else {
 			addRow("OpenRead", 0, columnCount, 0, "", "", "table="+tname)
+			addRow("Rewind", 0, 0, 0, "", "", "table scan")
 		}
-		addRow("Rewind", 0, 0, 0, "", "", "")
 
 		for _, col := range inner.Columns {
 			if col.Star {
@@ -1012,7 +1050,9 @@ func (s *Schema) Explain(stmt *ExplainStmt) (*ResultSet, error) {
 			addRow("Filter", 0, 0, 0, exprString(inner.Where), "", "WHERE clause")
 		}
 
-		if covering != nil {
+		if tuple != nil || point {
+			// Bounded access was described above.
+		} else if covering != nil {
 			direction := "forward"
 			if covering.reverse {
 				direction = "backward"
@@ -1032,7 +1072,7 @@ func (s *Schema) Explain(stmt *ExplainStmt) (*ResultSet, error) {
 			}
 		}
 
-		if len(inner.OrderBy) > 0 && (covering == nil || !covering.ordered || hasAggregates(inner) || len(inner.GroupBy) > 0) {
+		if len(inner.OrderBy) > 0 && (!ordered || hasAggregates(inner) || len(inner.GroupBy) > 0 || inner.Distinct) {
 			addRow("SorterOpen", 0, 0, 0, "", "", "")
 			addRow("SorterSort", 0, 0, 0, "", "", "")
 		}
@@ -1073,6 +1113,15 @@ func (s *Schema) Explain(stmt *ExplainStmt) (*ResultSet, error) {
 		}
 		addRow("Init", 0, 0, 0, "", "", "")
 		addRow("OpenWrite", 0, 0, 0, "", "", "table="+inner.From)
+		if info := s.tables[inner.From]; info != nil {
+			if _, ok := s.primaryKeyLookup(inner.Where, inner.From, info); ok {
+				addRow("PointLookup", 0, 0, 0, "PRIMARY", "", "single primary key")
+			} else if plan := buildTuplePlan(&SelectStmt{From: inner.From, Where: inner.Where, Limit: -1}, info, nil, tupleConstraints(inner.Where, inner.From, "", info)); plan != nil {
+				addRow("SeekGE", 0, 0, 0, plan.description(), "", "bounded primary key access")
+			} else {
+				addRow("Rewind", 0, 0, 0, "", "", "table scan")
+			}
+		}
 		if inner.Where != nil {
 			addRow("Filter", 0, 0, 0, exprString(inner.Where), "", "")
 		}
@@ -1094,6 +1143,15 @@ func (s *Schema) Explain(stmt *ExplainStmt) (*ResultSet, error) {
 		}
 		addRow("Init", 0, 0, 0, "", "", "")
 		addRow("OpenWrite", 0, 0, 0, "", "", "table="+inner.Table)
+		if info := s.tables[inner.Table]; info != nil {
+			if _, ok := s.primaryKeyLookup(inner.Where, inner.Table, info); ok {
+				addRow("PointLookup", 0, 0, 0, "PRIMARY", "", "single primary key")
+			} else if plan := buildTuplePlan(&SelectStmt{From: inner.Table, Where: inner.Where, Limit: -1}, info, nil, tupleConstraints(inner.Where, inner.Table, "", info)); plan != nil {
+				addRow("SeekGE", 0, 0, 0, plan.description(), "", "bounded primary key access")
+			} else {
+				addRow("Rewind", 0, 0, 0, "", "", "table scan")
+			}
+		}
 		if inner.Where != nil {
 			addRow("Filter", 0, 0, 0, exprString(inner.Where), "", "")
 		}
@@ -1164,7 +1222,11 @@ func exprString(e Expression) string {
 		for i, a := range x.Args {
 			parts[i] = exprString(a)
 		}
-		return x.Name + "(" + strings.Join(parts, ", ") + ")"
+		modifier := ""
+		if x.Distinct {
+			modifier = "DISTINCT "
+		}
+		return x.Name + "(" + modifier + strings.Join(parts, ", ") + ")"
 	default:
 		return fmt.Sprintf("%T", e)
 	}
@@ -1400,6 +1462,18 @@ func (s *Schema) ensureCatalogWritable() {
 		// Preserve nil versus empty slices so a snapshot compares equal to its
 		// source and does not turn an ordinary row update into a catalog change.
 		c.Columns = slices.Clone(v.Columns)
+		for i := range c.Columns {
+			c.Columns[i].RefColumns = slices.Clone(v.Columns[i].RefColumns)
+		}
+		c.ForeignKeys = slices.Clone(v.ForeignKeys)
+		for i := range c.ForeignKeys {
+			c.ForeignKeys[i].Columns = slices.Clone(v.ForeignKeys[i].Columns)
+			c.ForeignKeys[i].RefColumns = slices.Clone(v.ForeignKeys[i].RefColumns)
+		}
+		c.TableUnique = slices.Clone(v.TableUnique)
+		for i := range c.TableUnique {
+			c.TableUnique[i] = slices.Clone(v.TableUnique[i])
+		}
 		c.PKColumns = slices.Clone(v.PKColumns)
 		c.TableCheck = slices.Clone(v.TableCheck)
 		c.TableCheckSQL = slices.Clone(v.TableCheckSQL)
@@ -1621,6 +1695,9 @@ func (s *Schema) ExecuteStatement(run func() error) error {
 	pos := len(s.txWrites)
 	err := run()
 	if err == nil {
+		err = s.checkStatementForeignKeys(pos)
+	}
+	if err == nil {
 		err = s.checkInterrupt()
 	}
 	if err == nil {
@@ -1722,18 +1799,24 @@ func (s *Schema) txGet(key []byte) ([]byte, bool, error) {
 }
 
 func (s *Schema) txNewIterator() storage.Iterator {
-	base := s.committedIterator()
-	if len(s.txWrites) == 0 {
-		return base
-	}
-	rows := make([]storage.KeyValue, 0, len(s.txLatest))
+	return s.txIterator(s.committedIterator(), nil, nil)
+}
+
+func (s *Schema) txIterator(base storage.Iterator, lower, upper []byte) storage.Iterator {
+	rows := make([]storage.KeyValue, 0)
 	for _, index := range s.txLatest {
 		w := s.txWrites[index]
+		if lower != nil && bytes.Compare(w.key, lower) < 0 || upper != nil && bytes.Compare(w.key, upper) >= 0 {
+			continue
+		}
 		typ := uint8(1)
 		if w.del {
 			typ = 0
 		}
 		rows = append(rows, storage.KeyValue{Key: storage.InternalKey{UserKey: w.key, OpType: typ}, Value: w.value})
+	}
+	if len(rows) == 0 {
+		return base
 	}
 	sort.Slice(rows, func(i, j int) bool { return bytes.Compare(rows[i].Key.UserKey, rows[j].Key.UserKey) < 0 })
 	it := &transactionIterator{base: base, rows: rows}
@@ -2057,6 +2140,13 @@ func (s *Schema) DropIndex(stmt *DropIndexStmt) error {
 		return fmt.Errorf("index %q does not exist", idxName)
 	}
 
+	idx := s.indexes[idxName]
+	if idx.Auto {
+		return fmt.Errorf("cannot drop index backing a constraint: %s", idxName)
+	}
+	if err := s.checkDropForeignIndex(idx); err != nil {
+		return err
+	}
 	prefix := indexDataPrefix(idxName)
 	iter := s.newIterator()
 
@@ -2124,7 +2214,7 @@ func (s *Schema) AlterTable(stmt *AlterTableStmt) error {
 			}
 			col.DefaultSQL = formatExpr(col.Default)
 		}
-		if col.NotNull && value.Null {
+		if col.NotNull && value.Null && len(rows) > 0 {
 			return fmt.Errorf("cannot add a NOT NULL column with NULL default")
 		}
 		if col.Check != nil {
@@ -2132,7 +2222,13 @@ func (s *Schema) AlterTable(stmt *AlterTableStmt) error {
 		}
 		info.Columns = append(info.Columns, col)
 		for _, row := range rows {
-			row[col.Name] = value
+			row[col.Name] = applyAffinity(value, col.ColType)
+		}
+		if err := validateConstraintExpressions(info); err != nil {
+			return err
+		}
+		if err := s.foreignDefinitions(info); err != nil {
+			return err
 		}
 	case "RENAME_TO":
 		newTable = strings.ToLower(stmt.NewName)
@@ -2226,6 +2322,7 @@ func (s *Schema) AlterTable(stmt *AlterTableStmt) error {
 		return fmt.Errorf("unknown alter table operation: %s", stmt.Operation)
 	}
 	if stmt.Operation == "RENAME_TO" || stmt.Operation == "RENAME_COLUMN" {
+		s.renameForeignKeys(table, newTable, strings.ToLower(stmt.OldColName), strings.ToLower(stmt.NewColName))
 		for _, view := range s.views {
 			parsed, err := Parse(view.SQL)
 			if err != nil {
@@ -2697,16 +2794,7 @@ func (s *Schema) primaryKeyLookup(where Expression, table string, info *TableInf
 
 func (s *Schema) makeRowKey(tableName string, info *TableInfo, row map[string]Value, fallbackID int64) []byte {
 	if len(info.PKColumns) > 0 {
-		nullable := false
-		for _, name := range info.PKColumns {
-			if row[name].Null {
-				nullable = true
-			}
-		}
-		if !nullable {
-			return info.encodePK(tableName, row)
-		}
-		return []byte(fmt.Sprintf("%s\xffnull:%020d", tableDataPrefix(tableName), fallbackID))
+		return info.encodePK(tableName, row)
 	}
 	return encodeRowKey(tableName, fallbackID)
 }
@@ -2832,7 +2920,7 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 
 		if pkCol != nil && pkCol.ColType == ColInteger && len(info.PKColumns) <= 1 {
 			pkVal := row[pkCol.Name]
-			if pkVal.Null {
+			if pkVal.Null && pkCol.AutoIncrement && !suppliedColumn(stmt.ColumnNames, pkCol.Name, stmt.DefaultValues) {
 				if nextID <= 0 {
 					return 0, nil, fmt.Errorf("integer primary key exhausted")
 				}
@@ -2853,6 +2941,9 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 			if nextID >= s.rowIDCount[tableName] {
 				s.rowIDCount[tableName] = nextID + 1
 			}
+		}
+		if err := validatePrimaryKey(info, row); err != nil {
+			return 0, nil, err
 		}
 		key := s.makeRowKey(tableName, info, row, nextID)
 		if err := s.lockRow(tableName, info, row, key); err != nil {
@@ -2952,7 +3043,7 @@ func (s *Schema) getPKColumn(info *TableInfo) *ColumnDef {
 
 func (s *Schema) checkConstraints(tableName string, info *TableInfo, row map[string]Value, rowKey []byte) error {
 	if s.tableHasNoConstraints(info) {
-		return s.validateIndexedRow(tableName, row)
+		return validateRowTypes(info, row)
 	}
 	var original map[string]Value
 	if rowKey != nil {
@@ -2968,6 +3059,12 @@ func (s *Schema) checkConstraints(tableName string, info *TableInfo, row map[str
 }
 
 func (s *Schema) checkConstraintsOriginal(tableName string, info *TableInfo, row map[string]Value, rowKey []byte, original map[string]Value) error {
+	if err := validatePrimaryKey(info, row); err != nil {
+		return err
+	}
+	if err := validateRowTypes(info, row); err != nil {
+		return err
+	}
 	if err := s.validateIndexedRow(tableName, row); err != nil {
 		return err
 	}
@@ -3290,7 +3387,11 @@ func (s *Schema) insertFromSelect(stmt *InsertStmt, info *TableInfo) (int64, *Re
 				}
 				if !included {
 					if col.Default != nil {
-						val, _ = s.evalExpr(col.Default, nil)
+						var defaultErr error
+						val, defaultErr = s.evalExpr(col.Default, nil)
+						if defaultErr != nil {
+							return 0, nil, defaultErr
+						}
 					} else {
 						val = NewNullValue()
 					}
@@ -3305,7 +3406,7 @@ func (s *Schema) insertFromSelect(stmt *InsertStmt, info *TableInfo) (int64, *Re
 
 		if pkCol != nil && pkCol.ColType == ColInteger && len(info.PKColumns) == 1 {
 			pkVal := row[pkCol.Name]
-			if pkVal.Null {
+			if pkVal.Null && pkCol.AutoIncrement && !suppliedColumn(stmt.ColumnNames, pkCol.Name, false) {
 				if nextID <= 0 {
 					return 0, nil, fmt.Errorf("integer primary key exhausted")
 				}
@@ -3318,6 +3419,9 @@ func (s *Schema) insertFromSelect(stmt *InsertStmt, info *TableInfo) (int64, *Re
 			if nextID >= s.rowIDCount[tableName] {
 				s.rowIDCount[tableName] = nextID + 1
 			}
+		}
+		if err := validatePrimaryKey(info, row); err != nil {
+			return 0, nil, err
 		}
 		key := s.makeRowKey(tableName, info, row, nextID)
 		if err := s.lockRow(tableName, info, row, key); err != nil {
@@ -3540,7 +3644,7 @@ func (s *Schema) validateQuery(stmt *SelectStmt, info *TableInfo) error {
 			return err
 		}
 	}
-	if err := validate(stmt.Where, true); err != nil {
+	if err := validate(stmt.Where, false); err != nil {
 		return err
 	}
 	if err := validate(stmt.Having, true); err != nil {
@@ -3652,6 +3756,10 @@ func (s *Schema) Select(stmt *SelectStmt) (*ResultSet, error) {
 			exprCols = append(exprCols, selectExprCol{name: name, expr: sc.Expr})
 		}
 	}
+	stmt.OrderBy = append([]OrderByClause(nil), stmt.OrderBy...)
+	if err := validateGrouping(stmt, info, rs.Columns); err != nil {
+		return nil, err
+	}
 	// Aliases are legal in ORDER BY, GROUP BY and HAVING. Expression evaluation
 	// below validates references and preserves any error instead of hiding it.
 
@@ -3731,7 +3839,16 @@ func (s *Schema) Select(stmt *SelectStmt) (*ResultSet, error) {
 		var baseRows []map[string]Value
 		var baseKeys [][]string
 		usedIndex := false
-		if plan := s.coveringPlan(stmt, tableName, info); plan != nil {
+		if plan := s.tuplePlan(stmt, info); plan != nil {
+			var readErr error
+			baseRows, baseKeys, orderedIndex, readErr = s.tupleRows(stmt, plan, trackKeys)
+			if readErr != nil {
+				return nil, readErr
+			}
+			usedIndex = true
+			conditionSatisfied = true
+		}
+		if plan := s.coveringPlan(stmt, tableName, info); !usedIndex && plan != nil {
 			var readErr error
 			baseRows, readErr = s.coveringRows(stmt, plan)
 			if readErr != nil {
@@ -3863,7 +3980,7 @@ func (s *Schema) Select(stmt *SelectStmt) (*ResultSet, error) {
 
 	}
 	hasAgg := hasAggregates(stmt)
-	hasGroupBy := len(stmt.GroupBy) > 0
+	hasGroupBy := len(stmt.GroupBy) > 0 || stmt.Having != nil
 
 	if hasAgg || hasGroupBy {
 		var err error
@@ -3960,22 +4077,15 @@ func isAggregate(fc *FuncCallExpr) bool {
 	return false
 }
 func containsAggregate(expr Expression) bool {
-	switch e := expr.(type) {
-	case *FuncCallExpr:
-		if isAggregate(e) {
-			return true
+	found := false
+	walkExpression(expr, func(e Expression) (bool, error) {
+		if f, ok := e.(*FuncCallExpr); ok && isAggregate(f) {
+			found = true
+			return true, nil
 		}
-		for _, arg := range e.Args {
-			if containsAggregate(arg) {
-				return true
-			}
-		}
-	case *BinaryExpr:
-		return containsAggregate(e.Left) || containsAggregate(e.Right)
-	case *UnaryExpr:
-		return containsAggregate(e.Right)
-	}
-	return false
+		return false, nil
+	})
+	return found
 }
 func hasAggregates(stmt *SelectStmt) bool {
 	for _, col := range stmt.Columns {
@@ -3983,7 +4093,15 @@ func hasAggregates(stmt *SelectStmt) bool {
 			return true
 		}
 	}
-	return containsAggregate(stmt.Having)
+	if containsAggregate(stmt.Having) {
+		return true
+	}
+	for _, o := range stmt.OrderBy {
+		if containsAggregate(o.Expr) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Schema) processGroups(stmt *SelectStmt, rows []map[string]Value, info *TableInfo, exprCols []selectExprCol, keys [][]string) ([]map[string]Value, [][]string, error) {
@@ -4037,6 +4155,19 @@ func (s *Schema) processGroups(stmt *SelectStmt, rows []map[string]Value, info *
 			}
 			base[ec.name] = v
 		}
+		for i, order := range stmt.OrderBy {
+			if containsAggregate(order.Expr) {
+				expr, err := s.replaceAggregates(order.Expr, group)
+				if err != nil {
+					return nil, nil, err
+				}
+				value, err := s.evalExpr(expr, base)
+				if err != nil {
+					return nil, nil, err
+				}
+				base[fmt.Sprintf("\x00order%d", i)] = value
+			}
+		}
 		if stmt.Having != nil {
 			expr, err := s.replaceAggregates(stmt.Having, group)
 			if err != nil {
@@ -4055,41 +4186,21 @@ func (s *Schema) processGroups(stmt *SelectStmt, rows []map[string]Value, info *
 			resultKeys = append(resultKeys, groupKeys[key])
 		}
 	}
+	for i := range stmt.OrderBy {
+		if containsAggregate(stmt.OrderBy[i].Expr) {
+			stmt.OrderBy[i].Expr = &ColumnRefExpr{Name: fmt.Sprintf("\x00order%d", i)}
+		}
+	}
 	return result, resultKeys, nil
 }
 func (s *Schema) replaceAggregates(expr Expression, rows []map[string]Value) (Expression, error) {
-	switch e := expr.(type) {
-	case *FuncCallExpr:
-		if isAggregate(e) {
-			v, err := s.evalAggregate(e, rows)
-			return &LiteralExpr{Value: v}, err
+	return mapExpression(expr, func(e Expression) (Expression, bool, error) {
+		if f, ok := e.(*FuncCallExpr); ok && isAggregate(f) {
+			value, err := s.evalAggregate(f, rows)
+			return &LiteralExpr{Value: value}, true, err
 		}
-		c := *e
-		c.Args = append([]Expression(nil), e.Args...)
-		for i, arg := range c.Args {
-			v, err := s.replaceAggregates(arg, rows)
-			if err != nil {
-				return nil, err
-			}
-			c.Args[i] = v
-		}
-		return &c, nil
-	case *BinaryExpr:
-		c := *e
-		var err error
-		c.Left, err = s.replaceAggregates(e.Left, rows)
-		if err != nil {
-			return nil, err
-		}
-		c.Right, err = s.replaceAggregates(e.Right, rows)
-		return &c, err
-	case *UnaryExpr:
-		c := *e
-		var err error
-		c.Right, err = s.replaceAggregates(e.Right, rows)
-		return &c, err
-	}
-	return expr, nil
+		return e, false, nil
+	})
 }
 func (s *Schema) evalAggregate(fc *FuncCallExpr, rows []map[string]Value) (Value, error) {
 	count := len(fc.Args)
@@ -4099,9 +4210,6 @@ func (s *Schema) evalAggregate(fc *FuncCallExpr, rows []map[string]Value) (Value
 
 	name := strings.ToUpper(fc.Name)
 	if len(fc.Args) == 0 {
-		if name == "COUNT" {
-			return NewIntValue(int64(len(rows))), nil
-		}
 		return NewNullValue(), fmt.Errorf("wrong number of arguments to %s", name)
 	}
 	if name == "COUNT" {
@@ -4110,12 +4218,23 @@ func (s *Schema) evalAggregate(fc *FuncCallExpr, rows []map[string]Value) (Value
 		}
 	}
 	var values []Value
+	var seen map[string]bool
+	if fc.Distinct {
+		seen = make(map[string]bool)
+	}
 	for _, row := range rows {
 		v, err := s.evalExpr(fc.Args[0], row)
 		if err != nil {
 			return NewNullValue(), err
 		}
 		if !v.Null {
+			if fc.Distinct {
+				key := string(valueIdentity(v))
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+			}
 			values = append(values, v)
 		}
 	}
@@ -4160,6 +4279,9 @@ func (s *Schema) evalAggregate(fc *FuncCallExpr, rows []map[string]Value) (Value
 		var isum int64
 		var total float64
 		for _, v := range values {
+			if v.Type != ColInteger && v.Type != ColReal {
+				return NewNullValue(), fmt.Errorf("%s requires numeric arguments", name)
+			}
 			total += toFloat(v)
 			if v.Type != ColInteger {
 				allInt = false
@@ -4177,6 +4299,9 @@ func (s *Schema) evalAggregate(fc *FuncCallExpr, rows []map[string]Value) (Value
 		}
 		if name == "AVG" {
 			total /= float64(len(values))
+		}
+		if math.IsNaN(total) || math.IsInf(total, 0) {
+			return NewNullValue(), fmt.Errorf("numeric value out of range")
 		}
 		return NewRealValue(total), nil
 	}
@@ -4674,6 +4799,9 @@ func (s *Schema) evalSubqueryValue(sub *SelectStmt, outer map[string]Value) (Val
 	if len(rs.Rows) == 0 {
 		return NewNullValue(), nil
 	}
+	if len(rs.Rows) != 1 {
+		return NewNullValue(), fmt.Errorf("scalar subquery returned more than one row")
+	}
 	return rs.Rows[0][rs.Columns[0].Name], nil
 }
 
@@ -4733,37 +4861,57 @@ func (s *Schema) matchingDMLRows(tableName string, info *TableInfo, where Expres
 		}
 		return []storage.KeyValue{{Key: storage.InternalKey{UserKey: key}, Value: value}}, nil
 	}
-	iter := s.newIterator()
-	defer iter.Close()
-	prefix := []byte(tableDataPrefix(tableName))
-	iter.Seek(prefix)
+	plan := buildTuplePlan(&SelectStmt{From: tableName, Where: where, Limit: -1}, info, nil, tupleConstraints(where, tableName, "", info))
+	var intervals []coveringInterval
+	residual := where
+	if plan != nil {
+		intervals = plan.intervals
+		residual = plan.residual
+	} else {
+		prefix := []byte(tableDataPrefix(tableName))
+		intervals = []coveringInterval{{prefix, prefixSuccessor(prefix)}}
+	}
 	var rows []storage.KeyValue
-	for iter.Valid() && bytes.HasPrefix(iter.Key().UserKey, prefix) {
-		if err := s.checkInterrupt(); err != nil {
+	for _, interval := range intervals {
+		iter := s.newRangeIterator(interval.lower, interval.upper, false)
+		err := func() error {
+			defer iter.Close()
+			for iter.Valid() {
+				if err := s.checkInterrupt(); err != nil {
+					return err
+				}
+				match := true
+				if residual != nil {
+					var err error
+					match, err = s.evalCondition(residual, decodeRow(iter.Value(), info))
+					if err != nil {
+						return err
+					}
+				}
+				if match {
+					if offset > 0 {
+						offset--
+					} else {
+						key := iter.Key()
+						key.UserKey = copyBytes(key.UserKey)
+						rows = append(rows, storage.KeyValue{Key: key, Value: copyBytes(iter.Value())})
+						if limit >= 0 && len(rows) >= limit {
+							break
+						}
+					}
+				}
+				iter.Next()
+			}
+			return storage.IteratorError(iter)
+		}()
+		if err != nil {
 			return nil, err
 		}
-		row := decodeRow(iter.Value(), info)
-		match := true
-		if where != nil {
-			var err error
-			match, err = s.evalCondition(where, row)
-			if err != nil {
-				return nil, err
-			}
+		if limit >= 0 && len(rows) >= limit {
+			break
 		}
-		if match {
-			if offset > 0 {
-				offset--
-			} else {
-				rows = append(rows, storage.KeyValue{Key: iter.Key(), Value: iter.Value()})
-				if limit >= 0 && len(rows) >= limit {
-					break
-				}
-			}
-		}
-		iter.Next()
 	}
-	return rows, storage.IteratorError(iter)
+	return rows, nil
 }
 func (s *Schema) Delete(stmt *DeleteStmt) (int64, *ResultSet, error) {
 	table := strings.ToLower(stmt.From)
@@ -4776,6 +4924,9 @@ func (s *Schema) Delete(stmt *DeleteStmt) (int64, *ResultSet, error) {
 
 	if !ok {
 		return 0, nil, fmt.Errorf("table %q does not exist", table)
+	}
+	if err := s.validateDMLExpressions(info, stmt.Where, nil, stmt.Returning); err != nil {
+		return 0, nil, err
 	}
 	entries, err := s.matchingDMLRows(table, info, stmt.Where, stmt.Limit, stmt.Offset)
 	if err != nil {
@@ -4846,6 +4997,9 @@ func (s *Schema) Update(stmt *UpdateStmt) (int64, *ResultSet, error) {
 			return 0, nil, fmt.Errorf("no such column: %s", set.Column)
 		}
 	}
+	if err := s.validateDMLExpressions(info, stmt.Where, stmt.Set, stmt.Returning); err != nil {
+		return 0, nil, err
+	}
 	entries, err := s.matchingDMLRows(table, info, stmt.Where, stmt.Limit, stmt.Offset)
 	if err != nil {
 		return 0, nil, err
@@ -4880,20 +5034,10 @@ func (s *Schema) Update(stmt *UpdateStmt) (int64, *ResultSet, error) {
 
 		key := entry.Key.UserKey
 		if len(info.PKColumns) > 0 {
-			nullable, wasNullable := false, false
-			for _, name := range info.PKColumns {
-				nullable = nullable || row[name].Null
-				wasNullable = wasNullable || original[name].Null
+			if err := validatePrimaryKey(info, row); err != nil {
+				return 0, nil, err
 			}
-			if !nullable {
-				key = info.encodePK(table, row)
-			} else if !wasNullable {
-				id, err := s.nextRowID(table)
-				if err != nil {
-					return 0, nil, err
-				}
-				key = s.makeRowKey(table, info, row, id)
-			}
+			key = info.encodePK(table, row)
 		}
 		if err := s.lockRow(table, info, row, key); err != nil {
 			return 0, nil, err
@@ -5093,9 +5237,19 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 			}
 			return NewIntValue(0), nil
 		case "+":
+			if right.Type != ColInteger && right.Type != ColReal {
+				return NewNullValue(), fmt.Errorf("unary sign requires a numeric operand")
+			}
 			return right, nil
 		case "-":
+			if right.Type != ColInteger && right.Type != ColReal {
+				return NewNullValue(), fmt.Errorf("unary sign requires a numeric operand")
+			}
+
 			if right.Type == ColInteger {
+				if right.Int == math.MinInt64 {
+					return NewNullValue(), fmt.Errorf("integer overflow")
+				}
 				return NewIntValue(-right.Int), nil
 			}
 			return NewRealValue(-toFloat(right)), nil
@@ -5132,12 +5286,8 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 
 func (s *Schema) evalFunc(e *FuncCallExpr, row map[string]Value) (Value, error) {
 	name := strings.ToUpper(e.Name)
-	exact := map[string]int{"IFNULL": 2, "NULLIF": 2, "LENGTH": 1, "UPPER": 1, "LOWER": 1, "ABS": 1, "IIF": 3, "REPLACE": 3, "RANDOM": 0, "CAST": 2, "HEX": 1, "TYPEOF": 1, "QUOTE": 1, "INSTR": 2, "CHANGES": 0, "LAST_INSERT_ROWID": 0}
-	if n, ok := exact[name]; ok && len(e.Args) != n {
-		return NewNullValue(), fmt.Errorf("wrong number of arguments to %s", name)
-	}
-	if name == "COALESCE" && len(e.Args) < 2 {
-		return NewNullValue(), fmt.Errorf("wrong number of arguments to COALESCE")
+	if err := validateScalarFunction(e); err != nil {
+		return NewNullValue(), err
 	}
 
 	switch strings.ToUpper(e.Name) {
@@ -5218,6 +5368,9 @@ func (s *Schema) evalFunc(e *FuncCallExpr, row map[string]Value) (Value, error) 
 		if v.Null {
 			return v, nil
 		}
+		if v.Type != ColInteger && v.Type != ColReal {
+			return NewNullValue(), fmt.Errorf("ABS requires a numeric argument")
+		}
 		if v.Type == ColInteger {
 			if v.Int == math.MinInt64 {
 				return NewNullValue(), fmt.Errorf("integer overflow")
@@ -5239,6 +5392,9 @@ func (s *Schema) evalFunc(e *FuncCallExpr, row map[string]Value) (Value, error) 
 		v, err := s.evalExpr(e.Args[0], row)
 		if err != nil || v.Null {
 			return NewNullValue(), err
+		}
+		if v.Type != ColInteger && v.Type != ColReal {
+			return NewNullValue(), fmt.Errorf("ROUND requires a numeric argument")
 		}
 		digits := 0
 		if len(e.Args) == 2 {
@@ -5423,23 +5579,8 @@ func (s *Schema) evalFunc(e *FuncCallExpr, row map[string]Value) (Value, error) 
 		if err != nil {
 			return NewNullValue(), err
 		}
-		switch strings.ToUpper(t.Text) {
-		case "INTEGER", "INT":
-			return NewIntValue(integerValue(v)), nil
-		case "REAL", "FLOAT":
-			return NewRealValue(toFloat(v)), nil
-		case "TEXT":
-			if v.Type == ColBlob {
-				return NewTextValue(string(v.Blob)), nil
-			}
-			return NewTextValue(v.String()), nil
-		case "BLOB":
-			if v.Type == ColBlob {
-				return v, nil
-			}
-			return NewBlobValue([]byte(v.String())), nil
-		}
-		return v, nil
+		return castSQLValue(v, t.Text)
+
 	case "HEX":
 		v, err := s.evalExpr(e.Args[0], row)
 		if err != nil {
@@ -5827,13 +5968,19 @@ func (s *Schema) evalArithmetic(e *BinaryExpr, row map[string]Value, fn func(flo
 	if lv.Null || rv.Null {
 		return NewNullValue(), nil
 	}
+	if (lv.Type != ColInteger && lv.Type != ColReal) || (rv.Type != ColInteger && rv.Type != ColReal) {
+		return NewNullValue(), fmt.Errorf("arithmetic requires numeric operands")
+	}
 	if (e.Op == "/" || e.Op == "%") && toFloat(rv) == 0 {
-		return NewNullValue(), nil
+		return NewNullValue(), fmt.Errorf("division by zero")
 	}
 	if e.Op == "%" {
-		a, b := integerValue(lv), integerValue(rv)
+		if lv.Type != ColInteger || rv.Type != ColInteger {
+			return NewNullValue(), fmt.Errorf("modulo requires integer operands")
+		}
+		a, b := lv.Int, rv.Int
 		if b == 0 {
-			return NewNullValue(), nil
+			return NewNullValue(), fmt.Errorf("division by zero")
 		}
 		return NewIntValue(a % b), nil
 	}
@@ -5843,13 +5990,13 @@ func (s *Schema) evalArithmetic(e *BinaryExpr, row map[string]Value, fn func(flo
 		case "+":
 			r := a + b
 			if (b > 0 && r < a) || (b < 0 && r > a) {
-				break
+				return NewNullValue(), fmt.Errorf("integer overflow")
 			}
 			return NewIntValue(r), nil
 		case "-":
 			r := a - b
 			if (b < 0 && r < a) || (b > 0 && r > a) {
-				break
+				return NewNullValue(), fmt.Errorf("integer overflow")
 			}
 			return NewIntValue(r), nil
 		case "*":
@@ -5867,9 +6014,14 @@ func (s *Schema) evalArithmetic(e *BinaryExpr, row map[string]Value, fn func(flo
 				return NewIntValue(a / b), nil
 			}
 		}
+		return NewNullValue(), fmt.Errorf("integer overflow")
 	}
 
-	return NewRealValue(fn(toFloat(lv), toFloat(rv))), nil
+	result := fn(toFloat(lv), toFloat(rv))
+	if math.IsInf(result, 0) || math.IsNaN(result) {
+		return NewNullValue(), fmt.Errorf("numeric value out of range")
+	}
+	return NewRealValue(result), nil
 }
 
 func integerValue(v Value) int64 {

@@ -312,8 +312,9 @@ type UnaryExpr struct {
 }
 
 type FuncCallExpr struct {
-	Name string
-	Args []Expression
+	Distinct bool
+	Name     string
+	Args     []Expression
 }
 
 type InListExpr struct {

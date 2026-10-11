@@ -13,12 +13,14 @@ type catalogLookups struct {
 	indexedColumns map[string][]ColumnDef
 	covering       map[*IndexInfo]*TableInfo
 	unique         map[string][][]string
+	foreign        map[string][]ForeignKeyDef
+	references     map[string][]referencingKey
 	maxTableName   int
 }
 
 func (s *Schema) lookups() *catalogLookups {
 	if s.catalogLookup == nil {
-		l := &catalogLookups{indexes: make(map[string][]*IndexInfo), indexedColumns: make(map[string][]ColumnDef), covering: make(map[*IndexInfo]*TableInfo), unique: make(map[string][][]string)}
+		l := &catalogLookups{indexes: make(map[string][]*IndexInfo), indexedColumns: make(map[string][]ColumnDef), covering: make(map[*IndexInfo]*TableInfo), unique: make(map[string][][]string), foreign: make(map[string][]ForeignKeyDef), references: make(map[string][]referencingKey)}
 		for _, idx := range s.indexes {
 			l.indexes[idx.Table] = append(l.indexes[idx.Table], idx)
 			if !s.isAutoIndex(idx) {
@@ -26,6 +28,10 @@ func (s *Schema) lookups() *catalogLookups {
 			}
 		}
 		for name, info := range s.tables {
+			for _, fk := range tableForeignKeys(info) {
+				l.foreign[name] = append(l.foreign[name], fk)
+				l.references[fk.RefTable] = append(l.references[fk.RefTable], referencingKey{name, fk})
+			}
 			indexed := make(map[string]bool)
 			for _, idx := range l.indexes[name] {
 				for _, column := range idx.columnNames() {

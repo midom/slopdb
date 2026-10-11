@@ -353,6 +353,11 @@ func coveringBounds(stmt *SelectStmt, idx *IndexInfo, info *TableInfo) ([]coveri
 }
 
 func (s *Schema) coveringPlan(stmt *SelectStmt, table string, info *TableInfo) *coveringReadPlan {
+	// A complete primary key needs one row read. A covering index with a
+	// missing middle component may instead scan an unbounded equality prefix.
+	if _, exact := s.primaryKeyLookup(stmt.Where, table, info); exact {
+		return nil
+	}
 	if info == nil || stmt.Lock != nil || stmt.trackRows || len(stmt.Joins) != 0 || stmt.FromExpr != nil {
 		return nil
 	}

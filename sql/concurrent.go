@@ -34,6 +34,9 @@ func (s *Schema) PreparePointUpdate(stmt *UpdateStmt) *PointUpdate {
 	if info == nil || len(info.PKColumns) == 0 || len(info.TableCheck) > 0 || len(info.ForeignKeys) > 0 {
 		return nil
 	}
+	if len(s.lookups().foreign[table]) > 0 || len(s.lookups().references[table]) > 0 {
+		return nil
+	}
 	for _, tr := range s.triggers {
 		if tr.Table == table || tr.View == table {
 			return nil
@@ -223,6 +226,9 @@ func (p *PointUpdate) Run(ctx context.Context) (int64, error) {
 		col := p.info.Columns[p.targets[i]]
 		v = applyAffinity(v, col.ColType)
 
+		if err := validateColumnValue(p.info.Name, col, v); err != nil {
+			return 0, err
+		}
 		setValues[i] = v
 	}
 	var localIndexKeys [8][]byte
