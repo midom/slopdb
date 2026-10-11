@@ -138,3 +138,7 @@ zero failures or retries and passed all checks after execution and reopening.
 SQLite and DuckDB comparisons use the [shared three-engine runner](compare/README.md).
 The latest [one-minute results](../../docs/tpcc-comparison.md) include throughput,
 tail latency, failures, retry counts and durability settings for all three engines.
+
+`-page-size 16384`, `65536` or `1048576` selects SlopDB's uncompressed
+SSTable data-block target. The requested and actual sizes appear in JSON.
+Keep the byte-budgeted block cache and memtable constant when comparing sizes.

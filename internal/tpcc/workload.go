@@ -31,6 +31,7 @@ var names = [...]string{"new_order", "payment", "order_status", "delivery", "sto
 var invalidItem = errors.New("expected invalid-item rollback")
 
 type Config struct {
+	PageSize    int64         `json:"requested_page_size_bytes"`
 	Engine      string        `json:"engine"`
 	Workers     int           `json:"workers"`
 	Duration    time.Duration `json:"duration_ns"`
@@ -132,8 +133,9 @@ func Run(open func(Config) (Database, error)) (retErr error) {
 	flag.BoolVar(&c.WALFsync, "wal-fsync", false, "enable WAL fsync (WAL is always enabled)")
 	flag.StringVar(&c.Dir, "dir", "", "fresh database directory; default creates a directory under /tmp")
 	flag.StringVar(&c.JSON, "json", "", "write a JSON results file")
+	flag.Int64Var(&c.PageSize, "page-size", 0, "storage page/block target in bytes (0 uses engine default); SQLite supports powers of two up to 65536")
 	flag.Parse()
-	if flag.NArg() != 0 || c.Workers < 1 || c.Duration <= 0 || c.Warehouses < 1 || c.Districts < 1 || c.Customers < 1 || c.Items < 15 || c.Retries < 0 || c.LockTimeout < 0 || c.TxTimeout <= 0 {
+	if flag.NArg() != 0 || c.PageSize < 0 || c.Workers < 1 || c.Duration <= 0 || c.Warehouses < 1 || c.Districts < 1 || c.Customers < 1 || c.Items < 15 || c.Retries < 0 || c.LockTimeout < 0 || c.TxTimeout <= 0 {
 		return errors.New("invalid configuration: positive sizes/timeouts required, items >= 15, retries and lock-timeout >= 0")
 	}
 	if c.Engine != "slopdb" && c.Engine != "sqlite" && c.Engine != "duckdb" {
