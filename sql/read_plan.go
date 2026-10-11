@@ -136,6 +136,11 @@ func needsQualifiedRows(stmt *SelectStmt) bool {
 					return true
 				}
 			}
+			for _, a := range windowExpressions(x.Window) {
+				if needs(a) {
+					return true
+				}
+			}
 			return false
 		case *InListExpr:
 			if needs(x.Expr) {

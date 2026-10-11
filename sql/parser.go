@@ -886,25 +886,18 @@ func (p *Parser) parseSelect() (Statement, error) {
 		p.advance()
 	}
 
-	if p.cur.Type == TokStar {
-		stmt.SelectAll = true
-		stmt.Columns = append(stmt.Columns, SelectColumn{Star: true})
-		p.advance()
-	} else {
-		for {
-			col, err := p.parseSelectColumn()
-			if err != nil {
-				return nil, err
-			}
-			stmt.Columns = append(stmt.Columns, col)
-
-			if p.cur.Type == TokComma {
-				p.advance()
-			} else {
-				break
-			}
+	for {
+		col, err := p.parseSelectColumn()
+		if err != nil {
+			return nil, err
 		}
+		stmt.Columns = append(stmt.Columns, col)
+		if p.cur.Type != TokComma {
+			break
+		}
+		p.advance()
 	}
+	stmt.SelectAll = len(stmt.Columns) == 1 && stmt.Columns[0].Star
 
 	if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "FROM" {
 		p.advance()
@@ -979,6 +972,10 @@ func (p *Parser) parseSelect() (Statement, error) {
 			return nil, err
 		}
 		stmt.Having = expr
+	}
+
+	if err := p.parseWindowDefinitions(stmt); err != nil {
+		return nil, err
 	}
 
 	if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "ORDER" {
@@ -1825,7 +1822,7 @@ func (p *Parser) parsePrimary() (Expression, error) {
 			if err := p.expect(TokRParen); err != nil {
 				return nil, err
 			}
-			return fc, nil
+			return p.parseWindowCall(fc)
 		}
 
 		if p.cur.Type == TokDot {
@@ -1865,7 +1862,7 @@ func (p *Parser) parsePrimary() (Expression, error) {
 			if err := p.expect(TokRParen); err != nil {
 				return nil, err
 			}
-			return fc, nil
+			return p.parseWindowCall(fc)
 		}
 	}
 
@@ -1973,7 +1970,7 @@ func (p *Parser) parseTableRef() (string, string, Expression) {
 }
 
 var reservedWords = map[string]bool{
-	"ON": true, "WHERE": true, "JOIN": true, "GROUP": true, "HAVING": true,
+	"ON": true, "WHERE": true, "JOIN": true, "GROUP": true, "HAVING": true, "WINDOW": true,
 	"ORDER": true, "LIMIT": true, "OFFSET": true, "INNER": true, "LEFT": true,
 	"RIGHT": true, "CROSS": true, "NATURAL": true, "FULL": true, "OUTER": true,
 	"UNION": true, "EXCEPT": true, "INTERSECT": true, "SET": true, "VALUES": true,
@@ -2352,6 +2349,10 @@ func formatSelectSQL(s *SelectStmt) string {
 	if s.Having != nil {
 		b.WriteString(" HAVING " + formatExpr(s.Having))
 	}
+	if len(s.Windows) > 0 {
+		b.WriteString(formatWindowDefinitions(s.Windows))
+	}
+
 	if len(s.OrderBy) > 0 {
 		b.WriteString(" ORDER BY ")
 		for i, o := range s.OrderBy {
@@ -2428,7 +2429,7 @@ func formatExpr(e Expression) string {
 		if x.Distinct {
 			modifier = "DISTINCT "
 		}
-		return x.Name + "(" + modifier + strings.Join(parts, ", ") + ")"
+		return x.Name + "(" + modifier + strings.Join(parts, ", ") + ")" + formatWindowCall(x.Window)
 	case *SubqueryExpr:
 		return "(" + formatSelectSQL(x.Stmt) + ")"
 	case *InListExpr:

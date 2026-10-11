@@ -75,6 +75,7 @@ var keywords = map[string]bool{
 	"SAVEPOINT": true, "RELEASE": true, "TO": true,
 	"USING": true, "NATURAL": true, "CROSS": true,
 	"SHOW": true, "DESCRIBE": true,
+	"OVER": true, "PARTITION": true, "WINDOW": true, "ROWS": true, "RANGE": true, "GROUPS": true, "UNBOUNDED": true, "PRECEDING": true, "FOLLOWING": true, "CURRENT": true, "EXCLUDE": true,
 	"NULLS": true, "FIRST": true, "LAST": true, "ESCAPE": true}
 
 func isKeyword(s string) bool {

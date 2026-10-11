@@ -84,6 +84,7 @@ type InsertStmt struct {
 }
 
 type SelectStmt struct {
+	Windows     []WindowDefinition
 	Columns     []SelectColumn
 	From        string
 	FromAlias   string
@@ -327,9 +328,11 @@ type UnaryExpr struct {
 }
 
 type FuncCallExpr struct {
-	Distinct bool
-	Name     string
-	Args     []Expression
+	windowKey string // resolved privately per SELECT, immutable during evaluation
+	Window    *WindowSpec
+	Distinct  bool
+	Name      string
+	Args      []Expression
 }
 
 type InListExpr struct {
