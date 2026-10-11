@@ -27,7 +27,14 @@ NULL ordering, exact mixed integer/real comparisons, BLOBs, direction and stable
 ties use the same SQL comparison rules. Sorting errors are propagated before
 comparison. Simple projections are evaluated once per input row.
 
-Streaming aggregation uses its typed/ordinary accumulators while their estimated
+GROUP BY on a leading clustered primary-key prefix consumes one ordered physical
+interval with one typed/ordinary accumulator and finalizes each group as its key
+changes. This avoids retaining a group map or spilling/restarting an already
+ordered input. GROUP BY aliases and ordinal references are resolved before
+checking the prefix; secondary indexes, point sets, joins and multiple intervals
+keep their existing safe paths.
+
+Other streaming aggregation uses its typed/ordinary accumulators while their estimated
 working set fits. If group cardinality or variable-width state exceeds the
 budget, it restarts the input using the **same statement snapshot and private
 transaction writes**, externally sorts by group identity, and accumulates one
