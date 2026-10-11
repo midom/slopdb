@@ -1,0 +1,4724 @@
+{
+  "measured_at": "2026-10-11T21:46:01.535691+00:00",
+  "minimum_file_bytes_per_engine_and_state": 104857600,
+  "units": "bytes; MiB=1048576 bytes",
+  "versions": {
+    "slopdb_revision": "f45ea982792cd25c94478b76dd4bf20ac83bb8eb",
+    "go_root_module": "1.22.2",
+    "duckdb": "1.5.6",
+    "sqlite": "3.45.1"
+  },
+  "scope": "Storage comparison; load, validation and maintenance jobs can overlap, so their timings are diagnostic rather than a controlled throughput comparison.",
+  "method": "Fresh equal-data databases; sum all regular database-file bytes including indexes, metadata and locks; allocated totals independently checked against du -s -B1; no WAL files remain after close. Before/after sizes are captured serially on task-created databases.",
+  "durability": "WAL enabled and WAL fsync disabled for new loads. DuckDB uses the existing Linux shim restricted to its exact WAL file. Other DuckDB and SlopDB checkpoint/SSTable/MANIFEST syncing stays enabled. File allocation is recorded after syncing closed files.",
+  "tpch": {
+    "scale_factor": 0.2,
+    "rows": {
+      "region": 5,
+      "nation": 25,
+      "supplier": 2000,
+      "customer": 30000,
+      "part": 40000,
+      "partsupp": 160000,
+      "orders": 300000,
+      "lineitem": 1199969
+    },
+    "total_rows": 1731999,
+    "input_file_bytes": 219033210,
+    "input_sha256": {
+      "region": "2b12cdddbe69a491b2bf6bea9bc33d4781c56fa4c5cb7f9702860618221c85f2",
+      "nation": "7986406c8b57b41e274247d514dc2e837769073533e1f7fe3463767798367ec6",
+      "supplier": "c75a3528f0c67c1d1e2687254eb57a98bac8d18dd5e7667d1dd4bef26912c443",
+      "customer": "73804ad717db103e4b728ae5c1bdd77b96d19147ba1569c21957ec961be3f2aa",
+      "part": "9645367c16e4f05351e1789f01b9bffcd39ebfbb3acba100692e4fe506e27e00",
+      "partsupp": "a60496cd42bb30ce60c1036cfa9d0c269f6e3242d0c7637903fd433f2369c0e7",
+      "orders": "9df1319443eb7a4638c58028f39c49eed71a95409d3964e558a68b5fd9620c38",
+      "lineitem": "a4f15a2c2b189e3458c92376ec4a2179b58643ec028268f0f0da26ff43f33307"
+    },
+    "native_qualification_answers_verified": true,
+    "engines": [
+      {
+        "engine": "slopdb",
+        "rows": {
+          "customer": 30000,
+          "lineitem": 1199969,
+          "nation": 25,
+          "orders": 300000,
+          "part": 40000,
+          "partsupp": 160000,
+          "region": 5,
+          "supplier": 2000
+        },
+        "closed": {
+          "path": "/tmp/slopdb-bench/storage-large-uxqRa0/tpch-slopdb",
+          "files": [
+            {
+              "name": "294.sst",
+              "bytes": 392,
+              "allocated_bytes": 4096
+            },
+            {
+              "name": "295.sst",
+              "bytes": 407,
+              "allocated_bytes": 4096
+            },
+            {
+              "name": "296.sst",
+              "bytes": 420,
+              "allocated_bytes": 4096
+            },
+            {
+              "name": "298.sst",
+              "bytes": 269116,
+              "allocated_bytes": 270336
+            },
+            {
+              "name": "299.sst",
+              "bytes": 600228,
+              "allocated_bytes": 602112
+            },
+            {
+              "name": "301.sst",
+              "bytes": 2434637,
+              "allocated_bytes": 2437120
+            },
+            {
+              "name": "302.sst",
+              "bytes": 2467609,
+              "allocated_bytes": 2473984
+            },
+            {
+              "name": "305.sst",
+              "bytes": 2469653,
+              "allocated_bytes": 2469888
+            },
+            {
+              "name": "316.sst",
+              "bytes": 3174573,
+              "allocated_bytes": 3182592
+            },
+            {
+              "name": "317.sst",
+              "bytes": 3179812,
+              "allocated_bytes": 3186688
+            },
+            {
+              "name": "340.sst",
+              "bytes": 19325,
+              "allocated_bytes": 20480
+            },
+            {
+              "name": "342.sst",
+              "bytes": 963650,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "344.sst",
+              "bytes": 964496,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "349.sst",
+              "bytes": 499,
+              "allocated_bytes": 4096
+            },
+            {
+              "name": "351.sst",
+              "bytes": 3346246,
+              "allocated_bytes": 3346432
+            },
+            {
+              "name": "352.sst",
+              "bytes": 210026,
+              "allocated_bytes": 212992
+            },
+            {
+              "name": "390.sst",
+              "bytes": 1204525,
+              "allocated_bytes": 1208320
+            },
+            {
+              "name": "391.sst",
+              "bytes": 1206671,
+              "allocated_bytes": 1208320
+            },
+            {
+              "name": "392.sst",
+              "bytes": 1207082,
+              "allocated_bytes": 1208320
+            },
+            {
+              "name": "413.sst",
+              "bytes": 1396080,
+              "allocated_bytes": 1396736
+            },
+            {
+              "name": "414.sst",
+              "bytes": 1426939,
+              "allocated_bytes": 1429504
+            },
+            {
+              "name": "415.sst",
+              "bytes": 1427632,
+              "allocated_bytes": 1433600
+            },
+            {
+              "name": "416.sst",
+              "bytes": 3349702,
+              "allocated_bytes": 3354624
+            },
+            {
+              "name": "417.sst",
+              "bytes": 3346543,
+              "allocated_bytes": 3354624
+            },
+            {
+              "name": "418.sst",
+              "bytes": 3351900,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "419.sst",
+              "bytes": 3352400,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "420.sst",
+              "bytes": 3352833,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "421.sst",
+              "bytes": 3353040,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "422.sst",
+              "bytes": 3353058,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "423.sst",
+              "bytes": 3353109,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "424.sst",
+              "bytes": 3353182,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "425.sst",
+              "bytes": 3353227,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "434.sst",
+              "bytes": 3355947,
+              "allocated_bytes": 3362816
+            },
+            {
+              "name": "477.sst",
+              "bytes": 1172740,
+              "allocated_bytes": 1175552
+            },
+            {
+              "name": "479.sst",
+              "bytes": 1172083,
+              "allocated_bytes": 1175552
+            },
+            {
+              "name": "480.sst",
+              "bytes": 1172393,
+              "allocated_bytes": 1175552
+            },
+            {
+              "name": "482.sst",
+              "bytes": 1172162,
+              "allocated_bytes": 1175552
+            },
+            {
+              "name": "484.sst",
+              "bytes": 854991,
+              "allocated_bytes": 856064
+            },
+            {
+              "name": "486.sst",
+              "bytes": 828289,
+              "allocated_bytes": 831488
+            },
+            {
+              "name": "495.sst",
+              "bytes": 1142263,
+              "allocated_bytes": 1142784
+            },
+            {
+              "name": "496.sst",
+              "bytes": 3354546,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "498.sst",
+              "bytes": 3354109,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "501.sst",
+              "bytes": 2432830,
+              "allocated_bytes": 2437120
+            },
+            {
+              "name": "502.sst",
+              "bytes": 1142387,
+              "allocated_bytes": 1142784
+            },
+            {
+              "name": "503.sst",
+              "bytes": 1143710,
+              "allocated_bytes": 1146880
+            },
+            {
+              "name": "504.sst",
+              "bytes": 1142115,
+              "allocated_bytes": 1142784
+            },
+            {
+              "name": "505.sst",
+              "bytes": 1143091,
+              "allocated_bytes": 1146880
+            },
+            {
+              "name": "507.sst",
+              "bytes": 1141629,
+              "allocated_bytes": 1142784
+            },
+            {
+              "name": "508.sst",
+              "bytes": 1141752,
+              "allocated_bytes": 1146880
+            },
+            {
+              "name": "511.sst",
+              "bytes": 1142310,
+              "allocated_bytes": 1142784
+            },
+            {
+              "name": "516.sst",
+              "bytes": 1143225,
+              "allocated_bytes": 1146880
+            },
+            {
+              "name": "521.sst",
+              "bytes": 1141758,
+              "allocated_bytes": 1142784
+            },
+            {
+              "name": "525.sst",
+              "bytes": 1143885,
+              "allocated_bytes": 1146880
+            },
+            {
+              "name": "527.sst",
+              "bytes": 1142127,
+              "allocated_bytes": 1142784
+            },
+            {
+              "name": "529.sst",
+              "bytes": 1143413,
+              "allocated_bytes": 1146880
+            },
+            {
+              "name": "530.sst",
+              "bytes": 1168275,
+              "allocated_bytes": 1171456
+            },
+            {
+              "name": "531.sst",
+              "bytes": 1168031,
+              "allocated_bytes": 1171456
+            },
+            {
+              "name": "533.sst",
+              "bytes": 1166900,
+              "allocated_bytes": 1167360
+            },
+            {
+              "name": "534.sst",
+              "bytes": 1167435,
+              "allocated_bytes": 1171456
+            },
+            {
+              "name": "535.sst",
+              "bytes": 1174939,
+              "allocated_bytes": 1175552
+            },
+            {
+              "name": "537.sst",
+              "bytes": 1170293,
+              "allocated_bytes": 1171456
+            },
+            {
+              "name": "539.sst",
+              "bytes": 1168495,
+              "allocated_bytes": 1171456
+            },
+            {
+              "name": "540.sst",
+              "bytes": 1165828,
+              "allocated_bytes": 1167360
+            },
+            {
+              "name": "541.sst",
+              "bytes": 1166699,
+              "allocated_bytes": 1167360
+            },
+            {
+              "name": "543.sst",
+              "bytes": 3372500,
+              "allocated_bytes": 3375104
+            },
+            {
+              "name": "544.sst",
+              "bytes": 1167092,
+              "allocated_bytes": 1167360
+            },
+            {
+              "name": "551.sst",
+              "bytes": 3400094,
+              "allocated_bytes": 3403776
+            },
+            {
+              "name": "552.sst",
+              "bytes": 1166560,
+              "allocated_bytes": 1167360
+            },
+            {
+              "name": "553.sst",
+              "bytes": 1168381,
+              "allocated_bytes": 1171456
+            },
+            {
+              "name": "556.sst",
+              "bytes": 3233443,
+              "allocated_bytes": 3239936
+            },
+            {
+              "name": "557.sst",
+              "bytes": 1168618,
+              "allocated_bytes": 1171456
+            },
+            {
+              "name": "558.sst",
+              "bytes": 1167658,
+              "allocated_bytes": 1171456
+            },
+            {
+              "name": "560.sst",
+              "bytes": 1168233,
+              "allocated_bytes": 1171456
+            },
+            {
+              "name": "561.sst",
+              "bytes": 1268103,
+              "allocated_bytes": 1269760
+            },
+            {
+              "name": "562.sst",
+              "bytes": 1270945,
+              "allocated_bytes": 1273856
+            },
+            {
+              "name": "564.sst",
+              "bytes": 1272333,
+              "allocated_bytes": 1273856
+            },
+            {
+              "name": "566.sst",
+              "bytes": 1272204,
+              "allocated_bytes": 1273856
+            },
+            {
+              "name": "568.sst",
+              "bytes": 1270562,
+              "allocated_bytes": 1273856
+            },
+            {
+              "name": "569.sst",
+              "bytes": 1167475,
+              "allocated_bytes": 1171456
+            },
+            {
+              "name": "570.sst",
+              "bytes": 1182881,
+              "allocated_bytes": 1183744
+            },
+            {
+              "name": "571.sst",
+              "bytes": 1271901,
+              "allocated_bytes": 1277952
+            },
+            {
+              "name": "572.sst",
+              "bytes": 1272669,
+              "allocated_bytes": 1273856
+            },
+            {
+              "name": "573.sst",
+              "bytes": 1169483,
+              "allocated_bytes": 1171456
+            },
+            {
+              "name": "574.sst",
+              "bytes": 1272425,
+              "allocated_bytes": 1273856
+            },
+            {
+              "name": "576.sst",
+              "bytes": 1271940,
+              "allocated_bytes": 1273856
+            },
+            {
+              "name": "578.sst",
+              "bytes": 1272264,
+              "allocated_bytes": 1273856
+            },
+            {
+              "name": "580.sst",
+              "bytes": 1272757,
+              "allocated_bytes": 1277952
+            },
+            {
+              "name": "581.sst",
+              "bytes": 1169898,
+              "allocated_bytes": 1171456
+            },
+            {
+              "name": "582.sst",
+              "bytes": 1271048,
+              "allocated_bytes": 1273856
+            },
+            {
+              "name": "584.sst",
+              "bytes": 1269534,
+              "allocated_bytes": 1269760
+            },
+            {
+              "name": "585.sst",
+              "bytes": 1171770,
+              "allocated_bytes": 1175552
+            },
+            {
+              "name": "586.sst",
+              "bytes": 1274669,
+              "allocated_bytes": 1277952
+            },
+            {
+              "name": "587.sst",
+              "bytes": 1171149,
+              "allocated_bytes": 1171456
+            },
+            {
+              "name": "588.sst",
+              "bytes": 1272048,
+              "allocated_bytes": 1273856
+            },
+            {
+              "name": "589.sst",
+              "bytes": 1171192,
+              "allocated_bytes": 1171456
+            },
+            {
+              "name": "590.sst",
+              "bytes": 1271692,
+              "allocated_bytes": 1273856
+            },
+            {
+              "name": "592.sst",
+              "bytes": 1272469,
+              "allocated_bytes": 1273856
+            },
+            {
+              "name": "594.sst",
+              "bytes": 1271820,
+              "allocated_bytes": 1273856
+            },
+            {
+              "name": "596.sst",
+              "bytes": 1271595,
+              "allocated_bytes": 1273856
+            },
+            {
+              "name": "597.sst",
+              "bytes": 1171476,
+              "allocated_bytes": 1175552
+            },
+            {
+              "name": "598.sst",
+              "bytes": 1246947,
+              "allocated_bytes": 1249280
+            },
+            {
+              "name": "600.sst",
+              "bytes": 1143206,
+              "allocated_bytes": 1146880
+            },
+            {
+              "name": "602.sst",
+              "bytes": 1171907,
+              "allocated_bytes": 1175552
+            },
+            {
+              "name": "603.sst",
+              "bytes": 1172576,
+              "allocated_bytes": 1175552
+            },
+            {
+              "name": "604.sst",
+              "bytes": 1252098,
+              "allocated_bytes": 1253376
+            },
+            {
+              "name": "605.sst",
+              "bytes": 1172011,
+              "allocated_bytes": 1175552
+            },
+            {
+              "name": "606.sst",
+              "bytes": 18208,
+              "allocated_bytes": 20480
+            },
+            {
+              "name": "608.sst",
+              "bytes": 1171595,
+              "allocated_bytes": 1175552
+            },
+            {
+              "name": "609.sst",
+              "bytes": 500,
+              "allocated_bytes": 4096
+            },
+            {
+              "name": "610.sst",
+              "bytes": 3353359,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "612.sst",
+              "bytes": 3353625,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "613.sst",
+              "bytes": 3353686,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "614.sst",
+              "bytes": 3354292,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "615.sst",
+              "bytes": 3354373,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "616.sst",
+              "bytes": 3354584,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "617.sst",
+              "bytes": 3354678,
+              "allocated_bytes": 3362816
+            },
+            {
+              "name": "618.sst",
+              "bytes": 3354999,
+              "allocated_bytes": 3362816
+            },
+            {
+              "name": "619.sst",
+              "bytes": 3355227,
+              "allocated_bytes": 3362816
+            },
+            {
+              "name": "620.sst",
+              "bytes": 3355346,
+              "allocated_bytes": 3362816
+            },
+            {
+              "name": "621.sst",
+              "bytes": 3355390,
+              "allocated_bytes": 3362816
+            },
+            {
+              "name": "622.sst",
+              "bytes": 3398865,
+              "allocated_bytes": 3399680
+            },
+            {
+              "name": "623.sst",
+              "bytes": 3402287,
+              "allocated_bytes": 3407872
+            },
+            {
+              "name": "624.sst",
+              "bytes": 2799873,
+              "allocated_bytes": 2805760
+            },
+            {
+              "name": "625.sst",
+              "bytes": 3590051,
+              "allocated_bytes": 3596288
+            },
+            {
+              "name": "627.sst",
+              "bytes": 247367,
+              "allocated_bytes": 249856
+            },
+            {
+              "name": "628.sst",
+              "bytes": 4059680,
+              "allocated_bytes": 4067328
+            },
+            {
+              "name": "629.sst",
+              "bytes": 1015972,
+              "allocated_bytes": 1019904
+            },
+            {
+              "name": "630.sst",
+              "bytes": 1105531,
+              "allocated_bytes": 1105920
+            },
+            {
+              "name": "632.sst",
+              "bytes": 3421744,
+              "allocated_bytes": 3428352
+            },
+            {
+              "name": "633.sst",
+              "bytes": 308,
+              "allocated_bytes": 4096
+            },
+            {
+              "name": "635.sst",
+              "bytes": 520,
+              "allocated_bytes": 4096
+            },
+            {
+              "name": "LOCK",
+              "bytes": 8,
+              "allocated_bytes": 4096
+            },
+            {
+              "name": "MANIFEST",
+              "bytes": 18089,
+              "allocated_bytes": 20480
+            }
+          ],
+          "file_count": 133,
+          "file_bytes": 224589445,
+          "allocated_total_bytes": 225038336,
+          "wal_files": []
+        },
+        "storage_info": {
+          "levels": [
+            {
+              "level": 0,
+              "file_count": 3,
+              "bytes": 3422572,
+              "files": [
+                "632.sst",
+                "633.sst",
+                "635.sst"
+              ]
+            },
+            {
+              "level": 1,
+              "file_count": 6,
+              "bytes": 8900316,
+              "files": [
+                "434.sst",
+                "477.sst",
+                "479.sst",
+                "480.sst",
+                "482.sst",
+                "484.sst"
+              ]
+            },
+            {
+              "level": 2,
+              "file_count": 75,
+              "bytes": 102090484,
+              "files": [
+                "390.sst",
+                "391.sst",
+                "392.sst",
+                "413.sst",
+                "414.sst",
+                "415.sst",
+                "486.sst",
+                "495.sst",
+                "496.sst",
+                "498.sst",
+                "501.sst",
+                "502.sst",
+                "504.sst",
+                "503.sst",
+                "505.sst",
+                "508.sst",
+                "507.sst",
+                "511.sst",
+                "516.sst",
+                "521.sst",
+                "525.sst",
+                "527.sst",
+                "529.sst",
+                "530.sst",
+                "531.sst",
+                "533.sst",
+                "534.sst",
+                "535.sst",
+                "537.sst",
+                "539.sst",
+                "541.sst",
+                "540.sst",
+                "544.sst",
+                "552.sst",
+                "553.sst",
+                "557.sst",
+                "558.sst",
+                "543.sst",
+                "551.sst",
+                "556.sst",
+                "560.sst",
+                "569.sst",
+                "570.sst",
+                "573.sst",
+                "581.sst",
+                "585.sst",
+                "587.sst",
+                "589.sst",
+                "597.sst",
+                "561.sst",
+                "562.sst",
+                "564.sst",
+                "566.sst",
+                "568.sst",
+                "571.sst",
+                "572.sst",
+                "574.sst",
+                "576.sst",
+                "578.sst",
+                "580.sst",
+                "582.sst",
+                "584.sst",
+                "586.sst",
+                "588.sst",
+                "590.sst",
+                "592.sst",
+                "594.sst",
+                "596.sst",
+                "598.sst",
+                "600.sst",
+                "603.sst",
+                "602.sst",
+                "604.sst",
+                "605.sst",
+                "608.sst"
+              ]
+            },
+            {
+              "level": 3,
+              "file_count": 47,
+              "bytes": 110157976,
+              "files": [
+                "294.sst",
+                "295.sst",
+                "296.sst",
+                "298.sst",
+                "299.sst",
+                "301.sst",
+                "302.sst",
+                "305.sst",
+                "316.sst",
+                "317.sst",
+                "340.sst",
+                "342.sst",
+                "344.sst",
+                "349.sst",
+                "351.sst",
+                "352.sst",
+                "416.sst",
+                "417.sst",
+                "418.sst",
+                "419.sst",
+                "420.sst",
+                "421.sst",
+                "422.sst",
+                "423.sst",
+                "424.sst",
+                "425.sst",
+                "606.sst",
+                "609.sst",
+                "610.sst",
+                "612.sst",
+                "613.sst",
+                "614.sst",
+                "615.sst",
+                "616.sst",
+                "617.sst",
+                "618.sst",
+                "619.sst",
+                "620.sst",
+                "621.sst",
+                "622.sst",
+                "623.sst",
+                "625.sst",
+                "627.sst",
+                "624.sst",
+                "628.sst",
+                "629.sst",
+                "630.sst"
+              ]
+            }
+          ]
+        },
+        "all_22_queries_completed": true,
+        "after_maintenance": {
+          "operation": "VACUUM",
+          "all_22_queries_verified": true,
+          "rows": {
+            "customer": 30000,
+            "lineitem": 1199969,
+            "nation": 25,
+            "orders": 300000,
+            "part": 40000,
+            "partsupp": 160000,
+            "region": 5,
+            "supplier": 2000
+          },
+          "levels": [
+            {
+              "level": 6,
+              "file_count": 120,
+              "bytes": 222028461,
+              "files": [
+                "1166.sst",
+                "1167.sst",
+                "1168.sst",
+                "1169.sst",
+                "1170.sst",
+                "1171.sst",
+                "1172.sst",
+                "1173.sst",
+                "1174.sst",
+                "1175.sst",
+                "1176.sst",
+                "1177.sst",
+                "1178.sst",
+                "1179.sst",
+                "1180.sst",
+                "1181.sst",
+                "1182.sst",
+                "1183.sst",
+                "1184.sst",
+                "1185.sst",
+                "1186.sst",
+                "1187.sst",
+                "1188.sst",
+                "1189.sst",
+                "1190.sst",
+                "1191.sst",
+                "1192.sst",
+                "1193.sst",
+                "1194.sst",
+                "1195.sst",
+                "1196.sst",
+                "1197.sst",
+                "1198.sst",
+                "1199.sst",
+                "1200.sst",
+                "1201.sst",
+                "1202.sst",
+                "1203.sst",
+                "1204.sst",
+                "1205.sst",
+                "1206.sst",
+                "1207.sst",
+                "1208.sst",
+                "1209.sst",
+                "1210.sst",
+                "1211.sst",
+                "1212.sst",
+                "1213.sst",
+                "1214.sst",
+                "1215.sst",
+                "1216.sst",
+                "1217.sst",
+                "1218.sst",
+                "1219.sst",
+                "1220.sst",
+                "1221.sst",
+                "1222.sst",
+                "1223.sst",
+                "1224.sst",
+                "1225.sst",
+                "1226.sst",
+                "1227.sst",
+                "1228.sst",
+                "1229.sst",
+                "1230.sst",
+                "1231.sst",
+                "1232.sst",
+                "1233.sst",
+                "1234.sst",
+                "1235.sst",
+                "1236.sst",
+                "1237.sst",
+                "1238.sst",
+                "1239.sst",
+                "1240.sst",
+                "1241.sst",
+                "1242.sst",
+                "1243.sst",
+                "1244.sst",
+                "1245.sst",
+                "1246.sst",
+                "1247.sst",
+                "1248.sst",
+                "1249.sst",
+                "1250.sst",
+                "1251.sst",
+                "1252.sst",
+                "1253.sst",
+                "1254.sst",
+                "1255.sst",
+                "1256.sst",
+                "1257.sst",
+                "1258.sst",
+                "1259.sst",
+                "1260.sst",
+                "1261.sst",
+                "1262.sst",
+                "1263.sst",
+                "1264.sst",
+                "1265.sst",
+                "1266.sst",
+                "1267.sst",
+                "1268.sst",
+                "1269.sst",
+                "1270.sst",
+                "1271.sst",
+                "1272.sst",
+                "1273.sst",
+                "1274.sst",
+                "1275.sst",
+                "1276.sst",
+                "1277.sst",
+                "1278.sst",
+                "1279.sst",
+                "1280.sst",
+                "1281.sst",
+                "1282.sst",
+                "1283.sst",
+                "1284.sst",
+                "1285.sst"
+              ]
+            }
+          ],
+          "path": "/tmp/slopdb-bench/storage-large-uxqRa0/tpch-slopdb",
+          "files": [
+            {
+              "name": "1166.sst",
+              "bytes": 18208,
+              "allocated_bytes": 20480
+            },
+            {
+              "name": "1167.sst",
+              "bytes": 4059107,
+              "allocated_bytes": 4063232
+            },
+            {
+              "name": "1168.sst",
+              "bytes": 3345576,
+              "allocated_bytes": 3350528
+            },
+            {
+              "name": "1169.sst",
+              "bytes": 3347455,
+              "allocated_bytes": 3354624
+            },
+            {
+              "name": "1170.sst",
+              "bytes": 3350039,
+              "allocated_bytes": 3354624
+            },
+            {
+              "name": "1171.sst",
+              "bytes": 3353313,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "1172.sst",
+              "bytes": 3352280,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "1173.sst",
+              "bytes": 3352566,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "1174.sst",
+              "bytes": 3353109,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "1175.sst",
+              "bytes": 3354329,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "1176.sst",
+              "bytes": 3352662,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "1177.sst",
+              "bytes": 3352856,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "1178.sst",
+              "bytes": 3354298,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "1179.sst",
+              "bytes": 3353369,
+              "allocated_bytes": 3354624
+            },
+            {
+              "name": "1180.sst",
+              "bytes": 3355216,
+              "allocated_bytes": 3362816
+            },
+            {
+              "name": "1181.sst",
+              "bytes": 3355575,
+              "allocated_bytes": 3362816
+            },
+            {
+              "name": "1182.sst",
+              "bytes": 3354147,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "1183.sst",
+              "bytes": 3353973,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "1184.sst",
+              "bytes": 3353882,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "1185.sst",
+              "bytes": 3355850,
+              "allocated_bytes": 3362816
+            },
+            {
+              "name": "1186.sst",
+              "bytes": 3352233,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "1187.sst",
+              "bytes": 3354496,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "1188.sst",
+              "bytes": 3356427,
+              "allocated_bytes": 3362816
+            },
+            {
+              "name": "1189.sst",
+              "bytes": 3354722,
+              "allocated_bytes": 3362816
+            },
+            {
+              "name": "1190.sst",
+              "bytes": 3354373,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "1191.sst",
+              "bytes": 3354846,
+              "allocated_bytes": 3362816
+            },
+            {
+              "name": "1192.sst",
+              "bytes": 3355450,
+              "allocated_bytes": 3362816
+            },
+            {
+              "name": "1193.sst",
+              "bytes": 3354103,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "1194.sst",
+              "bytes": 3352179,
+              "allocated_bytes": 3358720
+            },
+            {
+              "name": "1195.sst",
+              "bytes": 3400335,
+              "allocated_bytes": 3407872
+            },
+            {
+              "name": "1196.sst",
+              "bytes": 3401463,
+              "allocated_bytes": 3407872
+            },
+            {
+              "name": "1197.sst",
+              "bytes": 3400128,
+              "allocated_bytes": 3407872
+            },
+            {
+              "name": "1198.sst",
+              "bytes": 1800520,
+              "allocated_bytes": 1806336
+            },
+            {
+              "name": "1199.sst",
+              "bytes": 3403220,
+              "allocated_bytes": 3407872
+            },
+            {
+              "name": "1200.sst",
+              "bytes": 3401094,
+              "allocated_bytes": 3407872
+            },
+            {
+              "name": "1201.sst",
+              "bytes": 3497247,
+              "allocated_bytes": 3502080
+            },
+            {
+              "name": "1202.sst",
+              "bytes": 3179719,
+              "allocated_bytes": 3186688
+            },
+            {
+              "name": "1203.sst",
+              "bytes": 3178186,
+              "allocated_bytes": 3182592
+            },
+            {
+              "name": "1204.sst",
+              "bytes": 3176238,
+              "allocated_bytes": 3182592
+            },
+            {
+              "name": "1205.sst",
+              "bytes": 2146434,
+              "allocated_bytes": 2154496
+            },
+            {
+              "name": "1206.sst",
+              "bytes": 1166877,
+              "allocated_bytes": 1171456
+            },
+            {
+              "name": "1207.sst",
+              "bytes": 1270053,
+              "allocated_bytes": 1273856
+            },
+            {
+              "name": "1208.sst",
+              "bytes": 1273188,
+              "allocated_bytes": 1273856
+            },
+            {
+              "name": "1209.sst",
+              "bytes": 1272701,
+              "allocated_bytes": 1277952
+            },
+            {
+              "name": "1210.sst",
+              "bytes": 1271400,
+              "allocated_bytes": 1273856
+            },
+            {
+              "name": "1211.sst",
+              "bytes": 1271238,
+              "allocated_bytes": 1273856
+            },
+            {
+              "name": "1212.sst",
+              "bytes": 1271691,
+              "allocated_bytes": 1277952
+            },
+            {
+              "name": "1213.sst",
+              "bytes": 1273020,
+              "allocated_bytes": 1273856
+            },
+            {
+              "name": "1214.sst",
+              "bytes": 1272569,
+              "allocated_bytes": 1273856
+            },
+            {
+              "name": "1215.sst",
+              "bytes": 1272169,
+              "allocated_bytes": 1273856
+            },
+            {
+              "name": "1216.sst",
+              "bytes": 1272257,
+              "allocated_bytes": 1273856
+            },
+            {
+              "name": "1217.sst",
+              "bytes": 1272680,
+              "allocated_bytes": 1277952
+            },
+            {
+              "name": "1218.sst",
+              "bytes": 1268114,
+              "allocated_bytes": 1269760
+            },
+            {
+              "name": "1219.sst",
+              "bytes": 1272708,
+              "allocated_bytes": 1277952
+            },
+            {
+              "name": "1220.sst",
+              "bytes": 1273427,
+              "allocated_bytes": 1273856
+            },
+            {
+              "name": "1221.sst",
+              "bytes": 1271733,
+              "allocated_bytes": 1277952
+            },
+            {
+              "name": "1222.sst",
+              "bytes": 1272380,
+              "allocated_bytes": 1273856
+            },
+            {
+              "name": "1223.sst",
+              "bytes": 1272858,
+              "allocated_bytes": 1273856
+            },
+            {
+              "name": "1224.sst",
+              "bytes": 1271165,
+              "allocated_bytes": 1273856
+            },
+            {
+              "name": "1225.sst",
+              "bytes": 1272596,
+              "allocated_bytes": 1273856
+            },
+            {
+              "name": "1226.sst",
+              "bytes": 1187192,
+              "allocated_bytes": 1191936
+            },
+            {
+              "name": "1227.sst",
+              "bytes": 1142220,
+              "allocated_bytes": 1142784
+            },
+            {
+              "name": "1228.sst",
+              "bytes": 1142580,
+              "allocated_bytes": 1142784
+            },
+            {
+              "name": "1229.sst",
+              "bytes": 1143652,
+              "allocated_bytes": 1146880
+            },
+            {
+              "name": "1230.sst",
+              "bytes": 1142754,
+              "allocated_bytes": 1142784
+            },
+            {
+              "name": "1231.sst",
+              "bytes": 1143109,
+              "allocated_bytes": 1146880
+            },
+            {
+              "name": "1232.sst",
+              "bytes": 1142065,
+              "allocated_bytes": 1142784
+            },
+            {
+              "name": "1233.sst",
+              "bytes": 1142763,
+              "allocated_bytes": 1142784
+            },
+            {
+              "name": "1234.sst",
+              "bytes": 1142369,
+              "allocated_bytes": 1142784
+            },
+            {
+              "name": "1235.sst",
+              "bytes": 1142620,
+              "allocated_bytes": 1142784
+            },
+            {
+              "name": "1236.sst",
+              "bytes": 1142673,
+              "allocated_bytes": 1142784
+            },
+            {
+              "name": "1237.sst",
+              "bytes": 1144097,
+              "allocated_bytes": 1146880
+            },
+            {
+              "name": "1238.sst",
+              "bytes": 1143262,
+              "allocated_bytes": 1150976
+            },
+            {
+              "name": "1239.sst",
+              "bytes": 1141910,
+              "allocated_bytes": 1146880
+            },
+            {
+              "name": "1240.sst",
+              "bytes": 1142843,
+              "allocated_bytes": 1146880
+            },
+            {
+              "name": "1241.sst",
+              "bytes": 1141734,
+              "allocated_bytes": 1142784
+            },
+            {
+              "name": "1242.sst",
+              "bytes": 1188833,
+              "allocated_bytes": 1191936
+            },
+            {
+              "name": "1243.sst",
+              "bytes": 1167266,
+              "allocated_bytes": 1167360
+            },
+            {
+              "name": "1244.sst",
+              "bytes": 1167440,
+              "allocated_bytes": 1171456
+            },
+            {
+              "name": "1245.sst",
+              "bytes": 1168376,
+              "allocated_bytes": 1171456
+            },
+            {
+              "name": "1246.sst",
+              "bytes": 1167910,
+              "allocated_bytes": 1171456
+            },
+            {
+              "name": "1247.sst",
+              "bytes": 1167314,
+              "allocated_bytes": 1167360
+            },
+            {
+              "name": "1248.sst",
+              "bytes": 1167280,
+              "allocated_bytes": 1167360
+            },
+            {
+              "name": "1249.sst",
+              "bytes": 1168379,
+              "allocated_bytes": 1175552
+            },
+            {
+              "name": "1250.sst",
+              "bytes": 1166273,
+              "allocated_bytes": 1167360
+            },
+            {
+              "name": "1251.sst",
+              "bytes": 1166948,
+              "allocated_bytes": 1167360
+            },
+            {
+              "name": "1252.sst",
+              "bytes": 1168226,
+              "allocated_bytes": 1171456
+            },
+            {
+              "name": "1253.sst",
+              "bytes": 1167479,
+              "allocated_bytes": 1171456
+            },
+            {
+              "name": "1254.sst",
+              "bytes": 1168746,
+              "allocated_bytes": 1171456
+            },
+            {
+              "name": "1255.sst",
+              "bytes": 1166289,
+              "allocated_bytes": 1167360
+            },
+            {
+              "name": "1256.sst",
+              "bytes": 1168380,
+              "allocated_bytes": 1171456
+            },
+            {
+              "name": "1257.sst",
+              "bytes": 1169600,
+              "allocated_bytes": 1175552
+            },
+            {
+              "name": "1258.sst",
+              "bytes": 1180817,
+              "allocated_bytes": 1183744
+            },
+            {
+              "name": "1259.sst",
+              "bytes": 1168735,
+              "allocated_bytes": 1175552
+            },
+            {
+              "name": "1260.sst",
+              "bytes": 1170853,
+              "allocated_bytes": 1171456
+            },
+            {
+              "name": "1261.sst",
+              "bytes": 1171219,
+              "allocated_bytes": 1171456
+            },
+            {
+              "name": "1262.sst",
+              "bytes": 1171628,
+              "allocated_bytes": 1175552
+            },
+            {
+              "name": "1263.sst",
+              "bytes": 1170703,
+              "allocated_bytes": 1171456
+            },
+            {
+              "name": "1264.sst",
+              "bytes": 1171825,
+              "allocated_bytes": 1179648
+            },
+            {
+              "name": "1265.sst",
+              "bytes": 1171882,
+              "allocated_bytes": 1179648
+            },
+            {
+              "name": "1266.sst",
+              "bytes": 1171552,
+              "allocated_bytes": 1175552
+            },
+            {
+              "name": "1267.sst",
+              "bytes": 1171942,
+              "allocated_bytes": 1179648
+            },
+            {
+              "name": "1268.sst",
+              "bytes": 1171629,
+              "allocated_bytes": 1175552
+            },
+            {
+              "name": "1269.sst",
+              "bytes": 1171946,
+              "allocated_bytes": 1175552
+            },
+            {
+              "name": "1270.sst",
+              "bytes": 1171202,
+              "allocated_bytes": 1175552
+            },
+            {
+              "name": "1271.sst",
+              "bytes": 1172479,
+              "allocated_bytes": 1179648
+            },
+            {
+              "name": "1272.sst",
+              "bytes": 1171124,
+              "allocated_bytes": 1175552
+            },
+            {
+              "name": "1273.sst",
+              "bytes": 1333350,
+              "allocated_bytes": 1335296
+            },
+            {
+              "name": "1274.sst",
+              "bytes": 1426943,
+              "allocated_bytes": 1433600
+            },
+            {
+              "name": "1275.sst",
+              "bytes": 1427278,
+              "allocated_bytes": 1433600
+            },
+            {
+              "name": "1276.sst",
+              "bytes": 1325852,
+              "allocated_bytes": 1331200
+            },
+            {
+              "name": "1277.sst",
+              "bytes": 1205988,
+              "allocated_bytes": 1208320
+            },
+            {
+              "name": "1278.sst",
+              "bytes": 1205267,
+              "allocated_bytes": 1208320
+            },
+            {
+              "name": "1279.sst",
+              "bytes": 582101,
+              "allocated_bytes": 585728
+            },
+            {
+              "name": "1280.sst",
+              "bytes": 1155585,
+              "allocated_bytes": 1159168
+            },
+            {
+              "name": "1281.sst",
+              "bytes": 979990,
+              "allocated_bytes": 983040
+            },
+            {
+              "name": "1282.sst",
+              "bytes": 965797,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1283.sst",
+              "bytes": 962826,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1284.sst",
+              "bytes": 200386,
+              "allocated_bytes": 200704
+            },
+            {
+              "name": "1285.sst",
+              "bytes": 708933,
+              "allocated_bytes": 712704
+            },
+            {
+              "name": "LOCK",
+              "bytes": 8,
+              "allocated_bytes": 4096
+            },
+            {
+              "name": "MANIFEST",
+              "bytes": 16935,
+              "allocated_bytes": 20480
+            }
+          ],
+          "file_count": 122,
+          "file_bytes": 222045404,
+          "allocated_total_bytes": 222531584,
+          "wal_files": []
+        }
+      },
+      {
+        "engine": "sqlite",
+        "version": "3.45.1",
+        "load_seconds": 18.084417996928096,
+        "rows": {
+          "region": 5,
+          "nation": 25,
+          "supplier": 2000,
+          "customer": 30000,
+          "part": 40000,
+          "partsupp": 160000,
+          "orders": 300000,
+          "lineitem": 1199969
+        },
+        "queries": [
+          {
+            "number": 1,
+            "sqlite_ms": 3784.643060527742,
+            "rows": 4,
+            "slopdb": "pass",
+            "duckdb": "pass"
+          },
+          {
+            "number": 2,
+            "sqlite_ms": 5.448216572403908,
+            "rows": 80,
+            "slopdb": "pass",
+            "duckdb": "pass"
+          },
+          {
+            "number": 3,
+            "sqlite_ms": 287.53101639449596,
+            "rows": 10,
+            "slopdb": "pass",
+            "duckdb": "pass"
+          },
+          {
+            "number": 4,
+            "sqlite_ms": 73.20085819810629,
+            "rows": 5,
+            "slopdb": "pass",
+            "duckdb": "pass"
+          },
+          {
+            "number": 5,
+            "sqlite_ms": 221.44233901053667,
+            "rows": 5,
+            "slopdb": "pass",
+            "duckdb": "pass"
+          },
+          {
+            "number": 6,
+            "sqlite_ms": 370.95198407769203,
+            "rows": 1,
+            "slopdb": "pass",
+            "duckdb": "pass"
+          },
+          {
+            "number": 7,
+            "sqlite_ms": 2251.338698901236,
+            "rows": 4,
+            "slopdb": "pass",
+            "duckdb": "pass"
+          },
+          {
+            "number": 8,
+            "sqlite_ms": 47.4206218495965,
+            "rows": 2,
+            "slopdb": "pass",
+            "duckdb": "pass"
+          },
+          {
+            "number": 9,
+            "sqlite_ms": 735.2207479998469,
+            "rows": 175,
+            "slopdb": "pass",
+            "duckdb": "pass"
+          },
+          {
+            "number": 10,
+            "sqlite_ms": 151.5582911670208,
+            "rows": 20,
+            "slopdb": "pass",
+            "duckdb": "pass"
+          },
+          {
+            "number": 11,
+            "sqlite_ms": 37.972792983055115,
+            "rows": 3509,
+            "slopdb": "pass",
+            "duckdb": "pass"
+          },
+          {
+            "number": 12,
+            "sqlite_ms": 394.928814843297,
+            "rows": 2,
+            "slopdb": "pass",
+            "duckdb": "pass"
+          },
+          {
+            "number": 13,
+            "sqlite_ms": 614.8423505946994,
+            "rows": 40,
+            "slopdb": "pass",
+            "duckdb": "pass"
+          },
+          {
+            "number": 14,
+            "sqlite_ms": 55.4855652153492,
+            "rows": 1,
+            "slopdb": "pass",
+            "duckdb": "pass"
+          },
+          {
+            "number": 15,
+            "sqlite_ms": 222.42782078683376,
+            "rows": 1,
+            "slopdb": "pass",
+            "duckdb": "pass"
+          },
+          {
+            "number": 16,
+            "sqlite_ms": 52.28083487600088,
+            "rows": 5307,
+            "slopdb": "pass",
+            "duckdb": "pass"
+          },
+          {
+            "number": 17,
+            "sqlite_ms": 23.457709699869156,
+            "rows": 1,
+            "slopdb": "pass",
+            "duckdb": "pass"
+          },
+          {
+            "number": 18,
+            "sqlite_ms": 336.24084014445543,
+            "rows": 9,
+            "slopdb": "pass",
+            "duckdb": "pass"
+          },
+          {
+            "number": 19,
+            "sqlite_ms": 37.369430996477604,
+            "rows": 1,
+            "slopdb": "pass",
+            "duckdb": "pass"
+          },
+          {
+            "number": 20,
+            "sqlite_ms": 35.07878538221121,
+            "rows": 36,
+            "slopdb": "pass",
+            "duckdb": "pass"
+          },
+          {
+            "number": 21,
+            "sqlite_ms": 242.9554434493184,
+            "rows": 91,
+            "slopdb": "pass",
+            "duckdb": "pass"
+          },
+          {
+            "number": 22,
+            "sqlite_ms": 20.858662202954292,
+            "rows": 7,
+            "slopdb": "pass",
+            "duckdb": "pass"
+          }
+        ],
+        "storage_info": {
+          "page_size": 4096,
+          "page_count": 82202,
+          "freelist_count": 0
+        },
+        "closed": {
+          "path": "/tmp/slopdb-bench/storage-large-uxqRa0/tpch-sqlite",
+          "files": [
+            {
+              "name": "benchmark.sqlite",
+              "bytes": 336699392,
+              "allocated_bytes": 336707584
+            }
+          ],
+          "file_count": 1,
+          "file_bytes": 336699392,
+          "allocated_total_bytes": 336711680,
+          "wal_files": []
+        },
+        "after_maintenance": {
+          "operation": "VACUUM",
+          "all_22_queries_verified": true,
+          "storage_info": {
+            "page_size": 4096,
+            "page_count": 81642,
+            "freelist_count": 0
+          },
+          "queries": [
+            {
+              "number": 1,
+              "sqlite_ms": 3729.358180426061,
+              "rows": 4,
+              "slopdb": "pass",
+              "duckdb": "pass"
+            },
+            {
+              "number": 2,
+              "sqlite_ms": 5.320415832102299,
+              "rows": 80,
+              "slopdb": "pass",
+              "duckdb": "pass"
+            },
+            {
+              "number": 3,
+              "sqlite_ms": 296.1130812764168,
+              "rows": 10,
+              "slopdb": "pass",
+              "duckdb": "pass"
+            },
+            {
+              "number": 4,
+              "sqlite_ms": 77.27739028632641,
+              "rows": 5,
+              "slopdb": "pass",
+              "duckdb": "pass"
+            },
+            {
+              "number": 5,
+              "sqlite_ms": 235.16985960304737,
+              "rows": 5,
+              "slopdb": "pass",
+              "duckdb": "pass"
+            },
+            {
+              "number": 6,
+              "sqlite_ms": 391.9512461870909,
+              "rows": 1,
+              "slopdb": "pass",
+              "duckdb": "pass"
+            },
+            {
+              "number": 7,
+              "sqlite_ms": 2378.342319279909,
+              "rows": 4,
+              "slopdb": "pass",
+              "duckdb": "pass"
+            },
+            {
+              "number": 8,
+              "sqlite_ms": 47.33334109187126,
+              "rows": 2,
+              "slopdb": "pass",
+              "duckdb": "pass"
+            },
+            {
+              "number": 9,
+              "sqlite_ms": 746.0330603644252,
+              "rows": 175,
+              "slopdb": "pass",
+              "duckdb": "pass"
+            },
+            {
+              "number": 10,
+              "sqlite_ms": 154.04745750129223,
+              "rows": 20,
+              "slopdb": "pass",
+              "duckdb": "pass"
+            },
+            {
+              "number": 11,
+              "sqlite_ms": 32.76929724961519,
+              "rows": 3509,
+              "slopdb": "pass",
+              "duckdb": "pass"
+            },
+            {
+              "number": 12,
+              "sqlite_ms": 402.7717988938093,
+              "rows": 2,
+              "slopdb": "pass",
+              "duckdb": "pass"
+            },
+            {
+              "number": 13,
+              "sqlite_ms": 635.0363306701183,
+              "rows": 40,
+              "slopdb": "pass",
+              "duckdb": "pass"
+            },
+            {
+              "number": 14,
+              "sqlite_ms": 57.35333077609539,
+              "rows": 1,
+              "slopdb": "pass",
+              "duckdb": "pass"
+            },
+            {
+              "number": 15,
+              "sqlite_ms": 230.15244491398335,
+              "rows": 1,
+              "slopdb": "pass",
+              "duckdb": "pass"
+            },
+            {
+              "number": 16,
+              "sqlite_ms": 55.154445581138134,
+              "rows": 5307,
+              "slopdb": "pass",
+              "duckdb": "pass"
+            },
+            {
+              "number": 17,
+              "sqlite_ms": 24.242431856691837,
+              "rows": 1,
+              "slopdb": "pass",
+              "duckdb": "pass"
+            },
+            {
+              "number": 18,
+              "sqlite_ms": 343.8705028966069,
+              "rows": 9,
+              "slopdb": "pass",
+              "duckdb": "pass"
+            },
+            {
+              "number": 19,
+              "sqlite_ms": 39.61559850722551,
+              "rows": 1,
+              "slopdb": "pass",
+              "duckdb": "pass"
+            },
+            {
+              "number": 20,
+              "sqlite_ms": 36.17750760167837,
+              "rows": 36,
+              "slopdb": "pass",
+              "duckdb": "pass"
+            },
+            {
+              "number": 21,
+              "sqlite_ms": 254.51683718711138,
+              "rows": 91,
+              "slopdb": "pass",
+              "duckdb": "pass"
+            },
+            {
+              "number": 22,
+              "sqlite_ms": 22.584427148103714,
+              "rows": 7,
+              "slopdb": "pass",
+              "duckdb": "pass"
+            }
+          ],
+          "path": "/tmp/slopdb-bench/storage-large-uxqRa0/tpch-sqlite",
+          "files": [
+            {
+              "name": "benchmark.sqlite",
+              "bytes": 334405632,
+              "allocated_bytes": 334413824
+            }
+          ],
+          "file_count": 1,
+          "file_bytes": 334405632,
+          "allocated_total_bytes": 334417920,
+          "wal_files": []
+        }
+      },
+      {
+        "engine": "duckdb",
+        "rows": {
+          "customer": 30000,
+          "lineitem": 1199969,
+          "nation": 25,
+          "orders": 300000,
+          "part": 40000,
+          "partsupp": 160000,
+          "region": 5,
+          "supplier": 2000
+        },
+        "closed": {
+          "path": "/tmp/slopdb-bench/storage-large-uxqRa0/tpch-duckdb",
+          "files": [
+            {
+              "name": "benchmark.duckdb",
+              "bytes": 213397504,
+              "allocated_bytes": 213405696
+            }
+          ],
+          "file_count": 1,
+          "file_bytes": 213397504,
+          "allocated_total_bytes": 213409792,
+          "wal_files": []
+        },
+        "wal_fsync_mode": "Linux preload bypass restricted to this database WAL; other files remain synced",
+        "all_22_queries_completed": true,
+        "after_maintenance": {
+          "operation": "VACUUM; CHECKPOINT",
+          "all_22_queries_verified": true,
+          "rows": {
+            "region": 5,
+            "nation": 25,
+            "supplier": 2000,
+            "customer": 30000,
+            "part": 40000,
+            "partsupp": 160000,
+            "orders": 300000,
+            "lineitem": 1199969
+          },
+          "storage_info": {
+            "database_name": "benchmark",
+            "database_size": "203.5 MiB",
+            "block_size": 262144,
+            "total_blocks": 814,
+            "used_blocks": 808,
+            "free_blocks": 6,
+            "wal_size": "0 bytes"
+          },
+          "path": "/tmp/slopdb-bench/storage-large-uxqRa0/tpch-duckdb/benchmark.duckdb",
+          "files": [
+            {
+              "name": "benchmark.duckdb",
+              "bytes": 213397504,
+              "allocated_bytes": 213405696
+            }
+          ],
+          "file_count": 1,
+          "file_bytes": 213397504,
+          "allocated_total_bytes": 213409792,
+          "wal_files": []
+        }
+      }
+    ]
+  },
+  "tpcc": {
+    "replicas": 128,
+    "warehouses": 256,
+    "rows": {
+      "customer": 256000,
+      "district": 2560,
+      "history": 812544,
+      "item": 1000,
+      "new_order": 113920,
+      "order_line": 8216320,
+      "orders": 859520,
+      "stock": 256000,
+      "warehouse": 256
+    },
+    "total_rows": 10518120,
+    "source_snapshot_sha256": "cf3c5524f0fce10d70876e7dd71cb7df36b5c1df79842694d6b91862809a47ca",
+    "source_snapshot_path": "/tmp/slopdb-bench/storage-large-uxqRa0/tpcc-source.json",
+    "source_report": "docs/benchmarks/tpcc/duckdb-comparison.json",
+    "generation": "Replicate one committed snapshot into disjoint warehouse ranges; shift w_id, c_w_id and supply_w_id by replica*2, shift history h_id by replica*(source max h_id+1); keep the 1000-item catalog shared. Repeated source values can affect compression. This is an equal-data storage snapshot, not a new timed TPC-C transaction run.",
+    "validation": "Compare every column of every row after reopen and after maintenance; bounded primary-key queries use >= and <=, ORDER BY primary key, and LIMIT expected rows+1. Total table counts must match exactly.",
+    "engines": [
+      {
+        "engine": "slopdb",
+        "replicas": 128,
+        "rows": {
+          "customer": 256000,
+          "district": 2560,
+          "history": 812544,
+          "item": 1000,
+          "new_order": 113920,
+          "order_line": 8216320,
+          "orders": 859520,
+          "stock": 256000,
+          "warehouse": 256
+        },
+        "verified_rows": 10518120,
+        "all_values_verified_after_reopen": true,
+        "warehouse_stride": 2,
+        "history_stride": 6353,
+        "storage_info": {
+          "levels": [
+            {
+              "level": 0,
+              "file_count": 3,
+              "bytes": 8542241,
+              "files": [
+                "1601.sst",
+                "1609.sst",
+                "1610.sst"
+              ]
+            },
+            {
+              "level": 1,
+              "file_count": 8,
+              "bytes": 8739976,
+              "files": [
+                "1527.sst",
+                "1538.sst",
+                "1539.sst",
+                "1573.sst",
+                "1574.sst",
+                "1595.sst",
+                "1596.sst",
+                "1597.sst"
+              ]
+            },
+            {
+              "level": 2,
+              "file_count": 104,
+              "bytes": 103684273,
+              "files": [
+                "126.sst",
+                "127.sst",
+                "156.sst",
+                "186.sst",
+                "216.sst",
+                "283.sst",
+                "285.sst",
+                "318.sst",
+                "335.sst",
+                "407.sst",
+                "411.sst",
+                "445.sst",
+                "448.sst",
+                "449.sst",
+                "450.sst",
+                "473.sst",
+                "491.sst",
+                "505.sst",
+                "550.sst",
+                "565.sst",
+                "567.sst",
+                "623.sst",
+                "622.sst",
+                "638.sst",
+                "654.sst",
+                "683.sst",
+                "709.sst",
+                "748.sst",
+                "750.sst",
+                "754.sst",
+                "765.sst",
+                "767.sst",
+                "766.sst",
+                "781.sst",
+                "782.sst",
+                "825.sst",
+                "839.sst",
+                "840.sst",
+                "852.sst",
+                "853.sst",
+                "868.sst",
+                "870.sst",
+                "927.sst",
+                "929.sst",
+                "930.sst",
+                "942.sst",
+                "993.sst",
+                "995.sst",
+                "992.sst",
+                "1013.sst",
+                "1016.sst",
+                "1063.sst",
+                "1075.sst",
+                "1092.sst",
+                "1094.sst",
+                "1093.sst",
+                "1111.sst",
+                "1138.sst",
+                "1140.sst",
+                "1158.sst",
+                "1159.sst",
+                "1160.sst",
+                "1174.sst",
+                "1193.sst",
+                "1220.sst",
+                "1221.sst",
+                "1224.sst",
+                "1226.sst",
+                "1241.sst",
+                "1256.sst",
+                "1274.sst",
+                "1279.sst",
+                "1303.sst",
+                "1301.sst",
+                "1304.sst",
+                "1322.sst",
+                "1324.sst",
+                "1359.sst",
+                "1381.sst",
+                "1382.sst",
+                "1401.sst",
+                "1404.sst",
+                "1400.sst",
+                "1405.sst",
+                "1434.sst",
+                "1437.sst",
+                "1461.sst",
+                "1462.sst",
+                "1466.sst",
+                "1499.sst",
+                "1542.sst",
+                "1561.sst",
+                "1562.sst",
+                "1566.sst",
+                "1577.sst",
+                "1576.sst",
+                "1580.sst",
+                "1583.sst",
+                "1599.sst",
+                "1603.sst",
+                "1598.sst",
+                "1602.sst",
+                "1604.sst",
+                "1605.sst"
+              ]
+            },
+            {
+              "level": 3,
+              "file_count": 80,
+              "bytes": 70519968,
+              "files": [
+                "973.sst",
+                "974.sst",
+                "975.sst",
+                "977.sst",
+                "978.sst",
+                "981.sst",
+                "980.sst",
+                "982.sst",
+                "998.sst",
+                "999.sst",
+                "1000.sst",
+                "1017.sst",
+                "1018.sst",
+                "1034.sst",
+                "1035.sst",
+                "1061.sst",
+                "1065.sst",
+                "1064.sst",
+                "1081.sst",
+                "1082.sst",
+                "1099.sst",
+                "1098.sst",
+                "1100.sst",
+                "1116.sst",
+                "1117.sst",
+                "1144.sst",
+                "1146.sst",
+                "1147.sst",
+                "1164.sst",
+                "1163.sst",
+                "1180.sst",
+                "1181.sst",
+                "1198.sst",
+                "1197.sst",
+                "1225.sst",
+                "1228.sst",
+                "1227.sst",
+                "1244.sst",
+                "1245.sst",
+                "1261.sst",
+                "1262.sst",
+                "1280.sst",
+                "1281.sst",
+                "1308.sst",
+                "1310.sst",
+                "1311.sst",
+                "1328.sst",
+                "1327.sst",
+                "1362.sst",
+                "1365.sst",
+                "1368.sst",
+                "1367.sst",
+                "1387.sst",
+                "1389.sst",
+                "1390.sst",
+                "1406.sst",
+                "1407.sst",
+                "1423.sst",
+                "1424.sst",
+                "1440.sst",
+                "1441.sst",
+                "1468.sst",
+                "1470.sst",
+                "1471.sst",
+                "1487.sst",
+                "1488.sst",
+                "1504.sst",
+                "1505.sst",
+                "1535.sst",
+                "1534.sst",
+                "1548.sst",
+                "1551.sst",
+                "1550.sst",
+                "1582.sst",
+                "1584.sst",
+                "1586.sst",
+                "1587.sst",
+                "1590.sst",
+                "1607.sst",
+                "1606.sst"
+              ]
+            }
+          ]
+        },
+        "closed": {
+          "path": "/tmp/slopdb-bench/storage-large-uxqRa0/tpcc-slopdb",
+          "files": [
+            {
+              "name": "1000.sst",
+              "bytes": 784508,
+              "allocated_bytes": 786432
+            },
+            {
+              "name": "1013.sst",
+              "bytes": 936370,
+              "allocated_bytes": 942080
+            },
+            {
+              "name": "1016.sst",
+              "bytes": 937386,
+              "allocated_bytes": 937984
+            },
+            {
+              "name": "1017.sst",
+              "bytes": 790980,
+              "allocated_bytes": 794624
+            },
+            {
+              "name": "1018.sst",
+              "bytes": 935069,
+              "allocated_bytes": 937984
+            },
+            {
+              "name": "1034.sst",
+              "bytes": 935234,
+              "allocated_bytes": 937984
+            },
+            {
+              "name": "1035.sst",
+              "bytes": 935358,
+              "allocated_bytes": 937984
+            },
+            {
+              "name": "1061.sst",
+              "bytes": 935422,
+              "allocated_bytes": 937984
+            },
+            {
+              "name": "1063.sst",
+              "bytes": 963440,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1064.sst",
+              "bytes": 936306,
+              "allocated_bytes": 942080
+            },
+            {
+              "name": "1065.sst",
+              "bytes": 940134,
+              "allocated_bytes": 942080
+            },
+            {
+              "name": "1075.sst",
+              "bytes": 962513,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1081.sst",
+              "bytes": 940396,
+              "allocated_bytes": 942080
+            },
+            {
+              "name": "1082.sst",
+              "bytes": 940739,
+              "allocated_bytes": 942080
+            },
+            {
+              "name": "1092.sst",
+              "bytes": 962488,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1093.sst",
+              "bytes": 962924,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1094.sst",
+              "bytes": 963147,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1098.sst",
+              "bytes": 940749,
+              "allocated_bytes": 942080
+            },
+            {
+              "name": "1099.sst",
+              "bytes": 940881,
+              "allocated_bytes": 946176
+            },
+            {
+              "name": "1100.sst",
+              "bytes": 956973,
+              "allocated_bytes": 958464
+            },
+            {
+              "name": "1111.sst",
+              "bytes": 962426,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1116.sst",
+              "bytes": 958529,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1117.sst",
+              "bytes": 958487,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1138.sst",
+              "bytes": 962742,
+              "allocated_bytes": 970752
+            },
+            {
+              "name": "1140.sst",
+              "bytes": 962453,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1144.sst",
+              "bytes": 958829,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1146.sst",
+              "bytes": 958934,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1147.sst",
+              "bytes": 959094,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1158.sst",
+              "bytes": 962527,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1159.sst",
+              "bytes": 962786,
+              "allocated_bytes": 970752
+            },
+            {
+              "name": "1160.sst",
+              "bytes": 963250,
+              "allocated_bytes": 970752
+            },
+            {
+              "name": "1163.sst",
+              "bytes": 959255,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1164.sst",
+              "bytes": 959121,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1174.sst",
+              "bytes": 962291,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1180.sst",
+              "bytes": 960108,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1181.sst",
+              "bytes": 960424,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1193.sst",
+              "bytes": 962375,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1197.sst",
+              "bytes": 960758,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1198.sst",
+              "bytes": 960694,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1220.sst",
+              "bytes": 962257,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1221.sst",
+              "bytes": 962524,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1224.sst",
+              "bytes": 962931,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1225.sst",
+              "bytes": 961288,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1226.sst",
+              "bytes": 962650,
+              "allocated_bytes": 970752
+            },
+            {
+              "name": "1227.sst",
+              "bytes": 961420,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1228.sst",
+              "bytes": 961322,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1241.sst",
+              "bytes": 962808,
+              "allocated_bytes": 970752
+            },
+            {
+              "name": "1244.sst",
+              "bytes": 961641,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1245.sst",
+              "bytes": 961557,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1256.sst",
+              "bytes": 962861,
+              "allocated_bytes": 970752
+            },
+            {
+              "name": "126.sst",
+              "bytes": 1075910,
+              "allocated_bytes": 1077248
+            },
+            {
+              "name": "1261.sst",
+              "bytes": 961659,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1262.sst",
+              "bytes": 961703,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "127.sst",
+              "bytes": 1075959,
+              "allocated_bytes": 1077248
+            },
+            {
+              "name": "1274.sst",
+              "bytes": 963263,
+              "allocated_bytes": 970752
+            },
+            {
+              "name": "1279.sst",
+              "bytes": 962931,
+              "allocated_bytes": 970752
+            },
+            {
+              "name": "1280.sst",
+              "bytes": 961709,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1281.sst",
+              "bytes": 961707,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1301.sst",
+              "bytes": 962672,
+              "allocated_bytes": 970752
+            },
+            {
+              "name": "1303.sst",
+              "bytes": 962543,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1304.sst",
+              "bytes": 962862,
+              "allocated_bytes": 970752
+            },
+            {
+              "name": "1308.sst",
+              "bytes": 961717,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1310.sst",
+              "bytes": 961722,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1311.sst",
+              "bytes": 961740,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1322.sst",
+              "bytes": 963439,
+              "allocated_bytes": 970752
+            },
+            {
+              "name": "1324.sst",
+              "bytes": 962407,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1327.sst",
+              "bytes": 961791,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1328.sst",
+              "bytes": 961765,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1359.sst",
+              "bytes": 962287,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1362.sst",
+              "bytes": 961796,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1365.sst",
+              "bytes": 961804,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1367.sst",
+              "bytes": 961807,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1368.sst",
+              "bytes": 961810,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1381.sst",
+              "bytes": 962346,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1382.sst",
+              "bytes": 963135,
+              "allocated_bytes": 970752
+            },
+            {
+              "name": "1387.sst",
+              "bytes": 961814,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1389.sst",
+              "bytes": 961833,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1390.sst",
+              "bytes": 961818,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1400.sst",
+              "bytes": 962701,
+              "allocated_bytes": 970752
+            },
+            {
+              "name": "1401.sst",
+              "bytes": 962855,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1404.sst",
+              "bytes": 962527,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1405.sst",
+              "bytes": 962408,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1406.sst",
+              "bytes": 961855,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1407.sst",
+              "bytes": 961860,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1423.sst",
+              "bytes": 961884,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1424.sst",
+              "bytes": 961868,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1434.sst",
+              "bytes": 962570,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1437.sst",
+              "bytes": 962382,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1440.sst",
+              "bytes": 961889,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1441.sst",
+              "bytes": 961897,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1461.sst",
+              "bytes": 962842,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1462.sst",
+              "bytes": 963134,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1466.sst",
+              "bytes": 962253,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1468.sst",
+              "bytes": 961926,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1470.sst",
+              "bytes": 961939,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1471.sst",
+              "bytes": 961934,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1487.sst",
+              "bytes": 961957,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1488.sst",
+              "bytes": 962074,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1499.sst",
+              "bytes": 962678,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1504.sst",
+              "bytes": 962104,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1505.sst",
+              "bytes": 962079,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1527.sst",
+              "bytes": 72925,
+              "allocated_bytes": 73728
+            },
+            {
+              "name": "1534.sst",
+              "bytes": 962107,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1535.sst",
+              "bytes": 962051,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1538.sst",
+              "bytes": 1293684,
+              "allocated_bytes": 1294336
+            },
+            {
+              "name": "1539.sst",
+              "bytes": 1290682,
+              "allocated_bytes": 1294336
+            },
+            {
+              "name": "1542.sst",
+              "bytes": 962474,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1548.sst",
+              "bytes": 962130,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1550.sst",
+              "bytes": 962152,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1551.sst",
+              "bytes": 962133,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "156.sst",
+              "bytes": 1369300,
+              "allocated_bytes": 1376256
+            },
+            {
+              "name": "1561.sst",
+              "bytes": 962466,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1562.sst",
+              "bytes": 963244,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1566.sst",
+              "bytes": 962876,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1573.sst",
+              "bytes": 1285035,
+              "allocated_bytes": 1286144
+            },
+            {
+              "name": "1574.sst",
+              "bytes": 1291199,
+              "allocated_bytes": 1294336
+            },
+            {
+              "name": "1576.sst",
+              "bytes": 962822,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1577.sst",
+              "bytes": 962570,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1580.sst",
+              "bytes": 1003775,
+              "allocated_bytes": 1007616
+            },
+            {
+              "name": "1582.sst",
+              "bytes": 720645,
+              "allocated_bytes": 720896
+            },
+            {
+              "name": "1583.sst",
+              "bytes": 1317615,
+              "allocated_bytes": 1318912
+            },
+            {
+              "name": "1584.sst",
+              "bytes": 961948,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1586.sst",
+              "bytes": 962160,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1587.sst",
+              "bytes": 962176,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1590.sst",
+              "bytes": 962190,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1595.sst",
+              "bytes": 1292011,
+              "allocated_bytes": 1294336
+            },
+            {
+              "name": "1596.sst",
+              "bytes": 1285049,
+              "allocated_bytes": 1286144
+            },
+            {
+              "name": "1597.sst",
+              "bytes": 929391,
+              "allocated_bytes": 929792
+            },
+            {
+              "name": "1598.sst",
+              "bytes": 963076,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1599.sst",
+              "bytes": 1288060,
+              "allocated_bytes": 1290240
+            },
+            {
+              "name": "1601.sst",
+              "bytes": 2977737,
+              "allocated_bytes": 2977792
+            },
+            {
+              "name": "1602.sst",
+              "bytes": 962609,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "1603.sst",
+              "bytes": 1099329,
+              "allocated_bytes": 1101824
+            },
+            {
+              "name": "1604.sst",
+              "bytes": 961856,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1605.sst",
+              "bytes": 962415,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1606.sst",
+              "bytes": 962252,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1607.sst",
+              "bytes": 962193,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "1609.sst",
+              "bytes": 2977736,
+              "allocated_bytes": 2977792
+            },
+            {
+              "name": "1610.sst",
+              "bytes": 2586768,
+              "allocated_bytes": 2588672
+            },
+            {
+              "name": "186.sst",
+              "bytes": 1369322,
+              "allocated_bytes": 1372160
+            },
+            {
+              "name": "216.sst",
+              "bytes": 1375211,
+              "allocated_bytes": 1380352
+            },
+            {
+              "name": "283.sst",
+              "bytes": 1076001,
+              "allocated_bytes": 1081344
+            },
+            {
+              "name": "285.sst",
+              "bytes": 1076709,
+              "allocated_bytes": 1077248
+            },
+            {
+              "name": "318.sst",
+              "bytes": 1076405,
+              "allocated_bytes": 1081344
+            },
+            {
+              "name": "335.sst",
+              "bytes": 1076500,
+              "allocated_bytes": 1077248
+            },
+            {
+              "name": "407.sst",
+              "bytes": 1058869,
+              "allocated_bytes": 1060864
+            },
+            {
+              "name": "411.sst",
+              "bytes": 1056931,
+              "allocated_bytes": 1064960
+            },
+            {
+              "name": "445.sst",
+              "bytes": 1076644,
+              "allocated_bytes": 1077248
+            },
+            {
+              "name": "448.sst",
+              "bytes": 1076448,
+              "allocated_bytes": 1077248
+            },
+            {
+              "name": "449.sst",
+              "bytes": 1076897,
+              "allocated_bytes": 1077248
+            },
+            {
+              "name": "450.sst",
+              "bytes": 1076331,
+              "allocated_bytes": 1077248
+            },
+            {
+              "name": "473.sst",
+              "bytes": 962296,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "491.sst",
+              "bytes": 962283,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "505.sst",
+              "bytes": 1076376,
+              "allocated_bytes": 1077248
+            },
+            {
+              "name": "550.sst",
+              "bytes": 962560,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "565.sst",
+              "bytes": 962380,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "567.sst",
+              "bytes": 962278,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "622.sst",
+              "bytes": 962309,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "623.sst",
+              "bytes": 962358,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "638.sst",
+              "bytes": 962780,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "654.sst",
+              "bytes": 963115,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "683.sst",
+              "bytes": 962522,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "709.sst",
+              "bytes": 962453,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "748.sst",
+              "bytes": 962831,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "750.sst",
+              "bytes": 962622,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "754.sst",
+              "bytes": 963141,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "765.sst",
+              "bytes": 962909,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "766.sst",
+              "bytes": 962441,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "767.sst",
+              "bytes": 962720,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "781.sst",
+              "bytes": 962354,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "782.sst",
+              "bytes": 962379,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "825.sst",
+              "bytes": 962348,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "839.sst",
+              "bytes": 962303,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "840.sst",
+              "bytes": 962657,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "852.sst",
+              "bytes": 962722,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "853.sst",
+              "bytes": 963073,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "868.sst",
+              "bytes": 1057217,
+              "allocated_bytes": 1060864
+            },
+            {
+              "name": "870.sst",
+              "bytes": 962679,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "927.sst",
+              "bytes": 962410,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "929.sst",
+              "bytes": 962653,
+              "allocated_bytes": 970752
+            },
+            {
+              "name": "930.sst",
+              "bytes": 962312,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "942.sst",
+              "bytes": 962732,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "973.sst",
+              "bytes": 333,
+              "allocated_bytes": 4096
+            },
+            {
+              "name": "974.sst",
+              "bytes": 6480,
+              "allocated_bytes": 8192
+            },
+            {
+              "name": "975.sst",
+              "bytes": 211899,
+              "allocated_bytes": 212992
+            },
+            {
+              "name": "977.sst",
+              "bytes": 248364,
+              "allocated_bytes": 249856
+            },
+            {
+              "name": "978.sst",
+              "bytes": 314086,
+              "allocated_bytes": 315392
+            },
+            {
+              "name": "980.sst",
+              "bytes": 624616,
+              "allocated_bytes": 626688
+            },
+            {
+              "name": "981.sst",
+              "bytes": 624312,
+              "allocated_bytes": 626688
+            },
+            {
+              "name": "982.sst",
+              "bytes": 628070,
+              "allocated_bytes": 634880
+            },
+            {
+              "name": "992.sst",
+              "bytes": 962663,
+              "allocated_bytes": 970752
+            },
+            {
+              "name": "993.sst",
+              "bytes": 962588,
+              "allocated_bytes": 970752
+            },
+            {
+              "name": "995.sst",
+              "bytes": 962801,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "998.sst",
+              "bytes": 629808,
+              "allocated_bytes": 630784
+            },
+            {
+              "name": "999.sst",
+              "bytes": 760192,
+              "allocated_bytes": 761856
+            },
+            {
+              "name": "LOCK",
+              "bytes": 8,
+              "allocated_bytes": 4096
+            },
+            {
+              "name": "MANIFEST",
+              "bytes": 27169,
+              "allocated_bytes": 28672
+            }
+          ],
+          "file_count": 197,
+          "file_bytes": 191513635,
+          "allocated_total_bytes": 192081920,
+          "wal_files": []
+        },
+        "after_maintenance": {
+          "operation": "VACUUM",
+          "rows": {
+            "customer": 256000,
+            "district": 2560,
+            "history": 812544,
+            "item": 1000,
+            "new_order": 113920,
+            "order_line": 8216320,
+            "orders": 859520,
+            "stock": 256000,
+            "warehouse": 256
+          },
+          "verified_rows": 10518120,
+          "all_values_verified_after_reopen": true,
+          "storage_info": {
+            "levels": [
+              {
+                "level": 6,
+                "file_count": 195,
+                "bytes": 184704354,
+                "files": [
+                  "2275.sst",
+                  "2276.sst",
+                  "2277.sst",
+                  "2278.sst",
+                  "2279.sst",
+                  "2280.sst",
+                  "2281.sst",
+                  "2282.sst",
+                  "2283.sst",
+                  "2284.sst",
+                  "2285.sst",
+                  "2286.sst",
+                  "2287.sst",
+                  "2288.sst",
+                  "2289.sst",
+                  "2290.sst",
+                  "2291.sst",
+                  "2292.sst",
+                  "2293.sst",
+                  "2294.sst",
+                  "2295.sst",
+                  "2296.sst",
+                  "2297.sst",
+                  "2298.sst",
+                  "2299.sst",
+                  "2300.sst",
+                  "2301.sst",
+                  "2302.sst",
+                  "2303.sst",
+                  "2304.sst",
+                  "2305.sst",
+                  "2306.sst",
+                  "2307.sst",
+                  "2308.sst",
+                  "2309.sst",
+                  "2310.sst",
+                  "2311.sst",
+                  "2312.sst",
+                  "2313.sst",
+                  "2314.sst",
+                  "2315.sst",
+                  "2316.sst",
+                  "2317.sst",
+                  "2318.sst",
+                  "2319.sst",
+                  "2320.sst",
+                  "2321.sst",
+                  "2322.sst",
+                  "2323.sst",
+                  "2324.sst",
+                  "2325.sst",
+                  "2326.sst",
+                  "2327.sst",
+                  "2328.sst",
+                  "2329.sst",
+                  "2330.sst",
+                  "2331.sst",
+                  "2332.sst",
+                  "2333.sst",
+                  "2334.sst",
+                  "2335.sst",
+                  "2336.sst",
+                  "2337.sst",
+                  "2338.sst",
+                  "2339.sst",
+                  "2340.sst",
+                  "2341.sst",
+                  "2342.sst",
+                  "2343.sst",
+                  "2344.sst",
+                  "2345.sst",
+                  "2346.sst",
+                  "2347.sst",
+                  "2348.sst",
+                  "2349.sst",
+                  "2350.sst",
+                  "2351.sst",
+                  "2352.sst",
+                  "2353.sst",
+                  "2354.sst",
+                  "2355.sst",
+                  "2356.sst",
+                  "2357.sst",
+                  "2358.sst",
+                  "2359.sst",
+                  "2360.sst",
+                  "2361.sst",
+                  "2362.sst",
+                  "2363.sst",
+                  "2364.sst",
+                  "2365.sst",
+                  "2366.sst",
+                  "2367.sst",
+                  "2368.sst",
+                  "2369.sst",
+                  "2370.sst",
+                  "2371.sst",
+                  "2372.sst",
+                  "2373.sst",
+                  "2374.sst",
+                  "2375.sst",
+                  "2376.sst",
+                  "2377.sst",
+                  "2378.sst",
+                  "2379.sst",
+                  "2380.sst",
+                  "2381.sst",
+                  "2382.sst",
+                  "2383.sst",
+                  "2384.sst",
+                  "2385.sst",
+                  "2386.sst",
+                  "2387.sst",
+                  "2388.sst",
+                  "2389.sst",
+                  "2390.sst",
+                  "2391.sst",
+                  "2392.sst",
+                  "2393.sst",
+                  "2394.sst",
+                  "2395.sst",
+                  "2396.sst",
+                  "2397.sst",
+                  "2398.sst",
+                  "2399.sst",
+                  "2400.sst",
+                  "2401.sst",
+                  "2402.sst",
+                  "2403.sst",
+                  "2404.sst",
+                  "2405.sst",
+                  "2406.sst",
+                  "2407.sst",
+                  "2408.sst",
+                  "2409.sst",
+                  "2410.sst",
+                  "2411.sst",
+                  "2412.sst",
+                  "2413.sst",
+                  "2414.sst",
+                  "2415.sst",
+                  "2416.sst",
+                  "2417.sst",
+                  "2418.sst",
+                  "2419.sst",
+                  "2420.sst",
+                  "2421.sst",
+                  "2422.sst",
+                  "2423.sst",
+                  "2424.sst",
+                  "2425.sst",
+                  "2426.sst",
+                  "2427.sst",
+                  "2428.sst",
+                  "2429.sst",
+                  "2430.sst",
+                  "2431.sst",
+                  "2432.sst",
+                  "2433.sst",
+                  "2434.sst",
+                  "2435.sst",
+                  "2436.sst",
+                  "2437.sst",
+                  "2438.sst",
+                  "2439.sst",
+                  "2440.sst",
+                  "2441.sst",
+                  "2442.sst",
+                  "2443.sst",
+                  "2444.sst",
+                  "2445.sst",
+                  "2446.sst",
+                  "2447.sst",
+                  "2448.sst",
+                  "2449.sst",
+                  "2450.sst",
+                  "2451.sst",
+                  "2452.sst",
+                  "2453.sst",
+                  "2454.sst",
+                  "2455.sst",
+                  "2456.sst",
+                  "2457.sst",
+                  "2458.sst",
+                  "2459.sst",
+                  "2460.sst",
+                  "2461.sst",
+                  "2462.sst",
+                  "2463.sst",
+                  "2464.sst",
+                  "2465.sst",
+                  "2466.sst",
+                  "2467.sst",
+                  "2468.sst",
+                  "2469.sst"
+                ]
+              }
+            ]
+          },
+          "path": "/tmp/slopdb-bench/storage-large-uxqRa0/tpcc-slopdb",
+          "files": [
+            {
+              "name": "2275.sst",
+              "bytes": 333,
+              "allocated_bytes": 4096
+            },
+            {
+              "name": "2276.sst",
+              "bytes": 6480,
+              "allocated_bytes": 8192
+            },
+            {
+              "name": "2277.sst",
+              "bytes": 211899,
+              "allocated_bytes": 212992
+            },
+            {
+              "name": "2278.sst",
+              "bytes": 248364,
+              "allocated_bytes": 249856
+            },
+            {
+              "name": "2279.sst",
+              "bytes": 314086,
+              "allocated_bytes": 315392
+            },
+            {
+              "name": "2280.sst",
+              "bytes": 628070,
+              "allocated_bytes": 630784
+            },
+            {
+              "name": "2281.sst",
+              "bytes": 629808,
+              "allocated_bytes": 630784
+            },
+            {
+              "name": "2282.sst",
+              "bytes": 760192,
+              "allocated_bytes": 761856
+            },
+            {
+              "name": "2283.sst",
+              "bytes": 935069,
+              "allocated_bytes": 937984
+            },
+            {
+              "name": "2284.sst",
+              "bytes": 935234,
+              "allocated_bytes": 937984
+            },
+            {
+              "name": "2285.sst",
+              "bytes": 935358,
+              "allocated_bytes": 937984
+            },
+            {
+              "name": "2286.sst",
+              "bytes": 935422,
+              "allocated_bytes": 937984
+            },
+            {
+              "name": "2287.sst",
+              "bytes": 940134,
+              "allocated_bytes": 942080
+            },
+            {
+              "name": "2288.sst",
+              "bytes": 936306,
+              "allocated_bytes": 937984
+            },
+            {
+              "name": "2289.sst",
+              "bytes": 940396,
+              "allocated_bytes": 942080
+            },
+            {
+              "name": "2290.sst",
+              "bytes": 940739,
+              "allocated_bytes": 942080
+            },
+            {
+              "name": "2291.sst",
+              "bytes": 940881,
+              "allocated_bytes": 942080
+            },
+            {
+              "name": "2292.sst",
+              "bytes": 940749,
+              "allocated_bytes": 942080
+            },
+            {
+              "name": "2293.sst",
+              "bytes": 720645,
+              "allocated_bytes": 720896
+            },
+            {
+              "name": "2294.sst",
+              "bytes": 961948,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2295.sst",
+              "bytes": 1369300,
+              "allocated_bytes": 1372160
+            },
+            {
+              "name": "2296.sst",
+              "bytes": 1369322,
+              "allocated_bytes": 1372160
+            },
+            {
+              "name": "2297.sst",
+              "bytes": 1375211,
+              "allocated_bytes": 1376256
+            },
+            {
+              "name": "2298.sst",
+              "bytes": 1076405,
+              "allocated_bytes": 1077248
+            },
+            {
+              "name": "2299.sst",
+              "bytes": 1076500,
+              "allocated_bytes": 1077248
+            },
+            {
+              "name": "2300.sst",
+              "bytes": 1058869,
+              "allocated_bytes": 1060864
+            },
+            {
+              "name": "2301.sst",
+              "bytes": 1056931,
+              "allocated_bytes": 1060864
+            },
+            {
+              "name": "2302.sst",
+              "bytes": 1076644,
+              "allocated_bytes": 1077248
+            },
+            {
+              "name": "2303.sst",
+              "bytes": 1076448,
+              "allocated_bytes": 1077248
+            },
+            {
+              "name": "2304.sst",
+              "bytes": 1076897,
+              "allocated_bytes": 1077248
+            },
+            {
+              "name": "2305.sst",
+              "bytes": 1076331,
+              "allocated_bytes": 1077248
+            },
+            {
+              "name": "2306.sst",
+              "bytes": 1057217,
+              "allocated_bytes": 1060864
+            },
+            {
+              "name": "2307.sst",
+              "bytes": 962679,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2308.sst",
+              "bytes": 941820,
+              "allocated_bytes": 942080
+            },
+            {
+              "name": "2309.sst",
+              "bytes": 625145,
+              "allocated_bytes": 626688
+            },
+            {
+              "name": "2310.sst",
+              "bytes": 935349,
+              "allocated_bytes": 937984
+            },
+            {
+              "name": "2311.sst",
+              "bytes": 941231,
+              "allocated_bytes": 942080
+            },
+            {
+              "name": "2312.sst",
+              "bytes": 469006,
+              "allocated_bytes": 471040
+            },
+            {
+              "name": "2313.sst",
+              "bytes": 961815,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2314.sst",
+              "bytes": 963021,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2315.sst",
+              "bytes": 963244,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2316.sst",
+              "bytes": 962876,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2317.sst",
+              "bytes": 962570,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2318.sst",
+              "bytes": 962822,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2319.sst",
+              "bytes": 1317615,
+              "allocated_bytes": 1318912
+            },
+            {
+              "name": "2320.sst",
+              "bytes": 963076,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2321.sst",
+              "bytes": 962609,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2322.sst",
+              "bytes": 962447,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2323.sst",
+              "bytes": 962331,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2324.sst",
+              "bytes": 962415,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2325.sst",
+              "bytes": 995942,
+              "allocated_bytes": 999424
+            },
+            {
+              "name": "2326.sst",
+              "bytes": 1076313,
+              "allocated_bytes": 1077248
+            },
+            {
+              "name": "2327.sst",
+              "bytes": 1076734,
+              "allocated_bytes": 1077248
+            },
+            {
+              "name": "2328.sst",
+              "bytes": 1076071,
+              "allocated_bytes": 1077248
+            },
+            {
+              "name": "2329.sst",
+              "bytes": 1076510,
+              "allocated_bytes": 1077248
+            },
+            {
+              "name": "2330.sst",
+              "bytes": 1076505,
+              "allocated_bytes": 1077248
+            },
+            {
+              "name": "2331.sst",
+              "bytes": 80622,
+              "allocated_bytes": 81920
+            },
+            {
+              "name": "2332.sst",
+              "bytes": 1290848,
+              "allocated_bytes": 1294336
+            },
+            {
+              "name": "2333.sst",
+              "bytes": 1291351,
+              "allocated_bytes": 1294336
+            },
+            {
+              "name": "2334.sst",
+              "bytes": 1290051,
+              "allocated_bytes": 1290240
+            },
+            {
+              "name": "2335.sst",
+              "bytes": 1280433,
+              "allocated_bytes": 1282048
+            },
+            {
+              "name": "2336.sst",
+              "bytes": 1289324,
+              "allocated_bytes": 1290240
+            },
+            {
+              "name": "2337.sst",
+              "bytes": 1291364,
+              "allocated_bytes": 1294336
+            },
+            {
+              "name": "2338.sst",
+              "bytes": 1291159,
+              "allocated_bytes": 1294336
+            },
+            {
+              "name": "2339.sst",
+              "bytes": 1281357,
+              "allocated_bytes": 1282048
+            },
+            {
+              "name": "2340.sst",
+              "bytes": 1290401,
+              "allocated_bytes": 1294336
+            },
+            {
+              "name": "2341.sst",
+              "bytes": 1126507,
+              "allocated_bytes": 1130496
+            },
+            {
+              "name": "2342.sst",
+              "bytes": 791413,
+              "allocated_bytes": 794624
+            },
+            {
+              "name": "2343.sst",
+              "bytes": 958047,
+              "allocated_bytes": 958464
+            },
+            {
+              "name": "2344.sst",
+              "bytes": 958823,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2345.sst",
+              "bytes": 958836,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2346.sst",
+              "bytes": 958444,
+              "allocated_bytes": 958464
+            },
+            {
+              "name": "2347.sst",
+              "bytes": 959107,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2348.sst",
+              "bytes": 959547,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2349.sst",
+              "bytes": 959979,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2350.sst",
+              "bytes": 961249,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2351.sst",
+              "bytes": 961711,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2352.sst",
+              "bytes": 961233,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2353.sst",
+              "bytes": 962157,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2354.sst",
+              "bytes": 366,
+              "allocated_bytes": 4096
+            },
+            {
+              "name": "2355.sst",
+              "bytes": 961931,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2356.sst",
+              "bytes": 960231,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2357.sst",
+              "bytes": 962097,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2358.sst",
+              "bytes": 962132,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2359.sst",
+              "bytes": 962401,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2360.sst",
+              "bytes": 961482,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2361.sst",
+              "bytes": 962106,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2362.sst",
+              "bytes": 961889,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2363.sst",
+              "bytes": 961818,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2364.sst",
+              "bytes": 962235,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2365.sst",
+              "bytes": 961516,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2366.sst",
+              "bytes": 962248,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2367.sst",
+              "bytes": 962200,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2368.sst",
+              "bytes": 961670,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2369.sst",
+              "bytes": 960826,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2370.sst",
+              "bytes": 962871,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2371.sst",
+              "bytes": 962952,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2372.sst",
+              "bytes": 962449,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2373.sst",
+              "bytes": 961726,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2374.sst",
+              "bytes": 962144,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2375.sst",
+              "bytes": 961378,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2376.sst",
+              "bytes": 962042,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2377.sst",
+              "bytes": 963006,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2378.sst",
+              "bytes": 961955,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2379.sst",
+              "bytes": 962784,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2380.sst",
+              "bytes": 957264,
+              "allocated_bytes": 958464
+            },
+            {
+              "name": "2381.sst",
+              "bytes": 960028,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2382.sst",
+              "bytes": 962567,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2383.sst",
+              "bytes": 963235,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2384.sst",
+              "bytes": 963040,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2385.sst",
+              "bytes": 962775,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2386.sst",
+              "bytes": 962737,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2387.sst",
+              "bytes": 960884,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2388.sst",
+              "bytes": 962439,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2389.sst",
+              "bytes": 962036,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2390.sst",
+              "bytes": 962568,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2391.sst",
+              "bytes": 962344,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2392.sst",
+              "bytes": 962863,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2393.sst",
+              "bytes": 961626,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2394.sst",
+              "bytes": 960954,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2395.sst",
+              "bytes": 962573,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2396.sst",
+              "bytes": 963119,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2397.sst",
+              "bytes": 962063,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2398.sst",
+              "bytes": 961372,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2399.sst",
+              "bytes": 962451,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2400.sst",
+              "bytes": 962003,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2401.sst",
+              "bytes": 961886,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2402.sst",
+              "bytes": 962287,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2403.sst",
+              "bytes": 961467,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2404.sst",
+              "bytes": 961992,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2405.sst",
+              "bytes": 962239,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2406.sst",
+              "bytes": 961829,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2407.sst",
+              "bytes": 962747,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2408.sst",
+              "bytes": 962975,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2409.sst",
+              "bytes": 963077,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2410.sst",
+              "bytes": 961795,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2411.sst",
+              "bytes": 962574,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2412.sst",
+              "bytes": 962105,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2413.sst",
+              "bytes": 961141,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2414.sst",
+              "bytes": 962105,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2415.sst",
+              "bytes": 962229,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2416.sst",
+              "bytes": 961831,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2417.sst",
+              "bytes": 962208,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2418.sst",
+              "bytes": 962531,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2419.sst",
+              "bytes": 961626,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2420.sst",
+              "bytes": 963161,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2421.sst",
+              "bytes": 962417,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2422.sst",
+              "bytes": 962521,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2423.sst",
+              "bytes": 962353,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2424.sst",
+              "bytes": 962346,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2425.sst",
+              "bytes": 962663,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2426.sst",
+              "bytes": 961670,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2427.sst",
+              "bytes": 962133,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2428.sst",
+              "bytes": 961881,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2429.sst",
+              "bytes": 962475,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2430.sst",
+              "bytes": 962126,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2431.sst",
+              "bytes": 962143,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2432.sst",
+              "bytes": 962414,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2433.sst",
+              "bytes": 962391,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2434.sst",
+              "bytes": 962745,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2435.sst",
+              "bytes": 962808,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2436.sst",
+              "bytes": 962727,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2437.sst",
+              "bytes": 962546,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2438.sst",
+              "bytes": 963082,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2439.sst",
+              "bytes": 962278,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2440.sst",
+              "bytes": 962483,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2441.sst",
+              "bytes": 962226,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2442.sst",
+              "bytes": 962588,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2443.sst",
+              "bytes": 962862,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2444.sst",
+              "bytes": 962105,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2445.sst",
+              "bytes": 962606,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2446.sst",
+              "bytes": 962819,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2447.sst",
+              "bytes": 962650,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2448.sst",
+              "bytes": 961925,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2449.sst",
+              "bytes": 963143,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2450.sst",
+              "bytes": 962544,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2451.sst",
+              "bytes": 962836,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2452.sst",
+              "bytes": 962310,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2453.sst",
+              "bytes": 962268,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2454.sst",
+              "bytes": 961620,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2455.sst",
+              "bytes": 962858,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2456.sst",
+              "bytes": 962279,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2457.sst",
+              "bytes": 962203,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2458.sst",
+              "bytes": 962145,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2459.sst",
+              "bytes": 963000,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2460.sst",
+              "bytes": 961712,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2461.sst",
+              "bytes": 962389,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2462.sst",
+              "bytes": 962864,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2463.sst",
+              "bytes": 962772,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2464.sst",
+              "bytes": 962176,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2465.sst",
+              "bytes": 962473,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2466.sst",
+              "bytes": 962739,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2467.sst",
+              "bytes": 962279,
+              "allocated_bytes": 962560
+            },
+            {
+              "name": "2468.sst",
+              "bytes": 962814,
+              "allocated_bytes": 966656
+            },
+            {
+              "name": "2469.sst",
+              "bytes": 89449,
+              "allocated_bytes": 90112
+            },
+            {
+              "name": "LOCK",
+              "bytes": 8,
+              "allocated_bytes": 4096
+            },
+            {
+              "name": "MANIFEST",
+              "bytes": 27246,
+              "allocated_bytes": 28672
+            }
+          ],
+          "file_count": 197,
+          "file_bytes": 184731608,
+          "allocated_total_bytes": 185090048,
+          "wal_files": []
+        }
+      },
+      {
+        "engine": "sqlite",
+        "versions": {
+          "sqlite": "3.45.1",
+          "duckdb": "1.5.6"
+        },
+        "replicas": 128,
+        "warehouse_stride": 2,
+        "history_stride": 6353,
+        "load_seconds": 51.98681324068457,
+        "storage_info": {
+          "page_size": 4096,
+          "page_count": 118190,
+          "freelist_count": 0
+        },
+        "rows": {
+          "warehouse": 256,
+          "district": 2560,
+          "customer": 256000,
+          "item": 1000,
+          "stock": 256000,
+          "orders": 859520,
+          "new_order": 113920,
+          "order_line": 8216320,
+          "history": 812544
+        },
+        "verified_rows": 10518120,
+        "all_values_verified_after_reopen": true,
+        "closed": {
+          "path": "/tmp/slopdb-bench/storage-large-uxqRa0/tpcc-sqlite",
+          "files": [
+            {
+              "name": "benchmark.sqlite",
+              "bytes": 484106240,
+              "allocated_bytes": 484143104
+            }
+          ],
+          "file_count": 1,
+          "file_bytes": 484106240,
+          "allocated_total_bytes": 484147200,
+          "wal_files": []
+        },
+        "after_maintenance": {
+          "operation": "VACUUM",
+          "storage_info": {
+            "page_size": 4096,
+            "page_count": 112219,
+            "freelist_count": 0
+          },
+          "rows": {
+            "warehouse": 256,
+            "district": 2560,
+            "customer": 256000,
+            "item": 1000,
+            "stock": 256000,
+            "orders": 859520,
+            "new_order": 113920,
+            "order_line": 8216320,
+            "history": 812544
+          },
+          "verified_rows": 10518120,
+          "all_values_verified_after_reopen": true,
+          "path": "/tmp/slopdb-bench/storage-large-uxqRa0/tpcc-sqlite",
+          "files": [
+            {
+              "name": "benchmark.sqlite",
+              "bytes": 459649024,
+              "allocated_bytes": 459685888
+            }
+          ],
+          "file_count": 1,
+          "file_bytes": 459649024,
+          "allocated_total_bytes": 459689984,
+          "wal_files": []
+        },
+        "measured_at": "2026-10-11T21:33:37.117486+00:00"
+      },
+      {
+        "engine": "duckdb",
+        "versions": {
+          "sqlite": "3.45.1",
+          "duckdb": "1.5.6"
+        },
+        "replicas": 128,
+        "warehouse_stride": 2,
+        "history_stride": 6353,
+        "load_seconds": 25.69735834840685,
+        "storage_info": {
+          "database_name": "benchmark",
+          "database_size": "278.5 MiB",
+          "block_size": 262144,
+          "total_blocks": 1114,
+          "used_blocks": 1110,
+          "free_blocks": 4,
+          "wal_size": "0 bytes"
+        },
+        "rows": {
+          "warehouse": 256,
+          "district": 2560,
+          "customer": 256000,
+          "item": 1000,
+          "stock": 256000,
+          "orders": 859520,
+          "new_order": 113920,
+          "order_line": 8216320,
+          "history": 812544
+        },
+        "verified_rows": 10518120,
+        "all_values_verified_after_reopen": true,
+        "closed": {
+          "path": "/tmp/slopdb-bench/storage-large-uxqRa0/tpcc-duckdb",
+          "files": [
+            {
+              "name": "benchmark.duckdb",
+              "bytes": 292040704,
+              "allocated_bytes": 292052992
+            }
+          ],
+          "file_count": 1,
+          "file_bytes": 292040704,
+          "allocated_total_bytes": 292057088,
+          "wal_files": []
+        },
+        "wal_fsync_calls_skipped": 1036,
+        "after_maintenance": {
+          "operation": "VACUUM; CHECKPOINT",
+          "storage_info": {
+            "database_name": "benchmark",
+            "database_size": "278.5 MiB",
+            "block_size": 262144,
+            "total_blocks": 1114,
+            "used_blocks": 1110,
+            "free_blocks": 4,
+            "wal_size": "0 bytes"
+          },
+          "rows": {
+            "warehouse": 256,
+            "district": 2560,
+            "customer": 256000,
+            "item": 1000,
+            "stock": 256000,
+            "orders": 859520,
+            "new_order": 113920,
+            "order_line": 8216320,
+            "history": 812544
+          },
+          "verified_rows": 10518120,
+          "all_values_verified_after_reopen": true,
+          "path": "/tmp/slopdb-bench/storage-large-uxqRa0/tpcc-duckdb",
+          "files": [
+            {
+              "name": "benchmark.duckdb",
+              "bytes": 292040704,
+              "allocated_bytes": 292052992
+            }
+          ],
+          "file_count": 1,
+          "file_bytes": 292040704,
+          "allocated_total_bytes": 292057088,
+          "wal_files": []
+        },
+        "measured_at": "2026-10-11T21:31:00.315454+00:00"
+      }
+    ]
+  }
+}

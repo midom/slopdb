@@ -1,0 +1,1081 @@
+{
+  "measured_at": "2026-10-11T21:17:01.550800+00:00",
+  "units": "bytes; MiB = 1048576 bytes",
+  "versions": {
+    "sqlite_for_new_files": "3.45.1",
+    "duckdb_python": "1.5.6",
+    "go_root_module": "1.22.2",
+    "sqlite_original_tpcc_run": "3.51.3",
+    "go_version": "go version go1.22.2 linux/arm64",
+    "slopdb_revision": "f45ea982792cd25c94478b76dd4bf20ac83bb8eb"
+  },
+  "method": "Regular-file apparent bytes and st_blocks*512; include indexes, metadata, lock files and WAL if present. Exclude reports, executables, input data and profiles. Measure closed databases.",
+  "tpcc_existing_runs": [
+    {
+      "engine": "slopdb",
+      "source_report": "docs/benchmarks/tpcc/slopdb-comparison.json",
+      "committed_transactions": 133339,
+      "rows": {
+        "customer": 2000,
+        "district": 20,
+        "history": 57273,
+        "item": 1000,
+        "new_order": 6330,
+        "order_line": 603420,
+        "orders": 60542,
+        "stock": 2000,
+        "warehouse": 2
+      },
+      "total_rows": 732587,
+      "storage_info": {
+        "compression": "auto: raw L0, zstd L1-L6",
+        "levels": [
+          {
+            "level": 0,
+            "file_count": 3,
+            "bytes": 5466685,
+            "files": [
+              "287.sst",
+              "295.sst",
+              "296.sst"
+            ]
+          },
+          {
+            "level": 1,
+            "file_count": 9,
+            "bytes": 8722543,
+            "files": [
+              "279.sst",
+              "280.sst",
+              "281.sst",
+              "284.sst",
+              "285.sst",
+              "288.sst",
+              "289.sst",
+              "290.sst",
+              "291.sst"
+            ]
+          },
+          {
+            "level": 2,
+            "file_count": 5,
+            "bytes": 4759596,
+            "files": [
+              "215.sst",
+              "253.sst",
+              "254.sst",
+              "293.sst",
+              "292.sst"
+            ]
+          }
+        ]
+      },
+      "path": "/tmp/slopdb-tpcc-3940483646",
+      "files": [
+        {
+          "name": "215.sst",
+          "bytes": 989213,
+          "allocated_bytes": 991232
+        },
+        {
+          "name": "253.sst",
+          "bytes": 792475,
+          "allocated_bytes": 794624
+        },
+        {
+          "name": "254.sst",
+          "bytes": 990563,
+          "allocated_bytes": 991232
+        },
+        {
+          "name": "279.sst",
+          "bytes": 1175335,
+          "allocated_bytes": 1175552
+        },
+        {
+          "name": "280.sst",
+          "bytes": 939316,
+          "allocated_bytes": 942080
+        },
+        {
+          "name": "281.sst",
+          "bytes": 994362,
+          "allocated_bytes": 995328
+        },
+        {
+          "name": "284.sst",
+          "bytes": 995205,
+          "allocated_bytes": 995328
+        },
+        {
+          "name": "285.sst",
+          "bytes": 996222,
+          "allocated_bytes": 999424
+        },
+        {
+          "name": "287.sst",
+          "bytes": 1969443,
+          "allocated_bytes": 1970176
+        },
+        {
+          "name": "288.sst",
+          "bytes": 995294,
+          "allocated_bytes": 995328
+        },
+        {
+          "name": "289.sst",
+          "bytes": 995858,
+          "allocated_bytes": 999424
+        },
+        {
+          "name": "290.sst",
+          "bytes": 1118814,
+          "allocated_bytes": 1122304
+        },
+        {
+          "name": "291.sst",
+          "bytes": 512137,
+          "allocated_bytes": 516096
+        },
+        {
+          "name": "292.sst",
+          "bytes": 994043,
+          "allocated_bytes": 995328
+        },
+        {
+          "name": "293.sst",
+          "bytes": 993302,
+          "allocated_bytes": 995328
+        },
+        {
+          "name": "295.sst",
+          "bytes": 1981092,
+          "allocated_bytes": 1982464
+        },
+        {
+          "name": "296.sst",
+          "bytes": 1516150,
+          "allocated_bytes": 1519616
+        },
+        {
+          "name": "LOCK",
+          "bytes": 8,
+          "allocated_bytes": 4096
+        },
+        {
+          "name": "MANIFEST",
+          "bytes": 2620,
+          "allocated_bytes": 4096
+        }
+      ],
+      "file_count": 19,
+      "file_bytes": 18951452,
+      "file_allocated_bytes": 18989056,
+      "directory_allocated_bytes": 4096,
+      "allocated_total_bytes": 18993152,
+      "wal_files": []
+    },
+    {
+      "engine": "sqlite",
+      "source_report": "docs/benchmarks/tpcc/sqlite-comparison.json",
+      "committed_transactions": 159838,
+      "rows": {
+        "warehouse": 2,
+        "district": 20,
+        "customer": 2000,
+        "item": 1000,
+        "stock": 2000,
+        "orders": 72148,
+        "new_order": 6948,
+        "order_line": 719100,
+        "history": 68950
+      },
+      "total_rows": 872168,
+      "storage_info": {
+        "page_size": 4096,
+        "page_count": 9272,
+        "freelist_count": 0
+      },
+      "path": "/tmp/slopdb-tpcc-692743932",
+      "files": [
+        {
+          "name": "benchmark.sqlite",
+          "bytes": 37978112,
+          "allocated_bytes": 37982208
+        }
+      ],
+      "file_count": 1,
+      "file_bytes": 37978112,
+      "file_allocated_bytes": 37982208,
+      "directory_allocated_bytes": 4096,
+      "allocated_total_bytes": 37986304,
+      "wal_files": []
+    },
+    {
+      "engine": "duckdb",
+      "source_report": "docs/benchmarks/tpcc/duckdb-comparison.json",
+      "committed_transactions": 14225,
+      "rows": {
+        "warehouse": 2,
+        "district": 20,
+        "customer": 2000,
+        "item": 1000,
+        "stock": 2000,
+        "orders": 6715,
+        "new_order": 890,
+        "order_line": 64190,
+        "history": 6348
+      },
+      "total_rows": 83165,
+      "storage_info": {
+        "database_name": "benchmark",
+        "database_size": "6.2 MiB",
+        "block_size": 262144,
+        "total_blocks": 25,
+        "used_blocks": 25,
+        "free_blocks": 0,
+        "wal_size": "0 bytes"
+      },
+      "path": "/tmp/slopdb-tpcc-duckdb-f87xKC/database",
+      "files": [
+        {
+          "name": "benchmark.duckdb",
+          "bytes": 6565888,
+          "allocated_bytes": 6569984
+        }
+      ],
+      "file_count": 1,
+      "file_bytes": 6565888,
+      "file_allocated_bytes": 6569984,
+      "directory_allocated_bytes": 4096,
+      "allocated_total_bytes": 6574080,
+      "wal_files": []
+    }
+  ],
+  "tpcc_same_data": [
+    {
+      "engine": "slopdb",
+      "all_values_verified": true,
+      "rows": {
+        "warehouse": 2,
+        "district": 20,
+        "customer": 2000,
+        "item": 1000,
+        "stock": 2000,
+        "orders": 6715,
+        "new_order": 890,
+        "order_line": 64190,
+        "history": 6348
+      },
+      "storage_info": {
+        "compression": "auto: raw L0, zstd L1-L6",
+        "load_batch_rows": 1000,
+        "levels": [
+          {
+            "level": 0,
+            "file_count": 4,
+            "bytes": 8460818,
+            "files": [
+              "3.sst",
+              "5.sst",
+              "7.sst",
+              "8.sst"
+            ]
+          }
+        ]
+      },
+      "path": "/tmp/slopdb-bench/storage-comparison-62vueyt_/tpcc-same-slopdb",
+      "files": [
+        {
+          "name": "3.sst",
+          "bytes": 2478168,
+          "allocated_bytes": 2486272
+        },
+        {
+          "name": "5.sst",
+          "bytes": 2684106,
+          "allocated_bytes": 2686976
+        },
+        {
+          "name": "7.sst",
+          "bytes": 2683737,
+          "allocated_bytes": 2691072
+        },
+        {
+          "name": "8.sst",
+          "bytes": 614807,
+          "allocated_bytes": 618496
+        },
+        {
+          "name": "LOCK",
+          "bytes": 8,
+          "allocated_bytes": 4096
+        },
+        {
+          "name": "MANIFEST",
+          "bytes": 574,
+          "allocated_bytes": 4096
+        }
+      ],
+      "file_count": 6,
+      "file_bytes": 8461400,
+      "file_allocated_bytes": 8491008,
+      "directory_allocated_bytes": 4096,
+      "allocated_total_bytes": 8495104,
+      "wal_files": [],
+      "after_maintenance": {
+        "operation": "VACUUM (flush and compact all SSTable levels with auto compression)",
+        "row_counts_verified": true,
+        "storage_info": {
+          "levels": [
+            {
+              "level": 6,
+              "file_count": 2,
+              "bytes": 1460824,
+              "files": [
+                "19.sst",
+                "20.sst"
+              ]
+            }
+          ]
+        },
+        "path": "/tmp/slopdb-bench/storage-comparison-62vueyt_/maintenance-tpcc-same-slopdb",
+        "files": [
+          {
+            "name": "19.sst",
+            "bytes": 1007422,
+            "allocated_bytes": 1007616
+          },
+          {
+            "name": "20.sst",
+            "bytes": 453402,
+            "allocated_bytes": 454656
+          },
+          {
+            "name": "LOCK",
+            "bytes": 8,
+            "allocated_bytes": 4096
+          },
+          {
+            "name": "MANIFEST",
+            "bytes": 344,
+            "allocated_bytes": 4096
+          }
+        ],
+        "file_count": 4,
+        "file_bytes": 1461176,
+        "file_allocated_bytes": 1470464,
+        "directory_allocated_bytes": 4096,
+        "allocated_total_bytes": 1474560,
+        "wal_files": [],
+        "all_values_verified_after_reopen": true
+      },
+      "all_values_verified_after_reopen": true
+    },
+    {
+      "engine": "sqlite",
+      "all_values_verified": true,
+      "rows": {
+        "warehouse": 2,
+        "district": 20,
+        "customer": 2000,
+        "item": 1000,
+        "stock": 2000,
+        "orders": 6715,
+        "new_order": 890,
+        "order_line": 64190,
+        "history": 6348
+      },
+      "storage_info": {
+        "page_size": 4096,
+        "page_count": 848,
+        "freelist_count": 0
+      },
+      "path": "/tmp/slopdb-bench/storage-comparison-62vueyt_/tpcc-same-sqlite",
+      "files": [
+        {
+          "name": "benchmark.sqlite",
+          "bytes": 3473408,
+          "allocated_bytes": 3477504
+        }
+      ],
+      "file_count": 1,
+      "file_bytes": 3473408,
+      "file_allocated_bytes": 3477504,
+      "directory_allocated_bytes": 4096,
+      "allocated_total_bytes": 3481600,
+      "wal_files": [],
+      "after_maintenance": {
+        "operation": "VACUUM",
+        "row_counts_verified": true,
+        "storage_info": {
+          "page_size": 4096,
+          "page_count": 810,
+          "freelist_count": 0
+        },
+        "path": "/tmp/slopdb-bench/storage-comparison-62vueyt_/maintenance-tpcc-same-sqlite",
+        "files": [
+          {
+            "name": "benchmark.sqlite",
+            "bytes": 3317760,
+            "allocated_bytes": 3321856
+          }
+        ],
+        "file_count": 1,
+        "file_bytes": 3317760,
+        "file_allocated_bytes": 3321856,
+        "directory_allocated_bytes": 4096,
+        "allocated_total_bytes": 3325952,
+        "wal_files": [],
+        "all_values_verified_after_reopen": true
+      },
+      "all_values_verified_after_reopen": true
+    },
+    {
+      "engine": "duckdb",
+      "all_values_verified": true,
+      "rows": {
+        "warehouse": 2,
+        "district": 20,
+        "customer": 2000,
+        "item": 1000,
+        "stock": 2000,
+        "orders": 6715,
+        "new_order": 890,
+        "order_line": 64190,
+        "history": 6348
+      },
+      "storage_info": {
+        "database_name": "benchmark",
+        "database_size": "6.2 MiB",
+        "block_size": 262144,
+        "total_blocks": 25,
+        "used_blocks": 25,
+        "free_blocks": 0,
+        "wal_size": "0 bytes"
+      },
+      "path": "/tmp/slopdb-bench/storage-comparison-62vueyt_/tpcc-same-duckdb",
+      "files": [
+        {
+          "name": "benchmark.duckdb",
+          "bytes": 6565888,
+          "allocated_bytes": 6569984
+        }
+      ],
+      "file_count": 1,
+      "file_bytes": 6565888,
+      "file_allocated_bytes": 6569984,
+      "directory_allocated_bytes": 4096,
+      "allocated_total_bytes": 6574080,
+      "wal_files": [],
+      "after_maintenance": {
+        "operation": "VACUUM; CHECKPOINT (engine-specific maintenance)",
+        "row_counts_verified": true,
+        "storage_info": {
+          "database_name": "benchmark",
+          "database_size": "6.2 MiB",
+          "block_size": 262144,
+          "total_blocks": 25,
+          "used_blocks": 25,
+          "free_blocks": 0,
+          "wal_size": "0 bytes"
+        },
+        "path": "/tmp/slopdb-bench/storage-comparison-62vueyt_/maintenance-tpcc-same-duckdb",
+        "files": [
+          {
+            "name": "benchmark.duckdb",
+            "bytes": 6565888,
+            "allocated_bytes": 6569984
+          }
+        ],
+        "file_count": 1,
+        "file_bytes": 6565888,
+        "file_allocated_bytes": 6569984,
+        "directory_allocated_bytes": 4096,
+        "allocated_total_bytes": 6574080,
+        "wal_files": [],
+        "all_values_verified_after_reopen": true
+      },
+      "all_values_verified_after_reopen": true
+    }
+  ],
+  "tpch": [
+    {
+      "scale_factor": 0.001,
+      "rows": {
+        "customer": 150,
+        "lineitem": 6005,
+        "nation": 25,
+        "orders": 1500,
+        "part": 200,
+        "partsupp": 800,
+        "region": 5,
+        "supplier": 10
+      },
+      "total_rows": 8695,
+      "input_sha256": {
+        "region": "2b12cdddbe69a491b2bf6bea9bc33d4781c56fa4c5cb7f9702860618221c85f2",
+        "nation": "7986406c8b57b41e274247d514dc2e837769073533e1f7fe3463767798367ec6",
+        "supplier": "1ce468cd4bfa9c9a6580f1a3711c300f438672f8a4c62f9b4a167d2760e83a81",
+        "customer": "52fe9def82aa1837dcb017044f0b87c0adb9d142e234748d505186ee15a5682b",
+        "part": "e644402b9b7ac7c98decf480c272b238e4845f2a835eb7566c95760cf526e957",
+        "partsupp": "0749c620c7d114ecfb553c34ff813603bd521efc999d3ae1300dfdbd93f6d096",
+        "orders": "322ed1edbc38903551aaef50b06d228668c0afcea106a3e8e05ee7706e56b056",
+        "lineitem": "022315ad9cb6596f47b8745928362d9fba99138562c59535b523a71bfdd02850"
+      },
+      "engines": [
+        {
+          "engine": "slopdb",
+          "source_report": "docs/benchmarks/tpch/sf001-join-plans.json",
+          "reported_bytes_after_load": 3309094,
+          "path": "/tmp/slopdb-tpch-3797291164",
+          "files": [
+            {
+              "name": "3.sst",
+              "bytes": 2868148,
+              "allocated_bytes": 2871296
+            },
+            {
+              "name": "4.sst",
+              "bytes": 440695,
+              "allocated_bytes": 442368
+            },
+            {
+              "name": "6.sst",
+              "bytes": 520,
+              "allocated_bytes": 4096
+            },
+            {
+              "name": "LOCK",
+              "bytes": 8,
+              "allocated_bytes": 4096
+            },
+            {
+              "name": "MANIFEST",
+              "bytes": 311,
+              "allocated_bytes": 4096
+            }
+          ],
+          "file_count": 5,
+          "file_bytes": 3309682,
+          "file_allocated_bytes": 3325952,
+          "directory_allocated_bytes": 4096,
+          "allocated_total_bytes": 3330048,
+          "wal_files": [],
+          "storage_info": {
+            "compression": "auto: raw L0, zstd L1-L6",
+            "levels": [
+              {
+                "level": 0,
+                "file_count": 3,
+                "bytes": 3309363,
+                "files": [
+                  "3.sst",
+                  "4.sst",
+                  "6.sst"
+                ]
+              }
+            ]
+          },
+          "after_maintenance": {
+            "operation": "VACUUM (flush and compact all SSTable levels with auto compression)",
+            "row_counts_verified": true,
+            "storage_info": {
+              "levels": [
+                {
+                  "level": 6,
+                  "file_count": 1,
+                  "bytes": 1078464,
+                  "files": [
+                    "12.sst"
+                  ]
+                }
+              ]
+            },
+            "path": "/tmp/slopdb-bench/storage-comparison-62vueyt_/maintenance-0.001-slopdb",
+            "files": [
+              {
+                "name": "12.sst",
+                "bytes": 1078464,
+                "allocated_bytes": 1081344
+              },
+              {
+                "name": "LOCK",
+                "bytes": 8,
+                "allocated_bytes": 4096
+              },
+              {
+                "name": "MANIFEST",
+                "bytes": 131,
+                "allocated_bytes": 4096
+              }
+            ],
+            "file_count": 3,
+            "file_bytes": 1078603,
+            "file_allocated_bytes": 1089536,
+            "directory_allocated_bytes": 4096,
+            "allocated_total_bytes": 1093632,
+            "wal_files": [],
+            "all_22_queries_verified": true
+          }
+        },
+        {
+          "engine": "duckdb",
+          "source_report": "docs/benchmarks/tpch/sf001-duckdb.json",
+          "reported_bytes_after_load": 8400896,
+          "path": "/tmp/slopdb-tpch-duckdb-3560534858/benchmark.duckdb",
+          "files": [
+            {
+              "name": "benchmark.duckdb",
+              "bytes": 11546624,
+              "allocated_bytes": 11550720
+            }
+          ],
+          "file_count": 1,
+          "file_bytes": 11546624,
+          "file_allocated_bytes": 11550720,
+          "directory_allocated_bytes": 4096,
+          "allocated_total_bytes": 11554816,
+          "wal_files": [],
+          "storage_info": {
+            "database_name": "benchmark",
+            "database_size": "11.0 MiB",
+            "block_size": 262144,
+            "total_blocks": 44,
+            "used_blocks": 39,
+            "free_blocks": 5,
+            "wal_size": "0 bytes"
+          },
+          "after_maintenance": {
+            "operation": "VACUUM; CHECKPOINT (engine-specific maintenance)",
+            "row_counts_verified": true,
+            "storage_info": {
+              "database_name": "benchmark",
+              "database_size": "11.0 MiB",
+              "block_size": 262144,
+              "total_blocks": 44,
+              "used_blocks": 39,
+              "free_blocks": 5,
+              "wal_size": "0 bytes"
+            },
+            "path": "/tmp/slopdb-bench/storage-comparison-62vueyt_/maintenance-0.001-duckdb",
+            "files": [
+              {
+                "name": "benchmark.duckdb",
+                "bytes": 11546624,
+                "allocated_bytes": 11550720
+              }
+            ],
+            "file_count": 1,
+            "file_bytes": 11546624,
+            "file_allocated_bytes": 11550720,
+            "directory_allocated_bytes": 4096,
+            "allocated_total_bytes": 11554816,
+            "wal_files": [],
+            "all_22_queries_verified": true
+          }
+        },
+        {
+          "engine": "sqlite",
+          "source": "Fresh disk load of identical hashed DBGEN inputs, schema, indexes, ANALYZE and Q15 view; all 22 query results match both archived engines",
+          "verified_queries": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22
+          ],
+          "storage_info": {
+            "page_size": 4096,
+            "page_count": 418,
+            "freelist_count": 0
+          },
+          "path": "/tmp/slopdb-bench/storage-comparison-62vueyt_/tpch-sf001-sqlite",
+          "files": [
+            {
+              "name": "benchmark.sqlite",
+              "bytes": 1712128,
+              "allocated_bytes": 1716224
+            }
+          ],
+          "file_count": 1,
+          "file_bytes": 1712128,
+          "file_allocated_bytes": 1716224,
+          "directory_allocated_bytes": 4096,
+          "allocated_total_bytes": 1720320,
+          "wal_files": [],
+          "after_maintenance": {
+            "operation": "VACUUM",
+            "row_counts_verified": true,
+            "storage_info": {
+              "page_size": 4096,
+              "page_count": 416,
+              "freelist_count": 0
+            },
+            "path": "/tmp/slopdb-bench/storage-comparison-62vueyt_/maintenance-0.001-sqlite",
+            "files": [
+              {
+                "name": "benchmark.sqlite",
+                "bytes": 1703936,
+                "allocated_bytes": 1703936
+              }
+            ],
+            "file_count": 1,
+            "file_bytes": 1703936,
+            "file_allocated_bytes": 1703936,
+            "directory_allocated_bytes": 4096,
+            "allocated_total_bytes": 1708032,
+            "wal_files": [],
+            "all_22_queries_verified": true
+          }
+        }
+      ]
+    },
+    {
+      "scale_factor": 0.01,
+      "rows": {
+        "customer": 1500,
+        "lineitem": 60175,
+        "nation": 25,
+        "orders": 15000,
+        "part": 2000,
+        "partsupp": 8000,
+        "region": 5,
+        "supplier": 100
+      },
+      "total_rows": 86805,
+      "input_sha256": {
+        "region": "2b12cdddbe69a491b2bf6bea9bc33d4781c56fa4c5cb7f9702860618221c85f2",
+        "nation": "7986406c8b57b41e274247d514dc2e837769073533e1f7fe3463767798367ec6",
+        "supplier": "1616ce014a17ff8e825795f7a343af1582cce81437ace88416c90fa753732030",
+        "customer": "cb51fb2628146829ca0307c0a3e8198fa48aa96d4d87eb4da930b5089196d38c",
+        "part": "291ced66c49d7c387fdba61b14682c3ddff4fca173d3cc178945008854071680",
+        "partsupp": "171d4b70266dc7922d6ea5c81a19778cb1a74c3f876b8d2e920ff7f1ee6aee1c",
+        "orders": "8615292d30469b6b57ab21a00fa3ad6e80ef1a3cd3b8c76ff5f5544f991e8913",
+        "lineitem": "399683ecadd155215812d07e6bf072cd574700ea9a071eee47fd35a95accd44e"
+      },
+      "engines": [
+        {
+          "engine": "slopdb",
+          "source_report": "docs/benchmarks/tpch/sf01-join-plans.json",
+          "reported_bytes_after_load": 13706393,
+          "path": "/tmp/slopdb-tpch-2835304537",
+          "files": [
+            {
+              "name": "20.sst",
+              "bytes": 3330261,
+              "allocated_bytes": 3334144
+            },
+            {
+              "name": "22.sst",
+              "bytes": 3571910,
+              "allocated_bytes": 3575808
+            },
+            {
+              "name": "23.sst",
+              "bytes": 3098953,
+              "allocated_bytes": 3100672
+            },
+            {
+              "name": "24.sst",
+              "bytes": 1083573,
+              "allocated_bytes": 1085440
+            },
+            {
+              "name": "25.sst",
+              "bytes": 1156223,
+              "allocated_bytes": 1159168
+            },
+            {
+              "name": "26.sst",
+              "bytes": 1046737,
+              "allocated_bytes": 1048576
+            },
+            {
+              "name": "27.sst",
+              "bytes": 417766,
+              "allocated_bytes": 417792
+            },
+            {
+              "name": "29.sst",
+              "bytes": 520,
+              "allocated_bytes": 4096
+            },
+            {
+              "name": "LOCK",
+              "bytes": 8,
+              "allocated_bytes": 4096
+            },
+            {
+              "name": "MANIFEST",
+              "bytes": 1030,
+              "allocated_bytes": 4096
+            }
+          ],
+          "file_count": 10,
+          "file_bytes": 13706981,
+          "file_allocated_bytes": 13733888,
+          "directory_allocated_bytes": 4096,
+          "allocated_total_bytes": 13737984,
+          "wal_files": [],
+          "storage_info": {
+            "compression": "auto: raw L0, zstd L1-L6",
+            "levels": [
+              {
+                "level": 0,
+                "file_count": 3,
+                "bytes": 3990196,
+                "files": [
+                  "22.sst",
+                  "27.sst",
+                  "29.sst"
+                ]
+              },
+              {
+                "level": 1,
+                "file_count": 5,
+                "bytes": 9715747,
+                "files": [
+                  "20.sst",
+                  "23.sst",
+                  "24.sst",
+                  "25.sst",
+                  "26.sst"
+                ]
+              }
+            ]
+          },
+          "after_maintenance": {
+            "operation": "VACUUM (flush and compact all SSTable levels with auto compression)",
+            "row_counts_verified": true,
+            "storage_info": {
+              "levels": [
+                {
+                  "level": 6,
+                  "file_count": 6,
+                  "bytes": 10781979,
+                  "files": [
+                    "60.sst",
+                    "61.sst",
+                    "62.sst",
+                    "63.sst",
+                    "64.sst",
+                    "65.sst"
+                  ]
+                }
+              ]
+            },
+            "path": "/tmp/slopdb-bench/storage-comparison-62vueyt_/maintenance-0.01-slopdb",
+            "files": [
+              {
+                "name": "60.sst",
+                "bytes": 3330184,
+                "allocated_bytes": 3334144
+              },
+              {
+                "name": "61.sst",
+                "bytes": 3099052,
+                "allocated_bytes": 3100672
+              },
+              {
+                "name": "62.sst",
+                "bytes": 1082427,
+                "allocated_bytes": 1085440
+              },
+              {
+                "name": "63.sst",
+                "bytes": 1172478,
+                "allocated_bytes": 1175552
+              },
+              {
+                "name": "64.sst",
+                "bytes": 1137737,
+                "allocated_bytes": 1138688
+              },
+              {
+                "name": "65.sst",
+                "bytes": 960101,
+                "allocated_bytes": 962560
+              },
+              {
+                "name": "LOCK",
+                "bytes": 8,
+                "allocated_bytes": 4096
+              },
+              {
+                "name": "MANIFEST",
+                "bytes": 893,
+                "allocated_bytes": 4096
+              }
+            ],
+            "file_count": 8,
+            "file_bytes": 10782880,
+            "file_allocated_bytes": 10805248,
+            "directory_allocated_bytes": 4096,
+            "allocated_total_bytes": 10809344,
+            "wal_files": [],
+            "all_22_queries_verified": true
+          }
+        },
+        {
+          "engine": "duckdb",
+          "source_report": "docs/benchmarks/tpch/sf01-duckdb.json",
+          "reported_bytes_after_load": 17313792,
+          "path": "/tmp/slopdb-tpch-duckdb-3364556448/benchmark.duckdb",
+          "files": [
+            {
+              "name": "benchmark.duckdb",
+              "bytes": 20197376,
+              "allocated_bytes": 20201472
+            }
+          ],
+          "file_count": 1,
+          "file_bytes": 20197376,
+          "file_allocated_bytes": 20201472,
+          "directory_allocated_bytes": 4096,
+          "allocated_total_bytes": 20205568,
+          "wal_files": [],
+          "storage_info": {
+            "database_name": "benchmark",
+            "database_size": "19.2 MiB",
+            "block_size": 262144,
+            "total_blocks": 77,
+            "used_blocks": 71,
+            "free_blocks": 6,
+            "wal_size": "0 bytes"
+          },
+          "after_maintenance": {
+            "operation": "VACUUM; CHECKPOINT (engine-specific maintenance)",
+            "row_counts_verified": true,
+            "storage_info": {
+              "database_name": "benchmark",
+              "database_size": "19.2 MiB",
+              "block_size": 262144,
+              "total_blocks": 77,
+              "used_blocks": 71,
+              "free_blocks": 6,
+              "wal_size": "0 bytes"
+            },
+            "path": "/tmp/slopdb-bench/storage-comparison-62vueyt_/maintenance-0.01-duckdb",
+            "files": [
+              {
+                "name": "benchmark.duckdb",
+                "bytes": 20197376,
+                "allocated_bytes": 20201472
+              }
+            ],
+            "file_count": 1,
+            "file_bytes": 20197376,
+            "file_allocated_bytes": 20201472,
+            "directory_allocated_bytes": 4096,
+            "allocated_total_bytes": 20205568,
+            "wal_files": [],
+            "all_22_queries_verified": true
+          }
+        },
+        {
+          "engine": "sqlite",
+          "source": "Fresh disk load of identical hashed DBGEN inputs, schema, indexes, ANALYZE and Q15 view; all 22 query results match both archived engines",
+          "verified_queries": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22
+          ],
+          "storage_info": {
+            "page_size": 4096,
+            "page_count": 4020,
+            "freelist_count": 0
+          },
+          "path": "/tmp/slopdb-bench/storage-comparison-62vueyt_/tpch-sf01-sqlite",
+          "files": [
+            {
+              "name": "benchmark.sqlite",
+              "bytes": 16465920,
+              "allocated_bytes": 16470016
+            }
+          ],
+          "file_count": 1,
+          "file_bytes": 16465920,
+          "file_allocated_bytes": 16470016,
+          "directory_allocated_bytes": 4096,
+          "allocated_total_bytes": 16474112,
+          "wal_files": [],
+          "after_maintenance": {
+            "operation": "VACUUM",
+            "row_counts_verified": true,
+            "storage_info": {
+              "page_size": 4096,
+              "page_count": 3994,
+              "freelist_count": 0
+            },
+            "path": "/tmp/slopdb-bench/storage-comparison-62vueyt_/maintenance-0.01-sqlite",
+            "files": [
+              {
+                "name": "benchmark.sqlite",
+                "bytes": 16359424,
+                "allocated_bytes": 16363520
+              }
+            ],
+            "file_count": 1,
+            "file_bytes": 16359424,
+            "file_allocated_bytes": 16363520,
+            "directory_allocated_bytes": 4096,
+            "allocated_total_bytes": 16367616,
+            "wal_files": [],
+            "all_22_queries_verified": true
+          }
+        }
+      ]
+    }
+  ],
+  "tpcc_snapshot_sha256": "cf3c5524f0fce10d70876e7dd71cb7df36b5c1df79842694d6b91862809a47ca",
+  "tpcc_snapshot_source": "docs/benchmarks/tpcc/duckdb-comparison.json",
+  "tpcc_snapshot_rows": {
+    "warehouse": 2,
+    "district": 20,
+    "customer": 2000,
+    "item": 1000,
+    "stock": 2000,
+    "orders": 6715,
+    "new_order": 890,
+    "order_line": 64190,
+    "history": 6348
+  },
+  "allocation_note": "New files were synced after measurement workloads to settle filesystem writeback before final allocation accounting; this does not change benchmark WAL settings or apparent sizes."
+}

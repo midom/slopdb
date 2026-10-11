@@ -1,0 +1,39 @@
+{
+  "measured_at": "2026-10-11",
+  "query": "SELECT * FROM order_line WHERE w_id BETWEEN 129 AND 130 ORDER BY w_id,d_id,o_id,number LIMIT 20 OFFSET 2;",
+  "database": "/tmp/slopdb-bench/storage-large-uxqRa0/tpcc-slopdb",
+  "dataset_report": "docs/benchmarks/storage/large-comparison.json",
+  "table_rows": 8216320,
+  "expected_result_rows": 20,
+  "all_answers_identical": true,
+  "result_sha256": "2e04e1b7382603b4e47a69263ed412cf8aac233a60e3503b6ca82d4d5435d67c",
+  "before_ms": [
+    11366.934,
+    11103.007
+  ],
+  "after_ms": [
+    1.149,
+    0.14
+  ],
+  "warm_sample_speedup": 79307.19285714284,
+  "method": "Two CLI executions per build in one fresh process, one worker, WAL enabled with WAL fsync disabled. First sample has a fresh engine block cache; second repeats the query. Operating-system caches are not reset. Query execution timings exclude CLI output. Diagnostic local measurements, not a throughput benchmark.",
+  "before_revision": "f45ea982792cd25c94478b76dd4bf20ac83bb8eb",
+  "full_dataset_validation": {
+    "verified_rows": 10518120,
+    "rows": {
+      "customer": 256000,
+      "district": 2560,
+      "history": 812544,
+      "item": 1000,
+      "new_order": 113920,
+      "order_line": 8216320,
+      "orders": 859520,
+      "stock": 256000,
+      "warehouse": 256
+    },
+    "all_values_verified_after_reopen": true,
+    "method": "The equal-data TPC-C snapshot verifier was rerun with w_id BETWEEN bounds for composite tables after the fix. Every column of every row was compared with the independently saved source snapshot."
+  },
+  "tuple_planner_sha256": "f6693db2a529c4a1185fae9a4f77bdf420298a66d9f7c77f95090c639d2eb19f",
+  "fix_revision": "85972b9d0e60e1f4d1ec99c0068ee6b20a72a236"
+}
