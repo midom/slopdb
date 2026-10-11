@@ -68,7 +68,6 @@ type Schema struct {
 	outerRow           map[string]Value
 	stats              map[string]int64
 	distributions      map[string]*tableStatistics
-	pageSize           int
 	userVersion        int64
 	views              map[string]*ViewInfo
 	triggers           map[string]*TriggerInfo
@@ -169,6 +168,8 @@ const (
 	indexPrefix       = "\x02"
 )
 
+// NewSchema inherits the physical page target from lsm. The pageSize argument
+// is retained for source compatibility; configure storage.Options.PageSize.
 func NewSchema(lsm *storage.LSMTree, pageSize int) (*Schema, error) {
 	return NewSchemaWithOptions(lsm, pageSize, nil)
 }
@@ -190,7 +191,6 @@ func NewSchemaWithOptions(lsm *storage.LSMTree, pageSize int, opt *storage.Optio
 		indexes:          make(map[string]*IndexInfo),
 		stats:            make(map[string]int64),
 		distributions:    make(map[string]*tableStatistics),
-		pageSize:         pageSize,
 		views:            make(map[string]*ViewInfo),
 		triggers:         make(map[string]*TriggerInfo),
 		autoincMax:       make(map[string]int64),
@@ -856,7 +856,7 @@ func (s *Schema) ExecutePragma(stmt *PragmaStmt) (*ResultSet, error) {
 		}
 		return s.singleValueResult("user_version", NewIntValue(s.userVersion))
 	case "page_size":
-		return s.singleValueResult("page_size", NewIntValue(int64(s.pageSize)))
+		return s.pragmaPageSize(stmt)
 	case "compile_options":
 		return &ResultSet{
 			Columns: []ColumnDef{{Name: "compile_options", ColType: ColText}},

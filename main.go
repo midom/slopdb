@@ -40,11 +40,12 @@ func main() {
 	flags.BoolVar(&opt.DisableWALSync, "no-fsync", false, "alias for --no-wal-fsync")
 	flags.DurationVar(&opt.QueryTimeout, "query-timeout", opt.QueryTimeout, "default SQL call timeout (0 disables it)")
 	flags.DurationVar(&opt.LockTimeout, "lock-timeout", opt.LockTimeout, "maximum transaction lock wait per SQL call (0 fails immediately on contention)")
+	flags.Int64Var(&opt.PageSize, "page-size", 0, "uncompressed SSTable block target in bytes (0 reuses stored setting, new databases default 4096)")
 	flags.BoolVar(&opt.DeadlockDetection, "deadlock-detection", false, "detect transaction deadlocks and roll back one victim")
 	compression := flags.String("compression", "auto", "SSTable data block compression: auto (none in L0, zstd in L1-L6), none, gzip, zstd, snappy, or lz4")
 	l0Compression := flags.String("l0-compression", "auto", "override L0 compression: none, gzip, zstd, snappy, or lz4; auto inherits --compression")
 	flags.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [--no-wal | --no-wal-fsync] [--compression codec] [--l0-compression codec] <database>\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s [--no-wal | --no-wal-fsync] [--compression codec] [--l0-compression codec] [--page-size bytes] <database>\n", os.Args[0])
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(os.Args[1:]); err != nil {
@@ -507,6 +508,7 @@ func handleDotCommand(cmd string) {
 		fmt.Println("Start with --no-wal to persist writes on flush/clean exit; unflushed writes are lost on crash.")
 		fmt.Println("Use --no-wal-fsync (or --no-fsync) to keep WAL writes without fsync; power loss may lose recent writes.")
 		fmt.Println("Compression defaults to auto: none in L0, zstd in L1-L6. Use --compression=none/gzip/zstd/snappy/lz4 to override all levels.")
+		fmt.Println("Use --page-size=16384/65536/1048576 to select a persisted SSTable block target; PRAGMA page_size=N changes future writers.")
 		fmt.Println("Use --l0-compression=none/gzip/zstd/snappy/lz4 to override L0 only; auto inherits --compression.")
 		fmt.Println("Use --query-timeout=5s and --lock-timeout=30s to limit queries and transaction lock waits. Zero disables the query timeout; a zero lock timeout fails immediately on contention.")
 		fmt.Println("Use --deadlock-detection to detect lock cycles and roll back one transaction.")

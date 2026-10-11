@@ -25,6 +25,7 @@ type LSMTree struct {
 	viewMu                sync.RWMutex
 	view                  *readView
 	published             atomic.Uint64
+	pageSize              atomic.Int64
 	writeMu               sync.Mutex
 	writeQueue            []*queuedBatch
 	writeActive           bool
@@ -105,6 +106,14 @@ func NewLSMTree(dir string, opt *Options) (*LSMTree, error) {
 	if opt.BlockCacheSize < 0 || opt.WriteBufferSize < 0 || opt.BlockSize < 0 || opt.BloomBitsKey < 0 || opt.MaxOpenFiles < 0 || opt.CompactionL0Trigger < 0 || opt.BaseLevelSize < 0 || opt.MaxBackgroundJobs < 0 {
 		return nil, fmt.Errorf("invalid negative storage option")
 	}
+	if opt.PageSize != 0 {
+		if err := ValidatePageSize(opt.PageSize); err != nil {
+			return nil, err
+		}
+	}
+	if err := validateBlockTarget(int64(opt.BlockSize)); err != nil {
+		return nil, err
+	}
 	opt.Dir = dir
 	if _, err := opt.compressionType(0); err != nil {
 		return nil, err
@@ -116,7 +125,7 @@ func NewLSMTree(dir string, opt *Options) (*LSMTree, error) {
 	}
 	exists := false
 	for _, entry := range entriesBefore {
-		if entry.Name() == "MANIFEST" || strings.HasSuffix(entry.Name(), ".sst") || strings.HasPrefix(entry.Name(), "WAL-") {
+		if entry.Name() == "MANIFEST" || entry.Name() == pageOptionsName || strings.HasSuffix(entry.Name(), ".sst") || strings.HasPrefix(entry.Name(), "WAL-") {
 			exists = true
 			break
 		}
@@ -161,6 +170,9 @@ func NewLSMTree(dir string, opt *Options) (*LSMTree, error) {
 		lockFile.Close()
 		// Keep the inode stable for concurrent open attempts.
 		return nil, err
+	}
+	if err := lsm.initPageSize(); err != nil {
+		return fail(err)
 	}
 	levels, maxFileNum, err := readManifestFile(dir)
 	if err != nil {
@@ -923,6 +935,8 @@ func (l *LSMTree) installCompactionLocked(level int, inputs, output []*FileMetaD
 
 func (l *LSMTree) writeTableLocked(kvs []KeyValue, level int) (*FileMetaData, error) {
 	options := *l.opt
+	options.PageSize = 0
+	options.BlockSize = int(l.PageSize())
 	compression, err := options.compressionType(level)
 	if err != nil {
 		return nil, err
@@ -1020,6 +1034,10 @@ func (l *LSMTree) CompactRange() error {
 	}
 	l.compactionWg.Add(1)
 	defer l.compactionWg.Done()
+	previousBottom := make(map[uint64]bool, len(l.levels[maxLevels-1]))
+	for _, file := range l.levels[maxLevels-1] {
+		previousBottom[file.Number] = true
+	}
 	for lv := 0; lv < maxLevels-1; lv++ {
 		for len(l.levels[lv]) > 0 {
 			if err := l.compactLevelLocked(lv); err != nil {
@@ -1028,6 +1046,11 @@ func (l *LSMTree) CompactRange() error {
 			if lv == 0 { // Do not chase new flushes indefinitely.
 				break
 			}
+		}
+	}
+	for _, file := range l.levels[maxLevels-1] {
+		if previousBottom[file.Number] {
+			return l.rewriteBottomLevelLocked()
 		}
 	}
 	return nil
@@ -1705,6 +1728,7 @@ func (h *mergeHeap) Pop() interface{} {
 }
 
 type LSMStats struct {
+	PageSize              int64 // effective uncompressed SSTable data-block target
 	CompletedCompactions  int64 // successfully installed compactions in this open instance
 	CompactionInputBytes  int64 // total input SSTable file sizes, not device I/O
 	CompactionOutputBytes int64 // installed output SSTable file sizes
@@ -1750,6 +1774,7 @@ func (l *LSMTree) Stats() LSMStats {
 	blockHits, blockMisses := l.tableCache.blocks.statistics()
 
 	s := LSMStats{
+		PageSize:              l.PageSize(),
 		CompletedCompactions:  l.completedCompactions.Load(),
 		CompactionInputBytes:  l.compactionInputBytes.Load(),
 		CompactionOutputBytes: l.compactionOutputBytes.Load(),

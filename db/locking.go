@@ -133,7 +133,8 @@ func (db *Database) statementCatalogLock(schema *sql.Schema, statement sql.State
 		*sql.CreateTriggerStmt, *sql.DropTriggerStmt, *sql.VacuumStmt:
 		exclusive = true
 	case *sql.PragmaStmt:
-		if statement.(*sql.PragmaStmt).Value == nil {
+		pragma := statement.(*sql.PragmaStmt)
+		if pragma.Value == nil && !(pragma.Name == "page_size" && len(pragma.Args) > 0) {
 			return nil
 		}
 	case *sql.InsertStmt, *sql.UpdateStmt, *sql.DeleteStmt, *sql.AnalyzeStmt:

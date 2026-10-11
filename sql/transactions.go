@@ -32,7 +32,7 @@ func (s *Schema) NewSession() *Schema {
 		}
 	}
 	s.nextSnapshotReader++
-	child := &Schema{maxCTEIterations: s.maxCTEIterations, maxCTERows: s.maxCTERows, snapshotReader: s.nextSnapshotReader, lsm: s.lsm, pageSize: s.pageSize, parent: s, readVersion: s.commitVersion.Load(), readStateVersion: s.stateVersion, readCatalogVersion: s.catalogVersion}
+	child := &Schema{maxCTEIterations: s.maxCTEIterations, maxCTERows: s.maxCTERows, snapshotReader: s.nextSnapshotReader, lsm: s.lsm, parent: s, readVersion: s.commitVersion.Load(), readStateVersion: s.stateVersion, readCatalogVersion: s.catalogVersion}
 	child.queryMemoryBytes, child.queryTempDir = s.queryMemoryBytes, s.queryTempDir
 	child.restoreState(s.captureState())
 	child.rowIDCount = make(map[string]int64)
