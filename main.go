@@ -434,6 +434,28 @@ func handleDotCommand(cmd string) {
 			}
 		}
 
+	case cmd == ".integrity":
+		report, err := currentDB.CheckIntegrity()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Integrity error: %v\n", err)
+			if cliCfg.bail {
+				exitCLI(1)
+			}
+			return
+		}
+		fmt.Printf("ok: %d rows, %d index entries, %d SSTables verified\n", report.SQL.Rows, report.SQL.IndexEntries, report.Storage.Tables)
+
+	case strings.HasPrefix(cmd, ".backup "):
+		destination := strings.TrimSpace(strings.TrimPrefix(cmd, ".backup "))
+		if err := currentDB.Backup(destination); err != nil {
+			fmt.Fprintf(os.Stderr, "Backup error: %v\n", err)
+			if cliCfg.bail {
+				exitCLI(1)
+			}
+			return
+		}
+		fmt.Printf("Backed up database to %q\n", destination)
+
 	case cmd == ".manifest":
 		showManifest()
 
@@ -471,6 +493,8 @@ func handleDotCommand(cmd string) {
 		fmt.Println("  .shell CMD...     Run command in system shell")
 		fmt.Println("  .system CMD...    Same as .shell")
 		fmt.Println("  .version          Show version info")
+		fmt.Println("  .backup DIRECTORY Create a consistent online database backup")
+		fmt.Println("  .integrity        Check storage, rows, constraints and indexes")
 		fmt.Println("  .manifest         Show LSM tree diagnostics")
 		fmt.Println("  .help             Show this help")
 		fmt.Println("SQL metadata commands (end with a semicolon):")
