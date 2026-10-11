@@ -320,6 +320,9 @@ def cell_run(args, workload, engine, size):
         counter = ctypes.CDLL(None).slopdb_tpcc_wal_sync_skipped
         counter.restype = ctypes.c_ulonglong
         result["wal_fsync_calls_skipped"] = counter()
+        if workload == "tpch":
+            # TPC-H loads run in a Go child, whose counter is process local.
+            result["wal_fsync_calls_skipped"] += json.loads((cell / "queries.json").read_text()).get("wal_fsync_calls_skipped", 0)
         # TPC-H loads run in a Go child, so its shim counter is in that process.
         if workload == "tpcc" and result["wal_fsync_calls_skipped"] == 0:
             raise ValueError("DuckDB WAL fsync shim skipped no calls")
