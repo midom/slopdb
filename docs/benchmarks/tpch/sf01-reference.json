@@ -1,6 +1,6 @@
 {
   "sqlite_version": "3.45.1",
-  "data_directory": "/tmp/godb/tpch-sf01",
+  "data_directory": "/tmp/slopdb-bench/tpch-sf01",
   "queries": [
     {
       "number": 1,
@@ -9,7 +9,7 @@
       "translation": "pass",
       "slopdb": "pass",
       "duckdb": {
-        "/tmp/godb/tpch-duckdb-sf01.json": "pass"
+        "/tmp/slopdb-bench/tpch-duckdb-sf01.json": "pass"
       }
     },
     {
@@ -18,7 +18,7 @@
       "rows": 4,
       "translation": "pass",
       "duckdb": {
-        "/tmp/godb/tpch-duckdb-sf01.json": "pass"
+        "/tmp/slopdb-bench/tpch-duckdb-sf01.json": "pass"
       }
     },
     {
@@ -27,7 +27,7 @@
       "rows": 10,
       "translation": "pass",
       "duckdb": {
-        "/tmp/godb/tpch-duckdb-sf01.json": "pass"
+        "/tmp/slopdb-bench/tpch-duckdb-sf01.json": "pass"
       }
     },
     {
@@ -36,7 +36,7 @@
       "rows": 5,
       "translation": "pass",
       "duckdb": {
-        "/tmp/godb/tpch-duckdb-sf01.json": "pass"
+        "/tmp/slopdb-bench/tpch-duckdb-sf01.json": "pass"
       }
     },
     {
@@ -45,7 +45,7 @@
       "rows": 5,
       "translation": "pass",
       "duckdb": {
-        "/tmp/godb/tpch-duckdb-sf01.json": "pass"
+        "/tmp/slopdb-bench/tpch-duckdb-sf01.json": "pass"
       }
     },
     {
@@ -55,7 +55,7 @@
       "translation": "pass",
       "slopdb": "pass",
       "duckdb": {
-        "/tmp/godb/tpch-duckdb-sf01.json": "pass"
+        "/tmp/slopdb-bench/tpch-duckdb-sf01.json": "pass"
       }
     },
     {
@@ -64,7 +64,7 @@
       "rows": 4,
       "translation": "pass",
       "duckdb": {
-        "/tmp/godb/tpch-duckdb-sf01.json": "pass"
+        "/tmp/slopdb-bench/tpch-duckdb-sf01.json": "pass"
       }
     },
     {
@@ -73,7 +73,7 @@
       "rows": 2,
       "translation": "pass",
       "duckdb": {
-        "/tmp/godb/tpch-duckdb-sf01.json": "pass"
+        "/tmp/slopdb-bench/tpch-duckdb-sf01.json": "pass"
       }
     },
     {
@@ -82,7 +82,7 @@
       "rows": 173,
       "translation": "pass",
       "duckdb": {
-        "/tmp/godb/tpch-duckdb-sf01.json": "pass"
+        "/tmp/slopdb-bench/tpch-duckdb-sf01.json": "pass"
       }
     },
     {
@@ -91,7 +91,7 @@
       "rows": 20,
       "translation": "pass",
       "duckdb": {
-        "/tmp/godb/tpch-duckdb-sf01.json": "pass"
+        "/tmp/slopdb-bench/tpch-duckdb-sf01.json": "pass"
       }
     },
     {
@@ -100,7 +100,7 @@
       "rows": 359,
       "translation": "pass",
       "duckdb": {
-        "/tmp/godb/tpch-duckdb-sf01.json": "pass"
+        "/tmp/slopdb-bench/tpch-duckdb-sf01.json": "pass"
       }
     },
     {
@@ -109,7 +109,7 @@
       "rows": 2,
       "translation": "pass",
       "duckdb": {
-        "/tmp/godb/tpch-duckdb-sf01.json": "pass"
+        "/tmp/slopdb-bench/tpch-duckdb-sf01.json": "pass"
       }
     },
     {
@@ -118,7 +118,7 @@
       "rows": 32,
       "translation": "pass",
       "duckdb": {
-        "/tmp/godb/tpch-duckdb-sf01.json": "pass"
+        "/tmp/slopdb-bench/tpch-duckdb-sf01.json": "pass"
       }
     },
     {
@@ -127,7 +127,7 @@
       "rows": 1,
       "translation": "pass",
       "duckdb": {
-        "/tmp/godb/tpch-duckdb-sf01.json": "pass"
+        "/tmp/slopdb-bench/tpch-duckdb-sf01.json": "pass"
       }
     },
     {
@@ -136,7 +136,7 @@
       "rows": 1,
       "translation": "pass",
       "duckdb": {
-        "/tmp/godb/tpch-duckdb-sf01.json": "pass"
+        "/tmp/slopdb-bench/tpch-duckdb-sf01.json": "pass"
       }
     },
     {
@@ -145,7 +145,7 @@
       "rows": 296,
       "translation": "pass",
       "duckdb": {
-        "/tmp/godb/tpch-duckdb-sf01.json": "pass"
+        "/tmp/slopdb-bench/tpch-duckdb-sf01.json": "pass"
       }
     },
     {
@@ -154,7 +154,7 @@
       "rows": 1,
       "translation": "pass",
       "duckdb": {
-        "/tmp/godb/tpch-duckdb-sf01.json": "pass"
+        "/tmp/slopdb-bench/tpch-duckdb-sf01.json": "pass"
       }
     },
     {
@@ -163,7 +163,7 @@
       "rows": 2,
       "translation": "pass",
       "duckdb": {
-        "/tmp/godb/tpch-duckdb-sf01.json": "pass"
+        "/tmp/slopdb-bench/tpch-duckdb-sf01.json": "pass"
       }
     },
     {
@@ -172,7 +172,7 @@
       "rows": 1,
       "translation": "pass",
       "duckdb": {
-        "/tmp/godb/tpch-duckdb-sf01.json": "pass"
+        "/tmp/slopdb-bench/tpch-duckdb-sf01.json": "pass"
       }
     },
     {
@@ -181,7 +181,7 @@
       "rows": 1,
       "translation": "pass",
       "duckdb": {
-        "/tmp/godb/tpch-duckdb-sf01.json": "pass"
+        "/tmp/slopdb-bench/tpch-duckdb-sf01.json": "pass"
       }
     },
     {
@@ -190,7 +190,7 @@
       "rows": 1,
       "translation": "pass",
       "duckdb": {
-        "/tmp/godb/tpch-duckdb-sf01.json": "pass"
+        "/tmp/slopdb-bench/tpch-duckdb-sf01.json": "pass"
       }
     },
     {
@@ -199,7 +199,7 @@
       "rows": 7,
       "translation": "pass",
       "duckdb": {
-        "/tmp/godb/tpch-duckdb-sf01.json": "pass"
+        "/tmp/slopdb-bench/tpch-duckdb-sf01.json": "pass"
       }
     }
   ]

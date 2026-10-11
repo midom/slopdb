@@ -1,4 +1,4 @@
-// Adapted from /tmp/godb/legacy_primary_review.go; see TESTING.md.
+// Adapted from legacy_primary_review.go; see TESTING.md.
 package regression
 
 import (

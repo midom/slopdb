@@ -3,10 +3,10 @@
   "version": "v1.5.6",
   "driver": "github.com/duckdb/duckdb-go/v2 v2.10506.0",
   "config": {
-    "data_directory": "/tmp/godb/tpch-sf001",
+    "data_directory": "/tmp/slopdb-bench/tpch-sf001",
     "database_file": "/tmp/slopdb-tpch-duckdb-3560534858/benchmark.duckdb",
     "query_root": "/home/ubuntu/slopdb/cmd/tpch",
-    "report_file": "/tmp/godb/tpch-duckdb-sf001.json",
+    "report_file": "/tmp/slopdb-bench/tpch-duckdb-sf001.json",
     "threads": 1,
     "runs": 1,
     "warmups": 0,

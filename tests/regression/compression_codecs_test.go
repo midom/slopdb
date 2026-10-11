@@ -1,4 +1,4 @@
-// Adapted from /tmp/godb/current_codecs_review.go; see TESTING.md.
+// Adapted from current_codecs_review.go; see TESTING.md.
 package regression
 
 import (

@@ -15,7 +15,6 @@ import (
 )
 
 // Each suite shares a directory only with its own reopened databases and files.
-// It never accesses the original /tmp/godb workspace.
 type regressionEnv struct {
 	t                *testing.T
 	root             string

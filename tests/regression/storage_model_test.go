@@ -1,4 +1,4 @@
-// Adapted from /tmp/godb/standard_current_storage_review.go; see TESTING.md.
+// Adapted from standard_current_storage_review.go; see TESTING.md.
 package regression
 
 import (

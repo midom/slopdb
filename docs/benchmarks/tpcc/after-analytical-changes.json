@@ -13,7 +13,7 @@
     "prepared_statements": true,
     "wal_fsync": false,
     "database_dir": "/tmp/slopdb-tpcc-1595348212",
-    "report_file": "/tmp/godb/tpcc-after-analytical-changes.json"
+    "report_file": "/tmp/slopdb-bench/tpcc-after-analytical-changes.json"
   },
   "started_at": "2026-10-11T18:42:05.892229946Z",
   "prepare_seconds": 0.022404827,

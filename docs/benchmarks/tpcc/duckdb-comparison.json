@@ -30,7 +30,7 @@
     "prepared_statements": true,
     "wal_fsync": false,
     "database_dir": "/tmp/slopdb-tpcc-duckdb-f87xKC/database",
-    "report_file": "/tmp/godb/tpcc-three-engine-duckdb.json"
+    "report_file": "/tmp/slopdb-bench/tpcc-three-engine-duckdb.json"
   },
   "started_at": "2026-10-11T19:04:04.278017005Z",
   "prepare_seconds": 1.503942773,

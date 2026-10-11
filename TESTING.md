@@ -10,8 +10,8 @@ go vet ./...
 ```
 
 The Go tests include the regression and functionality checks previously kept as
-standalone programs under `/tmp/godb`. They use isolated temporary directories,
-close databases on failure, and work from a fresh checkout without that directory.
+standalone programs. They use isolated temporary directories, close databases on
+failure, and work from a fresh checkout.
 Concurrent invocations do not share database paths. Test names can be selected
 with the normal `-run` flag:
 

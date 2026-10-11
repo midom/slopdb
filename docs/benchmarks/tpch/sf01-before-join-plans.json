@@ -1,8 +1,8 @@
 {
   "config": {
-    "data_directory": "/tmp/godb/tpch-sf01",
+    "data_directory": "/tmp/slopdb-bench/tpch-sf01",
     "database_directory": "/tmp/slopdb-tpch-4221663916",
-    "report_file": "/tmp/godb/tpch-before-joins-final.json",
+    "report_file": "/tmp/slopdb-bench/tpch-before-joins-final.json",
     "query_selection": "all",
     "runs": 3,
     "warmups": 1,

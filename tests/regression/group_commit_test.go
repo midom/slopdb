@@ -1,4 +1,4 @@
-// Adapted from /tmp/godb/group_commit_review.go; see TESTING.md.
+// Adapted from group_commit_review.go; see TESTING.md.
 package regression
 
 import (

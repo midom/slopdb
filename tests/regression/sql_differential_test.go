@@ -118,7 +118,7 @@ func referenceDatabase(t *testing.T, setup string) (*regressionEnv, *db.Database
 	return env, d, dir, options
 }
 
-// Adapted from /tmp/godb/sql_differential_review.go.
+// Adapted from sql_differential_review.go.
 func TestSQLDifferential(t *testing.T) {
 	setup, err := os.ReadFile(filepath.Join("testdata", "sql_differential_setup.sql"))
 	if err != nil {
@@ -128,7 +128,7 @@ func TestSQLDifferential(t *testing.T) {
 	runReferenceQueries(t, d, loadReferenceQueries(t, "sql_differential_cases.json"))
 }
 
-// Adapted from /tmp/godb/performance_execution_review.go.
+// Adapted from performance_execution_review.go.
 func TestExecutionDifferential(t *testing.T) {
 	setup, err := os.ReadFile(filepath.Join("testdata", "performance_setup.sql"))
 	if err != nil {
@@ -138,7 +138,7 @@ func TestExecutionDifferential(t *testing.T) {
 	runReferenceQueries(t, d, loadReferenceQueries(t, "performance_cases.json"))
 }
 
-// Adapted from /tmp/godb/join_optimization_review.go; test both memtables and
+// Adapted from join_optimization_review.go; test both memtables and
 // persisted SSTables against the same SQLite answers.
 func TestJoinDifferential(t *testing.T) {
 	setup, err := os.ReadFile(filepath.Join("testdata", "join_optimization_setup.sql"))

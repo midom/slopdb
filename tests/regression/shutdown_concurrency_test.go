@@ -1,4 +1,4 @@
-// Adapted from /tmp/godb/shutdown_concurrency_review.go; see TESTING.md.
+// Adapted from shutdown_concurrency_review.go; see TESTING.md.
 package regression
 
 import (

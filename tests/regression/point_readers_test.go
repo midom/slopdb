@@ -1,4 +1,4 @@
-// Adapted from /tmp/godb/point_reader_review.go; see TESTING.md.
+// Adapted from point_reader_review.go; see TESTING.md.
 package regression
 
 import (

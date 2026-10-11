@@ -1,4 +1,4 @@
-// Adapted from /tmp/godb/standard_inline_indexes_review.go; see TESTING.md.
+// Adapted from standard_inline_indexes_review.go; see TESTING.md.
 package regression
 
 import (

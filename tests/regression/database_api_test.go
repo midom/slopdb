@@ -1,4 +1,4 @@
-// Adapted from /tmp/godb/api_cache_diagnostics_review.go; see TESTING.md.
+// Adapted from api_cache_diagnostics_review.go; see TESTING.md.
 package regression
 
 import (

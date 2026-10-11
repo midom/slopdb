@@ -1,4 +1,4 @@
-// Adapted from /tmp/godb/sql_standard_review.go; see TESTING.md.
+// Adapted from sql_standard_review.go; see TESTING.md.
 package regression
 
 import (

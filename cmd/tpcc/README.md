@@ -98,9 +98,8 @@ A final ten-second profile measured 1,981.43 transactions/second with no failure
 or retries and all consistency checks passing. The earlier covering-index scan
 no longer dominates CPU. The largest cumulative SQL waits were payment's hot
 warehouse update and district locks; frequently executed order-line inserts and
-stock updates accounted for much of the remaining work. The profile and query
-latencies are `/tmp/godb/tpcc-final.cpu.pprof` and
-`/tmp/godb/tpcc-final-query-timings.json`.
+stock updates accounted for much of the remaining work. The original diagnostic
+run recorded a CPU profile and per-query latencies.
 
 ## Prepared statement comparison (2026-10-11)
 
@@ -133,7 +132,7 @@ still take place on execution.
 
 A separate ten-second CPU profile of prepared execution contained no SQL
 parser or tokenizer frames. Binding accounted for approximately 1.1% of sampled
-CPU time. The profile is `/tmp/godb/tpcc-prepared.cpu.pprof`; its run also had
+CPU time. The profiling run also had
 zero failures or retries and passed all checks after execution and reopening.
 
 SQLite and DuckDB comparisons use the [shared three-engine runner](compare/README.md).

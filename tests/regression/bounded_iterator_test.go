@@ -1,4 +1,4 @@
-// Adapted from /tmp/godb/bounded_iterator_review.go; see TESTING.md.
+// Adapted from bounded_iterator_review.go; see TESTING.md.
 package regression
 
 import (

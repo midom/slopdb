@@ -1,4 +1,4 @@
-// Adapted from /tmp/godb/standard_read_plan_strict_review.go; see TESTING.md.
+// Adapted from standard_read_plan_strict_review.go; see TESTING.md.
 package regression
 
 import (

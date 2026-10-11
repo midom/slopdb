@@ -1,4 +1,4 @@
-// Adapted from /tmp/godb/reverse_multi_review.go; see TESTING.md.
+// Adapted from reverse_multi_review.go; see TESTING.md.
 package regression
 
 import (

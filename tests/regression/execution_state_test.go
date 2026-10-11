@@ -1,4 +1,4 @@
-// Adapted from /tmp/godb/performance_state_review.go; see TESTING.md.
+// Adapted from performance_state_review.go; see TESTING.md.
 package regression
 
 import (

@@ -1,4 +1,4 @@
-// Adapted from /tmp/godb/bloom_quality_review.go; see TESTING.md.
+// Adapted from bloom_quality_review.go; see TESTING.md.
 package regression
 
 import (

@@ -1,4 +1,4 @@
-// Adapted from /tmp/godb/foreign_concurrency_review.go; see TESTING.md.
+// Adapted from foreign_concurrency_review.go; see TESTING.md.
 package regression
 
 import (

@@ -11,15 +11,16 @@ Measured results and raw reports are in the [TPC-C-style comparison](../../../do
 Build from this directory:
 
 ```sh
-go build -o /tmp/godb/tpcc-compare .
+mkdir -p /tmp/slopdb-bench
+go build -o /tmp/slopdb-bench/tpcc-compare .
 ```
 
 Run sequentially from the repository root:
 
 ```sh
-/tmp/godb/tpcc-compare -engine slopdb -workers 10 -duration 1m -json /tmp/godb/tpcc-slopdb.json
-/tmp/godb/tpcc-compare -engine sqlite -workers 10 -duration 1m -json /tmp/godb/tpcc-sqlite.json
-cmd/tpcc/compare/run-duckdb.sh -workers 10 -duration 1m -json /tmp/godb/tpcc-duckdb.json
+/tmp/slopdb-bench/tpcc-compare -engine slopdb -workers 10 -duration 1m -json /tmp/slopdb-bench/tpcc-slopdb.json
+/tmp/slopdb-bench/tpcc-compare -engine sqlite -workers 10 -duration 1m -json /tmp/slopdb-bench/tpcc-sqlite.json
+cmd/tpcc/compare/run-duckdb.sh -workers 10 -duration 1m -json /tmp/slopdb-bench/tpcc-duckdb.json
 ```
 
 Each run uses a fresh on-disk database. Defaults match the SlopDB runner: two

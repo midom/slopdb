@@ -68,25 +68,28 @@ Throughput differs by -0.80% in this single pair of runs. The before/after runs 
 
 The regression suites now live in the repository and run with `go test ./...`
 and `go test -race ./...`; see [Testing](../TESTING.md) for their locations,
-reference fixtures and selective commands. The `/tmp/godb` programs mentioned
-below describe the original validation runs.
+reference fixtures and selective commands.
 
 The new SQLite differential suite passes 3,594 checks across fresh and reopened databases: INNER/LEFT/CROSS joins, mixed outer joins, grouping, NULLs, overlapping OR paths, raw TEXT/BLOB index delimiters, composite keys, correlated aggregates, IN sets, EXISTS with 64-bit pagination, and randomized Unicode/ESCAPE LIKE patterns. Another 319 checks pass with the race detector for prepared joins, transaction/savepoint changes, cache invalidation, indexed DML, validation errors, concurrency, and cancellation.
 
-Existing validation also passes: 599 SQL differential cases, 98 execution cases, 16 cache/numeric cases, 134 SQL semantics checks, 302 tuple-plan comparisons, 177 indexed-read cases, 45 read/view checks, primary-key locking checks, 2,071 prepared API checks with the race detector, and 4,000 concurrent indexed MVCC updates with the race detector. Build and vet pass. The four legacy runners named in AGENTS.md are absent; available review programs under `/tmp/godb` were used instead.
+Existing validation also passes: 599 SQL differential cases, 98 execution cases, 16 cache/numeric cases, 134 SQL semantics checks, 302 tuple-plan comparisons, 177 indexed-read cases, 45 read/view checks, primary-key locking checks, 2,071 prepared API checks with the race detector, and 4,000 concurrent indexed MVCC updates with the race detector. Build and vet pass.
+
+Generate DBGEN inputs in `/tmp/slopdb-bench/tpch-sf01` as described in the
+[benchmark README](../cmd/tpch/README.md), then run:
 
 ```sh
+mkdir -p /tmp/slopdb-bench
 go build -o slopdb .
 go vet ./...
-go build -o /tmp/godb/slopdb-tpch-joins ./cmd/tpch
-/tmp/godb/slopdb-tpch-joins -data /tmp/godb/tpch-sf01 -timeout 30s \
-  -warmups 1 -runs 3 -json /tmp/godb/tpch-after-joins-final.json
-python3 cmd/tpch/verify.py --data /tmp/godb/tpch-sf01 \
-  --report /tmp/godb/tpch-after-joins-final.json \
+go build -o /tmp/slopdb-bench/slopdb-tpch-joins ./cmd/tpch
+/tmp/slopdb-bench/slopdb-tpch-joins -data /tmp/slopdb-bench/tpch-sf01 -timeout 30s \
+  -warmups 1 -runs 3 -json /tmp/slopdb-bench/tpch-after-joins-final.json
+python3 cmd/tpch/verify.py --data /tmp/slopdb-bench/tpch-sf01 \
+  --report /tmp/slopdb-bench/tpch-after-joins-final.json \
   --duckdb-report docs/benchmarks/tpch/sf01-duckdb.json
 
 go run ./cmd/tpcc -workers 10 -duration 1m \
-  -json /tmp/godb/tpcc-after-joins-final.json
+  -json /tmp/slopdb-bench/tpcc-after-joins-final.json
 ```
 
 Raw reports: [TPC-H before](benchmarks/tpch/sf01-before-join-plans.json), [TPC-H after](benchmarks/tpch/sf01-join-plans.json), [SF=0.01 verification](benchmarks/tpch/sf01-join-plans-reference.json), [SF=0.001 execution](benchmarks/tpch/sf001-join-plans.json), [SF=0.001 verification](benchmarks/tpch/sf001-join-plans-reference.json), [calculated comparison](benchmarks/tpch/join-plan-comparison.json), [TPC-C before](benchmarks/tpcc/before-join-plans.json), and [TPC-C after](benchmarks/tpcc/after-join-plans.json).

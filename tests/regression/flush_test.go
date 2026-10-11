@@ -1,4 +1,4 @@
-// Adapted from /tmp/godb/flush_review.go; see TESTING.md.
+// Adapted from flush_review.go; see TESTING.md.
 package regression
 
 import (

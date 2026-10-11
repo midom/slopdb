@@ -1,6 +1,6 @@
 {
   "sqlite_version": "3.45.1",
-  "data_directory": "/tmp/godb/tpch-sf001",
+  "data_directory": "/tmp/slopdb-bench/tpch-sf001",
   "queries": [
     {
       "number": 1,

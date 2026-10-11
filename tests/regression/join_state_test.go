@@ -1,4 +1,4 @@
-// Adapted from /tmp/godb/join_state_review.go; see TESTING.md.
+// Adapted from join_state_review.go; see TESTING.md.
 package regression
 
 import (

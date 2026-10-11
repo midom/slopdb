@@ -1,6 +1,6 @@
 //go:build linux
 
-// Adapted from /tmp/godb/no_wal_cli_review.go; see TESTING.md.
+// Adapted from no_wal_cli_review.go; see TESTING.md.
 package regression
 
 import (

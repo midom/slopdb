@@ -209,10 +209,11 @@ contention, and adding workers are not the primary costs demonstrated here.
 - [SlopDB larger scans](benchmarks/tpch/sf01-slopdb-scans.json),
   [DuckDB SF=0.01](benchmarks/tpch/sf01-duckdb.json), and
   [larger reference verification](benchmarks/tpch/sf01-reference.json).
-- Separate per-query CPU profiles are under `/tmp/godb/tpch-profiles/`; diagnostic
-  settings and timings are in `/tmp/godb/tpch-profile-results.json`.
+- The original diagnostic run also recorded separate per-query CPU profiles;
+  use the runner's `-profile-dir` flag to reproduce them.
 
 Run commands, schemas, indexes, generator requirements, and SQL translations are
 in the [benchmark README](../cmd/tpch/README.md). Input hashes and counts in the
 reports permit checking regenerated data before comparing results. Full reports
-retain their original local data/database paths for provenance.
+retain their run configuration. Archived temporary artifact paths are normalized
+to `/tmp/slopdb-bench` for portability; measured results are unchanged.

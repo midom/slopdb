@@ -1,4 +1,4 @@
-// Adapted from /tmp/godb/current_metadata_review.go; see TESTING.md.
+// Adapted from current_metadata_review.go; see TESTING.md.
 package regression
 
 import (

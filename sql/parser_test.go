@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// Adapted from /tmp/godb/parser_review.go. Rejection is expected; the
+// Adapted from parser_review.go. Rejection is expected; the
 // regression is a panic or failure to return on malformed input.
 func TestMalformedParserInputs(t *testing.T) {
 	tokens := []string{"SELECT", "CREATE", "TABLE", "INSERT", "INTO", "VALUES", "UPDATE", "DELETE", "FROM", "WHERE", "JOIN", "ON", "USING", "BEGIN", "END", "TRIGGER", "DEFAULT", "PRIMARY", "KEY", "UNIQUE", "CHECK", "AS", "IN", "NOT", "WITH", "UNION", "a", "t", "'str'", "0", "1", "NULL", "(", ")", ",", ";", "%", "@", "+", "*", "="}

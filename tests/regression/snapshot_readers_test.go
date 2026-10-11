@@ -1,4 +1,4 @@
-// Adapted from /tmp/godb/snapshot_reader_review.go; see TESTING.md.
+// Adapted from snapshot_reader_review.go; see TESTING.md.
 package regression
 
 import (

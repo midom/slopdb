@@ -1,4 +1,4 @@
-// Adapted from /tmp/godb/current_level_compression_review.go; see TESTING.md.
+// Adapted from current_level_compression_review.go; see TESTING.md.
 package regression
 
 import (

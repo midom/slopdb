@@ -99,17 +99,22 @@ Throughput differed by 0.73% in this single pair of runs; the analytical changes
 
 The verifier checked complete outputs against SQLite and Go DuckDB, including duplicate rows, ordering with ties, exact integers, and floating-point tolerances. Query translations also matched native DuckDB TPC-H answers at both scales. The final large run covers nonempty results for all 22 queries.
 
-Execution checks passed: 599 existing SQL differential cases; 98 new join/group/subquery cases against SQLite; 16 cache invalidation, transaction, volatility, SUM overflow, and exact numeric checks; 134 SQL semantics checks; 302 tuple-plan comparisons; 177 indexed read checks; 45 read/qualification/view checks; and 2,071 prepared API checks with the race detector. Primary-key locking and indexed-update checks passed. `go build -o slopdb .` and `go vet ./...` passed. The legacy four runners listed in AGENTS.md are absent from this workspace; the available review programs were used instead. New temporary programs follow the repository convention under `/tmp/godb`.
+Execution checks passed: 599 existing SQL differential cases; 98 new join/group/subquery cases against SQLite; 16 cache invalidation, transaction, volatility, SUM overflow, and exact numeric checks; 134 SQL semantics checks; 302 tuple-plan comparisons; 177 indexed read checks; 45 read/qualification/view checks; and 2,071 prepared API checks with the race detector. Primary-key locking and indexed-update checks passed. `go build -o slopdb .` and `go vet ./...` passed. These regression suites now run from the repository; see [Testing](../TESTING.md).
 
 The remaining analytical gap is material. Equality joins still materialize Go row maps, join order is fixed, scans use per-row expression interpretation, and correlated execution has no general decorrelation planner. There is no columnar/vectorized execution, cost-based join reordering, spillable hash aggregation, or general semi-join rewrite. Non-equality joins retain quadratic fallback behavior. EXPLAIN does not yet describe join or subquery operators, so its baseline scan lines are insufficient to identify the complete executed plan.
 
 ## Reproduce and inspect
 
+Generate DBGEN inputs in `/tmp/slopdb-bench/tpch-sf001` and
+`/tmp/slopdb-bench/tpch-sf01` as described in the
+[benchmark README](../cmd/tpch/README.md), then run:
+
 ```sh
-go build -o /tmp/godb/slopdb-tpch-optimized ./cmd/tpch
-/tmp/godb/slopdb-tpch-optimized -data /tmp/godb/tpch-sf001 -timeout 5s -json /tmp/godb/tpch-performance-optimized-sf001.json
-/tmp/godb/slopdb-tpch-optimized -data /tmp/godb/tpch-sf01 -timeout 30s -warmups 1 -runs 3 -json /tmp/godb/tpch-performance-optimized-sf01.json
-python3 cmd/tpch/verify.py --data /tmp/godb/tpch-sf01 --report /tmp/godb/tpch-performance-optimized-sf01.json --duckdb-report /tmp/godb/tpch-duckdb-sf01.json
+mkdir -p /tmp/slopdb-bench
+go build -o /tmp/slopdb-bench/slopdb-tpch-optimized ./cmd/tpch
+/tmp/slopdb-bench/slopdb-tpch-optimized -data /tmp/slopdb-bench/tpch-sf001 -timeout 5s -json /tmp/slopdb-bench/tpch-performance-optimized-sf001.json
+/tmp/slopdb-bench/slopdb-tpch-optimized -data /tmp/slopdb-bench/tpch-sf01 -timeout 30s -warmups 1 -runs 3 -json /tmp/slopdb-bench/tpch-performance-optimized-sf01.json
+python3 cmd/tpch/verify.py --data /tmp/slopdb-bench/tpch-sf01 --report /tmp/slopdb-bench/tpch-performance-optimized-sf01.json --duckdb-report docs/benchmarks/tpch/sf01-duckdb.json
 ```
 
 Raw reports: [small SlopDB](benchmarks/tpch/sf001-slopdb-optimized.json), [large SlopDB](benchmarks/tpch/sf01-slopdb-optimized.json), [small validation](benchmarks/tpch/sf001-optimized-reference.json), and [large validation](benchmarks/tpch/sf01-optimized-reference.json). Baseline engine comparisons and profile analysis remain in [TPC-H baseline performance](tpch-performance.md).

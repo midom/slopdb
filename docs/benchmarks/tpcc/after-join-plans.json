@@ -25,7 +25,7 @@
     "prepared_statements": true,
     "wal_fsync": false,
     "database_dir": "/tmp/slopdb-tpcc-3675445995",
-    "report_file": "/tmp/godb/tpcc-after-joins-final.json"
+    "report_file": "/tmp/slopdb-bench/tpcc-after-joins-final.json"
   },
   "started_at": "2026-10-11T20:14:22.716791841Z",
   "prepare_seconds": 0.021880427,

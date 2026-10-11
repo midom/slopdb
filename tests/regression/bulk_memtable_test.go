@@ -1,4 +1,4 @@
-// Adapted from /tmp/godb/bulk_memtable_review.go; see TESTING.md.
+// Adapted from bulk_memtable_review.go; see TESTING.md.
 package regression
 
 import (

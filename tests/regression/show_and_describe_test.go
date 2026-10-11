@@ -1,4 +1,4 @@
-// Adapted from /tmp/godb/show_test_runner.go; see TESTING.md.
+// Adapted from show_test_runner.go; see TESTING.md.
 package regression
 
 import (

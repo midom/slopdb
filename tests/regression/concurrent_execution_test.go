@@ -1,4 +1,4 @@
-// Adapted from /tmp/godb/standard_concurrent_execution_review.go; see TESTING.md.
+// Adapted from standard_concurrent_execution_review.go; see TESTING.md.
 package regression
 
 import (

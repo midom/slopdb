@@ -7,7 +7,7 @@ import (
 	"slopdb/db"
 )
 
-// Adapted from /tmp/godb/covering_ownership_review.go.
+// Adapted from covering_ownership_review.go.
 func TestResultOwnership(t *testing.T) {
 	d, err := db.Open(filepath.Join(t.TempDir(), "database"), nil)
 	if err != nil {

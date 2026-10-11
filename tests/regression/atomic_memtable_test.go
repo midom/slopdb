@@ -1,4 +1,4 @@
-// Adapted from /tmp/godb/atomic_memtable_review.go; see TESTING.md.
+// Adapted from atomic_memtable_review.go; see TESTING.md.
 package regression
 
 import (
