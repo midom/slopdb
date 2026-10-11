@@ -63,7 +63,7 @@ func TestDistributionNoncoveringRangeWorkingSetCosts(t *testing.T) {
 	for _, tc := range []struct {
 		upper int
 		scan  bool
-	}{{3, false}, {14, true}} {
+	}{{3, false}, {14, false}, {30, true}, {90, true}} {
 		stmt := statisticsSelect(t, fmt.Sprintf("SELECT * FROM t WHERE k>=0 AND k<=%d", tc.upper))
 		if plan := s.tuplePlan(stmt, info); (plan == nil) != tc.scan {
 			t.Fatalf("upper=%d: scan=%v want %v", tc.upper, plan == nil, tc.scan)

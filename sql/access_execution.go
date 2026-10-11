@@ -266,6 +266,25 @@ func (s *Schema) walkAccess(info *TableInfo, needed map[string]bool, paths []*ac
 	})
 }
 
+// Disjoint intervals in one index walk visit each physical entry once. A row
+// has one entry per index, even when a variable-width bound needs several
+// delimiter bands. Only overlapping intervals or separate OR paths require
+// origin deduplication; otherwise the set can spill needlessly on a pure read.
+func accessPathsMayRepeatRows(paths []*accessPath) bool {
+	if len(paths) > 1 {
+		return true
+	}
+	for _, path := range paths {
+		for i := 1; i < len(path.intervals); i++ {
+			previous, next := path.intervals[i-1], path.intervals[i]
+			if bytes.Compare(next.lower, previous.upper) < 0 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // walkAccessRaw visits encoded rows before map materialization. Data belongs to
 // the reader and must be decoded or copied before returning from the callback.
 // Covering payloads use their own column layout; snapshots, cancellation,
@@ -280,10 +299,7 @@ func (s *Schema) walkAccessRaw(info *TableInfo, needed map[string]bool, paths []
 	}
 	columns := columnsFor(info)
 	var seen map[string]bool
-	overlap := len(paths) > 1
-	for _, path := range paths {
-		overlap = overlap || len(path.intervals) > 1
-	}
+	overlap := accessPathsMayRepeatRows(paths)
 	if overlap {
 		seen = make(map[string]bool)
 	}
