@@ -503,6 +503,9 @@ func (s *Schema) readerRows(reader *joinReader, left map[string]Value) ([]map[st
 	if reader.disk != nil {
 		return nil, nil
 	}
+	if reader.buckets != nil {
+		return reader.buckets[key], nil
+	}
 	if rows, ok := reader.cache[key]; ok {
 		return rows, nil
 	}
@@ -606,8 +609,11 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 		readers[depth] = s.joinReader(p.relations[i], p.pairs(i, mask))
 		r := p.relations[i]
 		hash := p.preferHashJoin(i, mask, estimatedLeft, readers[depth])
-		if depth > 0 && len(readers[depth].pairs) > 0 && hash && r.count*256 <= float64(s.memoryBudget()/4) {
-			if err := s.loadJoinRelation(r); err != nil {
+		if depth > 0 && len(readers[depth].pairs) > 0 && hash {
+			// The cost decision must survive the memory guard. Build directly
+			// from access paths rather than first retaining the entire relation;
+			// buildJoinBuckets transitions to disk as the budget is reached.
+			if err := s.buildJoinBuckets(readers[depth]); err != nil {
 				return err
 			}
 		}
