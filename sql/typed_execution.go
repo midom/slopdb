@@ -331,6 +331,10 @@ const typedBatchRows = 128
 func (s *Schema) walkTypedAggregate(t *typedAggregate, info *TableInfo, needed map[string]bool, paths []*accessPath, groups map[string]*aggregateGroup, newGroup func() *aggregateGroup) error {
 	batch := make([]Value, typedBatchRows*t.width)
 	rows := 0
+	var groupMemory int64
+	for _, g := range groups {
+		groupMemory += aggregateGroupMemory(g)
+	}
 	var keyBuffer [128]byte
 	flush := func() error {
 		if err := s.checkInterrupt(); err != nil {
@@ -357,6 +361,10 @@ func (s *Schema) walkTypedAggregate(t *typedAggregate, info *TableInfo, needed m
 			}
 			k := string(key)
 			g := groups[k]
+			var before int64
+			if g != nil {
+				before = aggregateGroupMemory(g)
+			}
 			if g == nil {
 				g = newGroup()
 				groups[k] = g
@@ -377,9 +385,13 @@ func (s *Schema) walkTypedAggregate(t *typedAggregate, info *TableInfo, needed m
 				if err != nil {
 					return err
 				}
-				if err := addAggregateValue(&g.states[i], t.functions[i], v); err != nil {
+				if err := s.addAggregateValue(&g.states[i], t.functions[i], v); err != nil {
 					return err
 				}
+			}
+			groupMemory += aggregateGroupMemory(g) - before
+			if groupMemory > s.memoryBudget() {
+				return errAggregateSpill
 			}
 		}
 		// Release variable-width inputs, including rows rejected by WHERE,

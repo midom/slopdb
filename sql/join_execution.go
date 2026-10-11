@@ -196,6 +196,12 @@ func (s *Schema) filterJoinInput(rows []map[string]Value, keys [][]string, terms
 }
 
 func (s *Schema) executeJoins(stmt *SelectStmt, baseRows []map[string]Value, baseKeys [][]string) ([]map[string]Value, [][]string, error) {
+	var spills []*diskHash
+	defer func() {
+		for _, spill := range spills {
+			spill.close()
+		}
+	}()
 	needed := joinRequiredNames(stmt)
 	pruneJoinRows(baseRows, needed, "")
 	result, resultKeys := baseRows, baseKeys
@@ -260,8 +266,10 @@ func (s *Schema) executeJoins(stmt *SelectStmt, baseRows []map[string]Value, bas
 		pruneJoinRows(joinRows, needed, alias)
 		pairs := joinKeyPairs(stmt, jc, alias, columns, leftNames)
 		var buckets map[string][]int
+		var disk *diskHash
+		var bucketBytes int64
 		if len(pairs) > 0 {
-			buckets = make(map[string][]int, len(joinRows))
+			buckets = make(map[string][]int)
 			for j, row := range joinRows {
 				if j%256 == 0 {
 					if err := s.checkInterrupt(); err != nil {
@@ -269,7 +277,29 @@ func (s *Schema) executeJoins(stmt *SelectStmt, baseRows []map[string]Value, bas
 					}
 				}
 				if key, valid := joinRowKey(row, pairs, true); valid {
-					buckets[key] = append(buckets[key], j)
+					bucketBytes += int64(len(key) + 16)
+					if disk == nil && bucketBytes > s.memoryBudget() {
+						disk, err = newDiskHash(s)
+						if err != nil {
+							return nil, nil, err
+						}
+						spills = append(spills, disk)
+						for k, indexes := range buckets {
+							for _, index := range indexes {
+								if err = disk.add(k, map[string]Value{"pos": NewIntValue(int64(index))}); err != nil {
+									return nil, nil, err
+								}
+							}
+						}
+						buckets = nil
+					}
+					if disk != nil {
+						if err = disk.add(key, map[string]Value{"pos": NewIntValue(int64(j))}); err != nil {
+							return nil, nil, err
+						}
+					} else {
+						buckets[key] = append(buckets[key], j)
+					}
 				}
 			}
 		}
@@ -290,15 +320,9 @@ func (s *Schema) executeJoins(stmt *SelectStmt, baseRows []map[string]Value, bas
 			if buckets != nil {
 				count = len(candidates)
 			}
-			for k := 0; k < count; k++ {
-				if k%256 == 0 {
-					if err := s.checkInterrupt(); err != nil {
-						return nil, nil, err
-					}
-				}
-				j := k
-				if buckets != nil {
-					j = candidates[k]
+			acceptIndex := func(j int) error {
+				if err := s.checkInterrupt(); err != nil {
+					return err
 				}
 				right := joinRows[j]
 				using := jc.Using
@@ -319,13 +343,13 @@ func (s *Schema) executeJoins(stmt *SelectStmt, baseRows []map[string]Value, bas
 					}
 				}
 				if !match {
-					continue
+					return nil
 				}
 				combined := s.combineRowsWithAlias(left, right, alias)
 				if jc.On != nil {
 					match, err = s.evalCondition(jc.On, combined)
 					if err != nil {
-						return nil, nil, err
+						return err
 					}
 				}
 				if match {
@@ -342,7 +366,26 @@ func (s *Schema) executeJoins(stmt *SelectStmt, baseRows []map[string]Value, bas
 						nextKeys = append(nextKeys, keys)
 					}
 				}
+				return nil
 			}
+			if disk != nil {
+				if key, valid := joinRowKey(left, pairs, false); valid {
+					if err := disk.walk(key, func(row map[string]Value) error { return acceptIndex(int(row["pos"].Int)) }); err != nil {
+						return nil, nil, err
+					}
+				}
+			} else {
+				for k := 0; k < count; k++ {
+					j := k
+					if buckets != nil {
+						j = candidates[k]
+					}
+					if err := acceptIndex(j); err != nil {
+						return nil, nil, err
+					}
+				}
+			}
+
 			if !matched && jc.Type == "LEFT" {
 				null := make(map[string]Value)
 				for _, c := range columns {

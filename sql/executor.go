@@ -50,6 +50,9 @@ type ViewInfo struct {
 }
 
 type Schema struct {
+	queryMemoryBytes   int64
+	queryTempDir       string
+	queryDisks         []*diskHash
 	commitMu           sync.RWMutex // protects the committed root catalog and reservations
 	statementSnapshot  uint64
 	snapshotReader     uint64
@@ -178,6 +181,12 @@ func NewSchemaWithOptions(lsm *storage.LSMTree, pageSize int, opt *storage.Optio
 		triggers:   make(map[string]*TriggerInfo),
 		autoincMax: make(map[string]int64),
 		rowIDCount: make(map[string]int64),
+	}
+	if opt != nil {
+		if opt.QueryMemoryBytes < 0 {
+			return nil, fmt.Errorf("query memory budget must not be negative")
+		}
+		s.queryMemoryBytes, s.queryTempDir = opt.QueryMemoryBytes, opt.QueryTempDir
 	}
 	if err := s.loadSchema(); err != nil {
 		return nil, err
@@ -2580,7 +2589,14 @@ func (s *Schema) Union(stmt *UnionStmt) (*ResultSet, error) {
 		}
 	}
 	if len(orders) > 0 {
-		sort.SliceStable(left.Rows, func(i, j int) bool { return s.compareRows(left.Rows[i], left.Rows[j], orders) })
+		window := int64(-1)
+		if stmt.Limit >= 0 {
+			window = limitWindow(stmt.Limit, stmt.Offset)
+		}
+		left.Rows, _, err = s.sortBounded(left.Rows, nil, orders, window)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if stmt.Offset > 0 {
 		if stmt.Offset >= int64(len(left.Rows)) {
@@ -3821,6 +3837,13 @@ func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
 	if err := validateGrouping(stmt, info, rs.Columns); err != nil {
 		return nil, err
 	}
+	if sorted, used, sortErr := s.streamOrderedSelect(stmt, info, exprCols, rs.Columns); used || sortErr != nil {
+		if sortErr != nil {
+			return nil, sortErr
+		}
+		rs.Rows = sorted
+		return rs, nil
+	}
 	// Aliases are legal in ORDER BY, GROUP BY and HAVING. Expression evaluation
 	// below validates references and preserves any error instead of hiding it.
 
@@ -4108,6 +4131,13 @@ func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
 	hasGroupBy := len(stmt.GroupBy) > 0 || stmt.Having != nil
 
 	if (hasAgg || hasGroupBy) && !streamedGroups {
+		var inputBytes int64
+		for _, row := range rows {
+			inputBytes += rowMemory(row)
+			if inputBytes > s.memoryBudget() {
+				return nil, fmt.Errorf("query memory budget exceeded by aggregation shape without a streaming spill plan")
+			}
+		}
 		finish := s.ProfileOperator("Aggregate", tableName)
 		inputRows := int64(len(rows))
 		var err error
@@ -4125,7 +4155,11 @@ func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
 		for _, col := range rs.Columns {
 			distinctCols = append(distinctCols, col.Name)
 		}
-		rows, rowKeys = s.distinctRowsColsWithKeys(rows, distinctCols, rowKeys)
+		var distinctErr error
+		rows, rowKeys, distinctErr = s.distinctBounded(rows, distinctCols, rowKeys)
+		if distinctErr != nil {
+			return nil, distinctErr
+		}
 	}
 
 	for i := range stmt.OrderBy {
@@ -4146,11 +4180,18 @@ func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
 
 	if len(stmt.OrderBy) > 0 && !orderedIndex {
 		finish := s.ProfileOperator("Sort", tableName)
-		sort.Sort(selectRowsWithKeys{rows: rows, keys: rowKeys, less: func(a, b map[string]Value) bool {
-			return s.compareRows(a, b, stmt.OrderBy)
-		}})
+		inputRows := int64(len(rows))
+		window := int64(-1)
+		if stmt.Lock == nil && stmt.Limit >= 0 {
+			window = limitWindow(stmt.Limit, stmt.Offset)
+		}
+		var sortErr error
+		rows, rowKeys, sortErr = s.sortBounded(rows, rowKeys, stmt.OrderBy, window)
 		if finish != nil {
-			finish(int64(len(rows)), int64(len(rows)), nil)
+			finish(inputRows, int64(len(rows)), sortErr)
+		}
+		if sortErr != nil {
+			return nil, sortErr
 		}
 	}
 	if stmt.Lock != nil && !lockInputs {

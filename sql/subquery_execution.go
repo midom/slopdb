@@ -279,6 +279,10 @@ func (s *Schema) executeSubqueryMode(sub *SelectStmt, outer map[string]Value, ex
 }
 
 func (s *Schema) clearSelectCaches() {
+	for _, disk := range s.queryDisks {
+		disk.close()
+	}
+	s.queryDisks = nil
 	s.subqueryMemos = nil
 	s.existsMemos = nil
 	s.subquerySets = nil

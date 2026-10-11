@@ -14,6 +14,9 @@ import (
 // are inclusive and must not be summed. Go heap counters are process-wide
 // deltas; concurrent statements can contribute to those two counters.
 type QueryProfile struct {
+	SpillBytes            int64             `json:"spill_bytes"`
+	SpillRuns             int64             `json:"spill_runs"`
+	MemoryLimitBytes      int64             `json:"memory_limit_bytes"`
 	ElapsedMS             float64           `json:"elapsed_ms"`
 	LockWaitMS            float64           `json:"lock_wait_ms"`
 	RowsExamined          int64             `json:"rows_examined"`
@@ -47,7 +50,7 @@ type OperatorProfile struct {
 // must stop profiling before releasing the session to a different execution.
 func (s *Schema) StartQueryProfile() *QueryProfile {
 	s.StopQueryProfile()
-	p := &QueryProfile{started: time.Now(), points: make(map[string]int)}
+	p := &QueryProfile{MemoryLimitBytes: s.memoryBudget(), started: time.Now(), points: make(map[string]int)}
 	runtime.ReadMemStats(&p.heap)
 	s.profile = p
 	return p
@@ -247,6 +250,7 @@ func (s *Schema) appendProfileResult(rs *ResultSet) {
 		{Name: "rows_examined", ColType: ColInteger}, {Name: "index_entries_examined", ColType: ColInteger},
 		{Name: "rows_returned", ColType: ColInteger}, {Name: "point_lookups", ColType: ColInteger},
 		{Name: "bytes_read", ColType: ColInteger}, {Name: "elapsed_ms", ColType: ColReal},
+		{Name: "spill_bytes", ColType: ColInteger}, {Name: "spill_runs", ColType: ColInteger}, {Name: "memory_limit_bytes", ColType: ColInteger},
 		{Name: "lock_wait_ms", ColType: ColReal}, {Name: "process_allocated_bytes", ColType: ColInteger},
 		{Name: "process_allocations", ColType: ColInteger},
 	}
@@ -280,6 +284,9 @@ func (s *Schema) appendProfileResult(rs *ResultSet) {
 		add("Actual"+op.Operator, op.Relation, op)
 	}
 	row := add("QueryProfile", "", OperatorProfile{ID: -1, ParentID: -1, RowsExamined: p.RowsExamined, IndexEntriesExamined: p.IndexEntriesExamined, PointLookups: p.PointLookups, BytesRead: p.BytesRead, ElapsedMS: p.ElapsedMS})
+	row["spill_bytes"] = NewIntValue(p.SpillBytes)
+	row["spill_runs"] = NewIntValue(p.SpillRuns)
+	row["memory_limit_bytes"] = NewIntValue(p.MemoryLimitBytes)
 	row["lock_wait_ms"] = NewRealValue(p.LockWaitMS)
 	row["process_allocated_bytes"] = NewIntValue(int64(p.ProcessAllocatedBytes))
 	row["process_allocations"] = NewIntValue(int64(p.ProcessAllocations))
