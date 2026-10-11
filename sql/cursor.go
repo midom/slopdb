@@ -51,6 +51,9 @@ func (s *Schema) OpenRowCursor(stmt *SelectStmt) (*RowCursor, bool, error) {
 			}
 		}
 	}
+	if stmt.prepared != nil {
+		defer s.restorePreparedPlan(s.usePreparedPlan(stmt.prepared, info))
+	}
 	if err := s.validateQuery(stmt, info); err != nil {
 		return nil, true, err
 	}

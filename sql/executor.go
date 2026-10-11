@@ -86,6 +86,7 @@ type Schema struct {
 	subquerySets     map[*ResultSet]*subqueryMembership
 	selectDepth      int
 	profile          *QueryProfile
+	preparedPlan     *preparedExecutionPlan
 	triggerDepth     int
 	viewDepth        int
 	savepoints       []savepoint
@@ -2807,6 +2808,12 @@ func (s *Schema) findRowsViaIndexOrder(stmt *SelectStmt, tableName string) ([][]
 // Only exact, typed equalities are safe for a physical key lookup. SQL affinity
 // and mixed numeric comparisons still use the normal scan and predicate path.
 func (s *Schema) primaryKeyLookup(where Expression, table string, info *TableInfo) ([]byte, bool) {
+	if p := s.preparedPlan; p != nil && p.where == where && p.info == info {
+		return p.primaryKey(table, info)
+	}
+	return s.uncachedPrimaryKeyLookup(where, table, info)
+}
+func (s *Schema) uncachedPrimaryKeyLookup(where Expression, table string, info *TableInfo) ([]byte, bool) {
 	if info == nil || len(info.PKColumns) == 0 {
 		return nil, false
 	}
@@ -3583,6 +3590,17 @@ func (s *Schema) buildReturningResult(cols []SelectColumn, rows []map[string]Val
 }
 
 func (s *Schema) validateQuery(stmt *SelectStmt, info *TableInfo) error {
+	p := stmt.prepared
+	if p != nil && p.validated {
+		return nil
+	}
+	err := s.validateQueryUncached(stmt, info)
+	if err == nil && p != nil {
+		p.validated = true
+	}
+	return err
+}
+func (s *Schema) validateQueryUncached(stmt *SelectStmt, info *TableInfo) error {
 	columns := make(map[string]int)
 	qualified := make(map[string]bool)
 	needQualified := needsQualifiedRows(stmt)
@@ -3786,6 +3804,10 @@ func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
 		} else if stmt.FromExpr == nil {
 			return nil, fmt.Errorf("table %q does not exist", tableName)
 		}
+	}
+
+	if stmt.prepared != nil && info != nil {
+		defer s.restorePreparedPlan(s.usePreparedPlan(stmt.prepared, info))
 	}
 
 	if stmt.FromExpr == nil {
