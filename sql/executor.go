@@ -61,6 +61,7 @@ type Schema struct {
 	indexes            map[string]*IndexInfo
 	outerRow           map[string]Value
 	stats              map[string]int64
+	distributions      map[string]*tableStatistics
 	pageSize           int
 	userVersion        int64
 	views              map[string]*ViewInfo
@@ -168,15 +169,16 @@ func NewSchema(lsm *storage.LSMTree, pageSize int) (*Schema, error) {
 // trust atomically maintained indexes.
 func NewSchemaWithOptions(lsm *storage.LSMTree, pageSize int, opt *storage.Options) (*Schema, error) {
 	s := &Schema{
-		lsm:        lsm,
-		tables:     make(map[string]*TableInfo),
-		indexes:    make(map[string]*IndexInfo),
-		stats:      make(map[string]int64),
-		pageSize:   pageSize,
-		views:      make(map[string]*ViewInfo),
-		triggers:   make(map[string]*TriggerInfo),
-		autoincMax: make(map[string]int64),
-		rowIDCount: make(map[string]int64),
+		lsm:           lsm,
+		tables:        make(map[string]*TableInfo),
+		indexes:       make(map[string]*IndexInfo),
+		stats:         make(map[string]int64),
+		distributions: make(map[string]*tableStatistics),
+		pageSize:      pageSize,
+		views:         make(map[string]*ViewInfo),
+		triggers:      make(map[string]*TriggerInfo),
+		autoincMax:    make(map[string]int64),
+		rowIDCount:    make(map[string]int64),
 	}
 	if err := s.loadSchema(); err != nil {
 		return nil, err
@@ -200,6 +202,7 @@ func NewSchemaWithOptions(lsm *storage.LSMTree, pageSize int, opt *storage.Optio
 	}
 	s.loadAutoincMax()
 	s.loadStats()
+	s.loadDistributions()
 	s.loadUserVersion()
 	if opt != nil && opt.VerifyIndexesOnOpen {
 		if err := s.repairIndexes(); err != nil {
@@ -513,11 +516,18 @@ func (s *Schema) saveUserVersion() error {
 }
 
 func (s *Schema) UpdateStats() error {
-	for name := range s.tables {
-		count := s.countRows(name)
-		s.stats[name] = count
+	for name, info := range s.tables {
+		distribution, err := s.analyzeTable(info)
+		if err != nil {
+			return err
+		}
+		s.stats[name] = distribution.Rows
+		s.distributions[name] = distribution
 	}
-	return s.saveStats()
+	if err := s.saveStats(); err != nil {
+		return err
+	}
+	return s.saveDistributions()
 }
 
 func (s *Schema) countRows(tableName string) int64 {
@@ -1461,6 +1471,7 @@ type schemaState struct {
 	views           map[string]*ViewInfo
 	triggers        map[string]*TriggerInfo
 	stats           map[string]int64
+	distributions   map[string]*tableStatistics
 	autoinc, rowIDs map[string]int64
 	userVersion     int64
 	lookups         *catalogLookups
@@ -1473,10 +1484,12 @@ func (s *Schema) captureState() *schemaState {
 		s.catalogShared = true
 	}
 	return &schemaState{tables: s.tables, indexes: s.indexes, views: s.views, triggers: s.triggers,
-		stats: maps.Clone(s.stats), autoinc: maps.Clone(s.autoincMax), rowIDs: maps.Clone(s.rowIDCount), userVersion: s.userVersion, lookups: s.catalogLookup}
+		stats: maps.Clone(s.stats), distributions: maps.Clone(s.distributions), autoinc: maps.Clone(s.autoincMax), rowIDs: maps.Clone(s.rowIDCount), userVersion: s.userVersion, lookups: s.catalogLookup}
 }
 
 func (s *Schema) ensureCatalogWritable() {
+	// Column names and affinities may change. Discard immutable distribution hints.
+	s.distributions = make(map[string]*tableStatistics)
 	s.catalogLookup = nil
 	if !s.catalogShared {
 		return
@@ -1534,6 +1547,7 @@ func (s *Schema) restoreState(st *schemaState) {
 	s.views = st.views
 	s.triggers = st.triggers
 	s.stats = st.stats
+	s.distributions = st.distributions
 	s.autoincMax = st.autoinc
 	s.rowIDCount = st.rowIDs
 	s.userVersion = st.userVersion
@@ -1614,6 +1628,7 @@ func (s *Schema) Commit() error {
 		{schemaTrigPrefix, s.triggers, s.txState.triggers},
 		{autoincPrefix, s.autoincMax, s.txState.autoinc},
 		{statsPrefix, s.stats, s.txState.stats},
+		{distributionPrefix, distributionMetadata{1, s.distributions}, distributionMetadata{1, s.txState.distributions}},
 	} {
 		if reflect.DeepEqual(meta.value, meta.before) {
 			continue
@@ -3940,6 +3955,7 @@ func (s *Schema) Select(stmt *SelectStmt) (*ResultSet, error) {
 		var baseRows []map[string]Value
 		var baseKeys [][]string
 		usedIndex := false
+		preferScan := s.distributionScanPreferred(stmt, info)
 		if plan := s.tuplePlan(stmt, info); plan != nil {
 			var readErr error
 			baseRows, baseKeys, orderedIndex, readErr = s.tupleRows(stmt, plan, trackKeys)
@@ -3949,7 +3965,7 @@ func (s *Schema) Select(stmt *SelectStmt) (*ResultSet, error) {
 			usedIndex = true
 			conditionSatisfied = true
 		}
-		if plan := s.coveringPlan(stmt, tableName, info); !usedIndex && plan != nil {
+		if plan := s.coveringPlan(stmt, tableName, info); !usedIndex && !preferScan && plan != nil {
 			var readErr error
 			baseRows, readErr = s.coveringRows(stmt, plan)
 			if readErr != nil {
@@ -3961,7 +3977,7 @@ func (s *Schema) Select(stmt *SelectStmt) (*ResultSet, error) {
 			coveringProjection = exactCoveringProjection(stmt, plan.info)
 		}
 
-		if stmt.Where != nil && !usedIndex {
+		if stmt.Where != nil && !usedIndex && !preferScan {
 			if rowKeys, ok := s.findMatchingRowsViaIndex(stmt.Where, tableName); ok {
 				values, readErr := s.schemaMultiGet(rowKeys)
 				if readErr != nil {
@@ -3980,7 +3996,7 @@ func (s *Schema) Select(stmt *SelectStmt) (*ResultSet, error) {
 			}
 		}
 
-		if !usedIndex {
+		if !usedIndex && !preferScan {
 			var rangeErr error
 			baseRows, usedIndex, rangeErr = s.indexRangeRows(stmt, tableName, info)
 			orderedIndex = usedIndex

@@ -132,7 +132,7 @@ func cloneState(state *schemaState) *schemaState {
 }
 
 func (s *Schema) persistentStateChanged() bool {
-	return s.catalogChanged() || !reflect.DeepEqual(s.stats, s.txState.stats) ||
+	return s.catalogChanged() || !reflect.DeepEqual(s.stats, s.txState.stats) || !reflect.DeepEqual(s.distributions, s.txState.distributions) ||
 		!reflect.DeepEqual(s.autoincMax, s.txState.autoinc) || s.userVersion != s.txState.userVersion
 }
 
@@ -180,14 +180,15 @@ func mergeState(base, local, latest *schemaState) *schemaState {
 		version = local.userVersion
 	}
 	merged := &schemaState{
-		tables:      mergeCatalogMap(base.tables, local.tables, latest.tables),
-		indexes:     mergeCatalogMap(base.indexes, local.indexes, latest.indexes),
-		views:       mergeCatalogMap(base.views, local.views, latest.views),
-		triggers:    mergeCatalogMap(base.triggers, local.triggers, latest.triggers),
-		stats:       mergeMap(base.stats, local.stats, latest.stats),
-		autoinc:     mergeCounter(base.autoinc, local.autoinc, latest.autoinc),
-		rowIDs:      mergeCounter(base.rowIDs, local.rowIDs, latest.rowIDs),
-		userVersion: version,
+		tables:        mergeCatalogMap(base.tables, local.tables, latest.tables),
+		indexes:       mergeCatalogMap(base.indexes, local.indexes, latest.indexes),
+		views:         mergeCatalogMap(base.views, local.views, latest.views),
+		triggers:      mergeCatalogMap(base.triggers, local.triggers, latest.triggers),
+		stats:         mergeMap(base.stats, local.stats, latest.stats),
+		distributions: mergeMap(base.distributions, local.distributions, latest.distributions),
+		autoinc:       mergeCounter(base.autoinc, local.autoinc, latest.autoinc),
+		rowIDs:        mergeCounter(base.rowIDs, local.rowIDs, latest.rowIDs),
+		userVersion:   version,
 	}
 	if reflect.DeepEqual(merged.tables, latest.tables) && reflect.DeepEqual(merged.indexes, latest.indexes) {
 		merged.lookups = latest.lookups

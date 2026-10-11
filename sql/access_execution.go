@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 
@@ -206,6 +207,12 @@ func (s *Schema) accessPaths(where Expression, info *TableInfo) []*accessPath {
 	for _, branch := range branches {
 		constraints := s.accessConstraints(branch, info)
 		best := buildAccessPath(info, nil, constraints)
+		bestCost := math.Inf(1)
+		if best != nil {
+			if rows, known := s.accessEstimate(info, nil, constraints); known {
+				bestCost = accessCost(rows, false, true)
+			}
+		}
 		for _, idx := range s.tableIndexes(info.Name) {
 			if s.isClusteredIndex(idx) {
 				continue
@@ -218,9 +225,19 @@ func (s *Schema) accessPaths(where Expression, info *TableInfo) []*accessPath {
 					}
 				}
 			}
-			if p != nil && (best == nil || p.score > best.score || p.score == best.score && best.index != nil && idx.Name < best.index.Name) {
-				best = p
+			cost := math.Inf(1)
+			if p != nil {
+				if rows, known := s.accessEstimate(info, idx, constraints); known {
+					cost = accessCost(rows, true, false)
+				}
 			}
+			if p != nil && (cost < bestCost || cost == bestCost && (best == nil || p.score > best.score || p.score == best.score && best.index != nil && idx.Name < best.index.Name)) {
+				best = p
+				bestCost = cost
+			}
+		}
+		if stats := s.distributions[info.Name]; stats != nil && bestCost > float64(stats.Rows) && bestCost < math.Inf(1) {
+			return nil
 		}
 		if best == nil {
 			return nil
