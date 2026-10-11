@@ -397,9 +397,9 @@ func (s *Schema) tupleRows(stmt *SelectStmt, plan *tupleReadPlan, trackKeys bool
 	var keys [][]string
 	simple := !hasAggregates(stmt) && len(stmt.GroupBy) == 0 && stmt.Having == nil && !stmt.Distinct && !stmt.trackRows
 	ordered := plan.ordered && simple
-	limit := -1
-	if ordered && tupleSafePredicate(stmt.Where) && stmt.Limit >= 0 && stmt.Offset >= 0 && stmt.Offset <= int(^uint(0)>>1)-stmt.Limit {
-		limit = stmt.Limit + stmt.Offset
+	limit := int64(-1)
+	if ordered && tupleSafePredicate(stmt.Where) && stmt.Limit >= 0 && stmt.Offset >= 0 {
+		limit = limitWindow(stmt.Limit, stmt.Offset)
 	}
 	if stmt.Limit == 0 && simple {
 		return nil, nil, ordered, nil
@@ -452,7 +452,7 @@ func (s *Schema) tupleRows(stmt *SelectStmt, plan *tupleReadPlan, trackKeys bool
 					return nil, nil, false, err
 				}
 			}
-			if limit >= 0 && len(rows) >= limit {
+			if limit >= 0 && int64(len(rows)) >= limit {
 				break
 			}
 		}
@@ -496,7 +496,7 @@ func (s *Schema) tupleRows(stmt *SelectStmt, plan *tupleReadPlan, trackKeys bool
 				if err := accept(data, key, payloadInfo); err != nil {
 					return err
 				}
-				if limit >= 0 && len(rows) >= limit {
+				if limit >= 0 && int64(len(rows)) >= limit {
 					break
 				}
 				if plan.reverse {
@@ -510,7 +510,7 @@ func (s *Schema) tupleRows(stmt *SelectStmt, plan *tupleReadPlan, trackKeys bool
 		if err != nil {
 			return nil, nil, false, err
 		}
-		if limit >= 0 && len(rows) >= limit {
+		if limit >= 0 && int64(len(rows)) >= limit {
 			break
 		}
 	}

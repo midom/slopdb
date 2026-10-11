@@ -125,7 +125,7 @@ func validateAggregateExpr(expr Expression, allow bool) error {
 func validateGrouping(stmt *SelectStmt, info *TableInfo, columns []ColumnDef) error {
 	stmt.GroupBy = append([]Expression(nil), stmt.GroupBy...)
 	for i, g := range stmt.GroupBy {
-		if literal, ok := g.(*LiteralExpr); ok && !literal.Value.Null && literal.Value.Type == ColInteger {
+		if literal, ok := g.(*LiteralExpr); ok && !literal.BoundParameter && !literal.Value.Null && literal.Value.Type == ColInteger {
 			ordinal := literal.Value.Int
 			if ordinal < 1 || ordinal > int64(len(columns)) {
 				return fmt.Errorf("GROUP BY position out of range")

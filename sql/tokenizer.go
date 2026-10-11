@@ -35,6 +35,7 @@ const (
 	TokKeyword
 	TokInvalid
 	TokPercent
+	TokParameter
 )
 
 type Token struct {
@@ -115,6 +116,9 @@ func (t *Tokenizer) Next() (tok Token) {
 	}
 
 	switch ch {
+	case '?':
+		t.pos++
+		return Token{Type: TokParameter, Value: "?"}
 	case ',':
 		t.pos++
 		return Token{Type: TokComma, Value: ","}

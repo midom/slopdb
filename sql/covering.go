@@ -394,9 +394,9 @@ func (s *Schema) coveringPlan(stmt *SelectStmt, table string, info *TableInfo) *
 
 func (s *Schema) coveringRows(stmt *SelectStmt, plan *coveringReadPlan) ([]map[string]Value, error) {
 	rows := make([]map[string]Value, 0)
-	limit := -1
-	if plan.ordered && !stmt.Distinct && len(stmt.GroupBy) == 0 && stmt.Having == nil && !hasAggregates(stmt) && rangePredicate(stmt.Where) && stmt.Limit >= 0 && stmt.Offset >= 0 && stmt.Offset <= int(^uint(0)>>1)-stmt.Limit {
-		limit = stmt.Limit + stmt.Offset
+	limit := int64(-1)
+	if plan.ordered && !stmt.Distinct && len(stmt.GroupBy) == 0 && stmt.Having == nil && !hasAggregates(stmt) && rangePredicate(stmt.Where) && stmt.Limit >= 0 && stmt.Offset >= 0 {
+		limit = limitWindow(stmt.Limit, stmt.Offset)
 		if stmt.Limit == 0 {
 			return rows, nil
 		}
@@ -442,7 +442,7 @@ func (s *Schema) coveringRows(stmt *SelectStmt, plan *coveringReadPlan) ([]map[s
 			if matches {
 				rows = append(rows, row)
 			}
-			if limit >= 0 && len(rows) >= limit {
+			if limit >= 0 && int64(len(rows)) >= limit {
 				break
 			}
 			if plan.reverse {
@@ -456,7 +456,7 @@ func (s *Schema) coveringRows(stmt *SelectStmt, plan *coveringReadPlan) ([]map[s
 		if err != nil {
 			return nil, err
 		}
-		if limit >= 0 && len(rows) >= limit {
+		if limit >= 0 && int64(len(rows)) >= limit {
 			break
 		}
 	}

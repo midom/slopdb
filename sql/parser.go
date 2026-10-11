@@ -8,12 +8,18 @@ import (
 )
 
 type Parser struct {
-	tok *Tokenizer
-	cur Token
+	tok            *Tokenizer
+	cur            Token
+	parameters     bool
+	parameterCount int
 }
 
 func Parse(sql string) ([]Statement, error) {
 	p := &Parser{tok: NewTokenizer(sql)}
+	return p.parse()
+}
+
+func (p *Parser) parse() ([]Statement, error) {
 	p.advance()
 
 	var stmts []Statement
@@ -56,12 +62,21 @@ func (p *Parser) expectKeyword(kw string) error {
 	return nil
 }
 
-func (p *Parser) parseLimit(limit, offset *int) error {
+func (p *Parser) parseLimit(limit, offset *int64, limitParam, offsetParam *int) error {
 	if p.cur.Value != "LIMIT" {
 		return nil
 	}
 	p.advance()
-	number := func() (int, error) {
+	number := func(param *int) (int64, error) {
+		if p.cur.Type == TokParameter {
+			if !p.parameters {
+				return 0, fmt.Errorf("parameters require Prepare")
+			}
+			p.parameterCount++
+			*param = p.parameterCount
+			p.advance()
+			return 0, nil
+		}
 		sign := ""
 		if p.cur.Type == TokMinus || p.cur.Type == TokPlus {
 			sign = p.cur.Value
@@ -70,11 +85,11 @@ func (p *Parser) parseLimit(limit, offset *int) error {
 		if p.cur.Type != TokInt {
 			return 0, fmt.Errorf("expected integer LIMIT/OFFSET")
 		}
-		n, err := strconv.Atoi(sign + p.cur.Value)
+		n, err := strconv.ParseInt(sign+p.cur.Value, 10, 64)
 		p.advance()
 		return n, err
 	}
-	n, err := number()
+	n, err := number(limitParam)
 	if err != nil {
 		return err
 	}
@@ -82,10 +97,11 @@ func (p *Parser) parseLimit(limit, offset *int) error {
 	if p.cur.Type == TokComma {
 		p.advance()
 		*offset = *limit
-		*limit, err = number()
+		*offsetParam, *limitParam = *limitParam, 0
+		*limit, err = number(limitParam)
 	} else if p.cur.Value == "OFFSET" {
 		p.advance()
-		*offset, err = number()
+		*offset, err = number(offsetParam)
 	}
 	if *offset < 0 {
 		*offset = 0
@@ -1007,7 +1023,7 @@ func (p *Parser) parseSelect() (Statement, error) {
 		}
 	}
 
-	if err := p.parseLimit(&stmt.Limit, &stmt.Offset); err != nil {
+	if err := p.parseLimit(&stmt.Limit, &stmt.Offset, &stmt.LimitParam, &stmt.OffsetParam); err != nil {
 		return nil, err
 	}
 	if p.cur.Type == TokKeyword && (p.cur.Value == "FOR" || p.cur.Value == "LOCK") {
@@ -1070,18 +1086,22 @@ func (p *Parser) parseSelect() (Statement, error) {
 				union.OrderBy = copy.OrderBy
 				union.Limit = copy.Limit
 				union.Offset = copy.Offset
+				union.LimitParam, union.OffsetParam = copy.LimitParam, copy.OffsetParam
 				copy.OrderBy = nil
 				copy.Limit = -1
 				copy.Offset = 0
+				copy.LimitParam, copy.OffsetParam = 0, 0
 				union.Right = &copy
 			case *UnionStmt:
 				copy := *tail
 				union.OrderBy = copy.OrderBy
 				union.Limit = copy.Limit
 				union.Offset = copy.Offset
+				union.LimitParam, union.OffsetParam = copy.LimitParam, copy.OffsetParam
 				copy.OrderBy = nil
 				copy.Limit = -1
 				copy.Offset = 0
+				copy.LimitParam, copy.OffsetParam = 0, 0
 				union.Right = &copy
 			}
 			return union, nil
@@ -1136,7 +1156,7 @@ func (p *Parser) parseDelete() (Statement, error) {
 		stmt.Where = expr
 	}
 
-	if err := p.parseLimit(&stmt.Limit, &stmt.Offset); err != nil {
+	if err := p.parseLimit(&stmt.Limit, &stmt.Offset, &stmt.LimitParam, &stmt.OffsetParam); err != nil {
 		return nil, err
 	}
 
@@ -1204,7 +1224,7 @@ func (p *Parser) parseUpdate() (Statement, error) {
 		stmt.Where = expr
 	}
 
-	if err := p.parseLimit(&stmt.Limit, &stmt.Offset); err != nil {
+	if err := p.parseLimit(&stmt.Limit, &stmt.Offset, &stmt.LimitParam, &stmt.OffsetParam); err != nil {
 		return nil, err
 	}
 
@@ -1671,6 +1691,15 @@ func (p *Parser) parseUnary() (Expression, error) {
 }
 
 func (p *Parser) parsePrimary() (Expression, error) {
+	if p.cur.Type == TokParameter {
+		if !p.parameters {
+			return nil, fmt.Errorf("parameters require Prepare")
+		}
+		e := &ParameterExpr{Index: p.parameterCount}
+		p.parameterCount++
+		p.advance()
+		return e, nil
+	}
 	if p.cur.Type == TokLParen {
 		if p.tok.Peek().Type == TokKeyword && strings.ToUpper(p.tok.Peek().Value) == "SELECT" {
 			sub, err := p.parseSubqueryParens()

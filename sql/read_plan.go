@@ -79,7 +79,7 @@ func (s *Schema) primaryKeyList(where Expression, table string, info *TableInfo)
 // secondary integer ranges batch their point lookups.
 // Joins, grouping, DISTINCT and row locking keep the general executor path.
 func (s *Schema) indexRangeRows(stmt *SelectStmt, table string, info *TableInfo) ([]map[string]Value, bool, error) {
-	if stmt.Lock != nil || stmt.trackRows || len(stmt.Joins) != 0 || stmt.Distinct || len(stmt.GroupBy) != 0 || stmt.Having != nil || hasAggregates(stmt) || stmt.Limit < 0 || stmt.Offset < 0 || stmt.Offset > int(^uint(0)>>1)-stmt.Limit {
+	if stmt.Lock != nil || stmt.trackRows || len(stmt.Joins) != 0 || stmt.Distinct || len(stmt.GroupBy) != 0 || stmt.Having != nil || hasAggregates(stmt) || stmt.Limit < 0 || stmt.Offset < 0 {
 		return nil, false, nil
 	}
 	idx := s.findOrderIndex(stmt, table)
@@ -247,7 +247,7 @@ func (s *Schema) indexRangeRows(stmt *SelectStmt, table string, info *TableInfo)
 	if reverse && unbounded && !clustered {
 		iter.Prev()
 	}
-	rows := make([]map[string]Value, 0, min(stmt.Limit+stmt.Offset, 1024))
+	rows := make([]map[string]Value, 0, min(limitWindow(stmt.Limit, stmt.Offset), 1024))
 	if stmt.Limit == 0 {
 		return rows, true, nil
 	}
@@ -273,7 +273,7 @@ func (s *Schema) indexRangeRows(stmt *SelectStmt, table string, info *TableInfo)
 			}
 			if matches {
 				rows = append(rows, row)
-				if len(rows) >= stmt.Limit+stmt.Offset {
+				if int64(len(rows)) >= limitWindow(stmt.Limit, stmt.Offset) {
 					break
 				}
 			}
@@ -286,8 +286,8 @@ func (s *Schema) indexRangeRows(stmt *SelectStmt, table string, info *TableInfo)
 		return rows, true, storage.IteratorError(iter)
 	}
 	if coveredRangePredicate(stmt.Where, idx.Column, table, stmt.FromAlias) {
-		for iter.Valid() && len(rows) < stmt.Limit+stmt.Offset {
-			keys := make([][]byte, 0, min(stmt.Limit+stmt.Offset-len(rows), 128))
+		for iter.Valid() && int64(len(rows)) < limitWindow(stmt.Limit, stmt.Offset) {
+			keys := make([][]byte, 0, min(limitWindow(stmt.Limit, stmt.Offset)-int64(len(rows)), 128))
 			for iter.Valid() && len(keys) < cap(keys) {
 				if err := s.checkInterrupt(); err != nil {
 					return nil, true, err
@@ -361,7 +361,7 @@ func (s *Schema) indexRangeRows(stmt *SelectStmt, table string, info *TableInfo)
 			}
 			if matches {
 				rows = append(rows, row)
-				if len(rows) >= stmt.Limit+stmt.Offset {
+				if int64(len(rows)) >= limitWindow(stmt.Limit, stmt.Offset) {
 					break
 				}
 			}

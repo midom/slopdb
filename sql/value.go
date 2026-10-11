@@ -84,22 +84,24 @@ type InsertStmt struct {
 }
 
 type SelectStmt struct {
-	Columns   []SelectColumn
-	From      string
-	FromAlias string
-	FromExpr  Expression
-	Joins     []JoinClause
-	Virtual   *VirtualTable
-	Where     Expression
-	OrderBy   []OrderByClause
-	Limit     int
-	Offset    int
-	SelectAll bool
-	Distinct  bool
-	GroupBy   []Expression
-	Having    Expression
-	Lock      *SelectLock
-	trackRows bool // retain physical row origins when expanding a view
+	Columns     []SelectColumn
+	From        string
+	FromAlias   string
+	FromExpr    Expression
+	Joins       []JoinClause
+	Virtual     *VirtualTable
+	Where       Expression
+	OrderBy     []OrderByClause
+	Limit       int64
+	Offset      int64
+	LimitParam  int // one-based parameter index; zero means a constant
+	OffsetParam int
+	SelectAll   bool
+	Distinct    bool
+	GroupBy     []Expression
+	Having      Expression
+	Lock        *SelectLock
+	trackRows   bool // retain physical row origins when expanding a view
 }
 
 // SelectLock applies to rows from tables in this SELECT's query block.
@@ -137,20 +139,24 @@ type OrderByClause struct {
 }
 
 type DeleteStmt struct {
-	From      string
-	Where     Expression
-	Limit     int
-	Offset    int
-	Returning []SelectColumn
+	From        string
+	Where       Expression
+	Limit       int64
+	Offset      int64
+	LimitParam  int
+	OffsetParam int
+	Returning   []SelectColumn
 }
 
 type UpdateStmt struct {
-	Table     string
-	Set       []UpdateSet
-	Where     Expression
-	Limit     int
-	Offset    int
-	Returning []SelectColumn
+	Table       string
+	Set         []UpdateSet
+	Where       Expression
+	Limit       int64
+	Offset      int64
+	LimitParam  int
+	OffsetParam int
+	Returning   []SelectColumn
 }
 
 type UpdateSet struct {
@@ -251,13 +257,15 @@ type AlterTableStmt struct {
 type VacuumStmt struct{}
 
 type UnionStmt struct {
-	Left    *SelectStmt
-	Right   Statement
-	All     bool
-	Op      string // UNION, INTERSECT, EXCEPT
-	OrderBy []OrderByClause
-	Limit   int
-	Offset  int
+	LimitParam  int
+	OffsetParam int
+	Left        *SelectStmt
+	Right       Statement
+	All         bool
+	Op          string // UNION, INTERSECT, EXCEPT
+	OrderBy     []OrderByClause
+	Limit       int64
+	Offset      int64
 }
 
 type Statement interface {
@@ -292,8 +300,15 @@ type Expression interface {
 }
 
 type LiteralExpr struct {
-	Value Value
+	Value          Value
+	BoundParameter bool // bound integers are expressions, not ORDER/GROUP ordinals
 }
+
+// ParameterExpr exists only in prepared templates. Binding replaces it with a
+// LiteralExpr before planning or evaluation.
+type ParameterExpr struct{ Index int }
+
+func (*ParameterExpr) expr() {}
 
 type ColumnRefExpr struct {
 	Name string

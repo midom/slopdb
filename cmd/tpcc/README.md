@@ -6,8 +6,13 @@ Run from the repository root:
 go run ./cmd/tpcc -workers 10 -duration 1m -json /tmp/slopdb-tpcc-results.json
 ```
 
-The default keeps WAL enabled and disables WAL fsync. Use `-wal-fsync` to measure
-with WAL fsync enabled. SSTable and MANIFEST syncing still use storage defaults.
+The default reuses prepared statements and keeps WAL enabled with WAL fsync
+disabled. Use `-prepared=false` to compare SQL text execution with the same
+workload. Statement preparation occurs before measurement, including every
+stock-level IN-list size. The API and 64-bit pagination behavior are documented
+in [Prepared statements](../../docs/prepared-statements.md).
+
+Use `-wal-fsync` to measure with WAL fsync enabled. SSTable and MANIFEST syncing still use storage defaults.
 Each run creates a fresh database under `/tmp/slopdb-tpcc-*` and prints its path;
 the database remains available for inspection. `-dir` accepts a path that does
 not yet exist and never deletes an existing database.
@@ -93,3 +98,37 @@ warehouse update and district locks; frequently executed order-line inserts and
 stock updates accounted for much of the remaining work. The profile and query
 latencies are `/tmp/godb/tpcc-final.cpu.pprof` and
 `/tmp/godb/tpcc-final-query-timings.json`.
+
+## Prepared statement comparison (2026-10-11)
+
+A fresh pair of runs used ten workers, sixty seconds, the default reduced scale
+and seed, and WAL enabled without WAL fsync. The only mode difference was
+`-prepared=false` versus the default prepared execution. Both use the same
+statement templates, inputs, and transaction order. Preparation is outside the
+measurement window; preparing all 327 templates took approximately 22 ms.
+
+| Metric | SQL text | Prepared |
+| --- | ---: | ---: |
+| Committed transactions | 120,007 | 132,242 |
+| Transactions/second | 2,000.11 | 2,204.01 |
+| Mean transaction latency (ms) | 4.97 | 4.52 |
+| P95 transaction latency (ms) | 15.64 | 15.21 |
+| P99 transaction latency (ms) | 24.08 | 25.21 |
+| Unexpected failures | 0 | 0 |
+| Retries | 0 | 0 |
+
+Prepared execution improved throughput by 10.2%. Mean latency fell, while
+p99 latency increased slightly. Both runs passed all 15 accounting checks after
+execution and after reopening. The prepared run had 577 expected invalid-item
+rollbacks and 10 shutdown cancellations, separately counted from failures.
+
+Reports: `/tmp/slopdb-tpcc-text-results.json` and
+`/tmp/slopdb-tpcc-prepared-results.json`. These are individual local runs, not
+universal performance guarantees. Preparation removes SQL parsing; query
+planning, statement snapshots, row/catalog synchronization, and row allocation
+still take place on execution.
+
+A separate ten-second CPU profile of prepared execution contained no SQL
+parser or tokenizer frames. Binding accounted for approximately 1.1% of sampled
+CPU time. The profile is `/tmp/godb/tpcc-prepared.cpu.pprof`; its run also had
+zero failures or retries and passed all checks after execution and reopening.

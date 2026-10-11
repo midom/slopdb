@@ -2523,7 +2523,7 @@ func (s *Schema) Union(stmt *UnionStmt) (*ResultSet, error) {
 
 	orders := append([]OrderByClause(nil), stmt.OrderBy...)
 	for i := range orders {
-		if lit, ok := orders[i].Expr.(*LiteralExpr); ok && lit.Value.Type == ColInteger && !lit.Value.Null {
+		if lit, ok := orders[i].Expr.(*LiteralExpr); ok && !lit.BoundParameter && lit.Value.Type == ColInteger && !lit.Value.Null {
 			n := lit.Value.Int
 			if n < 1 || n > int64(len(left.Columns)) {
 				return nil, fmt.Errorf("ORDER BY position out of range")
@@ -2540,14 +2540,14 @@ func (s *Schema) Union(stmt *UnionStmt) (*ResultSet, error) {
 		sort.SliceStable(left.Rows, func(i, j int) bool { return s.compareRows(left.Rows[i], left.Rows[j], orders) })
 	}
 	if stmt.Offset > 0 {
-		if stmt.Offset >= len(left.Rows) {
+		if stmt.Offset >= int64(len(left.Rows)) {
 			left.Rows = nil
 		} else {
-			left.Rows = left.Rows[stmt.Offset:]
+			left.Rows = left.Rows[int(stmt.Offset):]
 		}
 	}
-	if stmt.Limit >= 0 && stmt.Limit < len(left.Rows) {
-		left.Rows = left.Rows[:stmt.Limit]
+	if stmt.Limit >= 0 && stmt.Limit < int64(len(left.Rows)) {
+		left.Rows = left.Rows[:int(stmt.Limit)]
 	}
 
 	if len(left.Columns) == 0 && len(right.Columns) > 0 {
@@ -3890,12 +3890,12 @@ func (s *Schema) Select(stmt *SelectStmt) (*ResultSet, error) {
 		}
 
 		if !usedIndex {
-			scanLimit := -1
+			scanLimit := int64(-1)
 			scanReverse := false
 			if stmt.Lock == nil && stmt.Where == nil && len(stmt.Joins) == 0 && !s.inTx && !stmt.Distinct && len(stmt.GroupBy) == 0 &&
 				!hasAggregates(stmt) && stmt.Limit >= 0 {
 				if rev := s.isOrderByNatural(stmt, info); rev >= 0 {
-					scanLimit = stmt.Limit + stmt.Offset
+					scanLimit = limitWindow(stmt.Limit, stmt.Offset)
 					scanReverse = rev == 1
 				}
 			}
@@ -4000,7 +4000,7 @@ func (s *Schema) Select(stmt *SelectStmt) (*ResultSet, error) {
 
 	for i := range stmt.OrderBy {
 		order := &stmt.OrderBy[i]
-		if lit, ok := order.Expr.(*LiteralExpr); ok && lit.Value.Type == ColInteger && !lit.Value.Null {
+		if lit, ok := order.Expr.(*LiteralExpr); ok && !lit.BoundParameter && lit.Value.Type == ColInteger && !lit.Value.Null {
 			n := lit.Value.Int
 			if n < 1 || n > int64(len(rs.Columns)) {
 				return nil, fmt.Errorf("ORDER BY position out of range")
@@ -4027,20 +4027,20 @@ func (s *Schema) Select(stmt *SelectStmt) (*ResultSet, error) {
 		}
 	}
 	if stmt.Offset > 0 {
-		if stmt.Offset >= len(rows) {
+		if stmt.Offset >= int64(len(rows)) {
 			rows = nil
 			rowKeys = nil
 		} else {
-			rows = rows[stmt.Offset:]
+			rows = rows[int(stmt.Offset):]
 			if rowKeys != nil {
-				rowKeys = rowKeys[stmt.Offset:]
+				rowKeys = rowKeys[int(stmt.Offset):]
 			}
 		}
 	}
-	if stmt.Limit >= 0 && stmt.Limit < len(rows) {
-		rows = rows[:stmt.Limit]
+	if stmt.Limit >= 0 && stmt.Limit < int64(len(rows)) {
+		rows = rows[:int(stmt.Limit)]
 		if rowKeys != nil {
-			rowKeys = rowKeys[:stmt.Limit]
+			rowKeys = rowKeys[:int(stmt.Limit)]
 		}
 	}
 
@@ -4415,14 +4415,14 @@ func (s *Schema) selectFromSqliteMaster(stmt *SelectStmt) (*ResultSet, error) {
 	}
 
 	if stmt.Offset > 0 {
-		if stmt.Offset >= len(rows) {
+		if stmt.Offset >= int64(len(rows)) {
 			rows = nil
 		} else {
-			rows = rows[stmt.Offset:]
+			rows = rows[int(stmt.Offset):]
 		}
 	}
-	if stmt.Limit >= 0 && stmt.Limit < len(rows) {
-		rows = rows[:stmt.Limit]
+	if stmt.Limit >= 0 && stmt.Limit < int64(len(rows)) {
+		rows = rows[:int(stmt.Limit)]
 	}
 
 	rs.Rows = rows
@@ -4469,7 +4469,7 @@ func (s *Schema) scanTable(tableName string, info *TableInfo, filter Expression,
 	return s.scanTableLimit(tableName, info, prefix, -1, false)
 }
 
-func (s *Schema) scanTableLimit(tableName string, info *TableInfo, prefix string, limit int, reverse bool, keySets ...*[][]string) ([]map[string]Value, error) {
+func (s *Schema) scanTableLimit(tableName string, info *TableInfo, prefix string, limit int64, reverse bool, keySets ...*[][]string) ([]map[string]Value, error) {
 	if limit == 0 {
 		return nil, nil
 	}
@@ -4504,7 +4504,7 @@ func (s *Schema) scanTableLimit(tableName string, info *TableInfo, prefix string
 					return nil, err
 				}
 			}
-			if limit >= 0 && len(keys) >= limit {
+			if limit >= 0 && int64(len(keys)) >= limit {
 				break
 			}
 		}
@@ -4533,7 +4533,7 @@ func (s *Schema) scanTableLimit(tableName string, info *TableInfo, prefix string
 					return nil, err
 				}
 			}
-			if limit >= 0 && len(keys) >= limit {
+			if limit >= 0 && int64(len(keys)) >= limit {
 				break
 			}
 		}
@@ -4843,7 +4843,7 @@ func (s *Schema) compareRows(a, b map[string]Value, orders []OrderByClause) bool
 	return false
 }
 
-func (s *Schema) matchingDMLRows(tableName string, info *TableInfo, where Expression, limit, offset int) ([]storage.KeyValue, error) {
+func (s *Schema) matchingDMLRows(tableName string, info *TableInfo, where Expression, limit, offset int64) ([]storage.KeyValue, error) {
 	if limit == 0 {
 		return nil, nil
 	}
@@ -4895,7 +4895,7 @@ func (s *Schema) matchingDMLRows(tableName string, info *TableInfo, where Expres
 						key := iter.Key()
 						key.UserKey = copyBytes(key.UserKey)
 						rows = append(rows, storage.KeyValue{Key: key, Value: copyBytes(iter.Value())})
-						if limit >= 0 && len(rows) >= limit {
+						if limit >= 0 && int64(len(rows)) >= limit {
 							break
 						}
 					}
@@ -4907,7 +4907,7 @@ func (s *Schema) matchingDMLRows(tableName string, info *TableInfo, where Expres
 		if err != nil {
 			return nil, err
 		}
-		if limit >= 0 && len(rows) >= limit {
+		if limit >= 0 && int64(len(rows)) >= limit {
 			break
 		}
 	}
@@ -5091,7 +5091,7 @@ func (s *Schema) Update(stmt *UpdateStmt) (int64, *ResultSet, error) {
 	}
 	return int64(len(entries)), rs, nil
 }
-func (s *Schema) modifyView(table, event string, sets []UpdateSet, where Expression, limit, offset int, returning []SelectColumn) (int64, *ResultSet, error) {
+func (s *Schema) modifyView(table, event string, sets []UpdateSet, where Expression, limit, offset int64, returning []SelectColumn) (int64, *ResultSet, error) {
 	found := false
 	for _, tr := range s.triggers {
 		if tr.View == table && tr.InsteadOf && tr.Event == event {
@@ -5200,6 +5200,11 @@ func (s *Schema) evalCondition(expr Expression, row map[string]Value) (bool, err
 func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) {
 	switch e := expr.(type) {
 	case *LiteralExpr:
+		if e.Value.Type == ColBlob && !e.Value.Null {
+			v := e.Value
+			v.Blob = copyBytes(v.Blob)
+			return v, nil
+		}
 		return e.Value, nil
 	case *ColumnRefExpr:
 		if e.Name == "*" {

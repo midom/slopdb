@@ -41,9 +41,11 @@ type config struct {
 	Retries     int           `json:"max_retries"`
 	LockTimeout time.Duration `json:"lock_timeout_ns"`
 	TxTimeout   time.Duration `json:"transaction_timeout_ns"`
-	WALFsync    bool          `json:"wal_fsync"`
-	Dir         string        `json:"database_dir"`
-	JSON        string        `json:"report_file,omitempty"`
+	Prepared    bool          `json:"prepared_statements"`
+	statements  *preparedStatements
+	WALFsync    bool   `json:"wal_fsync"`
+	Dir         string `json:"database_dir"`
+	JSON        string `json:"report_file,omitempty"`
 }
 
 type effect struct {
@@ -87,6 +89,7 @@ type transactionReport struct {
 type report struct {
 	Config             config                       `json:"config"`
 	Started            time.Time                    `json:"started_at"`
+	PrepareSeconds     float64                      `json:"prepare_seconds"`
 	LoadSeconds        float64                      `json:"load_seconds"`
 	RunSeconds         float64                      `json:"run_seconds"`
 	DrainSeconds       float64                      `json:"drain_seconds"`
@@ -118,6 +121,7 @@ func run() (retErr error) {
 	flag.IntVar(&c.Retries, "retries", 5, "maximum retries per logical transaction")
 	flag.DurationVar(&c.LockTimeout, "lock-timeout", 250*time.Millisecond, "lock wait budget per statement")
 	flag.DurationVar(&c.TxTimeout, "tx-timeout", 5*time.Second, "transaction execution timeout")
+	flag.BoolVar(&c.Prepared, "prepared", true, "reuse prepared statements (false executes SQL text for comparison)")
 	flag.BoolVar(&c.WALFsync, "wal-fsync", false, "enable WAL fsync (WAL is always enabled)")
 	flag.StringVar(&c.Dir, "dir", "", "fresh database directory; default creates a directory under /tmp")
 	flag.StringVar(&c.JSON, "json", "", "write a JSON results file")
@@ -157,6 +161,14 @@ func run() (retErr error) {
 		return fmt.Errorf("load: %w", err)
 	}
 	r := report{Config: c, LoadSeconds: time.Since(loadStart).Seconds()}
+	prepareStart := time.Now()
+	c.statements, err = prepareWorkload(database, c)
+	if err != nil {
+		return err
+	}
+	defer c.statements.Close()
+	r.PrepareSeconds = time.Since(prepareStart).Seconds()
+	fmt.Printf("Prepared statements=%t; preparation took %.3fs\n", c.Prepared, r.PrepareSeconds)
 	fmt.Printf("Loaded nine tables in %.2fs. Mix: 45%% new-order, 43%% payment, 4%% each order-status/delivery/stock-level.\n", r.LoadSeconds)
 	// Check every SQL path before measurement; roll back so counters start clean.
 	for kind := range names {
@@ -376,24 +388,37 @@ func makePlan(rng *rand.Rand, c config, kind int) plan {
 }
 
 type queries struct {
+	prepared *preparedStatements
+
 	tx  *db.Tx
 	ctx context.Context
 	err error
 }
 
-func (q *queries) exec(query string) *db.ExecResult {
+func (q *queries) exec(query string, args ...any) *db.ExecResult {
 	if q.err != nil {
 		return &db.ExecResult{}
 	}
-	r, err := q.tx.ExecContext(q.ctx, query)
+	var r *db.ExecResult
+	var err error
+	if q.prepared.enabled {
+		stmt := q.prepared.statements[query]
+		if stmt == nil {
+			q.err = fmt.Errorf("workload query was not prepared: %s", query)
+			return &db.ExecResult{}
+		}
+		r, err = q.tx.ExecPreparedContext(q.ctx, stmt, args...)
+	} else {
+		r, err = q.tx.ExecContext(q.ctx, numericQuery(query, args))
+	}
 	if err != nil {
-		q.err = fmt.Errorf("%s: %w", query, err)
+		q.err = fmt.Errorf("%s (arguments %v): %w", query, args, err)
 		return &db.ExecResult{}
 	}
 	return r
 }
-func (q *queries) one(query string) map[string]sql.Value {
-	r := q.exec(query)
+func (q *queries) one(query string, args ...any) map[string]sql.Value {
+	r := q.exec(query, args...)
 	if q.err == nil && len(r.Rows) != 1 {
 		q.err = fmt.Errorf("%s: expected one row, got %d", query, len(r.Rows))
 	}
@@ -402,31 +427,28 @@ func (q *queries) one(query string) map[string]sql.Value {
 	}
 	return nil
 }
-func (q *queries) change(query string, count int64) {
-	r := q.exec(query)
+func (q *queries) change(query string, count int64, args ...any) {
+	r := q.exec(query, args...)
 	if q.err == nil && r.Changes != count {
 		q.err = fmt.Errorf("%s: expected %d changes, got %d", query, count, r.Changes)
 	}
 }
 
 func execute(ctx context.Context, tx *db.Tx, p plan, c config, historyID int64) (effect, error) {
-	q := queries{tx: tx, ctx: ctx}
+	q := queries{tx: tx, ctx: ctx, prepared: c.statements}
 	var e effect
-	district := fmt.Sprintf("w_id=%d AND d_id=%d", p.w, p.d)
-	customer := fmt.Sprintf("w_id=%d AND d_id=%d AND c_id=%d", p.customerW, p.customerD, p.customer)
 	switch p.kind {
 	case 0:
-		q.one(fmt.Sprintf("SELECT ytd FROM warehouse WHERE w_id=%d", p.w))
-		q.one("SELECT balance FROM customer WHERE " + customer)
-		o := q.one("SELECT next_o_id FROM district WHERE " + district + " FOR UPDATE")["next_o_id"].Int
-		q.change("UPDATE district SET next_o_id=next_o_id+1 WHERE "+district, 1)
-		q.change(fmt.Sprintf("INSERT INTO orders VALUES (%d,%d,%d,%d,NULL,%d,0)", p.w, p.d, o, p.customer, len(p.items)), 1)
-		q.change(fmt.Sprintf("INSERT INTO new_order VALUES (%d,%d,%d)", p.w, p.d, o), 1)
+		q.one(warehouseRead, p.w)
+		q.one(customerRead, p.customerW, p.customerD, p.customer)
+		o := q.one(districtLock, p.w, p.d)["next_o_id"].Int
+		q.change(districtNext, 1, p.w, p.d)
+		q.change(orderInsert, 1, p.w, p.d, o, p.customer, len(p.items))
+		q.change(pendingInsert, 1, p.w, p.d, o)
 		total := int64(0)
 		for n, item := range p.items {
-			cost := q.one(fmt.Sprintf("SELECT price FROM item WHERE i_id=%d", item.id))["price"].Int
-			stock := fmt.Sprintf("w_id=%d AND i_id=%d", item.warehouse, item.id)
-			quantity := q.one("SELECT quantity FROM stock WHERE " + stock + " FOR UPDATE")["quantity"].Int - int64(item.quantity)
+			cost := q.one(itemRead, item.id)["price"].Int
+			quantity := q.one(stockLock, item.warehouse, item.id)["quantity"].Int - int64(item.quantity)
 			if quantity < 10 {
 				quantity += 91
 			}
@@ -434,13 +456,13 @@ func execute(ctx context.Context, tx *db.Tx, p plan, c config, historyID int64) 
 			if item.warehouse != p.w {
 				remote = 1
 			}
-			q.change(fmt.Sprintf("UPDATE stock SET quantity=%d,ytd=ytd+%d,order_count=order_count+1,remote_count=remote_count+%d WHERE %s", quantity, item.quantity, remote, stock), 1)
+			q.change(stockUpdate, 1, quantity, item.quantity, remote, item.warehouse, item.id)
 			amount := cost * int64(item.quantity)
 			total += amount
-			q.change(fmt.Sprintf("INSERT INTO order_line VALUES (%d,%d,%d,%d,%d,%d,%d,%d,0)", p.w, p.d, o, n+1, item.id, item.warehouse, item.quantity, amount), 1)
+			q.change(lineInsert, 1, p.w, p.d, o, n+1, item.id, item.warehouse, item.quantity, amount)
 		}
 		if p.invalid && q.err == nil {
-			r := q.exec(fmt.Sprintf("SELECT price FROM item WHERE i_id=%d", c.Items+1))
+			r := q.exec(itemRead, c.Items+1)
 			if q.err == nil && len(r.Rows) == 0 {
 				return e, invalidItem
 			}
@@ -448,48 +470,47 @@ func execute(ctx context.Context, tx *db.Tx, p plan, c config, historyID int64) 
 				q.err = errors.New("invalid item unexpectedly exists")
 			}
 		}
-		q.change(fmt.Sprintf("UPDATE orders SET total=%d WHERE %s AND o_id=%d", total, district, o), 1)
+		q.change(orderTotal, 1, total, p.w, p.d, o)
 		e.NewOrders, e.Lines = 1, int64(len(p.items))
 	case 1:
-		q.change(fmt.Sprintf("UPDATE warehouse SET ytd=ytd+%d WHERE w_id=%d", p.amount, p.w), 1)
-		q.change(fmt.Sprintf("UPDATE district SET ytd=ytd+%d WHERE %s", p.amount, district), 1)
-		q.change(fmt.Sprintf("UPDATE customer SET balance=balance-%d,ytd_payment=ytd_payment+%d,payment_count=payment_count+1 WHERE %s", p.amount, p.amount, customer), 1)
-		q.change(fmt.Sprintf("INSERT INTO history VALUES (%d,%d,%d,%d,%d,%d,%d)", historyID, p.w, p.d, p.customerW, p.customerD, p.customer, p.amount), 1)
+		q.change(warehousePay, 1, p.amount, p.w)
+		q.change(districtPay, 1, p.amount, p.w, p.d)
+		q.change(customerPay, 1, p.amount, p.amount, p.customerW, p.customerD, p.customer)
+		q.change(historyInsert, 1, historyID, p.w, p.d, p.customerW, p.customerD, p.customer, p.amount)
 		e.PaymentCents = int64(p.amount)
 	case 2:
-		q.one("SELECT balance FROM customer WHERE " + customer)
-		r := q.exec("SELECT o_id,total,carrier_id FROM orders WHERE " + customer + " ORDER BY o_id DESC LIMIT 1")
+		q.one(customerRead, p.customerW, p.customerD, p.customer)
+		r := q.exec(lastOrder, p.customerW, p.customerD, p.customer)
 		if len(r.Rows) > 0 {
-			q.exec(fmt.Sprintf("SELECT i_id,quantity,amount,delivered FROM order_line WHERE %s AND o_id=%d", district, r.Rows[0]["o_id"].Int))
+			q.exec(orderLines, p.w, p.d, r.Rows[0]["o_id"].Int)
 		}
 	case 3:
 		for d := 1; d <= c.Districts && q.err == nil; d++ {
-			key := fmt.Sprintf("w_id=%d AND d_id=%d", p.w, d)
-			r := q.exec("SELECT o_id FROM new_order WHERE " + key + " ORDER BY o_id LIMIT 1 FOR UPDATE SKIP LOCKED")
+			r := q.exec(pendingLock, p.w, d)
 			if q.err != nil || len(r.Rows) == 0 {
 				continue
 			}
 			o := r.Rows[0]["o_id"].Int
-			order := fmt.Sprintf("%s AND o_id=%d", key, o)
-			q.change("DELETE FROM new_order WHERE "+order, 1)
-			customerID := q.one("SELECT c_id FROM orders WHERE " + order)["c_id"].Int
-			q.change(fmt.Sprintf("UPDATE orders SET carrier_id=%d WHERE %s", p.carrier, order), 1)
-			lineData := q.one("SELECT SUM(amount) AS amount,COUNT(*) AS n FROM order_line WHERE " + order)
+			q.change(pendingDelete, 1, p.w, d, o)
+			customerID := q.one(orderCustomer, p.w, d, o)["c_id"].Int
+			q.change(orderCarrier, 1, p.carrier, p.w, d, o)
+			lineData := q.one(lineSum, p.w, d, o)
 			amount := lineData["amount"].Int
-			q.change("UPDATE order_line SET delivered=1 WHERE "+order, lineData["n"].Int)
-			q.change(fmt.Sprintf("UPDATE customer SET balance=balance+%d,delivery_count=delivery_count+1 WHERE %s AND c_id=%d", amount, key, customerID), 1)
+			q.change(lineDelivered, lineData["n"].Int, p.w, d, o)
+			q.change(customerDelivery, 1, amount, p.w, d, customerID)
 			e.Delivered++
 			e.DeliveryCents += amount
 		}
 	case 4:
-		next := q.one("SELECT next_o_id FROM district WHERE " + district)["next_o_id"].Int
-		r := q.exec(fmt.Sprintf("SELECT DISTINCT i_id FROM order_line WHERE %s AND o_id>=%d AND o_id<%d", district, next-20, next))
-		ids := make([]string, 0, len(r.Rows))
-		for _, row := range r.Rows {
-			ids = append(ids, fmt.Sprint(row["i_id"].Int))
-		}
-		if len(ids) > 0 {
-			q.one(fmt.Sprintf("SELECT COUNT(*) AS low_stock FROM stock WHERE w_id=%d AND quantity<%d AND i_id IN (%s)", p.w, p.threshold, strings.Join(ids, ",")))
+		next := q.one(districtRead, p.w, p.d)["next_o_id"].Int
+		r := q.exec(recentItems, p.w, p.d, next-20, next)
+		if len(r.Rows) > 0 {
+			args := make([]any, 0, len(r.Rows)+2)
+			args = append(args, p.w, p.threshold)
+			for _, row := range r.Rows {
+				args = append(args, row["i_id"].Int)
+			}
+			q.one(c.statements.stockCounts[len(r.Rows)], args...)
 		}
 	}
 	return e, q.err
@@ -548,7 +569,11 @@ func work(ctx context.Context, database *db.Database, c config, worker int, hist
 				// Once commit starts, let it finish without deadline cancellation.
 				// This avoids reporting a durable commit as a canceled transaction.
 				if err == nil {
-					err = tx.Commit()
+					if c.Prepared {
+						_, err = tx.ExecPrepared(c.statements.statements["COMMIT"])
+					} else {
+						err = tx.Commit()
+					}
 				}
 				if err != nil {
 					rollbackErr := tx.Rollback()

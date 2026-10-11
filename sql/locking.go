@@ -112,7 +112,7 @@ func (s *Schema) lockSelectRows(stmt *SelectStmt, rows []map[string]Value, keys 
 	var result []map[string]Value
 	var resultKeys [][]string
 	for i, row := range rows {
-		if bounded && stmt.Limit >= 0 && len(result) >= stmt.Offset && len(result)-stmt.Offset >= stmt.Limit {
+		if bounded && stmt.Limit >= 0 && int64(len(result)) >= stmt.Offset && int64(len(result))-stmt.Offset >= stmt.Limit {
 			break
 		}
 		if err := s.checkInterrupt(); err != nil {
