@@ -383,7 +383,13 @@ func (s *Schema) tuplePlan(stmt *SelectStmt, info *TableInfo) *tupleReadPlan {
 	if _, ok := s.primaryKeyLookup(stmt.Where, info.Name, info); ok {
 		return nil
 	}
-	constraints := tupleConstraints(stmt.Where, info.Name, stmt.FromAlias, info)
+	var constraints map[string]*tupleConstraint
+	p := stmt.prepared
+	if p != nil {
+		constraints = p.constraints(stmt)
+	} else {
+		constraints = tupleConstraints(stmt.Where, info.Name, stmt.FromAlias, info)
+	}
 	best := buildTuplePlan(stmt, info, nil, constraints)
 	costFor := func(plan *tupleReadPlan) float64 {
 		if plan == nil {
@@ -411,7 +417,13 @@ func (s *Schema) tuplePlan(stmt *SelectStmt, info *TableInfo) *tupleReadPlan {
 		if plan == nil {
 			continue
 		}
-		if payload := s.lookups().covering[idx]; payload != nil && queryCovered(stmt, info.Name, stmt.FromAlias, info, payload) {
+		covered := false
+		if p != nil {
+			covered = p.tupleCoverage(s, stmt, idx)
+		} else if payload := s.lookups().covering[idx]; payload != nil {
+			covered = queryCovered(stmt, info.Name, stmt.FromAlias, info, payload)
+		}
+		if covered {
 			plan.covered = true
 			plan.score += 2
 		}

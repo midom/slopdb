@@ -13,7 +13,7 @@ import (
 
 var ErrStmtClosed = errors.New("prepared statement closed")
 
-// Stmt is a parsed, parameterized SQL statement. Database statements can be
+// Stmt is a parsed, parameterized SQL statement with reusable execution plans. Database statements can be
 // shared by concurrent sessions and transactions on that database. Prepare on
 // a Session or Tx instead to bind the statement to that execution context.
 // Close rejects new executions; an execution already started may finish.
@@ -30,8 +30,9 @@ func (db *Database) Prepare(query string) (*Stmt, error) {
 }
 
 // PrepareContext parses exactly one statement. Anonymous '?' placeholders bind
-// values, not SQL text or identifiers. Tables and types are validated when the
-// statement executes, so catalog changes do not leave a stale cached plan.
+// values, not SQL text or identifiers. Execution compiles and reuses eligible
+// operator templates, rebinding parameters and invalidating metadata on schema
+// or statistics changes.
 func (db *Database) PrepareContext(ctx context.Context, query string) (*Stmt, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -87,6 +88,11 @@ func (tx *Tx) PrepareContext(ctx context.Context, query string) (*Stmt, error) {
 	}
 	return p, err
 }
+
+// PlanStats reports compiled plan builds and reuse across this statement's
+// private execution trees. Pool eviction or concurrent first executions may
+// require more than one build; no parameter values or results are cached.
+func (s *Stmt) PlanStats() sql.PreparedPlanStats { return s.query.PlanStats() }
 
 func (s *Stmt) NumInput() int { return s.query.NumInput() }
 func (s *Stmt) Close() error  { s.closed.Store(true); return nil }

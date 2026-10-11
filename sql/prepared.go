@@ -4,17 +4,21 @@ import (
 	"fmt"
 	"reflect"
 	"sync"
+	"sync/atomic"
 )
 
 // PreparedQuery keeps an immutable parsed template. Each execution borrows its
 // own AST and literal cells; binding neither reparses SQL nor shares mutable
-// argument values between concurrent executions. Schema lookup and query
-// planning still happen against the execution's current catalog and snapshot.
+// argument values between concurrent executions. Each private tree also retains
+// compiled execution structure, invalidated against the current catalog and
+// statistics; runtime bounds and costs use current arguments and snapshots.
 type PreparedQuery struct {
-	template Statement
-	count    int
-	pooled   bool
-	pool     sync.Pool
+	template   Statement
+	count      int
+	pooled     bool
+	pool       sync.Pool
+	planBuilds atomic.Uint64
+	planHits   atomic.Uint64
 }
 
 // Prepare accepts one statement and anonymous positional '?' parameters in
@@ -110,6 +114,18 @@ func (q *PreparedQuery) Bind(args []Value) (*BoundQuery, error) {
 func (b *BoundQuery) Statements() []Statement { return b.statements }
 
 func (b *BoundQuery) Release() {
+	for _, statement := range b.statements {
+		switch st := statement.(type) {
+		case *SelectStmt:
+			if st.prepared != nil {
+				st.prepared.releaseValues()
+			}
+		case *UpdateStmt:
+			if st.prepared != nil {
+				st.prepared.releaseValues()
+			}
+		}
+	}
 	for _, literal := range b.literals {
 		if literal != nil {
 			literal.Value = Value{}
@@ -123,6 +139,14 @@ func (b *BoundQuery) Release() {
 func (q *PreparedQuery) newBound() *BoundQuery {
 	b := &BoundQuery{query: q, literals: make([]*LiteralExpr, q.count)}
 	stmt := b.clone(reflect.ValueOf(q.template)).Interface().(Statement)
+	switch st := stmt.(type) {
+	case *SelectStmt:
+		if preparedSelectEligible(st) {
+			st.prepared = &preparedExecutionPlan{owner: q, where: st.Where, fromAlias: st.FromAlias}
+		}
+	case *UpdateStmt:
+		st.prepared = &preparedExecutionPlan{owner: q, where: st.Where}
+	}
 	b.statements = []Statement{stmt}
 	return b
 }

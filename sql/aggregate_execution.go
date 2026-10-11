@@ -409,7 +409,17 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 				paths = nil
 			}
 		}
-		typed, ok := compileTypedAggregate(info, stmt.From, alias, stmt.Where, groupExprs, functions, representative)
+		var typed *typedAggregate
+		var ok bool
+		if p := stmt.prepared; p != nil {
+			if !p.aggregateReady {
+				p.aggregate, _ = compileTypedAggregate(info, stmt.From, alias, stmt.Where, groupExprs, functions, representative)
+				p.aggregateReady = true
+			}
+			typed, ok = p.aggregate, p.aggregate != nil
+		} else {
+			typed, ok = compileTypedAggregate(info, stmt.From, alias, stmt.Where, groupExprs, functions, representative)
+		}
 		if ok {
 			baseNames = typed.baseNames
 			namesReady = true

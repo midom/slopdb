@@ -84,6 +84,7 @@ type InsertStmt struct {
 }
 
 type SelectStmt struct {
+	prepared    *preparedExecutionPlan
 	Columns     []SelectColumn
 	From        string
 	FromAlias   string
@@ -149,6 +150,7 @@ type DeleteStmt struct {
 }
 
 type UpdateStmt struct {
+	prepared    *preparedExecutionPlan
 	Table       string
 	Set         []UpdateSet
 	Where       Expression

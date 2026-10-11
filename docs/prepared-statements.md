@@ -2,9 +2,23 @@
 
 `Database.Prepare` parses one SQL statement once. Use anonymous `?` placeholders
 for values, including `LIMIT` and `OFFSET`. Executions bind typed values into
-private reusable ASTs and skip SQL tokenization and parsing. Schema lookup and
-query planning use the current catalog and statement snapshot, so creating,
-dropping, or changing an index or table does not retain a stale execution plan.
+private reusable ASTs and skip SQL tokenization and parsing. Eligible statements
+also reuse validated column bindings, primary-key lookup recipes, update target
+and affected-index bindings, tuple-range predicate and index-coverage templates,
+and typed aggregate instruction programs.
+
+Each execution rebuilds physical keys and scan bounds from its private arguments
+and evaluates access costs against current statistics. Catalog and statistics
+changes invalidate compiled metadata; local transaction DDL and rollback are
+also recognized. Row data, query results, locks, snapshots and iterators are never
+cached. Joins, subqueries and unsupported operator shapes continue through the
+ordinary planner and executor.
+
+`Stmt.PlanStats()` reports lifetime `Builds` and `Hits`. Each pooled execution tree
+owns its mutable programs exclusively, so concurrent executions can build more
+than one template without sharing registers or parameter cells. Pool eviction
+can also cause a rebuild. These counters describe structure reuse, not result
+cache hits or a promise that a particular physical index will always be chosen.
 
 ```go
 stmt, err := database.Prepare("SELECT balance FROM customer WHERE w_id=? AND d_id=? AND c_id=?")

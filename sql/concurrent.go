@@ -26,6 +26,35 @@ type PointUpdate struct {
 }
 
 func (s *Schema) PreparePointUpdate(stmt *UpdateStmt) *PointUpdate {
+	info := s.tables[strings.ToLower(stmt.Table)]
+	if stmt.prepared == nil || info == nil {
+		return s.preparePointUpdateUncached(stmt)
+	}
+	defer s.restorePreparedPlan(s.usePreparedPlan(stmt.prepared, info))
+	cached := stmt.prepared
+	if !cached.pointUpdateReady {
+		cached.pointUpdate = s.preparePointUpdateUncached(stmt)
+		cached.pointUpdateReady = true
+		if cached.pointUpdate != nil {
+			// Plans contain immutable bindings, targets and index pointers only.
+			// The private execution gets its own schema, AST and key below.
+			cached.pointUpdate.schema = nil
+			cached.pointUpdate.stmt = nil
+			cached.pointUpdate.key = nil
+		}
+	}
+	if cached.pointUpdate == nil {
+		return nil
+	}
+	key, ok := s.primaryKeyLookup(stmt.Where, info.Name, info)
+	if !ok {
+		return nil
+	}
+	plan := *cached.pointUpdate
+	plan.schema, plan.stmt, plan.key = s, stmt, key
+	return &plan
+}
+func (s *Schema) preparePointUpdateUncached(stmt *UpdateStmt) *PointUpdate {
 	if s.parent == nil || len(stmt.Returning) > 0 {
 		return nil
 	}
@@ -43,7 +72,7 @@ func (s *Schema) PreparePointUpdate(stmt *UpdateStmt) *PointUpdate {
 		}
 	}
 	key, ok := s.primaryKeyLookup(stmt.Where, table, info)
-	if !ok {
+	if !ok && (stmt.prepared == nil || !stmt.prepared.pointComplete()) {
 		return nil
 	}
 	blocked := map[string]bool{}

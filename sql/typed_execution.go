@@ -10,12 +10,14 @@ import (
 // A typedProgram binds columns to slots once and lowers the AST to a linear
 // instruction stream. It never looks up a column name or walks an AST per row.
 // Registers hold SQL Values so NULL, exact int64 and mixed numeric semantics
-// remain identical to interpreted execution. Programs are statement-local.
+// remain identical to interpreted execution. Prepared private execution trees
+// may retain instructions; registers are cleared when the tree is released.
 type typedInstruction struct {
 	op       string
 	a, b, c  int
 	slot     int
 	value    Value
+	literal  *LiteralExpr
 	affinity int // 1: right literal, 2: left literal
 	jump     int
 	negate   bool
@@ -37,7 +39,7 @@ func compileTypedProgram(expr Expression, slots map[string]int) (*typedProgram, 
 	compile = func(expr Expression) (int, bool) {
 		switch e := expr.(type) {
 		case *LiteralExpr:
-			return emit(typedInstruction{op: "literal", value: e.Value}), true
+			return emit(typedInstruction{op: "literal", literal: e}), true
 		case *ColumnRefExpr:
 			if e.Name == "*" {
 				return emit(typedInstruction{op: "literal", value: NewIntValue(1)}), true
@@ -142,6 +144,9 @@ func (p *typedProgram) eval(slots []Value) (Value, error) {
 		switch i.op {
 		case "literal":
 			v = i.value
+			if i.literal != nil {
+				v = i.literal.Value
+			}
 			if !v.Null && v.Type == ColBlob {
 				v.Blob = copyBytes(v.Blob)
 			}
