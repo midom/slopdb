@@ -1,12 +1,16 @@
 package sql
 
 import (
+	"bytes"
 	"container/heap"
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"os"
+	"reflect"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -96,4 +100,140 @@ func BenchmarkTopKRetention(b *testing.B) {
 			sort.Slice(records, func(i, j int) bool { return less(records[i], records[j]) })
 		}
 	})
+}
+
+func TestIndexedDiskHashSeeksAndDuplicateBuckets(t *testing.T) {
+	dir := t.TempDir()
+	s := &Schema{queryMemoryBytes: 512, queryTempDir: dir, profile: &QueryProfile{}}
+	h, err := newDiskHash(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(h.close)
+	payload := strings.Repeat("x", 1024)
+	for i := 0; i < 512; i++ {
+		key := fmt.Sprintf("key:%04d", i)
+		if err = h.add(key, map[string]Value{"id": NewIntValue(int64(i)), "payload": NewTextValue(payload)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	special := []string{"", "a", "a\x00", "a\x00x", "\x00a", "\xff\x00"}
+	for i, key := range special {
+		if err = h.add(key, map[string]Value{"id": NewIntValue(int64(i)), "v": NewBlobValue([]byte{0, 255}), "null": NewNullValue()}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for j := 0; j < 3; j++ {
+		if err = h.add("duplicates", map[string]Value{"id": NewIntValue(int64(j))}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Every unique probe reads exactly one indexed record, including after SST
+	// flushes. Unrelated buckets must never be decoded to find the matching row.
+	before := h.rowsRead
+	for i := 0; i < 512; i++ {
+		found := 0
+		err = h.walk(fmt.Sprintf("key:%04d", i), func(row map[string]Value) error {
+			found++
+			if row["id"].Int != int64(i) || row["payload"].Text != payload {
+				t.Fatal(row)
+			}
+			return nil
+		})
+		if err != nil || found != 1 {
+			t.Fatalf("probe %d: %d %v", i, found, err)
+		}
+	}
+	if read := h.rowsRead - before; read != 512 {
+		t.Fatalf("512 unique probes decoded %d records", read)
+	}
+	for i, key := range special {
+		found := 0
+		err = h.walk(key, func(row map[string]Value) error {
+			found++
+			if row["id"].Int != int64(i) || !row["null"].Null || !bytes.Equal(row["v"].Blob, []byte{0, 255}) {
+				t.Fatal(row)
+			}
+			return nil
+		})
+		if err != nil || found != 1 {
+			t.Fatalf("binary bucket %q: %d %v", key, found, err)
+		}
+	}
+	before = h.rowsRead
+	if err = h.walk("missing", func(map[string]Value) error { t.Fatal("missing bucket matched"); return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if h.rowsRead != before {
+		t.Fatal("missing probe decoded other buckets")
+	}
+	var ids []int64
+	err = h.walk("duplicates", func(row map[string]Value) error { ids = append(ids, row["id"].Int); return nil })
+	if err != nil || !reflect.DeepEqual(ids, []int64{0, 1, 2}) {
+		t.Fatalf("duplicates: %v %v", ids, err)
+	}
+	if stats := h.index.Stats(); stats.WALActive || stats.MemSize > 128<<10 || stats.BlockCacheBytes > 64<<10 {
+		t.Fatalf("unbounded spill index or WAL enabled: %+v", stats)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	s.ctx = ctx
+	cancel()
+	if err = h.walk("duplicates", func(map[string]Value) error { return nil }); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancellation: %v", err)
+	}
+	h.close()
+	h.close()
+	if s.profile.SpillBytes <= 0 || s.profile.SpillRuns <= 0 || s.profile.SpillRowsRead != h.rowsRead {
+		t.Fatalf("profile: %+v", s.profile)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) > 0 {
+		t.Fatalf("spill cleanup: %v %v", entries, err)
+	}
+}
+
+func TestIndexedDiskHashAdjacentCacheInvalidation(t *testing.T) {
+	s := &Schema{queryMemoryBytes: 1 << 20, queryTempDir: t.TempDir()}
+	h, err := newDiskHash(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h.close()
+	if err = h.add("k", map[string]Value{"x": NewIntValue(1)}); err != nil {
+		t.Fatal(err)
+	}
+	read := func() []int64 {
+		t.Helper()
+		var ids []int64
+		if err = h.walk("k", func(row map[string]Value) error { ids = append(ids, row["x"].Int); return nil }); err != nil {
+			t.Fatal(err)
+		}
+		return ids
+	}
+	if got := read(); !reflect.DeepEqual(got, []int64{1}) {
+		t.Fatal(got)
+	}
+	before := h.rowsRead
+	for i := 0; i < 10; i++ {
+		if got := read(); !reflect.DeepEqual(got, []int64{1}) {
+			t.Fatal(got)
+		}
+	}
+	if h.rowsRead != before {
+		t.Fatal("adjacent bucket was decoded repeatedly")
+	}
+	if err = h.add("k", map[string]Value{"x": NewIntValue(2)}); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(); !reflect.DeepEqual(got, []int64{1, 2}) {
+		t.Fatal("cached bucket omitted new write", got)
+	}
+}
+
+func TestIndexedSpillRejectsMalformedRows(t *testing.T) {
+	for _, data := range [][]byte{nil, {128}, {1}, {1, 0}, {1, 0, 255}, {1, 0, binTypeInt64, 0}, {1, 0, binTypeText, 128}, {0, 1}} {
+		if _, err := decodeSpillMap(data); err == nil {
+			t.Fatalf("accepted malformed row: %x", data)
+		}
+	}
 }

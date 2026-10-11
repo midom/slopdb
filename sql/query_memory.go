@@ -2,7 +2,6 @@ package sql
 
 import (
 	"bufio"
-	"bytes"
 	"container/heap"
 	"context"
 	"encoding/binary"
@@ -11,8 +10,9 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"sort"
+
+	"slopdb/storage"
 )
 
 const defaultQueryMemory = int64(64 << 20)
@@ -302,80 +302,204 @@ func stableRecordLess(s *Schema, orders []OrderByClause) func(spillRecord, spill
 	}
 }
 
-// diskHash keeps equality-join buckets on disk. Partition files are scanned one
-// record at a time, bounding lookup state even for skewed, duplicate keys.
+// diskHash indexes bucket identities and insertion ordinals in a private,
+// WAL-free LSM. A probe seeks directly to its bucket rather than rescanning
+// unrelated rows in a hash partition. Memtables/caches have fixed byte bounds.
 type diskHash struct {
-	s   *Schema
-	dir string
+	s         *Schema
+	dir       string
+	index     *storage.LSMTree
+	ordinal   uint64
+	rowsRead  int64
+	closed    bool
+	lastKey   string
+	lastRows  []map[string]Value
+	lastReady bool
 }
 
-func hashPartition(key string) string {
-	var h uint32 = 2166136261
-	for i := range key {
-		h = (h ^ uint32(key[i])) * 16777619
-	}
-	return string([]byte{'a' + byte(h%16), 'a' + byte((h>>4)%16)})
-}
 func newDiskHash(s *Schema) (*diskHash, error) {
-	d, e := os.MkdirTemp(s.queryTempDir, "slopdb-query-hash-*")
-	return &diskHash{s: s, dir: d}, e
+	dir, err := os.MkdirTemp(s.queryTempDir, "slopdb-query-hash-*")
+	if err != nil {
+		return nil, err
+	}
+	options := storage.DefaultOptions()
+	// Reserve only a fraction of this operator's budget for two memtables,
+	// decoded blocks, and the adjacent-bucket cache. Tiny budgets retain the
+	// storage engine's minimum fixed overhead rather than creating one SST/row.
+	size := s.memoryBudget() / 16
+	if size < 64<<10 {
+		size = 64 << 10
+	}
+	if size > 4<<20 {
+		size = 4 << 20
+	}
+	options.WriteBufferSize = int(size)
+	options.BlockCacheSize = int(size)
+	options.MaxOpenFiles = 32
+	options.DisableWAL = true
+	options.SyncOnClose = false
+	options.CompressionType = storage.NoCompression
+	options.MaxBackgroundJobs = 1
+	index, err := storage.NewLSMTree(dir, options)
+	if err != nil {
+		os.RemoveAll(dir)
+		return nil, err
+	}
+	return &diskHash{s: s, dir: dir, index: index}, nil
 }
-func (h *diskHash) close() { os.RemoveAll(h.dir) }
-func (h *diskHash) add(key string, row map[string]Value) error {
-	f, e := os.OpenFile(filepath.Join(h.dir, hashPartition(key)), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0600)
-	if e != nil {
-		return e
+func (h *diskHash) close() {
+	if h == nil || h.closed {
+		return
 	}
-	// Independent gob streams need framing. Each frame has a self-contained gob
-	// decoder, so appending/reopening files never relies on encoder type state.
-	before, e := f.Seek(0, io.SeekEnd)
-	if e == nil {
-		e = writeSpillFrame(f, spillRecord{Row: row, Key: key})
-	}
-	if e == nil && h.s.profile != nil {
-		after, statErr := f.Seek(0, io.SeekEnd)
-		if statErr != nil {
-			e = statErr
-		} else {
-			h.s.profile.SpillBytes += after - before
-			if before == 0 {
-				h.s.profile.SpillRuns++
-			}
+	h.closed = true
+	if h.index != nil {
+		// Temporary data need not survive Close; Close releases background tasks
+		// and file readers before removal. Failed shutdown durability is immaterial.
+		_ = h.index.Close()
+		if h.s.profile != nil {
+			stats := h.index.Stats()
+			h.s.profile.SpillBytes += stats.FlushOutputBytes + stats.CompactionOutputBytes
+			h.s.profile.SpillRuns += stats.CompletedFlushes + stats.CompletedCompactions
 		}
 	}
-	if ce := f.Close(); e == nil {
-		e = ce
+	h.lastRows = nil
+	os.RemoveAll(h.dir)
+}
+func spillBucketPrefix(key string) []byte {
+	return appendClusteredValue(nil, NewBlobValue([]byte(key)))
+}
+func (h *diskHash) add(key string, row map[string]Value) error {
+	if err := h.s.checkInterrupt(); err != nil {
+		return err
 	}
-	return e
+	if h.ordinal == ^uint64(0) {
+		return fmt.Errorf("temporary spill row ordinal overflow")
+	}
+	prefix := spillBucketPrefix(key)
+	encodedKey := binary.BigEndian.AppendUint64(prefix, h.ordinal)
+	payload := binary.AppendUvarint(nil, uint64(len(row)))
+	for name, value := range row {
+		payload = binary.AppendUvarint(payload, uint64(len(name)))
+		payload = append(payload, name...)
+		payload = appendValue(payload, value)
+	}
+	if err := h.index.Put(encodedKey, payload); err != nil {
+		return err
+	}
+	h.ordinal++
+	if h.lastReady && h.lastKey == key {
+		h.lastRows = nil
+		h.lastReady = false
+	}
+	return nil
+}
+func decodeSpillMap(data []byte) (map[string]Value, error) {
+	count, n := binary.Uvarint(data)
+	if n <= 0 || count > uint64(len(data)) {
+		return nil, fmt.Errorf("invalid temporary spill row")
+	}
+	data = data[n:]
+	row := make(map[string]Value, int(count))
+	for i := uint64(0); i < count; i++ {
+		length, n := binary.Uvarint(data)
+		if n <= 0 || length > uint64(len(data)-n) {
+			return nil, fmt.Errorf("invalid temporary spill column")
+		}
+		data = data[n:]
+		name := string(data[:int(length)])
+		data = data[int(length):]
+		if len(data) == 0 {
+			return nil, fmt.Errorf("missing temporary spill value")
+		}
+		// Validate framing before the common SQL decoder, whose row-storage helper
+		// deliberately tolerates short rows for ALTER ADD COLUMN.
+		size := 1
+		switch data[0] {
+		case binTypeNull:
+		case binTypeInt64, binTypeFloat64:
+			size = 9
+		case binTypeText, binTypeBlob:
+			length, n := binary.Uvarint(data[1:])
+			if n <= 0 || length > uint64(len(data)-1-n) {
+				return nil, fmt.Errorf("invalid temporary spill value")
+			}
+			size = 1 + n + int(length)
+		default:
+			return nil, fmt.Errorf("invalid temporary spill type")
+		}
+		if size > len(data) {
+			return nil, fmt.Errorf("truncated temporary spill value")
+		}
+		value, used := decodeValue(data[:size])
+		if used != size {
+			return nil, fmt.Errorf("invalid temporary spill value length")
+		}
+		row[name] = value
+		data = data[size:]
+	}
+	if len(data) != 0 {
+		return nil, fmt.Errorf("trailing temporary spill bytes")
+	}
+	return row, nil
 }
 func (h *diskHash) walk(key string, visit func(map[string]Value) error) error {
-	f, e := os.Open(filepath.Join(h.dir, hashPartition(key)))
-	if os.IsNotExist(e) {
-		return nil
+	if err := h.s.checkInterrupt(); err != nil {
+		return err
 	}
-	if e != nil {
-		return e
-	}
-	defer f.Close()
-	r := bufio.NewReaderSize(f, 4096)
-	for {
-		if e = h.s.checkInterrupt(); e != nil {
-			return e
-		}
-		var rec spillRecord
-		e = readSpillFrame(r, &rec)
-		if errors.Is(e, io.EOF) {
-			return nil
-		}
-		if e != nil {
-			return e
-		}
-		if rec.Key == key {
-			if e = visit(rec.Row); e != nil {
-				return e
+	if h.lastReady && h.lastKey == key {
+		for _, row := range h.lastRows {
+			if err := h.s.checkInterrupt(); err != nil {
+				return err
+			}
+			if err := visit(row); err != nil {
+				return err
 			}
 		}
+		return nil
 	}
+	h.lastReady = false
+	h.lastRows = nil
+	prefix := spillBucketPrefix(key)
+	iter := h.index.NewIteratorRange(prefix, prefixSuccessor(prefix), false)
+	defer iter.Close()
+	cache := true
+	var retained int64
+	var rows []map[string]Value
+	for iter.Valid() {
+		if err := h.s.checkInterrupt(); err != nil {
+			return err
+		}
+		row, err := decodeSpillMap(iter.Value())
+		if err != nil {
+			return err
+		}
+		h.rowsRead++
+		if h.s.profile != nil {
+			h.s.profile.SpillRowsRead++
+		}
+		if cache {
+			retained += rowMemory(row)
+			if retained <= h.s.memoryBudget()/16 {
+				rows = append(rows, row)
+			} else {
+				rows = nil
+				cache = false
+			}
+		}
+		if err = visit(row); err != nil {
+			return err
+		}
+		iter.Next()
+	}
+	if err := storage.IteratorError(iter); err != nil {
+		return err
+	}
+	if cache {
+		h.lastKey = key
+		h.lastRows = rows
+		h.lastReady = true
+	}
+	return nil
 }
 
 func (s *Schema) sortBounded(rows []map[string]Value, keys [][]string, orders []OrderByClause, window int64) ([]map[string]Value, [][]string, error) {
@@ -409,35 +533,6 @@ func (s *Schema) sortBounded(rows []map[string]Value, keys [][]string, orders []
 		err = nil
 	}
 	return out, outKeys, err
-}
-
-func writeSpillFrame(w io.Writer, row spillRecord) error {
-	var b bytes.Buffer
-	if e := gob.NewEncoder(&b).Encode(row); e != nil {
-		return e
-	}
-	var n [8]byte
-	binary.LittleEndian.PutUint64(n[:], uint64(b.Len()))
-	if _, e := w.Write(n[:]); e != nil {
-		return e
-	}
-	_, e := w.Write(b.Bytes())
-	return e
-}
-func readSpillFrame(r io.Reader, row *spillRecord) error {
-	var n [8]byte
-	if _, e := io.ReadFull(r, n[:]); e != nil {
-		return e
-	}
-	length := binary.LittleEndian.Uint64(n[:])
-	if length > 1<<63-1 {
-		return fmt.Errorf("invalid temporary spill frame size")
-	}
-	err := gob.NewDecoder(io.LimitReader(r, int64(length))).Decode(row)
-	if errors.Is(err, io.EOF) {
-		return io.ErrUnexpectedEOF
-	}
-	return err
 }
 
 func (r *spillSorter) addRecord(rec spillRecord) error {
