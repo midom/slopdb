@@ -92,7 +92,8 @@ func (s *Schema) streamOrderedSelect(stmt *SelectStmt, info *TableInfo, exprCols
 		}
 	}
 	original := make(map[string]Value)
-	err = s.walkAccess(info, bare, s.accessPaths(stmt.Where, info), func(row map[string]Value) error {
+	where := localAccessPredicate(stmt.Where, stmt.From, stmt.FromAlias)
+	err = s.walkAccess(info, bare, s.accessPaths(where, info), func(row map[string]Value) error {
 		if needsQualifiedRows(stmt) {
 			qualifyAccessRow(row, stmt.From, stmt.FromAlias)
 		}

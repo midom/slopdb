@@ -5,6 +5,23 @@ import (
 	"encoding/hex"
 )
 
+// Local physical readers use bare column names; evaluation keeps the original
+// qualified predicate. Never descend into another query block's lexical scope.
+func localAccessPredicate(expr Expression, table, alias string) Expression {
+	out, _ := mapExpression(expr, func(expr Expression) (Expression, bool, error) {
+		switch e := expr.(type) {
+		case *ColumnRefExpr:
+			if name := coveringColumn(e.Name, table, alias); name != "" {
+				return &ColumnRefExpr{Name: name}, true, nil
+			}
+		case *SubqueryExpr, *ExistsExpr:
+			return e, true, nil
+		}
+		return expr, false, nil
+	})
+	return out
+}
+
 // Every physical reader shares these bounds. Use the type band rather than an
 // artificial minimum value, so NULLs are excluded without losing -Inf, empty
 // strings, embedded NULs, or empty blobs.

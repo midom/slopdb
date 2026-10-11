@@ -1,7 +1,9 @@
 package sql
 
 import (
+	"bytes"
 	"fmt"
+	"sort"
 	"strings"
 
 	"slopdb/storage"
@@ -17,6 +19,8 @@ type RowCursor struct {
 	columns          []ColumnDef
 	expressions      []selectExprCol
 	iterator         storage.Iterator
+	intervals        []coveringInterval
+	position         int
 	reverse          bool
 	skipped, emitted int64
 	closed           bool
@@ -46,7 +50,7 @@ func (s *Schema) OpenRowCursor(stmt *SelectStmt) (*RowCursor, bool, error) {
 		reverse = stmt.OrderBy[0].Desc
 		for i, order := range stmt.OrderBy {
 			ref, ok := order.Expr.(*ColumnRefExpr)
-			if !ok || coveringColumn(ref.Name, stmt.From, stmt.FromAlias) != info.PKColumns[i] || order.Desc != reverse {
+			if !ok || cursorOrderColumn(stmt, ref.Name) != info.PKColumns[i] || order.Desc != reverse {
 				return nil, false, nil
 			}
 		}
@@ -81,20 +85,84 @@ func (s *Schema) OpenRowCursor(stmt *SelectStmt) (*RowCursor, bool, error) {
 		}
 	}
 	prefix := []byte(tableDataPrefix(info.Name))
-	lower, upper := prefix, prefixSuccessor(prefix)
-	// Reuse exact clustered tuple bounds without allowing a secondary index to
-	// change the requested order. Multiple intervals remain a streaming scan.
-	if key, found := s.primaryKeyLookup(stmt.Where, info.Name, info); found {
-		lower = key
-		upper = append(append([]byte{}, key...), 0)
-	} else {
-		constraints := tupleConstraints(stmt.Where, info.Name, stmt.FromAlias, info)
-		if plan := buildTuplePlan(stmt, info, nil, constraints); plan != nil && len(plan.intervals) == 1 {
-			lower, upper = plan.intervals[0].lower, plan.intervals[0].upper
+	// Merge clustered intervals so OR/IN reads remain bounded, ordered and
+	// duplicate-free. Any branch that cannot constrain the key keeps the scan.
+	branches, expanded := accessBranches(stmt.Where)
+	if !expanded {
+		branches = []Expression{stmt.Where}
+	}
+	for _, branch := range branches {
+		if key, found := s.primaryKeyLookup(branch, info.Name, info); found {
+			c.intervals = append(c.intervals, coveringInterval{key, append(copyBytes(key), 0)})
+			continue
+		}
+		copy := *stmt
+		copy.Where = branch
+		plan := buildTuplePlan(&copy, info, nil, tupleConstraints(branch, info.Name, stmt.FromAlias, info))
+		if plan == nil {
+			c.intervals = []coveringInterval{{prefix, prefixSuccessor(prefix)}}
+			break
+		}
+		c.intervals = append(c.intervals, plan.intervals...)
+	}
+	sort.Slice(c.intervals, func(i, j int) bool { return bytes.Compare(c.intervals[i].lower, c.intervals[j].lower) < 0 })
+	merged := c.intervals[:0]
+	for _, interval := range c.intervals {
+		if len(merged) > 0 && bytes.Compare(interval.lower, merged[len(merged)-1].upper) <= 0 {
+			if bytes.Compare(interval.upper, merged[len(merged)-1].upper) > 0 {
+				merged[len(merged)-1].upper = interval.upper
+			}
+		} else {
+			merged = append(merged, interval)
 		}
 	}
-	c.iterator = s.newRangeIterator(lower, upper, reverse)
+	c.intervals = merged
 	return c, true, nil
+}
+
+func cursorOrderColumn(stmt *SelectStmt, name string) string {
+	for _, selected := range stmt.Columns {
+		if selected.Alias != "" && strings.EqualFold(selected.Alias, name) {
+			ref, ok := selected.Expr.(*ColumnRefExpr)
+			if !ok {
+				return ""
+			}
+			return coveringColumn(ref.Name, stmt.From, stmt.FromAlias)
+		}
+	}
+	return coveringColumn(name, stmt.From, stmt.FromAlias)
+}
+
+func (c *RowCursor) nextSourceRow() (map[string]Value, bool, error) {
+	for {
+		if c.iterator == nil {
+			if c.position >= len(c.intervals) {
+				return nil, false, nil
+			}
+			position := c.position
+			if c.reverse {
+				position = len(c.intervals) - 1 - position
+			}
+			interval := c.intervals[position]
+			c.position++
+			c.iterator = c.schema.newRangeIterator(interval.lower, interval.upper, c.reverse)
+		}
+		if c.iterator.Valid() {
+			row := decodeRow(c.iterator.Value(), c.info)
+			if c.reverse {
+				c.iterator.Prev()
+			} else {
+				c.iterator.Next()
+			}
+			return row, true, nil
+		}
+		err := storage.IteratorError(c.iterator)
+		c.iterator.Close()
+		c.iterator = nil
+		if err != nil {
+			return nil, false, err
+		}
+	}
 }
 func (c *RowCursor) Columns() []ColumnDef {
 	columns := append([]ColumnDef(nil), c.columns...)
@@ -117,16 +185,15 @@ func (c *RowCursor) Next() (map[string]Value, bool, error) {
 		c.Close()
 		return nil, false, nil
 	}
-	for c.iterator.Valid() {
+	for {
 		if err := c.schema.checkInterrupt(); err != nil {
 			c.Close()
 			return nil, false, err
 		}
-		row := decodeRow(c.iterator.Value(), c.info)
-		if c.reverse {
-			c.iterator.Prev()
-		} else {
-			c.iterator.Next()
+		row, found, err := c.nextSourceRow()
+		if err != nil || !found {
+			c.Close()
+			return nil, false, err
 		}
 		if needsQualifiedRows(c.stmt) {
 			qualifyAccessRow(row, c.stmt.From, c.stmt.FromAlias)
@@ -160,9 +227,6 @@ func (c *RowCursor) Next() (map[string]Value, bool, error) {
 		c.emitted++
 		return out, true, nil
 	}
-	err := storage.IteratorError(c.iterator)
-	c.Close()
-	return nil, false, err
 }
 func (c *RowCursor) Close() {
 	if !c.closed {
