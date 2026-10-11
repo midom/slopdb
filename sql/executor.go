@@ -435,6 +435,8 @@ func (s *Schema) CreateTable(stmt *CreateTableStmt) error {
 		return err
 	}
 	s.tables[name] = info
+	delete(s.distributions, name)
+	delete(s.stats, name)
 	if err := s.saveSchema(); err != nil {
 		return err
 	}
@@ -502,6 +504,7 @@ func (s *Schema) DropTable(stmt *DropTableStmt) error {
 		}
 	}
 	delete(s.stats, name)
+	delete(s.distributions, name)
 	return s.saveSchema()
 }
 
@@ -1555,8 +1558,6 @@ func (s *Schema) captureState() *schemaState {
 }
 
 func (s *Schema) ensureCatalogWritable() {
-	// Column names and affinities may change. Discard immutable distribution hints.
-	s.distributions = make(map[string]*tableStatistics)
 	s.catalogLookup = nil
 	if !s.catalogShared {
 		return
@@ -2290,6 +2291,9 @@ func (s *Schema) AlterTable(stmt *AlterTableStmt) error {
 	if !ok {
 		return fmt.Errorf("table %q does not exist", table)
 	}
+	// Only this table's column bindings can change. Index/view/trigger DDL
+	// preserves independent, immutable column distributions.
+	delete(s.distributions, table)
 	entries, err := s.matchingDMLRows(table, info, nil, -1, 0)
 	if err != nil {
 		return err

@@ -15,7 +15,8 @@ frequency/range estimates are approximate, and samples can miss rare values.
 The planner uses these distributions to estimate equality, IN, NULL and range
 predicates, choose between indexes and a row scan, and distinguish useful
 secondary indexes when several predicates are available. Non-covering secondary
-reads include an estimated row-lookup cost. Ordered LIMIT paths retain their
+reads include a fanout-sensitive lookup cost: larger fetch sets revisit more LSM
+blocks than small cached probes. Ordered LIMIT paths retain their
 early-stop advantage. Legacy scalar readers respect the same costed scan choice.
 
 Join planning estimates filtered input cardinalities and equijoin fanout using
@@ -28,8 +29,16 @@ Estimates never change SQL comparison semantics, remove residual predicates, or
 change LEFT JOIN preservation and NULL matching. Unsupported predicates and
 databases without distribution statistics retain conservative planning defaults.
 Statistics are historical hints after later DML; rerun `ANALYZE` after substantial
-changes. Column distributions are invalidated by DDL rather than retaining stale
-column bindings. Prepared executions consult the current committed/private hints.
+changes. CREATE/DROP/ALTER TABLE invalidate the affected table's column bindings.
+Index, view and trigger DDL preserve unchanged column distributions. Prepared
+executions consult the current committed/private hints.
+
+Secondary TEXT/BLOB range readers represent necessary proper-prefix delimiter
+bands as disjoint intervals. This preserves arbitrary strings and binary values
+without widening ordinary date ranges across unrelated years. The planner costs
+the actual physical interval union, including any residual candidates. Bounds
+longer than 64 bytes use one conservative type-band interval to bound plan size
+and avoid quadratic prefix copying.
 
 Distributions use a separate, versioned catalog key. Existing table-count metadata
 and `sqlite_stat1` remain compatible with databases created before this change.

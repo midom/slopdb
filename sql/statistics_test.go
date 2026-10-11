@@ -42,6 +42,10 @@ func statisticsSQL(t *testing.T, s *Schema, q string) *ResultSet {
 				return s.CreateTable(stmt)
 			case *CreateIndexStmt:
 				return s.CreateIndex(stmt)
+			case *CreateViewStmt:
+				return s.CreateView(stmt)
+			case *AlterTableStmt:
+				return s.AlterTable(stmt)
 			case *InsertStmt:
 				_, _, e := s.Insert(stmt)
 				return e
@@ -134,7 +138,7 @@ func TestDistributionSkewPlansAndAnswers(t *testing.T) {
 		}
 	}
 	statisticsSQL(t, s, "CREATE TABLE dim(id INTEGER PRIMARY KEY,n TEXT)")
-	// DDL invalidates column bindings, so refresh after adding the dimension.
+	// Analyze the new dimension as well as the existing fact table.
 	statisticsSQL(t, s, "INSERT INTO dim VALUES(0,'hot'),(999,'rare');ANALYZE")
 	for _, tc := range []struct {
 		value    int
@@ -240,8 +244,16 @@ func TestDistributionPersistenceAndTransactionIsolation(t *testing.T) {
 		t.Fatal("committed ANALYZE not persisted")
 	}
 	statisticsSQL(t, s, "CREATE INDEX tv ON t(v)")
-	if len(s.distributions) != 0 {
-		t.Fatal("DDL retained stale column bindings")
+	if s.distributions["t"] == nil {
+		t.Fatal("index DDL discarded unchanged column statistics")
+	}
+	statisticsSQL(t, s, "CREATE VIEW t_view AS SELECT * FROM t")
+	if s.distributions["t"] == nil {
+		t.Fatal("view DDL discarded unchanged table statistics")
+	}
+	statisticsSQL(t, s, "ALTER TABLE t RENAME COLUMN v TO renamed_v")
+	if s.distributions["t"] != nil {
+		t.Fatal("ALTER retained stale column bindings")
 	}
 	if err := lsm.Close(); err != nil {
 		t.Fatal(err)
