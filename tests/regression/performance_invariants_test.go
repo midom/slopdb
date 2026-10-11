@@ -49,6 +49,7 @@ func TestPerformanceBoundedAccessInvariant(t *testing.T) {
 	for _, query := range []string{
 		"SELECT * FROM items WHERE id BETWEEN 901 AND 905 ORDER BY payload",
 		"SELECT id FROM items WHERE id>=901 AND id<=905 ORDER BY payload",
+		"SELECT id FROM items AS x WHERE x.id BETWEEN 901 AND 905 ORDER BY x.payload",
 		"SELECT * FROM items WHERE w=9 AND k BETWEEN 1 AND 5 ORDER BY payload",
 		"SELECT id FROM items WHERE w=9 AND k IN(1,2,3,4,5) ORDER BY payload",
 	} {
