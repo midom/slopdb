@@ -73,8 +73,8 @@ TRUE and FALSE are recognized. SQL three-valued NULL logic remains intact.
 Nonbinary collations and unsupported conflict policies produce an error rather
 than being ignored. The existing SQLite-style truth values, affinity, scalar
 MIN/MAX, AUTOINCREMENT, REPLACE, TOTAL, GROUP_CONCAT, date functions, LIMIT, and
-MySQL-style introspection remain dialect extensions. CTEs, window functions,
-recursive CTEs, and other unimplemented language features remain outside this
+MySQL-style introspection remain dialect extensions. Supported CTEs, recursive
+CTEs, window functions and UPSERT now have their own feature documentation. Other unimplemented language features remain outside this
 subset.
 
 ## Composite query execution
