@@ -38,6 +38,7 @@ type joinPlan struct {
 	order      []int
 	fixed      bool
 	where      Expression
+	keyDomains map[string]float64
 }
 
 func (s *Schema) expressionDependencies(expr Expression) ([]string, bool) {
@@ -272,12 +273,19 @@ func (s *Schema) makeJoinPlan(stmt *SelectStmt) *joinPlan {
 
 func (p *joinPlan) pairs(i int, mask uint64) []joinKeyPair {
 	var out []joinKeyPair
+	seen := make(map[joinKeyPair]bool)
+	add := func(pair joinKeyPair) {
+		if !seen[pair] {
+			out = append(out, pair)
+			seen[pair] = true
+		}
+	}
 	for _, e := range p.edges {
 		if e.a == i && mask&(1<<e.b) != 0 {
-			out = append(out, joinKeyPair{p.relations[e.b].alias + "." + e.bc, e.ac})
+			add(joinKeyPair{p.relations[e.b].alias + "." + e.bc, e.ac})
 		}
 		if e.b == i && mask&(1<<e.a) != 0 {
-			out = append(out, joinKeyPair{p.relations[e.a].alias + "." + e.ac, e.bc})
+			add(joinKeyPair{p.relations[e.a].alias + "." + e.ac, e.bc})
 		}
 	}
 	return out
@@ -320,21 +328,16 @@ func (p *joinPlan) fanout(i int, mask uint64) (factor float64) {
 			factor = 1
 		}
 	}()
-	if r.total == 0 {
+	if r.total == 0 || r.count == 0 {
 		return 0
 	}
-	pairs := p.pairs(i, mask)
+	pairs := p.costPairs(i, mask)
 	if len(pairs) == 0 {
 		return r.count
 	}
 	keys := make(map[string]bool)
-	domain := 1.0
 	for _, pair := range pairs {
 		keys[pair.right] = true
-		owner := p.owners[pair.left]
-		if owner >= 0 {
-			domain = math.Max(domain, p.relations[owner].total)
-		}
 	}
 	unique := len(r.info.PKColumns) > 0
 	for _, name := range r.info.PKColumns {
@@ -343,31 +346,27 @@ func (p *joinPlan) fanout(i int, mask uint64) (factor float64) {
 	if unique {
 		return math.Min(1, r.count/r.total)
 	}
-	if r.distribution != nil {
-		selectivity := 1.0
-		known := false
-		for _, pair := range pairs {
-			right := r.distribution.Columns[pair.right]
-			owner, exists := p.owners[pair.left]
-			if right == nil || !exists || owner < 0 {
-				continue
-			}
-			var left *columnStatistics
-			if other := p.relations[owner].distribution; other != nil {
-				_, name, _ := strings.Cut(pair.left, ".")
-				left = other.Columns[name]
-			}
-			selectivity *= joinDistributionSelectivity(left, right)
-			known = true
+	selectivity := 1.0
+	for _, pair := range pairs {
+		var right, left *columnStatistics
+		if r.distribution != nil {
+			right = r.distribution.Columns[pair.right]
 		}
-		if known {
-			return math.Max(0.001, r.count*selectivity)
+		owner, exists := p.owners[pair.left]
+		if exists && owner >= 0 && p.relations[owner].distribution != nil {
+			_, name, _ := strings.Cut(pair.left, ".")
+			left = p.relations[owner].distribution.Columns[name]
+		}
+		if right != nil {
+			selectivity *= joinDistributionSelectivity(left, right)
+		} else {
+			selectivity /= p.equalityDomain(r.alias + "." + pair.right)
 		}
 	}
-	return math.Max(0.001, r.count/math.Min(r.total, domain))
+	return math.Max(0.001, r.count*selectivity)
 }
 
-func (p *joinPlan) chooseOrder() {
+func (p *joinPlan) chooseGreedyOrder() {
 	if p.fixed {
 		p.order = nil
 		for i := range p.relations {
