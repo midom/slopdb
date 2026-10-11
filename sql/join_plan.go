@@ -646,11 +646,10 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 	var walk func(int) error
 	var joinProfiles []int
 	if s.profile != nil {
-		for depth, i := range p.order {
-			id := s.profile.operator("Join", p.relations[i].alias)
-			if depth > 0 {
-				s.profile.Operators[id].ParentID = joinProfiles[depth-1]
-			}
+		parent := s.profile.parent()
+		for _, i := range p.order {
+			id := s.profile.operatorUnder(parent, "Join", p.relations[i].alias)
+			parent = id
 			joinProfiles = append(joinProfiles, id)
 		}
 	}
@@ -695,7 +694,7 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 		if err != nil {
 			return err
 		}
-		if profile != nil {
+		if profile != nil && profile.ID != s.profile.overflow {
 			// readerRows can initialize a hash table on its first call.
 			profile = &s.profile.Operators[joinProfiles[depth]]
 			profile.Operator = "NestedLoopJoin"
