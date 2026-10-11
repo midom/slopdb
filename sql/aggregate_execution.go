@@ -325,116 +325,6 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 	}
 	var baseNames []string
 	namesReady := false
-	var groupMemory int64
-	for _, g := range groups {
-		groupMemory += aggregateGroupMemory(g)
-	}
-	accept := func(input map[string]Value) error {
-		row = input
-		if plan == nil && qualified {
-			qualifyAccessRow(row, stmt.From, alias)
-		}
-		if stmt.Where != nil && plan == nil {
-			match, err := s.evalCondition(stmt.Where, row)
-			if err != nil {
-				return err
-			}
-			if !match {
-				return nil
-			}
-		}
-		key := keyBuffer[:0]
-		for _, e := range groupExprs {
-			v, err := s.evalExpr(e, row)
-			if err != nil {
-				return err
-			}
-			key = append(key, valueIdentity(v)...)
-		}
-		k := string(key)
-		g := groups[k]
-		var before int64
-		if g != nil {
-			before = aggregateGroupMemory(g)
-		}
-		if g == nil {
-			g = newGroup()
-			groups[k] = g
-		}
-		first := g.inputs == 0
-		if first {
-			if !namesReady {
-				for _, name := range sortedAccessNames(representative) {
-					if _, ok := row[name]; ok {
-						baseNames = append(baseNames, name)
-					}
-				}
-				namesReady = true
-			}
-			g.baseValues = make([]Value, len(baseNames))
-			for i, name := range baseNames {
-				g.baseValues[i] = row[name]
-			}
-		}
-		g.inputs++
-		for i, f := range functions {
-			if err := s.addAggregate(&g.states[i], f, row); err != nil {
-				return err
-			}
-		}
-		groupMemory += aggregateGroupMemory(g) - before
-		if groupMemory > s.memoryBudget() {
-			return errAggregateSpill
-		}
-		return nil
-	}
-	var readErr error
-	if plan != nil {
-		readErr = s.walkJoinPlan(plan, accept)
-	} else {
-		where, _ := mapExpression(stmt.Where, func(e Expression) (Expression, bool, error) {
-			switch e := e.(type) {
-			case *ColumnRefExpr:
-				if name := coveringColumn(e.Name, stmt.From, alias); name != "" {
-					return &ColumnRefExpr{Name: name}, true, nil
-				}
-			case *SubqueryExpr, *ExistsExpr:
-				return e, true, nil
-			}
-			return e, false, nil
-		})
-		paths := s.accessPaths(where, info)
-		// A one-sided secondary range often reads most of a table. Sequential
-		// decoding avoids fetching the same wide input through a broad index.
-		if len(paths) == 1 && paths[0].index != nil && !paths[0].complete {
-			constraints := s.accessConstraints(where, info)
-			c := constraints[paths[0].index.columnNames()[0]]
-			if c != nil && (c.lower == nil || c.upper == nil) && c.equal == nil && c.listTerm == nil {
-				paths = nil
-			}
-		}
-		var typed *typedAggregate
-		var ok bool
-		if p := stmt.prepared; p != nil {
-			if !p.aggregateReady {
-				p.aggregate, _ = compileTypedAggregate(info, stmt.From, alias, stmt.Where, groupExprs, functions, representative)
-				p.aggregateReady = true
-			}
-			typed, ok = p.aggregate, p.aggregate != nil
-		} else {
-			typed, ok = compileTypedAggregate(info, stmt.From, alias, stmt.Where, groupExprs, functions, representative)
-		}
-		if ok {
-			baseNames = typed.baseNames
-			namesReady = true
-			readErr = s.walkTypedAggregate(typed, info, bareNeeded, paths, groups, newGroup)
-		} else {
-			readErr = s.walkAccess(info, bareNeeded, paths, accept)
-		}
-	}
-	if readErr != nil && !errors.Is(readErr, errAggregateSpill) {
-		return nil, true, readErr
-	}
 	var result []map[string]Value
 	scratch := make(map[string]Value, len(baseNames)+len(exprCols))
 	emit := func(g *aggregateGroup) error {
@@ -521,7 +411,161 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 		result = append(result, copyRow(g.base))
 		return nil
 	}
-	if errors.Is(readErr, errAggregateSpill) {
+	ordered := false
+	var orderedKey string
+	var orderedGroup *aggregateGroup
+	var orderedInputs int64
+	orderedEmit := func(g *aggregateGroup) error { orderedInputs += g.inputs; return emit(g) }
+	var groupMemory int64
+	for _, g := range groups {
+		groupMemory += aggregateGroupMemory(g)
+	}
+	accept := func(input map[string]Value) error {
+		row = input
+		if plan == nil && qualified {
+			qualifyAccessRow(row, stmt.From, alias)
+		}
+		if stmt.Where != nil && plan == nil {
+			match, err := s.evalCondition(stmt.Where, row)
+			if err != nil {
+				return err
+			}
+			if !match {
+				return nil
+			}
+		}
+		key := keyBuffer[:0]
+		for _, e := range groupExprs {
+			v, err := s.evalExpr(e, row)
+			if err != nil {
+				return err
+			}
+			key = append(key, valueIdentity(v)...)
+		}
+		k := string(key)
+		var g *aggregateGroup
+		var before int64
+		if ordered {
+			if orderedGroup == nil {
+				orderedGroup = &aggregateGroup{states: make([]aggregateState, len(functions))}
+			} else if orderedKey != k {
+				if err := orderedEmit(orderedGroup); err != nil {
+					return err
+				}
+				resetOrderedAggregate(orderedGroup)
+			}
+			orderedKey = k
+			g = orderedGroup
+		} else {
+			g = groups[k]
+			if g != nil {
+				before = aggregateGroupMemory(g)
+			}
+			if g == nil {
+				g = newGroup()
+				groups[k] = g
+			}
+		}
+		first := g.inputs == 0
+		if first {
+			if !namesReady {
+				for _, name := range sortedAccessNames(representative) {
+					if _, ok := row[name]; ok {
+						baseNames = append(baseNames, name)
+					}
+				}
+				namesReady = true
+			}
+			if cap(g.baseValues) < len(baseNames) {
+				g.baseValues = make([]Value, len(baseNames))
+			} else {
+				g.baseValues = g.baseValues[:len(baseNames)]
+			}
+			for i, name := range baseNames {
+				g.baseValues[i] = row[name]
+			}
+		}
+		g.inputs++
+		for i, f := range functions {
+			if err := s.addAggregate(&g.states[i], f, row); err != nil {
+				return err
+			}
+		}
+		if ordered {
+			return nil
+		}
+		groupMemory += aggregateGroupMemory(g) - before
+		if groupMemory > s.memoryBudget() {
+			return errAggregateSpill
+		}
+		return nil
+	}
+	var readErr error
+	if plan != nil {
+		readErr = s.walkJoinPlan(plan, accept)
+	} else {
+		where, _ := mapExpression(stmt.Where, func(e Expression) (Expression, bool, error) {
+			switch e := e.(type) {
+			case *ColumnRefExpr:
+				if name := coveringColumn(e.Name, stmt.From, alias); name != "" {
+					return &ColumnRefExpr{Name: name}, true, nil
+				}
+			case *SubqueryExpr, *ExistsExpr:
+				return e, true, nil
+			}
+			return e, false, nil
+		})
+		paths := s.accessPaths(where, info)
+		// A one-sided secondary range often reads most of a table. Sequential
+		// decoding avoids fetching the same wide input through a broad index.
+		if len(paths) == 1 && paths[0].index != nil && !paths[0].complete {
+			constraints := s.accessConstraints(where, info)
+			c := constraints[paths[0].index.columnNames()[0]]
+			if c != nil && (c.lower == nil || c.upper == nil) && c.equal == nil && c.listTerm == nil {
+				paths = nil
+			}
+		}
+		ordered = orderedAggregateInput(stmt, info, groupExprs, paths)
+		finish := (func(int64, int64, error))(nil)
+		if ordered {
+			finish = s.ProfileOperator("OrderedAggregate", stmt.From)
+		}
+		var typed *typedAggregate
+		var ok bool
+		if p := stmt.prepared; p != nil {
+			if !p.aggregateReady {
+				p.aggregate, _ = compileTypedAggregate(info, stmt.From, alias, stmt.Where, groupExprs, functions, representative)
+				p.aggregateReady = true
+			}
+			typed, ok = p.aggregate, p.aggregate != nil
+		} else {
+			typed, ok = compileTypedAggregate(info, stmt.From, alias, stmt.Where, groupExprs, functions, representative)
+		}
+		if ok {
+			baseNames = typed.baseNames
+			namesReady = true
+			if ordered {
+				readErr = s.walkTypedOrderedAggregate(typed, info, bareNeeded, paths, orderedEmit)
+			} else {
+				readErr = s.walkTypedAggregate(typed, info, bareNeeded, paths, groups, newGroup)
+			}
+		} else {
+			readErr = s.walkAccess(info, bareNeeded, paths, accept)
+			if ordered && readErr == nil && orderedGroup != nil {
+				readErr = orderedEmit(orderedGroup)
+			}
+		}
+		if finish != nil {
+			finish(orderedInputs, int64(len(result)), readErr)
+		}
+	}
+	if readErr != nil && !errors.Is(readErr, errAggregateSpill) {
+		return nil, true, readErr
+	}
+
+	if ordered {
+		// Groups were finalized while reading the clustered prefix.
+	} else if errors.Is(readErr, errAggregateSpill) {
 		for _, g := range groups {
 			for i := range g.states {
 				if g.states[i].distinctDisk != nil {
