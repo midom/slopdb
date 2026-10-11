@@ -1,0 +1,4949 @@
+[
+  {
+    "query": "SELECT NULL AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL OR NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL = NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL <> NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL < NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL <= NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL > NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL >= NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL IS NULL",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL IS NOT NULL",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL IN (NULL,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT IN (NULL,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL AND 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL OR 0",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL = 0",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL <> 0",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL < 0",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL <= 0",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL > 0",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL >= 0",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL IS 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL IS NOT 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL IN (0,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT IN (0,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL AND 1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL OR 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL = 1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL <> 1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL < 1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL <= 1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL > 1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL >= 1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL IS 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL IS NOT 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL IN (1,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT IN (1,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL AND 2",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL OR 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL = 2",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL <> 2",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL < 2",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL <= 2",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL > 2",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL >= 2",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL IS 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL IS NOT 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL IN (2,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT IN (2,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL AND -1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL OR -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL = -1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL <> -1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL < -1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL <= -1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL > -1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL >= -1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL IS -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL IS NOT -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL IN (-1,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT IN (-1,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 AND NULL",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 OR NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 = NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 <> NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 < NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 <= NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 > NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 >= NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 IS NULL",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 IS NOT NULL",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 IN (NULL,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT IN (NULL,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 AND 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 OR 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 = 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 <> 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 < 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 <= 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 > 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 >= 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 IS 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 IS NOT 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 IN (0,NULL)",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT IN (0,NULL)",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 AND 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 OR 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 = 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 <> 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 < 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 <= 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 > 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 >= 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 IS 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 IS NOT 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 IN (1,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT IN (1,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 AND 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 OR 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 = 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 <> 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 < 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 <= 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 > 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 >= 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 IS 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 IS NOT 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 IN (2,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT IN (2,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 AND -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 OR -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 = -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 <> -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 < -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 <= -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 > -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 >= -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 IS -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 IS NOT -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 IN (-1,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT IN (-1,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 OR NULL",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 = NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 <> NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 < NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 <= NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 > NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 >= NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 IS NULL",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 IS NOT NULL",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 IN (NULL,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT IN (NULL,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 AND 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 OR 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 = 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 <> 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 < 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 <= 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 > 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 >= 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 IS 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 IS NOT 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 IN (0,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT IN (0,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 AND 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 OR 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 = 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 <> 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 < 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 <= 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 > 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 >= 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 IS 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 IS NOT 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 IN (1,NULL)",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT IN (1,NULL)",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 AND 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 OR 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 = 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 <> 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 < 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 <= 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 > 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 >= 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 IS 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 IS NOT 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 IN (2,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT IN (2,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 AND -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 OR -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 = -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 <> -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 < -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 <= -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 > -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 >= -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 IS -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 IS NOT -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 IN (-1,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT IN (-1,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 OR NULL",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 = NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 <> NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 < NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 <= NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 > NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 >= NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 IS NULL",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 IS NOT NULL",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 IN (NULL,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT IN (NULL,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 AND 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 OR 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 = 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 <> 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 < 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 <= 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 > 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 >= 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 IS 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 IS NOT 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 IN (0,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT IN (0,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 AND 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 OR 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 = 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 <> 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 < 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 <= 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 > 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 >= 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 IS 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 IS NOT 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 IN (1,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT IN (1,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 AND 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 OR 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 = 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 <> 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 < 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 <= 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 > 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 >= 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 IS 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 IS NOT 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 IN (2,NULL)",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT IN (2,NULL)",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 AND -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 OR -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 = -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 <> -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 < -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 <= -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 > -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 >= -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 IS -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 IS NOT -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 IN (-1,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT IN (-1,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 OR NULL",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 = NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 <> NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 < NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 <= NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 > NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 >= NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 IS NULL",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 IS NOT NULL",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 IN (NULL,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT IN (NULL,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 AND 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 OR 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 = 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 <> 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 < 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 <= 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 > 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 >= 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 IS 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 IS NOT 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 IN (0,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT IN (0,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 AND 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 OR 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 = 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 <> 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 < 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 <= 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 > 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 >= 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 IS 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 IS NOT 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 IN (1,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT IN (1,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 AND 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 OR 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 = 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 <> 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 < 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 <= 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 > 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 >= 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 IS 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 IS NOT 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 IN (2,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT IN (2,NULL)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 AND -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 OR -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 = -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 <> -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 < -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 <= -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 > -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 >= -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 IS -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 IS NOT -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 IN (-1,NULL)",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT IN (-1,NULL)",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL BETWEEN NULL AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT BETWEEN NULL AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL BETWEEN NULL AND 0",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT BETWEEN NULL AND 0",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL BETWEEN NULL AND 1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT BETWEEN NULL AND 1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL BETWEEN NULL AND 2",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT BETWEEN NULL AND 2",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL BETWEEN NULL AND -1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT BETWEEN NULL AND -1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL BETWEEN 0 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT BETWEEN 0 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL BETWEEN 0 AND 0",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT BETWEEN 0 AND 0",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL BETWEEN 0 AND 1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT BETWEEN 0 AND 1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL BETWEEN 0 AND 2",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT BETWEEN 0 AND 2",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL BETWEEN 0 AND -1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT BETWEEN 0 AND -1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL BETWEEN 1 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT BETWEEN 1 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL BETWEEN 1 AND 0",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT BETWEEN 1 AND 0",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL BETWEEN 1 AND 1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT BETWEEN 1 AND 1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL BETWEEN 1 AND 2",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT BETWEEN 1 AND 2",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL BETWEEN 1 AND -1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT BETWEEN 1 AND -1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL BETWEEN 2 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT BETWEEN 2 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL BETWEEN 2 AND 0",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT BETWEEN 2 AND 0",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL BETWEEN 2 AND 1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT BETWEEN 2 AND 1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL BETWEEN 2 AND 2",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT BETWEEN 2 AND 2",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL BETWEEN 2 AND -1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT BETWEEN 2 AND -1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL BETWEEN -1 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT BETWEEN -1 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL BETWEEN -1 AND 0",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT BETWEEN -1 AND 0",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL BETWEEN -1 AND 1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT BETWEEN -1 AND 1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL BETWEEN -1 AND 2",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT BETWEEN -1 AND 2",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL BETWEEN -1 AND -1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT BETWEEN -1 AND -1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 BETWEEN NULL AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT BETWEEN NULL AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 BETWEEN NULL AND 0",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT BETWEEN NULL AND 0",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 BETWEEN NULL AND 1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT BETWEEN NULL AND 1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 BETWEEN NULL AND 2",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT BETWEEN NULL AND 2",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 BETWEEN NULL AND -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT BETWEEN NULL AND -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 BETWEEN 0 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT BETWEEN 0 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 BETWEEN 0 AND 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT BETWEEN 0 AND 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 BETWEEN 0 AND 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT BETWEEN 0 AND 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 BETWEEN 0 AND 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT BETWEEN 0 AND 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 BETWEEN 0 AND -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT BETWEEN 0 AND -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 BETWEEN 1 AND NULL",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT BETWEEN 1 AND NULL",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 BETWEEN 1 AND 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT BETWEEN 1 AND 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 BETWEEN 1 AND 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT BETWEEN 1 AND 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 BETWEEN 1 AND 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT BETWEEN 1 AND 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 BETWEEN 1 AND -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT BETWEEN 1 AND -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 BETWEEN 2 AND NULL",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT BETWEEN 2 AND NULL",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 BETWEEN 2 AND 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT BETWEEN 2 AND 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 BETWEEN 2 AND 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT BETWEEN 2 AND 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 BETWEEN 2 AND 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT BETWEEN 2 AND 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 BETWEEN 2 AND -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT BETWEEN 2 AND -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 BETWEEN -1 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT BETWEEN -1 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 BETWEEN -1 AND 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT BETWEEN -1 AND 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 BETWEEN -1 AND 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT BETWEEN -1 AND 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 BETWEEN -1 AND 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT BETWEEN -1 AND 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 BETWEEN -1 AND -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 0 NOT BETWEEN -1 AND -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 BETWEEN NULL AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT BETWEEN NULL AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 BETWEEN NULL AND 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT BETWEEN NULL AND 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 BETWEEN NULL AND 1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT BETWEEN NULL AND 1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 BETWEEN NULL AND 2",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT BETWEEN NULL AND 2",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 BETWEEN NULL AND -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT BETWEEN NULL AND -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 BETWEEN 0 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT BETWEEN 0 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 BETWEEN 0 AND 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT BETWEEN 0 AND 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 BETWEEN 0 AND 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT BETWEEN 0 AND 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 BETWEEN 0 AND 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT BETWEEN 0 AND 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 BETWEEN 0 AND -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT BETWEEN 0 AND -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 BETWEEN 1 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT BETWEEN 1 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 BETWEEN 1 AND 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT BETWEEN 1 AND 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 BETWEEN 1 AND 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT BETWEEN 1 AND 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 BETWEEN 1 AND 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT BETWEEN 1 AND 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 BETWEEN 1 AND -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT BETWEEN 1 AND -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 BETWEEN 2 AND NULL",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT BETWEEN 2 AND NULL",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 BETWEEN 2 AND 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT BETWEEN 2 AND 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 BETWEEN 2 AND 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT BETWEEN 2 AND 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 BETWEEN 2 AND 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT BETWEEN 2 AND 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 BETWEEN 2 AND -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT BETWEEN 2 AND -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 BETWEEN -1 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT BETWEEN -1 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 BETWEEN -1 AND 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT BETWEEN -1 AND 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 BETWEEN -1 AND 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT BETWEEN -1 AND 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 BETWEEN -1 AND 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT BETWEEN -1 AND 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 BETWEEN -1 AND -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 1 NOT BETWEEN -1 AND -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 BETWEEN NULL AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT BETWEEN NULL AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 BETWEEN NULL AND 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT BETWEEN NULL AND 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 BETWEEN NULL AND 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT BETWEEN NULL AND 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 BETWEEN NULL AND 2",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT BETWEEN NULL AND 2",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 BETWEEN NULL AND -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT BETWEEN NULL AND -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 BETWEEN 0 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT BETWEEN 0 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 BETWEEN 0 AND 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT BETWEEN 0 AND 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 BETWEEN 0 AND 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT BETWEEN 0 AND 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 BETWEEN 0 AND 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT BETWEEN 0 AND 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 BETWEEN 0 AND -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT BETWEEN 0 AND -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 BETWEEN 1 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT BETWEEN 1 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 BETWEEN 1 AND 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT BETWEEN 1 AND 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 BETWEEN 1 AND 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT BETWEEN 1 AND 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 BETWEEN 1 AND 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT BETWEEN 1 AND 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 BETWEEN 1 AND -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT BETWEEN 1 AND -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 BETWEEN 2 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT BETWEEN 2 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 BETWEEN 2 AND 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT BETWEEN 2 AND 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 BETWEEN 2 AND 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT BETWEEN 2 AND 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 BETWEEN 2 AND 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT BETWEEN 2 AND 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 BETWEEN 2 AND -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT BETWEEN 2 AND -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 BETWEEN -1 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT BETWEEN -1 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 BETWEEN -1 AND 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT BETWEEN -1 AND 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 BETWEEN -1 AND 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT BETWEEN -1 AND 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 BETWEEN -1 AND 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT BETWEEN -1 AND 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 BETWEEN -1 AND -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 2 NOT BETWEEN -1 AND -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 BETWEEN NULL AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT BETWEEN NULL AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 BETWEEN NULL AND 0",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT BETWEEN NULL AND 0",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 BETWEEN NULL AND 1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT BETWEEN NULL AND 1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 BETWEEN NULL AND 2",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT BETWEEN NULL AND 2",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 BETWEEN NULL AND -1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT BETWEEN NULL AND -1",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 BETWEEN 0 AND NULL",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT BETWEEN 0 AND NULL",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 BETWEEN 0 AND 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT BETWEEN 0 AND 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 BETWEEN 0 AND 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT BETWEEN 0 AND 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 BETWEEN 0 AND 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT BETWEEN 0 AND 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 BETWEEN 0 AND -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT BETWEEN 0 AND -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 BETWEEN 1 AND NULL",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT BETWEEN 1 AND NULL",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 BETWEEN 1 AND 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT BETWEEN 1 AND 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 BETWEEN 1 AND 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT BETWEEN 1 AND 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 BETWEEN 1 AND 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT BETWEEN 1 AND 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 BETWEEN 1 AND -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT BETWEEN 1 AND -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 BETWEEN 2 AND NULL",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT BETWEEN 2 AND NULL",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 BETWEEN 2 AND 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT BETWEEN 2 AND 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 BETWEEN 2 AND 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT BETWEEN 2 AND 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 BETWEEN 2 AND 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT BETWEEN 2 AND 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 BETWEEN 2 AND -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT BETWEEN 2 AND -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 BETWEEN -1 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT BETWEEN -1 AND NULL",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 BETWEEN -1 AND 0",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT BETWEEN -1 AND 0",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 BETWEEN -1 AND 1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT BETWEEN -1 AND 1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 BETWEEN -1 AND 2",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT BETWEEN -1 AND 2",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 BETWEEN -1 AND -1",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT -1 NOT BETWEEN -1 AND -1",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT COUNT(*) FROM t",
+    "rows": [
+      [
+        5
+      ]
+    ]
+  },
+  {
+    "query": "SELECT COUNT(*) FROM t WHERE id>99",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT COUNT(*) FROM t GROUP BY b ORDER BY b",
+    "rows": [
+      [
+        1
+      ],
+      [
+        1
+      ],
+      [
+        2
+      ],
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT COUNT(*) FROM t GROUP BY b HAVING COUNT(*)>1 ORDER BY b",
+    "rows": [
+      [
+        2
+      ]
+    ]
+  },
+  {
+    "query": "SELECT COUNT(a) FROM t",
+    "rows": [
+      [
+        4
+      ]
+    ]
+  },
+  {
+    "query": "SELECT COUNT(a) FROM t WHERE id>99",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT COUNT(a) FROM t GROUP BY b ORDER BY b",
+    "rows": [
+      [
+        1
+      ],
+      [
+        0
+      ],
+      [
+        2
+      ],
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT COUNT(a) FROM t GROUP BY b HAVING COUNT(*)>1 ORDER BY b",
+    "rows": [
+      [
+        2
+      ]
+    ]
+  },
+  {
+    "query": "SELECT COUNT(DISTINCT a) FROM t",
+    "rows": [
+      [
+        3
+      ]
+    ]
+  },
+  {
+    "query": "SELECT COUNT(DISTINCT a) FROM t WHERE id>99",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT COUNT(DISTINCT a) FROM t GROUP BY b ORDER BY b",
+    "rows": [
+      [
+        1
+      ],
+      [
+        0
+      ],
+      [
+        1
+      ],
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT COUNT(DISTINCT a) FROM t GROUP BY b HAVING COUNT(*)>1 ORDER BY b",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT SUM(a) FROM t",
+    "rows": [
+      [
+        4
+      ]
+    ]
+  },
+  {
+    "query": "SELECT SUM(a) FROM t WHERE id>99",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT SUM(a) FROM t GROUP BY b ORDER BY b",
+    "rows": [
+      [
+        0
+      ],
+      [
+        null
+      ],
+      [
+        2
+      ],
+      [
+        2
+      ]
+    ]
+  },
+  {
+    "query": "SELECT SUM(a) FROM t GROUP BY b HAVING COUNT(*)>1 ORDER BY b",
+    "rows": [
+      [
+        2
+      ]
+    ]
+  },
+  {
+    "query": "SELECT SUM(DISTINCT a) FROM t",
+    "rows": [
+      [
+        3
+      ]
+    ]
+  },
+  {
+    "query": "SELECT SUM(DISTINCT a) FROM t WHERE id>99",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT SUM(DISTINCT a) FROM t GROUP BY b ORDER BY b",
+    "rows": [
+      [
+        0
+      ],
+      [
+        null
+      ],
+      [
+        1
+      ],
+      [
+        2
+      ]
+    ]
+  },
+  {
+    "query": "SELECT SUM(DISTINCT a) FROM t GROUP BY b HAVING COUNT(*)>1 ORDER BY b",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT AVG(a) FROM t",
+    "rows": [
+      [
+        1.0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT AVG(a) FROM t WHERE id>99",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT AVG(a) FROM t GROUP BY b ORDER BY b",
+    "rows": [
+      [
+        0.0
+      ],
+      [
+        null
+      ],
+      [
+        1.0
+      ],
+      [
+        2.0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT AVG(a) FROM t GROUP BY b HAVING COUNT(*)>1 ORDER BY b",
+    "rows": [
+      [
+        1.0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT MIN(a) FROM t",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT MIN(a) FROM t WHERE id>99",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT MIN(a) FROM t GROUP BY b ORDER BY b",
+    "rows": [
+      [
+        0
+      ],
+      [
+        null
+      ],
+      [
+        1
+      ],
+      [
+        2
+      ]
+    ]
+  },
+  {
+    "query": "SELECT MIN(a) FROM t GROUP BY b HAVING COUNT(*)>1 ORDER BY b",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT MAX(a) FROM t",
+    "rows": [
+      [
+        2
+      ]
+    ]
+  },
+  {
+    "query": "SELECT MAX(a) FROM t WHERE id>99",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT MAX(a) FROM t GROUP BY b ORDER BY b",
+    "rows": [
+      [
+        0
+      ],
+      [
+        null
+      ],
+      [
+        1
+      ],
+      [
+        2
+      ]
+    ]
+  },
+  {
+    "query": "SELECT MAX(a) FROM t GROUP BY b HAVING COUNT(*)>1 ORDER BY b",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT COALESCE(SUM(a),0) FROM t",
+    "rows": [
+      [
+        4
+      ]
+    ]
+  },
+  {
+    "query": "SELECT COALESCE(SUM(a),0) FROM t WHERE id>99",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT COALESCE(SUM(a),0) FROM t GROUP BY b ORDER BY b",
+    "rows": [
+      [
+        0
+      ],
+      [
+        0
+      ],
+      [
+        2
+      ],
+      [
+        2
+      ]
+    ]
+  },
+  {
+    "query": "SELECT COALESCE(SUM(a),0) FROM t GROUP BY b HAVING COUNT(*)>1 ORDER BY b",
+    "rows": [
+      [
+        2
+      ]
+    ]
+  },
+  {
+    "query": "SELECT CASE WHEN COUNT(a)>0 THEN SUM(a) ELSE 0 END FROM t",
+    "rows": [
+      [
+        4
+      ]
+    ]
+  },
+  {
+    "query": "SELECT CASE WHEN COUNT(a)>0 THEN SUM(a) ELSE 0 END FROM t WHERE id>99",
+    "rows": [
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT CASE WHEN COUNT(a)>0 THEN SUM(a) ELSE 0 END FROM t GROUP BY b ORDER BY b",
+    "rows": [
+      [
+        0
+      ],
+      [
+        0
+      ],
+      [
+        2
+      ],
+      [
+        2
+      ]
+    ]
+  },
+  {
+    "query": "SELECT CASE WHEN COUNT(a)>0 THEN SUM(a) ELSE 0 END FROM t GROUP BY b HAVING COUNT(*)>1 ORDER BY b",
+    "rows": [
+      [
+        2
+      ]
+    ]
+  },
+  {
+    "query": "SELECT t.id,u.a FROM t LEFT JOIN u ON t.id=u.id ORDER BY t.id",
+    "rows": [
+      [
+        1,
+        1
+      ],
+      [
+        2,
+        null
+      ],
+      [
+        3,
+        null
+      ],
+      [
+        4,
+        null
+      ],
+      [
+        5,
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT a,COUNT(*) FROM t GROUP BY a ORDER BY a",
+    "rows": [
+      [
+        null,
+        1
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT a,COUNT(*) FROM t GROUP BY 1 ORDER BY a",
+    "rows": [
+      [
+        null,
+        1
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT a+1 AS v,COUNT(*) FROM t GROUP BY v ORDER BY v",
+    "rows": [
+      [
+        null,
+        1
+      ],
+      [
+        1,
+        1
+      ],
+      [
+        2,
+        2
+      ],
+      [
+        3,
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT b FROM t GROUP BY b ORDER BY SUM(a) DESC,b",
+    "rows": [
+      [
+        2
+      ],
+      [
+        3
+      ],
+      [
+        null
+      ],
+      [
+        0
+      ]
+    ]
+  },
+  {
+    "query": "SELECT (SELECT a FROM u WHERE id=99)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  },
+  {
+    "query": "SELECT NULL NOT IN (SELECT a FROM u WHERE id=99)",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 9 IN (SELECT a FROM u)",
+    "rows": [
+      [
+        1
+      ]
+    ]
+  },
+  {
+    "query": "SELECT 7 NOT IN (SELECT a FROM u)",
+    "rows": [
+      [
+        null
+      ]
+    ]
+  }
+]

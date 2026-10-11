@@ -66,6 +66,11 @@ Throughput differs by -0.80% in this single pair of runs. The before/after runs 
 
 ## Correctness and reproduction
 
+The regression suites now live in the repository and run with `go test ./...`
+and `go test -race ./...`; see [Testing](../TESTING.md) for their locations,
+reference fixtures and selective commands. The `/tmp/godb` programs mentioned
+below describe the original validation runs.
+
 The new SQLite differential suite passes 3,594 checks across fresh and reopened databases: INNER/LEFT/CROSS joins, mixed outer joins, grouping, NULLs, overlapping OR paths, raw TEXT/BLOB index delimiters, composite keys, correlated aggregates, IN sets, EXISTS with 64-bit pagination, and randomized Unicode/ESCAPE LIKE patterns. Another 319 checks pass with the race detector for prepared joins, transaction/savepoint changes, cache invalidation, indexed DML, validation errors, concurrency, and cancellation.
 
 Existing validation also passes: 599 SQL differential cases, 98 execution cases, 16 cache/numeric cases, 134 SQL semantics checks, 302 tuple-plan comparisons, 177 indexed-read cases, 45 read/view checks, primary-key locking checks, 2,071 prepared API checks with the race detector, and 4,000 concurrent indexed MVCC updates with the race detector. Build and vet pass. The four legacy runners named in AGENTS.md are absent; available review programs under `/tmp/godb` were used instead.

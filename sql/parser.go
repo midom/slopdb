@@ -316,7 +316,7 @@ func (p *Parser) parseColumnDef(col *ColumnDef) error {
 		col.ColType = ColText
 	}
 
-	for p.cur.Type != TokComma && p.cur.Type != TokRParen && p.cur.Type != TokEOF {
+	for p.cur.Type != TokComma && p.cur.Type != TokRParen && p.cur.Type != TokSemicolon && p.cur.Type != TokEOF {
 		kw := strings.ToUpper(p.cur.Value)
 
 		if p.cur.Type == TokKeyword && kw == "PRIMARY" {
