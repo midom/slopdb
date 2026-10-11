@@ -32,7 +32,7 @@ func (s *Schema) subqueryDependencies(stmt *SelectStmt) ([]string, bool) {
 			safe = false
 			return
 		}
-		if q.Lock != nil || q.trackRows || q.Virtual != nil {
+		if q.With != nil || q.Compound != nil || q.materialized != nil || q.Lock != nil || q.trackRows || q.Virtual != nil {
 			safe = false
 		}
 		names := make(map[string]bool)

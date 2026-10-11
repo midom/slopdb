@@ -42,6 +42,9 @@ func Open(dir string, opt *storage.Options) (*Database, error) {
 	if opt.QueryTimeout < 0 || opt.LockTimeout < 0 {
 		return nil, fmt.Errorf("timeouts must not be negative")
 	}
+	if opt.MaxCTEIterations < 0 || opt.MaxCTERows < 0 {
+		return nil, fmt.Errorf("CTE limits must not be negative")
+	}
 	lsm, err := storage.NewLSMTree(dir, opt)
 	if err != nil {
 		return nil, err

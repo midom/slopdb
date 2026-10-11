@@ -26,7 +26,7 @@ type PointUpdate struct {
 }
 
 func (s *Schema) PreparePointUpdate(stmt *UpdateStmt) *PointUpdate {
-	if s.parent == nil || len(stmt.Returning) > 0 {
+	if stmt.With != nil || s.parent == nil || len(stmt.Returning) > 0 {
 		return nil
 	}
 	table := strings.ToLower(stmt.Table)

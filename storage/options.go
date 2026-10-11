@@ -21,6 +21,8 @@ const (
 )
 
 type Options struct {
+	MaxCTEIterations     int64 // recursive CTE iterations; default 100,000, zero unlimited
+	MaxCTERows           int64 // recursive CTE emitted rows; default 1,000,000, zero unlimited
 	Dir                  string
 	WriteBufferSize      int             // memtable size in bytes before flush (default 4MB)
 	BlockSize            int             // SSTable block size (default 4096)
@@ -78,6 +80,8 @@ func validateCompressionType(codec CompressionType) error {
 
 func DefaultOptions() *Options {
 	return &Options{
+		MaxCTEIterations:    100000,
+		MaxCTERows:          1000000,
 		WriteBufferSize:     4 * 1024 * 1024,
 		BlockSize:           4096,
 		MaxLevels:           7,

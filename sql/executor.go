@@ -50,6 +50,9 @@ type ViewInfo struct {
 }
 
 type Schema struct {
+	maxCTEIterations   int64
+	maxCTERows         int64
+	cteScope           map[string]*ResultSet
 	commitMu           sync.RWMutex // protects the committed root catalog and reservations
 	statementSnapshot  uint64
 	snapshotReader     uint64
@@ -169,17 +172,25 @@ func NewSchema(lsm *storage.LSMTree, pageSize int) (*Schema, error) {
 // NewSchemaWithOptions optionally checks indexes for diagnostics. Normal opens
 // trust atomically maintained indexes.
 func NewSchemaWithOptions(lsm *storage.LSMTree, pageSize int, opt *storage.Options) (*Schema, error) {
+	if opt == nil {
+		opt = storage.DefaultOptions()
+	}
+	if opt.MaxCTEIterations < 0 || opt.MaxCTERows < 0 {
+		return nil, fmt.Errorf("CTE limits must not be negative")
+	}
 	s := &Schema{
-		lsm:           lsm,
-		tables:        make(map[string]*TableInfo),
-		indexes:       make(map[string]*IndexInfo),
-		stats:         make(map[string]int64),
-		distributions: make(map[string]*tableStatistics),
-		pageSize:      pageSize,
-		views:         make(map[string]*ViewInfo),
-		triggers:      make(map[string]*TriggerInfo),
-		autoincMax:    make(map[string]int64),
-		rowIDCount:    make(map[string]int64),
+		maxCTEIterations: opt.MaxCTEIterations,
+		maxCTERows:       opt.MaxCTERows,
+		lsm:              lsm,
+		tables:           make(map[string]*TableInfo),
+		indexes:          make(map[string]*IndexInfo),
+		stats:            make(map[string]int64),
+		distributions:    make(map[string]*tableStatistics),
+		pageSize:         pageSize,
+		views:            make(map[string]*ViewInfo),
+		triggers:         make(map[string]*TriggerInfo),
+		autoincMax:       make(map[string]int64),
+		rowIDCount:       make(map[string]int64),
 	}
 	if err := s.loadSchema(); err != nil {
 		return nil, err
@@ -983,6 +994,33 @@ func (s *Schema) findOrderIndex(stmt *SelectStmt, tableName string) *IndexInfo {
 }
 
 func (s *Schema) Explain(stmt *ExplainStmt) (*ResultSet, error) {
+	if compound, ok := stmt.Stmt.(*UnionStmt); ok {
+		cp := *stmt
+		cp.Stmt = selectQuery(compound)
+		return s.Explain(&cp)
+	}
+	if sel, ok := stmt.Stmt.(*SelectStmt); ok && sel.With != nil {
+		var restore func()
+		var err error
+		if stmt.Analyze {
+			restore, err = s.enterCTEs(sel.With)
+		} else {
+			restore, err = s.enterCTEMetadata(sel.With)
+		}
+		if err != nil {
+			return nil, err
+		}
+		defer restore()
+		cp := *sel
+		cp.With = nil
+		resolved, err := s.resolveCTETables(&cp)
+		if err != nil {
+			return nil, err
+		}
+		ex := *stmt
+		ex.Stmt = resolved
+		return s.Explain(&ex)
+	}
 	if stmt.Analyze {
 		if _, ok := stmt.Stmt.(*SelectStmt); !ok {
 			return nil, fmt.Errorf("EXPLAIN ANALYZE requires a SELECT statement")
@@ -1298,10 +1336,14 @@ func (s *Schema) loadViews() error {
 	for _, vi := range s.views {
 		if vi.SQL != "" && vi.Parsed == nil {
 			stmts, err := Parse(vi.SQL)
-			if err == nil && len(stmts) > 0 {
-				if sel, ok := stmts[0].(*SelectStmt); ok {
-					vi.Parsed = sel
-				}
+			if err != nil || len(stmts) != 1 {
+				return fmt.Errorf("invalid persisted view %q: %v", vi.Name, err)
+			}
+			switch stmts[0].(type) {
+			case *SelectStmt, *UnionStmt:
+				vi.Parsed = selectQuery(stmts[0])
+			default:
+				return fmt.Errorf("invalid persisted view query %q", vi.Name)
 			}
 		}
 	}
@@ -2389,10 +2431,14 @@ func (s *Schema) AlterTable(stmt *AlterTableStmt) error {
 			if len(parsed) != 1 {
 				return fmt.Errorf("invalid view definition")
 			}
-			sel, ok := parsed[0].(*SelectStmt)
-			if !ok {
+			var sel *SelectStmt
+			switch parsed[0].(type) {
+			case *SelectStmt, *UnionStmt:
+				sel = selectQuery(parsed[0])
+			default:
 				return fmt.Errorf("invalid view definition")
 			}
+			s.preserveCTEViewOutputs(sel, table, newTable, strings.ToLower(stmt.OldColName), strings.ToLower(stmt.NewColName), stmt.Operation)
 			if renameViewSelect(sel, table, newTable, strings.ToLower(stmt.OldColName), strings.ToLower(stmt.NewColName), stmt.Operation) {
 				view.Parsed = sel
 				view.SQL = formatSelectSQL(sel)
@@ -2427,6 +2473,28 @@ func (s *Schema) AlterTable(stmt *AlterTableStmt) error {
 	return s.saveSchema()
 }
 func renameViewSelect(sel *SelectStmt, table, newTable, oldCol, newCol, operation string) bool {
+	if sel.With != nil {
+		// Lexical CTE names shadow catalog table names in the entire query.
+		for _, c := range sel.With.Entries {
+			if c.Name == table {
+				return false
+			}
+		}
+		changed := false
+		for i := range sel.With.Entries {
+			if renameCTEQuery(sel.With.Entries[i].Query, table, newTable, oldCol, newCol, operation) {
+				changed = true
+			}
+		}
+		with := sel.With
+		sel.With = nil
+		bodyChanged := renameViewSelect(sel, table, newTable, oldCol, newCol, operation)
+		sel.With = with
+		return changed || bodyChanged
+	}
+	if sel.Compound != nil {
+		return renameCTEQuery(sel.Compound, table, newTable, oldCol, newCol, operation)
+	}
 	changed := false
 	qualifiers := make(map[string]bool)
 	if sel.From == table {
@@ -2544,6 +2612,16 @@ func renameExpr(expr Expression, old, new string) Expression {
 }
 
 func (s *Schema) Union(stmt *UnionStmt) (*ResultSet, error) {
+	if stmt.With != nil {
+		restore, err := s.enterCTEs(stmt.With)
+		if err != nil {
+			return nil, err
+		}
+		defer restore()
+		cp := *stmt
+		cp.With = nil
+		return s.Union(&cp)
+	}
 	left, err := s.Select(stmt.Left)
 	if err != nil {
 		return nil, err
@@ -2873,6 +2951,16 @@ func encodeRowKey(tableName string, rowID int64) []byte {
 }
 
 func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
+	if stmt.With != nil {
+		restore, err := s.enterCTEs(stmt.With)
+		if err != nil {
+			return 0, nil, err
+		}
+		defer restore()
+		cp := *stmt
+		cp.With = nil
+		return s.Insert(&cp)
+	}
 	tableName := strings.ToLower(stmt.Table)
 	info, ok := s.tables[tableName]
 	viewInsert := false
@@ -3733,6 +3821,26 @@ func (s *Schema) validateQuery(stmt *SelectStmt, info *TableInfo) error {
 }
 
 func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
+	if stmt.With != nil {
+		restore, err := s.enterCTEs(stmt.With)
+		if err != nil {
+			return nil, err
+		}
+		defer restore()
+		cp := *stmt
+		cp.With = nil
+		return s.Select(&cp)
+	}
+	if stmt.materialized != nil {
+		return copyCTEResult(stmt.materialized), nil
+	}
+	if stmt.Compound != nil {
+		return s.Union(stmt.Compound)
+	}
+	stmt, err = s.resolveCTETables(stmt)
+	if err != nil {
+		return nil, err
+	}
 	if finish := s.profileSelect(stmt); finish != nil {
 		defer func() { finish(result, err) }()
 	}
@@ -3773,6 +3881,11 @@ func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
 	}
 
 	info, ok := s.tables[tableName]
+	if info == nil {
+		if sub, ok := stmt.FromExpr.(*SubqueryExpr); ok && sub.Stmt.materialized != nil {
+			info = &TableInfo{Columns: sub.Stmt.materialized.Columns}
+		}
+	}
 	var viewInfo *ViewInfo
 	if !ok && tableName != "" {
 		if vi, vok := s.views[tableName]; vok {
@@ -3903,7 +4016,12 @@ func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
 		}
 	} else if stmt.FromExpr != nil {
 		if subExpr, ok := stmt.FromExpr.(*SubqueryExpr); ok {
+			oldCTEs := s.cteScope
+			if viewInfo != nil {
+				s.cteScope = nil
+			}
 			subRS, err := s.Select(subExpr.Stmt)
+			s.cteScope = oldCTEs
 			if err != nil {
 				return nil, err
 			}
@@ -4735,7 +4853,7 @@ func (s *Schema) addJoinColumns(rs *ResultSet, jc JoinClause, baseColumns []Colu
 		return
 	}
 	if jc.Subquery != nil {
-		for _, col := range baseColumns {
+		for _, col := range s.cteQueryColumnDefs(jc.Subquery, cteScopeColumns(s.cteScope)) {
 			name := col.Name
 			exists := false
 			for _, ec := range rs.Columns {
@@ -4997,6 +5115,16 @@ func (s *Schema) matchingDMLRows(tableName string, info *TableInfo, where Expres
 	return rows, nil
 }
 func (s *Schema) Delete(stmt *DeleteStmt) (int64, *ResultSet, error) {
+	if stmt.With != nil {
+		restore, err := s.enterCTEs(stmt.With)
+		if err != nil {
+			return 0, nil, err
+		}
+		defer restore()
+		cp := *stmt
+		cp.With = nil
+		return s.Delete(&cp)
+	}
 	table := strings.ToLower(stmt.From)
 	info, ok := s.tables[table]
 	if !ok {
@@ -5046,6 +5174,16 @@ func (s *Schema) Delete(stmt *DeleteStmt) (int64, *ResultSet, error) {
 	return int64(len(entries)), rs, nil
 }
 func (s *Schema) Update(stmt *UpdateStmt) (int64, *ResultSet, error) {
+	if stmt.With != nil {
+		restore, err := s.enterCTEs(stmt.With)
+		if err != nil {
+			return 0, nil, err
+		}
+		defer restore()
+		cp := *stmt
+		cp.With = nil
+		return s.Update(&cp)
+	}
 	if s.inTx && s.lockHandler != nil {
 		if plan := s.PreparePointUpdate(stmt); plan != nil {
 			ctx := s.ctx
@@ -6561,6 +6699,9 @@ func (s *Schema) viewColumnDefs(vi *ViewInfo) []ColumnDef {
 	defer func() { s.viewDepth-- }()
 	if s.viewDepth > 100 {
 		return nil
+	}
+	if vi.Parsed != nil && (vi.Parsed.With != nil || vi.Parsed.Compound != nil) && len(vi.Columns) == 0 {
+		return s.cteQueryColumnDefs(vi.Parsed, nil)
 	}
 	if len(vi.Columns) > 0 {
 		cols := make([]ColumnDef, len(vi.Columns))

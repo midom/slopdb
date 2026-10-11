@@ -128,6 +128,8 @@ func (p *Parser) parseStatement() (Statement, error) {
 			return p.parseInsert()
 		case "SELECT":
 			return p.parseSelect()
+		case "WITH":
+			return p.parseWith()
 		case "DELETE":
 			return p.parseDelete()
 		case "UPDATE":
@@ -696,10 +698,7 @@ func (p *Parser) parseCreateView() (Statement, error) {
 	if err != nil {
 		return nil, err
 	}
-	selected, ok := sel.(*SelectStmt)
-	if !ok {
-		return nil, fmt.Errorf("compound SELECT in a view is not supported")
-	}
+	selected := selectQuery(sel)
 	stmt.Select = selected
 	stmt.SQL = formatSelectSQL(stmt.Select)
 
@@ -840,15 +839,12 @@ func (p *Parser) parseInsert() (Statement, error) {
 			}
 			p.advance()
 		}
-	} else if p.cur.Value == "SELECT" {
+	} else if p.cur.Value == "SELECT" || p.cur.Value == "WITH" {
 		selected, err := p.parseSelect()
 		if err != nil {
 			return nil, err
 		}
-		sel, ok := selected.(*SelectStmt)
-		if !ok {
-			return nil, fmt.Errorf("compound INSERT SELECT is not supported")
-		}
+		sel := selectQuery(selected)
 		stmt.Select = sel
 	} else if p.cur.Value == "DEFAULT" {
 		p.advance()
@@ -877,7 +873,20 @@ func (p *Parser) parseInsert() (Statement, error) {
 }
 
 func (p *Parser) parseSelect() (Statement, error) {
-	p.advance()
+	if p.cur.Value == "WITH" {
+		query, err := p.parseWith()
+		if err != nil {
+			return nil, err
+		}
+		switch query.(type) {
+		case *SelectStmt, *UnionStmt:
+			return query, nil
+		}
+		return nil, fmt.Errorf("expected SELECT after WITH in query context")
+	}
+	if err := p.expectKeyword("SELECT"); err != nil {
+		return nil, err
+	}
 
 	stmt := &SelectStmt{Limit: -1, Offset: 0}
 
@@ -1367,7 +1376,7 @@ func (p *Parser) parseComparison() (Expression, error) {
 	if op, ok := ops[p.cur.Type]; ok {
 		p.advance()
 		if p.cur.Type == TokLParen && p.tok.Peek().Type == TokKeyword &&
-			strings.ToUpper(p.tok.Peek().Value) == "SELECT" {
+			(strings.ToUpper(p.tok.Peek().Value) == "SELECT" || strings.ToUpper(p.tok.Peek().Value) == "WITH") {
 			sub, err := p.parseSubqueryParens()
 			if err != nil {
 				return nil, err
@@ -1494,7 +1503,7 @@ func (p *Parser) parseComparison() (Expression, error) {
 			if err := p.expect(TokLParen); err != nil {
 				return nil, err
 			}
-			if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "SELECT" {
+			if p.cur.Type == TokKeyword && (strings.ToUpper(p.cur.Value) == "SELECT" || strings.ToUpper(p.cur.Value) == "WITH") {
 				sub, err := p.parseSelect()
 				if err != nil {
 					return nil, err
@@ -1502,10 +1511,7 @@ func (p *Parser) parseComparison() (Expression, error) {
 				if err := p.expect(TokRParen); err != nil {
 					return nil, err
 				}
-				selected, ok := sub.(*SelectStmt)
-				if !ok {
-					return nil, fmt.Errorf("compound IN subquery is not supported")
-				}
+				selected := selectQuery(sub)
 				return &BinaryExpr{Left: left, Op: "NOT IN", Right: &SubqueryExpr{Stmt: selected}}, nil
 			}
 			var list []Expression
@@ -1547,7 +1553,7 @@ func (p *Parser) parseComparison() (Expression, error) {
 		if err := p.expect(TokLParen); err != nil {
 			return nil, err
 		}
-		if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "SELECT" {
+		if p.cur.Type == TokKeyword && (strings.ToUpper(p.cur.Value) == "SELECT" || strings.ToUpper(p.cur.Value) == "WITH") {
 			sub, err := p.parseSelect()
 			if err != nil {
 				return nil, err
@@ -1555,10 +1561,7 @@ func (p *Parser) parseComparison() (Expression, error) {
 			if err := p.expect(TokRParen); err != nil {
 				return nil, err
 			}
-			selected, ok := sub.(*SelectStmt)
-			if !ok {
-				return nil, fmt.Errorf("compound IN subquery is not supported")
-			}
+			selected := selectQuery(sub)
 			return &BinaryExpr{Left: left, Op: "IN", Right: &SubqueryExpr{Stmt: selected}}, nil
 		}
 		var list []Expression
@@ -1701,7 +1704,7 @@ func (p *Parser) parsePrimary() (Expression, error) {
 		return e, nil
 	}
 	if p.cur.Type == TokLParen {
-		if p.tok.Peek().Type == TokKeyword && strings.ToUpper(p.tok.Peek().Value) == "SELECT" {
+		if p.tok.Peek().Type == TokKeyword && (strings.ToUpper(p.tok.Peek().Value) == "SELECT" || strings.ToUpper(p.tok.Peek().Value) == "WITH") {
 			sub, err := p.parseSubqueryParens()
 			if err != nil {
 				return nil, err
@@ -2057,10 +2060,7 @@ func (p *Parser) parseSubquery() (*SelectStmt, error) {
 	if err != nil {
 		return nil, err
 	}
-	if s, ok := stmt.(*SelectStmt); ok {
-		return s, nil
-	}
-	return nil, fmt.Errorf("expected SELECT in subquery")
+	return selectQuery(stmt), nil
 }
 
 func (p *Parser) parseSubqueryParens() (*SelectStmt, error) {
@@ -2283,6 +2283,14 @@ func formatRef(name string) string {
 	return strings.Join(parts, ".")
 }
 func formatSelectSQL(s *SelectStmt) string {
+	if s.With != nil {
+		cp := *s
+		cp.With = nil
+		return formatWithSQL(s.With) + formatSelectSQL(&cp)
+	}
+	if s.Compound != nil {
+		return formatCTEQuery(s.Compound)
+	}
 	var b strings.Builder
 	b.WriteString("SELECT ")
 	if s.Distinct {
