@@ -51,6 +51,15 @@ Other suites include 2,071 prepared API checks, 4,000 indexed concurrent updates
 These are functional assertions; no test requires achieving a machine-dependent
 throughput or latency score.
 
+Additional suites cover CTEs and recursive guardrails, UPSERT constraints and
+concurrency, 51 independent window reference queries, prepared-plan invalidation,
+distribution statistics, actual EXPLAIN ANALYZE counters, bounded access,
+operator spilling and cleanup, streaming cursor ordering, bulk import, online
+backup and integrity checks. Cross-feature tests exercise prepared CTE/window/
+UPSERT execution and lexical CTE scopes in optimized subqueries. See
+[integrated improvements](docs/project-improvements.md) and
+[performance checks](docs/performance-regressions.md).
+
 Crash recovery uses a separate instance of the Go test executable that deliberately
 exits without closing the database. CLI tests build the current CLI into a temporary
 directory automatically, including `-race` when the test suite uses the race
