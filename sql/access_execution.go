@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"math"
 	"sort"
 	"strings"
 
@@ -119,66 +118,7 @@ func (s *Schema) accessExpression(e Expression) Expression {
 }
 
 func (s *Schema) accessConstraints(e Expression, info *TableInfo) map[string]*tupleConstraint {
-	e = s.accessExpression(e)
-	c := tupleConstraints(e, info.Name, "", info)
-	// Tuple access historically limited ranges to integers. This reader supports
-	// all sortable type bands, including dates stored as TEXT.
-	for _, term := range andTerms(e) {
-		b, ok := term.(*BinaryExpr)
-		if !ok {
-			continue
-		}
-		ref, rok := b.Left.(*ColumnRefExpr)
-		lit, lok := b.Right.(*LiteralExpr)
-		op := b.Op
-		if !rok || !lok {
-			ref, rok = b.Right.(*ColumnRefExpr)
-			lit, lok = b.Left.(*LiteralExpr)
-			switch op {
-			case "<":
-				op = ">"
-			case "<=":
-				op = ">="
-			case ">":
-				op = "<"
-			case ">=":
-				op = "<="
-			}
-		}
-		if !rok || !lok || lit.Value.Null {
-			continue
-		}
-		name := coveringColumn(ref.Name, info.Name, "")
-		valid := false
-		for _, def := range info.Columns {
-			if def.Name == name && def.ColType == lit.Value.Type {
-				valid = true
-			}
-		}
-		v := lit.Value
-		if !valid || v.Type == ColReal && (v.Real == 0 || math.IsNaN(v.Real)) {
-			continue
-		}
-		if c[name] == nil {
-			c[name] = &tupleConstraint{}
-		}
-		x := c[name]
-		switch op {
-		case ">", ">=":
-			strict := op == ">"
-			if x.lower == nil || ValueCompare(v, *x.lower) > 0 || ValueCompare(v, *x.lower) == 0 && strict {
-				x.lower = &v
-				x.lowerStrict = strict
-			}
-		case "<", "<=":
-			strict := op == "<"
-			if x.upper == nil || ValueCompare(v, *x.upper) < 0 || ValueCompare(v, *x.upper) == 0 && strict {
-				x.upper = &v
-				x.upperStrict = strict
-			}
-		}
-	}
-	return c
+	return tupleConstraints(s.accessExpression(e), info.Name, "", info)
 }
 
 func appendAccessValue(prefix []byte, v Value, idx *IndexInfo) []byte {
@@ -242,45 +182,7 @@ func buildAccessPath(info *TableInfo, idx *IndexInfo, constraints map[string]*tu
 		low, high := start, prefixSuccessor(start)
 		if pos < len(columns) {
 			if c := constraints[columns[pos]]; c != nil && (c.lower != nil || c.upper != nil) {
-				var typ ColumnType
-				for _, def := range info.Columns {
-					if def.Name == columns[pos] {
-						typ = def.ColType
-					}
-				}
-				minimum := NewIntValue(math.MinInt64)
-				switch typ {
-				case ColReal:
-					minimum = NewRealValue(-math.MaxFloat64)
-				case ColText:
-					minimum = NewTextValue("")
-				case ColBlob:
-					minimum = NewBlobValue(nil)
-				}
-				low = appendAccessValue(start, minimum, idx)
-				variableSecondary := idx != nil && (typ == ColText || typ == ColBlob)
-				if variableSecondary {
-					low = low[:len(low)-1]
-				}
-				if c.lower != nil {
-					low = appendAccessValue(start, *c.lower, idx)
-					if variableSecondary {
-						low = low[:len(low)-1]
-					}
-					if c.lowerStrict && !variableSecondary {
-						low = prefixSuccessor(low)
-					}
-				}
-				if c.upper != nil {
-					high = appendAccessValue(start, *c.upper, idx)
-					if !c.upperStrict {
-						high = prefixSuccessor(high)
-					}
-					if variableSecondary {
-						high = appendAccessValue(start, *c.upper, idx)
-						high = prefixSuccessor(high[:len(high)-1])
-					}
-				}
+				low, high, _ = accessRangeBounds(start, columns[pos], info, idx, c)
 				bounded = true
 				p.score += 4
 			}
@@ -653,7 +555,7 @@ func qualifyAccessRow(row map[string]Value, table, alias string) {
 }
 
 func (s *Schema) streamSelectScan(stmt *SelectStmt, info *TableInfo) ([]map[string]Value, bool, error) {
-	if info == nil || stmt.FromExpr != nil || len(stmt.Joins) > 0 || stmt.Virtual != nil || stmt.Lock != nil || stmt.trackRows || hasAggregates(stmt) || len(stmt.GroupBy) > 0 || stmt.Having != nil || stmt.Distinct || len(stmt.OrderBy) > 0 {
+	if info == nil || stmt.FromExpr != nil || len(stmt.Joins) > 0 || stmt.Virtual != nil || stmt.Lock != nil || stmt.trackRows || hasAggregates(stmt) || len(stmt.GroupBy) > 0 || stmt.Having != nil || stmt.Distinct {
 		return nil, false, nil
 	}
 	if _, safe := s.expressionDependencies(stmt.Where); !safe {
@@ -708,7 +610,7 @@ func (s *Schema) streamSelectScan(stmt *SelectStmt, info *TableInfo) ([]map[stri
 			}
 		}
 		rows = append(rows, copyRow(row))
-		if stmt.Limit >= 0 && int64(len(rows)) >= limitWindow(stmt.Limit, stmt.Offset) {
+		if len(stmt.OrderBy) == 0 && stmt.Limit >= 0 && int64(len(rows)) >= limitWindow(stmt.Limit, stmt.Offset) {
 			return errAccessStop
 		}
 		return nil

@@ -2,7 +2,6 @@ package sql
 
 import (
 	"bytes"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -12,7 +11,7 @@ import (
 	"slopdb/storage"
 )
 
-// Tuple access uses equality prefixes, followed by an IN list or integer range.
+// Tuple access uses equality prefixes, followed by an IN list or typed range.
 // Every extracted condition is type exact; the remaining predicate still runs
 // with ordinary SQL semantics. No format changes or extra indexes are required.
 type tupleConstraint struct {
@@ -38,6 +37,21 @@ type tupleReadPlan struct {
 func tupleLiteral(expr Expression) (*LiteralExpr, bool) {
 	if literal, ok := expr.(*LiteralExpr); ok {
 		return literal, true
+	}
+	if binary, ok := expr.(*BinaryExpr); ok {
+		switch binary.Op {
+		case "+", "-", "*", "/", "%", "||", "&", "|", "<<", ">>":
+			if _, ok := tupleLiteral(binary.Left); !ok {
+				return nil, false
+			}
+			if _, ok := tupleLiteral(binary.Right); !ok {
+				return nil, false
+			}
+			if value, err := (&Schema{}).evalExpr(binary, nil); err == nil {
+				return &LiteralExpr{Value: value}, true
+			}
+		}
+		return nil, false
 	}
 	unary, ok := expr.(*UnaryExpr)
 	if !ok || (unary.Op != "+" && unary.Op != "-") {
@@ -126,17 +140,11 @@ func tupleConstraints(where Expression, table, alias string, info *TableInfo) ma
 					c.equal, c.equalTerm = &v, expr
 				}
 			case ">", ">=":
-				if v.Type != ColInteger {
-					return
-				}
 				strict := op == ">"
 				if c.lower == nil || ValueCompare(v, *c.lower) > 0 || (ValueCompare(v, *c.lower) == 0 && strict) {
 					c.lower, c.lowerStrict, c.lowerTerm = &v, strict, expr
 				}
 			case "<", "<=":
-				if v.Type != ColInteger {
-					return
-				}
 				strict := op == "<"
 				if c.upper == nil || ValueCompare(v, *c.upper) < 0 || (ValueCompare(v, *c.upper) == 0 && strict) {
 					c.upper, c.upperStrict, c.upperTerm = &v, strict, expr
@@ -152,7 +160,7 @@ func tupleConstraints(where Expression, table, alias string, info *TableInfo) ma
 			var list []Value
 			seen := make(map[string]bool)
 			for _, item := range in.List {
-				lit, ok := item.(*LiteralExpr)
+				lit, ok := tupleLiteral(item)
 				if !ok {
 					return
 				}
@@ -236,11 +244,8 @@ func tupleOrdered(stmt *SelectStmt, columns []string, constraints map[string]*tu
 				break
 			}
 		}
-		// Integer encodings match SQL ordering, including the NULL band. Other
-		// types retain the general sorter rather than assume collation semantics.
-		if col.ColType != ColInteger {
-			return false, false
-		}
+		// Clustered sortable values preserve the default binary collation.
+		// Secondary variable encodings are rejected by buildTuplePlan.
 		nonNull := col.NotNull
 		if c := constraints[name]; c != nil {
 			nonNull = nonNull || c.equal != nil || c.listTerm != nil || c.lower != nil || c.upper != nil
@@ -265,18 +270,24 @@ func buildTuplePlan(stmt *SelectStmt, info *TableInfo, idx *IndexInfo, constrain
 		columns = idx.columnNames()
 		prefix = []byte(indexDataPrefix(idx.Name))
 	}
-	if len(columns) < 2 {
+	if len(columns) == 0 {
 		return nil
 	}
 	appendValue := func(prefix []byte, value Value) []byte {
-		if idx == nil {
-			return appendClusteredValue(copyBytes(prefix), value)
-		}
-		key := append(copyBytes(prefix), hex.EncodeToString([]byte(valueToSortableKey(value)))...)
-		return append(key, ':')
+		return appendAccessValue(prefix, value, idx)
 	}
 	plan := &tupleReadPlan{index: idx, info: info}
 	plan.ordered, plan.reverse = tupleOrdered(stmt, columns, constraints, info)
+	if idx != nil {
+		for _, name := range columns {
+			for _, column := range info.Columns {
+				if column.Name == name && column.ColType == ColReal {
+					// Legacy secondary encodings distinguish the sign of zero.
+					plan.ordered, plan.reverse = false, false
+				}
+			}
+		}
+	}
 	starts := [][]byte{prefix}
 	enforced := make(map[Expression]bool)
 	position := 0
@@ -319,23 +330,18 @@ func buildTuplePlan(stmt *SelectStmt, info *TableInfo, idx *IndexInfo, constrain
 		if position < len(columns) {
 			c := constraints[columns[position]]
 			if c != nil && (c.lower != nil || c.upper != nil) {
-				// Integer comparisons exclude NULL and all other type bands.
-				low = appendValue(start, NewIntValue(math.MinInt64))
-				if c.lower != nil {
-					low = appendValue(start, *c.lower)
-					if c.lowerStrict {
-						low = prefixSuccessor(low)
-					}
+				low, high, exact := accessRangeBounds(start, columns[position], info, idx, c)
+				// Legacy secondary TEXT/BLOB components have no terminator.
+				// Their bounds are conservative and require SQL rechecking.
+				if exact {
 					enforced[c.lowerTerm] = true
-				}
-				if c.upper != nil {
-					high = appendValue(start, *c.upper)
-					if !c.upperStrict {
-						high = prefixSuccessor(high)
-					}
 					enforced[c.upperTerm] = true
 				}
+				if bytes.Compare(low, high) < 0 {
+					plan.intervals = append(plan.intervals, coveringInterval{low, high})
+				}
 				bounded = true
+				continue
 			}
 		}
 		if bytes.Compare(low, high) < 0 {
@@ -359,6 +365,13 @@ func buildTuplePlan(stmt *SelectStmt, info *TableInfo, idx *IndexInfo, constrain
 		plan.score += 8
 	}
 	plan.residual = tupleResidual(stmt.Where, enforced)
+	if variableIndexColumns(info, idx) {
+		// A delimiter following an unterminated variable value can also be
+		// a prefix of a longer value. Do not elide equality predicates or
+		// claim SQL ordering from that legacy secondary layout.
+		plan.residual = stmt.Where
+		plan.ordered, plan.reverse = false, false
+	}
 	return plan
 }
 
@@ -373,7 +386,7 @@ func (s *Schema) tuplePlan(stmt *SelectStmt, info *TableInfo) *tupleReadPlan {
 	constraints := tupleConstraints(stmt.Where, info.Name, stmt.FromAlias, info)
 	best := buildTuplePlan(stmt, info, nil, constraints)
 	for _, idx := range s.tableIndexes(info.Name) {
-		if len(idx.columnNames()) < 2 {
+		if s.isClusteredIndex(idx) {
 			continue
 		}
 		plan := buildTuplePlan(stmt, info, idx, constraints)
@@ -400,13 +413,16 @@ func tupleSafePredicate(expr Expression) bool {
 		_, ok := tupleLiteral(e)
 		return ok
 	case *BinaryExpr:
-		return (e.Op == "AND" || e.Op == "OR") && tupleSafePredicate(e.Left) && tupleSafePredicate(e.Right)
+		switch e.Op {
+		case "AND", "OR", "=", "!=", "<>", "<", ">", "<=", ">=":
+			return tupleSafePredicate(e.Left) && tupleSafePredicate(e.Right)
+		}
 	case *InListExpr:
 		if _, ok := e.Expr.(*ColumnRefExpr); !ok {
 			return false
 		}
 		for _, item := range e.List {
-			if _, ok := item.(*LiteralExpr); !ok {
+			if _, ok := tupleLiteral(item); !ok {
 				return false
 			}
 		}
@@ -445,9 +461,20 @@ func (s *Schema) tupleRows(stmt *SelectStmt, plan *tupleReadPlan, trackKeys bool
 		return nil, nil, ordered, nil
 	}
 	qualified := needsQualifiedRows(stmt)
+	var seen map[string]bool
+	if variableIndexColumns(plan.info, plan.index) && len(plan.intervals) > 1 {
+		seen = make(map[string]bool)
+	}
 	accept := func(data, key []byte, info *TableInfo) error {
 		if err := s.checkInterrupt(); err != nil {
 			return err
+		}
+		if seen != nil {
+			identity := string(key)
+			if seen[identity] {
+				return nil
+			}
+			seen[identity] = true
 		}
 		row := decodeRow(data, info)
 		if qualified {
@@ -512,7 +539,7 @@ func (s *Schema) tupleRows(stmt *SelectStmt, plan *tupleReadPlan, trackKeys bool
 				payloadInfo := plan.info
 				if plan.index != nil {
 					var err error
-					key, err = compositeIndexRowKey(plan.index, key)
+					key, err = s.accessIndexRowKey(&accessPath{info: plan.info, index: plan.index}, interval, key, data)
 					if err != nil {
 						return err
 					}
