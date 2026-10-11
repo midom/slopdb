@@ -387,7 +387,7 @@ func (p *joinPlan) chooseGreedyOrder() {
 				if mask&(1<<i) == 0 {
 					f := p.fanout(i, mask)
 					if len(p.pairs(i, mask)) == 0 {
-						f *= 1000
+						f = joinCostProduct(f, 1000)
 					}
 					if f < factor {
 						next = i
@@ -395,8 +395,8 @@ func (p *joinPlan) chooseGreedyOrder() {
 					}
 				}
 			}
-			rows *= p.fanout(next, mask)
-			cost += rows
+			rows = joinCostProduct(rows, p.fanout(next, mask))
+			cost = joinCostSum(cost, rows)
 			order = append(order, next)
 			mask |= 1 << next
 		}

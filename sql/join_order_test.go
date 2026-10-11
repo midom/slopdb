@@ -137,6 +137,14 @@ func TestJoinOrderPreservesLeftAndBoundsLargeGraphs(t *testing.T) {
 	if len(large.order) != len(large.relations) {
 		t.Fatalf("large graph omitted relations: %v", large.order)
 	}
+	for _, relation := range large.relations {
+		relation.count, relation.total = math.MaxFloat64, math.MaxFloat64
+	}
+	large.order = nil
+	large.chooseOrder()
+	if len(large.order) != len(large.relations) {
+		t.Fatal("overflowing greedy costs produced an empty physical plan")
+	}
 	if joinCostProduct(math.MaxFloat64, 2) != math.MaxFloat64 || joinCostSum(math.MaxFloat64, math.MaxFloat64) != math.MaxFloat64 {
 		t.Fatal("cost arithmetic overflowed")
 	}
