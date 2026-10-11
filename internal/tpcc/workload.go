@@ -88,6 +88,14 @@ type transactionReport struct {
 }
 
 type report struct {
+	RunAllocatedBytes  uint64                       `json:"run_allocated_bytes"`
+	RunAllocations     uint64                       `json:"run_allocations"`
+	RunCPUSeconds      float64                      `json:"run_cpu_seconds"`
+	CPUAvailable       bool                         `json:"process_cpu_available"`
+	PeakRSSKiB         int64                        `json:"process_peak_rss_kib"`
+	StorageBefore      map[string]int64             `json:"storage_counters_before,omitempty"`
+	StorageAfter       map[string]int64             `json:"storage_counters_after,omitempty"`
+	ResourceWindow     string                       `json:"resource_measurement_window"`
 	EngineInfo         map[string]any               `json:"engine_info"`
 	GoVersion          string                       `json:"go_version"`
 	Platform           string                       `json:"platform"`
@@ -201,6 +209,15 @@ func Run(open func(Config) (Database, error)) (retErr error) {
 			stats[id] = work(ctx, database, c, id, &historyID, &committed, &failed, &retried)
 		}(worker)
 	}
+	metricSource, _ := database.(interface{ BenchmarkMetrics() map[string]int64 })
+	if metricSource != nil {
+		r.StorageBefore = metricSource.BenchmarkMetrics()
+	}
+	var heapBefore runtime.MemStats
+	runtime.ReadMemStats(&heapBefore)
+	cpuBefore, _, cpuAvailable := processResources()
+	r.CPUAvailable = cpuAvailable
+	r.ResourceWindow = "measured workload plus shutdown drain; excludes load, preparation, validation and close"
 	r.Started = time.Now().UTC()
 	deadline := time.NewTimer(c.Duration)
 	progress := time.NewTicker(10 * time.Second)
@@ -223,6 +240,16 @@ func Run(open func(Config) (Database, error)) (retErr error) {
 	drainStart := time.Now()
 	wg.Wait()
 	r.DrainSeconds = time.Since(drainStart).Seconds()
+	cpuAfter, rss, _ := processResources()
+	r.RunCPUSeconds = cpuAfter - cpuBefore
+	r.PeakRSSKiB = rss
+	var heapAfter runtime.MemStats
+	runtime.ReadMemStats(&heapAfter)
+	r.RunAllocatedBytes = heapAfter.TotalAlloc - heapBefore.TotalAlloc
+	r.RunAllocations = heapAfter.Mallocs - heapBefore.Mallocs
+	if metricSource != nil {
+		r.StorageAfter = metricSource.BenchmarkMetrics()
+	}
 	effects := summarize(&r, stats)
 	fmt.Println("Checking committed data...")
 	r.Checks, err = validate(database, c, effects, r.Transactions["payment"].Committed)

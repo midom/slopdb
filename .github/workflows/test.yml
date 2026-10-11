@@ -1,0 +1,28 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['1.22.x', 'stable']
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ matrix.go }}
+          cache-dependency-path: go.sum
+      - run: go build -o slopdb .
+      - run: python3 -m unittest discover -s scripts -p 'test_*.py'
+      - run: go vet ./...
+      - run: go test ./... -count=1 -timeout 10m
+      - run: go test -race ./... -count=1 -timeout 10m

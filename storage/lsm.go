@@ -20,42 +20,47 @@ import (
 const maxLevels = 7
 
 type LSMTree struct {
-	mu                  sync.RWMutex
-	writerMu            sync.Mutex
-	viewMu              sync.RWMutex
-	view                *readView
-	published           atomic.Uint64
-	writeMu             sync.Mutex
-	writeQueue          []*queuedBatch
-	writeActive         bool
-	writeGroups         atomic.Int64
-	writeBatches        atomic.Int64
-	opt                 *Options
-	dir                 string
-	lockFile            *os.File
-	mem                 *MemTable
-	imm                 *MemTable
-	wal                 *WalWriter
-	walFileNum          uint64
-	flushWALNum         uint64
-	seqNum              uint64
-	tableSeq            uint64 // Upper bound on sequences in SSTables, including retired tables.
-	levels              [maxLevels][]*FileMetaData
-	fileNum             uint64
-	closed              bool
-	closeDone           chan struct{}
-	closeErr            error
-	cond                *sync.Cond
-	bgErr               error
-	tableCache          *tableCache
-	flushWg             sync.WaitGroup
-	compactionWg        sync.WaitGroup
-	compactionScheduled bool
-	compactions         int
-	compacting          map[uint64]bool
-	snapshotMu          sync.Mutex
-	snapshots           map[uint64]int
-	readerSnapshots     [snapshotReaderShards]snapshotReaderShard
+	mu                    sync.RWMutex
+	writerMu              sync.Mutex
+	viewMu                sync.RWMutex
+	view                  *readView
+	published             atomic.Uint64
+	writeMu               sync.Mutex
+	writeQueue            []*queuedBatch
+	writeActive           bool
+	writeGroups           atomic.Int64
+	writeBatches          atomic.Int64
+	completedCompactions  atomic.Int64
+	compactionInputBytes  atomic.Int64
+	compactionOutputBytes atomic.Int64
+	completedFlushes      atomic.Int64
+	flushOutputBytes      atomic.Int64
+	opt                   *Options
+	dir                   string
+	lockFile              *os.File
+	mem                   *MemTable
+	imm                   *MemTable
+	wal                   *WalWriter
+	walFileNum            uint64
+	flushWALNum           uint64
+	seqNum                uint64
+	tableSeq              uint64 // Upper bound on sequences in SSTables, including retired tables.
+	levels                [maxLevels][]*FileMetaData
+	fileNum               uint64
+	closed                bool
+	closeDone             chan struct{}
+	closeErr              error
+	cond                  *sync.Cond
+	bgErr                 error
+	tableCache            *tableCache
+	flushWg               sync.WaitGroup
+	compactionWg          sync.WaitGroup
+	compactionScheduled   bool
+	compactions           int
+	compacting            map[uint64]bool
+	snapshotMu            sync.Mutex
+	snapshots             map[uint64]int
+	readerSnapshots       [snapshotReaderShards]snapshotReaderShard
 
 	bloomHits   atomic.Int64
 	bloomMisses atomic.Int64
@@ -906,6 +911,13 @@ func (l *LSMTree) installCompactionLocked(level int, inputs, output []*FileMetaD
 		l.tableCache.evict(f.Number)
 		os.Remove(filepath.Join(l.dir, fmt.Sprintf("%d.sst", f.Number)))
 	}
+	l.completedCompactions.Add(1)
+	for _, f := range inputs {
+		l.compactionInputBytes.Add(int64(f.FileSize))
+	}
+	for _, f := range output {
+		l.compactionOutputBytes.Add(int64(f.FileSize))
+	}
 	return nil
 }
 
@@ -1143,6 +1155,8 @@ func (l *LSMTree) flushMemTableSync() error {
 	if err := l.publishViewLocked(); err != nil {
 		return err
 	}
+	l.completedFlushes.Add(1)
+	l.flushOutputBytes.Add(int64(meta.FileSize))
 	if l.flushWALNum != 0 {
 		return os.Remove(filepath.Join(l.dir, fmt.Sprintf("WAL-%d.log", l.flushWALNum)))
 	}
@@ -1691,16 +1705,21 @@ func (h *mergeHeap) Pop() interface{} {
 }
 
 type LSMStats struct {
-	WriteGroups     int64 // successful grouped batch publications
-	WriteBatches    int64 // successful caller batches in those groups
-	Dir             string
-	MemSize         int
-	ImmSize         int
-	WALActive       bool
-	WALSyncDisabled bool
-	SeqNum          uint64
-	FileNum         uint64
-	Levels          [maxLevels]LevelStats
+	CompletedCompactions  int64 // successfully installed compactions in this open instance
+	CompactionInputBytes  int64 // total input SSTable file sizes, not device I/O
+	CompactionOutputBytes int64 // installed output SSTable file sizes
+	CompletedFlushes      int64 // successfully installed nonempty memtable flushes
+	FlushOutputBytes      int64 // installed flush SSTable file sizes
+	WriteGroups           int64 // successful grouped batch publications
+	WriteBatches          int64 // successful caller batches in those groups
+	Dir                   string
+	MemSize               int
+	ImmSize               int
+	WALActive             bool
+	WALSyncDisabled       bool
+	SeqNum                uint64
+	FileNum               uint64
+	Levels                [maxLevels]LevelStats
 
 	BloomHits        int64
 	BloomMisses      int64
@@ -1731,7 +1750,12 @@ func (l *LSMTree) Stats() LSMStats {
 	blockHits, blockMisses := l.tableCache.blocks.statistics()
 
 	s := LSMStats{
-		WriteGroups: l.writeGroups.Load(), WriteBatches: l.writeBatches.Load(),
+		CompletedCompactions:  l.completedCompactions.Load(),
+		CompactionInputBytes:  l.compactionInputBytes.Load(),
+		CompactionOutputBytes: l.compactionOutputBytes.Load(),
+		CompletedFlushes:      l.completedFlushes.Load(),
+		FlushOutputBytes:      l.flushOutputBytes.Load(),
+		WriteGroups:           l.writeGroups.Load(), WriteBatches: l.writeBatches.Load(),
 		Dir:              l.dir,
 		MemSize:          l.mem.ApproximateSize(),
 		SeqNum:           l.seqNum,

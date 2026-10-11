@@ -57,6 +57,24 @@ func (d *slopDatabase) BeginContext(ctx context.Context, _ int, _ bool) (Transac
 func (d *slopDatabase) Info() map[string]any {
 	return map[string]any{"engine": "slopdb", "wal": true, "wal_fsync": d.config.WALFsync, "deadlock_detection": true, "transaction_mode": "READ COMMITTED, row locking", "storage": "disk"}
 }
+
+// BenchmarkMetrics samples counters at workload boundaries without requiring
+// native adapters to implement SlopDB-specific storage instrumentation.
+func (d *slopDatabase) BenchmarkMetrics() map[string]int64 {
+	s := d.Stats()
+	var fileBytes int64
+	for _, level := range s.Levels {
+		fileBytes += level.TotalSize
+	}
+	return map[string]int64{
+		"write_groups": s.WriteGroups, "write_batches": s.WriteBatches,
+		"completed_compactions":   s.CompletedCompactions,
+		"compaction_input_bytes":  s.CompactionInputBytes,
+		"compaction_output_bytes": s.CompactionOutputBytes,
+		"completed_flushes":       s.CompletedFlushes, "flush_output_bytes": s.FlushOutputBytes,
+		"sstable_bytes": fileBytes, "block_cache_hits": s.BlockCacheHits, "block_cache_misses": s.BlockCacheMisses,
+	}
+}
 func (t *slopTransaction) ExecPreparedContext(ctx context.Context, s Statement, args ...any) (*db.ExecResult, error) {
 	return t.Tx.ExecPreparedContext(ctx, s.(*db.Stmt), args...)
 }
