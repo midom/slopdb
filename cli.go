@@ -407,9 +407,9 @@ func handleImport(filePath, tableName string) {
 				col += "_"
 			}
 			seen[col] = true
-			cols = append(cols, col+" TEXT")
+			cols = append(cols, quoteCLIIdentifier(col)+" TEXT")
 		}
-		createSQL := "CREATE TABLE " + tableName + " (" + strings.Join(cols, ", ") + ")"
+		createSQL := "CREATE TABLE " + quoteCLIIdentifier(tableName) + " (" + strings.Join(cols, ", ") + ")"
 		_, err := currentDB.ExecContext(context.Background(), createSQL)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating table: %v\n", err)
@@ -417,31 +417,37 @@ func handleImport(filePath, tableName string) {
 		}
 	}
 
-	count := 0
-	for {
-		record, err := reader.Read()
-		if err == io.EOF {
-			break
+	rows, err := currentDB.Query("SELECT * FROM " + quoteCLIIdentifier(tableName) + " LIMIT 0")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading table columns: %v\n", err)
+		return
+	}
+	columns := rows.Columns()
+	_ = rows.Close()
+	names := make([]string, len(columns))
+	for i, column := range columns {
+		names[i] = column.Name
+	}
+	if len(headers) != len(names) {
+		fmt.Fprintf(os.Stderr, "Error: CSV has %d columns, table has %d\n", len(headers), len(names))
+		return
+	}
+	count, err := currentDB.BulkInsert(context.Background(), tableName, names, func(ctx context.Context) ([]any, error) {
+		record, readErr := reader.Read()
+		if readErr != nil {
+			return nil, readErr
 		}
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading CSV: %v\n", err)
-			break
-		}
-		quoted := make([]string, len(record))
-		for i, v := range record {
-			if v == "" {
-				quoted[i] = "NULL"
-			} else {
-				quoted[i] = "'" + strings.ReplaceAll(v, "'", "''") + "'"
+		values := make([]any, len(record))
+		for i, value := range record {
+			if value != "" {
+				values[i] = value
 			}
 		}
-		sql := "INSERT INTO " + tableName + " VALUES(" + strings.Join(quoted, ",") + ")"
-		_, err = currentDB.ExecContext(context.Background(), sql)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error inserting row %d: %v\n", count+1, err)
-			break
-		}
-		count++
+		return values, nil
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Import failed; all rows rolled back: %v\n", err)
+		return
 	}
 	fmt.Fprintf(os.Stderr, "Imported %d rows into %q\n", count, tableName)
 }
@@ -537,3 +543,5 @@ func runShell(arg string) {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 	}
 }
+
+func quoteCLIIdentifier(name string) string { return `"` + strings.ReplaceAll(name, `"`, `""`) + `"` }
