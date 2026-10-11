@@ -147,8 +147,8 @@ func validateRecursiveCTE(c CommonTableExpr) (*UnionStmt, *SelectStmt, error) {
 	if !ok || step.With != nil || step.Compound != nil || cteReferences(compound.Left, c.Name) != 0 || cteReferences(step, c.Name) != 1 || directCTEReferences(step, c.Name) != 1 {
 		return nil, nil, fmt.Errorf("recursive CTE requires exactly one direct recursive table reference and a nonrecursive anchor")
 	}
-	if len(compound.OrderBy) > 0 || compound.Limit >= 0 || compound.Offset != 0 || step.Distinct || hasAggregates(step) || len(step.GroupBy) > 0 || step.Having != nil || len(step.OrderBy) > 0 || step.Limit >= 0 || step.Offset != 0 || step.Lock != nil {
-		return nil, nil, fmt.Errorf("recursive CTE aggregation, ordering, DISTINCT, locking and inner LIMIT/OFFSET are not supported")
+	if len(compound.OrderBy) > 0 || compound.Limit >= 0 || compound.Offset != 0 || step.Distinct || hasWindows(step) || hasAggregates(step) || len(step.GroupBy) > 0 || step.Having != nil || len(step.OrderBy) > 0 || step.Limit >= 0 || step.Offset != 0 || step.Lock != nil {
+		return nil, nil, fmt.Errorf("recursive CTE aggregation, windows, ordering, DISTINCT, locking and inner LIMIT/OFFSET are not supported")
 	}
 	for _, j := range step.Joins {
 		if j.Type != "INNER" && j.Type != "CROSS" {

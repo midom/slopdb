@@ -624,6 +624,10 @@ func qualifyAccessRow(row map[string]Value, table, alias string) {
 }
 
 func (s *Schema) streamSelectScan(stmt *SelectStmt, info *TableInfo) ([]map[string]Value, bool, error) {
+	if hasWindows(stmt) {
+		return nil, false, nil
+	}
+
 	if info == nil || stmt.FromExpr != nil || len(stmt.Joins) > 0 || stmt.Virtual != nil || stmt.Lock != nil || stmt.trackRows || hasAggregates(stmt) || len(stmt.GroupBy) > 0 || stmt.Having != nil || stmt.Distinct {
 		return nil, false, nil
 	}

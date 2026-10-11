@@ -190,6 +190,10 @@ func decodeScanRow(data []byte, columns []scanColumn, row map[string]Value) {
 }
 
 func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols []selectExprCol) ([]map[string]Value, bool, error) {
+	if hasWindows(stmt) {
+		return nil, false, nil
+	}
+
 	if info == nil || stmt.FromExpr != nil || stmt.Lock != nil || stmt.trackRows || stmt.SelectAll || stmt.Virtual != nil || (!hasAggregates(stmt) && len(stmt.GroupBy) == 0 && stmt.Having == nil) {
 		return nil, false, nil
 	}

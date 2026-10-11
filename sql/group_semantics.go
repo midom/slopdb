@@ -36,7 +36,8 @@ func mapExpression(expr Expression, visit func(Expression) (Expression, bool, er
 				return nil, err
 			}
 		}
-		return &c, nil
+		c.Window, err = mapWindowSpec(e.Window, rewrite)
+		return &c, err
 	case *InListExpr:
 		c := *e
 		c.Expr, err = rewrite(e.Expr)
@@ -89,6 +90,12 @@ func validateAggregateExpr(expr Expression, allow bool) error {
 			return true, fmt.Errorf("star is only allowed in COUNT(*)")
 		}
 		if f, ok := e.(*FuncCallExpr); ok {
+			if f.Window != nil {
+				if !allow {
+					return true, fmt.Errorf("window function is not allowed in this context")
+				}
+				return true, validateWindowCall(f)
+			}
 			if !isAggregate(f) {
 				if err := validateScalarFunction(f); err != nil {
 					return true, err
@@ -286,6 +293,11 @@ func walkExpression(expr Expression, visit func(Expression) (bool, error)) error
 		return walk(e.Right)
 	case *FuncCallExpr:
 		for _, a := range e.Args {
+			if err := walk(a); err != nil {
+				return err
+			}
+		}
+		for _, a := range windowExpressions(e.Window) {
 			if err := walk(a); err != nil {
 				return err
 			}

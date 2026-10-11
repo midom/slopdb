@@ -33,6 +33,10 @@ func (s *Schema) OpenRowCursor(stmt *SelectStmt) (*RowCursor, bool, error) {
 	if s.cteScope != nil || stmt.With != nil || stmt.Compound != nil || stmt.materialized != nil {
 		return nil, false, nil
 	}
+	if hasWindows(stmt) {
+		return nil, false, nil
+	}
+
 	info := s.tables[strings.ToLower(stmt.From)]
 	if info == nil || stmt.FromExpr != nil || stmt.Virtual != nil || len(stmt.Joins) != 0 || stmt.Lock != nil || stmt.Distinct || len(stmt.GroupBy) != 0 || stmt.Having != nil || hasAggregates(stmt) {
 		return nil, false, nil

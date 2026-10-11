@@ -3799,6 +3799,11 @@ func (s *Schema) validateQueryUncached(stmt *SelectStmt, info *TableInfo) error 
 					return err
 				}
 			}
+			for _, arg := range windowExpressions(e.Window) {
+				if err := validate(arg, false); err != nil {
+					return err
+				}
+			}
 		case *InListExpr:
 			if err := validate(e.Expr, allowAlias); err != nil {
 				return err
@@ -3898,6 +3903,10 @@ func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
 	}
 	copyStmt := *stmt
 	stmt = &copyStmt
+	if err := resolveWindows(stmt); err != nil {
+		return nil, err
+	}
+	windowed := hasWindows(stmt)
 	trackKeys := stmt.Lock != nil || stmt.trackRows
 	needQualified := needsQualifiedRows(stmt)
 	orderedIndex := false
@@ -3907,11 +3916,14 @@ func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
 	rs := &ResultSet{}
 	tableName := strings.ToLower(stmt.From)
 
-	if tableName == "sqlite_master" {
-		return s.selectFromSqliteMaster(stmt)
-	}
-	if tableName == "sqlite_stat1" {
-		return s.selectFromStat1(stmt)
+	if tableName == "sqlite_master" || tableName == "sqlite_stat1" {
+		if !windowed {
+			if tableName == "sqlite_master" {
+				return s.selectFromSqliteMaster(stmt)
+			}
+			return s.selectFromStat1(stmt)
+		}
+		stmt.FromExpr = &SubqueryExpr{Stmt: &SelectStmt{From: tableName, SelectAll: true, Columns: []SelectColumn{{Star: true}}, Limit: -1}}
 	}
 
 	info, ok := s.tables[tableName]
@@ -3987,7 +3999,7 @@ func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
 	if err := validateGrouping(stmt, info, rs.Columns); err != nil {
 		return nil, err
 	}
-	if sorted, used, sortErr := s.streamOrderedSelect(stmt, info, exprCols, rs.Columns); used || sortErr != nil {
+	if sorted, used, sortErr := s.streamOrderedSelectIfNoWindows(stmt, info, exprCols, rs.Columns); used || sortErr != nil {
 		if sortErr != nil {
 			return nil, sortErr
 		}
@@ -4018,7 +4030,7 @@ func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
 	}
 	if streamedGroups || streamedRead {
 		// Group output continues through the common DISTINCT/ORDER/LIMIT path.
-	} else if plan := s.makeJoinPlan(stmt); plan != nil {
+	} else if plan := s.makeJoinPlanIfNoWindows(stmt); plan != nil {
 		expressionsReady = !stmt.SelectAll && !hasAggregates(stmt) && len(stmt.GroupBy) == 0 && stmt.Having == nil
 		for _, c := range stmt.Columns {
 			if c.Star {
@@ -4073,6 +4085,29 @@ func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
 			if info == nil {
 				info = &TableInfo{Columns: subRS.Columns}
 			}
+
+			if !stmt.SelectAll {
+				mixedStar := false
+				for _, c := range stmt.Columns {
+					mixedStar = mixedStar || c.Star
+				}
+				if mixedStar {
+					rs.Columns = nil
+					expression := 0
+					for _, c := range stmt.Columns {
+						if c.Star {
+							rs.Columns = append(rs.Columns, info.Columns...)
+							base := append([]ColumnDef(nil), rs.Columns...)
+							for _, j := range stmt.Joins {
+								s.addJoinColumns(rs, j, base)
+							}
+						} else {
+							rs.Columns = append(rs.Columns, ColumnDef{Name: exprCols[expression].name})
+							expression++
+						}
+					}
+				}
+			}
 			if err := s.validateQuery(stmt, info); err != nil {
 				return nil, err
 			}
@@ -4122,7 +4157,7 @@ func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
 	} else if info == nil && tableName == "" && len(stmt.Joins) == 0 && len(stmt.Columns) > 0 {
 		row := make(map[string]Value)
 		for _, ec := range exprCols {
-			if containsAggregate(ec.expr) {
+			if windowed || containsAggregate(ec.expr) {
 				continue
 			}
 			val, err := s.evalExpr(ec.expr, row)
@@ -4136,17 +4171,25 @@ func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
 		var baseRows []map[string]Value
 		var baseKeys [][]string
 		usedIndex := false
+		accessStmt := stmt
+		if windowed {
+			copy := *stmt
+			copy.Limit = -1
+			copy.Offset = 0
+			copy.OrderBy = nil
+			accessStmt = &copy
+		}
 		preferScan := s.distributionScanPreferred(stmt, info)
-		if plan := s.tuplePlan(stmt, info); plan != nil {
+		if plan := s.tuplePlan(accessStmt, info); plan != nil {
 			var readErr error
-			baseRows, baseKeys, orderedIndex, readErr = s.tupleRows(stmt, plan, trackKeys)
+			baseRows, baseKeys, orderedIndex, readErr = s.tupleRows(accessStmt, plan, trackKeys)
 			if readErr != nil {
 				return nil, readErr
 			}
 			usedIndex = true
 			conditionSatisfied = true
 		}
-		if plan := s.coveringPlan(stmt, tableName, info); !usedIndex && !preferScan && plan != nil {
+		if plan := s.coveringPlan(stmt, tableName, info); !windowed && !usedIndex && !preferScan && plan != nil {
 			var readErr error
 			baseRows, readErr = s.coveringRows(stmt, plan)
 			if readErr != nil {
@@ -4179,7 +4222,7 @@ func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
 
 		if !usedIndex && !preferScan {
 			var rangeErr error
-			baseRows, usedIndex, rangeErr = s.indexRangeRows(stmt, tableName, info)
+			baseRows, usedIndex, rangeErr = s.indexRangeRows(accessStmt, tableName, info)
 			orderedIndex = usedIndex
 			conditionSatisfied = usedIndex
 			if rangeErr != nil {
@@ -4191,7 +4234,7 @@ func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
 			scanLimit := int64(-1)
 			scanReverse := false
 			if stmt.Lock == nil && stmt.Where == nil && len(stmt.Joins) == 0 && !s.inTx && !stmt.Distinct && len(stmt.GroupBy) == 0 &&
-				!hasAggregates(stmt) && stmt.Limit >= 0 {
+				!windowed && !hasAggregates(stmt) && stmt.Limit >= 0 {
 				if rev := s.isOrderByNatural(stmt, info); rev >= 0 {
 					scanLimit = limitWindow(stmt.Limit, stmt.Offset)
 					scanReverse = rev == 1
@@ -4264,7 +4307,7 @@ func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
 		}
 	}
 
-	if len(exprCols) > 0 && !coveringProjection && !streamedGroups && !expressionsReady {
+	if !windowed && len(exprCols) > 0 && !coveringProjection && !streamedGroups && !expressionsReady {
 		for i := range rows {
 			original := make(map[string]Value)
 			for k, v := range rows[i] {
@@ -4306,6 +4349,12 @@ func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
 		}
 	}
 
+	if windowed {
+		if err := s.processWindows(stmt, rows, exprCols); err != nil {
+			return nil, err
+		}
+		orderedIndex = false
+	}
 	if stmt.Distinct {
 		distinctCols := make([]string, 0, len(rs.Columns))
 		for _, col := range rs.Columns {
@@ -4410,6 +4459,9 @@ func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
 }
 
 func isAggregate(fc *FuncCallExpr) bool {
+	if fc.Window != nil {
+		return false
+	}
 	if (strings.EqualFold(fc.Name, "MIN") || strings.EqualFold(fc.Name, "MAX")) && len(fc.Args) > 1 {
 		return false
 	}
@@ -4448,6 +4500,7 @@ func hasAggregates(stmt *SelectStmt) bool {
 }
 
 func (s *Schema) processGroups(stmt *SelectStmt, rows []map[string]Value, info *TableInfo, exprCols []selectExprCol, keys [][]string) ([]map[string]Value, [][]string, error) {
+	windowed := hasWindows(stmt)
 	groups := make(map[string][]map[string]Value)
 	groupKeys := make(map[string][]string)
 	var order []string
@@ -4487,7 +4540,17 @@ func (s *Schema) processGroups(stmt *SelectStmt, rows []map[string]Value, info *
 				base[k] = v
 			}
 		}
+		var originalWindowBase map[string]Value
+		if windowed {
+			originalWindowBase = copyRow(base)
+		}
 		for _, ec := range exprCols {
+			if containsWindow(ec.expr) {
+				if err := s.preserveWindowAggregates(ec.expr, group, base); err != nil {
+					return nil, nil, err
+				}
+				continue
+			}
 			expr, err := s.replaceAggregates(ec.expr, group)
 			if err != nil {
 				return nil, nil, err
@@ -4497,8 +4560,17 @@ func (s *Schema) processGroups(stmt *SelectStmt, rows []map[string]Value, info *
 				return nil, nil, err
 			}
 			base[ec.name] = v
+			if windowed {
+				base["\x00selected:"+ec.name] = v
+			}
 		}
 		for i, order := range stmt.OrderBy {
+			if containsWindow(order.Expr) {
+				if err := s.preserveWindowAggregates(order.Expr, group, base); err != nil {
+					return nil, nil, err
+				}
+				continue
+			}
 			if containsAggregate(order.Expr) {
 				expr, err := s.replaceAggregates(order.Expr, group)
 				if err != nil {
@@ -4524,13 +4596,18 @@ func (s *Schema) processGroups(stmt *SelectStmt, rows []map[string]Value, info *
 				continue
 			}
 		}
+		if windowed {
+			for k, v := range originalWindowBase {
+				base[k] = v
+			}
+		}
 		result = append(result, base)
 		if keys != nil {
 			resultKeys = append(resultKeys, groupKeys[key])
 		}
 	}
 	for i := range stmt.OrderBy {
-		if containsAggregate(stmt.OrderBy[i].Expr) {
+		if !containsWindow(stmt.OrderBy[i].Expr) && containsAggregate(stmt.OrderBy[i].Expr) {
 			stmt.OrderBy[i].Expr = &ColumnRefExpr{Name: fmt.Sprintf("\x00order%d", i)}
 		}
 	}
@@ -5547,6 +5624,17 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 		}
 
 	case *FuncCallExpr:
+		if e.Window != nil {
+			if v, ok := row[windowSlot(e)]; ok {
+				return v, nil
+			}
+			return NewNullValue(), fmt.Errorf("window function evaluated outside window stage")
+		}
+		if isAggregate(e) {
+			if v, ok := row[aggregateSlot(e)]; ok {
+				return v, nil
+			}
+		}
 		return s.evalFunc(e, row)
 	case *InListExpr:
 		return s.evalInList(e, row)

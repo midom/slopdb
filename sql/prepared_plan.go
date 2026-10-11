@@ -55,7 +55,7 @@ type preparedExecutionPlan struct {
 }
 
 func preparedSelectEligible(stmt *SelectStmt) bool {
-	if stmt.With != nil || stmt.Compound != nil || stmt.materialized != nil || stmt.FromExpr != nil || stmt.Virtual != nil || len(stmt.Joins) != 0 || stmt.From == "" {
+	if hasWindows(stmt) || stmt.With != nil || stmt.Compound != nil || stmt.materialized != nil || stmt.FromExpr != nil || stmt.Virtual != nil || len(stmt.Joins) != 0 || stmt.From == "" {
 		return false
 	}
 	safe := true
