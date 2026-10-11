@@ -385,6 +385,24 @@ func (s *Schema) tuplePlan(stmt *SelectStmt, info *TableInfo) *tupleReadPlan {
 	}
 	constraints := tupleConstraints(stmt.Where, info.Name, stmt.FromAlias, info)
 	best := buildTuplePlan(stmt, info, nil, constraints)
+	costFor := func(plan *tupleReadPlan) float64 {
+		if plan == nil {
+			return math.Inf(1)
+		}
+		rows, known := s.accessEstimate(info, plan.index, constraints)
+		if !known {
+			return math.Inf(1)
+		}
+		if plan.ordered && stmt.Limit >= 0 && tupleSafePredicate(stmt.Where) {
+			rows = math.Min(rows, float64(limitWindow(stmt.Limit, stmt.Offset)))
+		}
+		cost := accessCost(rows, plan.index != nil, plan.covered)
+		if !plan.ordered && len(stmt.OrderBy) > 0 {
+			cost += rows * math.Log2(math.Max(2, rows))
+		}
+		return cost
+	}
+	bestCost := costFor(best)
 	for _, idx := range s.tableIndexes(info.Name) {
 		if s.isClusteredIndex(idx) {
 			continue
@@ -397,9 +415,16 @@ func (s *Schema) tuplePlan(stmt *SelectStmt, info *TableInfo) *tupleReadPlan {
 			plan.covered = true
 			plan.score += 2
 		}
-		if best == nil || plan.score > best.score || (plan.score == best.score && best.index != nil && idx.Name < best.index.Name) {
+		cost := costFor(plan)
+		if cost < bestCost || cost == bestCost && (best == nil || plan.score > best.score || (plan.score == best.score && best.index != nil && idx.Name < best.index.Name)) {
 			best = plan
+			bestCost = cost
 		}
+	}
+	// A non-covering index with large fanout costs more than one row scan.
+	// Preserve ordered LIMIT plans, which can stop without materializing a sort.
+	if stats := s.distributions[info.Name]; stats != nil && best != nil && !(best.ordered && stmt.Limit >= 0) && len(stmt.OrderBy) == 0 && bestCost > float64(stats.Rows) && bestCost < math.Inf(1) {
+		return nil
 	}
 	return best
 }

@@ -18,6 +18,7 @@ type joinRelation struct {
 	count, total    float64
 	left            bool
 	qualifiedFilter bool
+	distribution    *tableStatistics
 }
 type joinEdge struct {
 	a, b   int
@@ -134,8 +135,10 @@ func (s *Schema) makeJoinPlan(stmt *SelectStmt) *joinPlan {
 		}
 		i := len(p.relations)
 		r := &joinRelation{table: table, alias: alias, info: info, needed: make(map[string]bool)}
-		r.total = float64(s.stats[table])
-		if r.total <= 0 {
+		r.distribution = s.distributions[table]
+		count, analyzed := s.stats[table]
+		r.total = float64(count)
+		if !analyzed || r.total < 0 {
 			r.total = 1000
 		}
 		r.count = r.total
@@ -260,7 +263,7 @@ func (s *Schema) makeJoinPlan(stmt *SelectStmt) *joinPlan {
 		}
 		r.paths = s.accessPaths(bare, r.info)
 		if r.filter != nil {
-			r.count *= 0.1
+			r.count *= s.predicateSelectivity(r.table, bare)
 		}
 	}
 	p.chooseOrder()
@@ -309,8 +312,17 @@ func (s *Schema) loadJoinRelation(r *joinRelation) error {
 	return err
 }
 
-func (p *joinPlan) fanout(i int, mask uint64) float64 {
+func (p *joinPlan) fanout(i int, mask uint64) (factor float64) {
 	r := p.relations[i]
+	// A LEFT input emits a preserved outer row even when no match exists.
+	defer func() {
+		if r.left && factor < 1 {
+			factor = 1
+		}
+	}()
+	if r.total == 0 {
+		return 0
+	}
 	pairs := p.pairs(i, mask)
 	if len(pairs) == 0 {
 		return r.count
@@ -330,6 +342,27 @@ func (p *joinPlan) fanout(i int, mask uint64) float64 {
 	}
 	if unique {
 		return math.Min(1, r.count/r.total)
+	}
+	if r.distribution != nil {
+		selectivity := 1.0
+		known := false
+		for _, pair := range pairs {
+			right := r.distribution.Columns[pair.right]
+			owner, exists := p.owners[pair.left]
+			if right == nil || !exists || owner < 0 {
+				continue
+			}
+			var left *columnStatistics
+			if other := p.relations[owner].distribution; other != nil {
+				_, name, _ := strings.Cut(pair.left, ".")
+				left = other.Columns[name]
+			}
+			selectivity *= joinDistributionSelectivity(left, right)
+			known = true
+		}
+		if known {
+			return math.Max(0.001, r.count*selectivity)
+		}
 	}
 	return math.Max(0.001, r.count/math.Min(r.total, domain))
 }
@@ -392,6 +425,7 @@ func (s *Schema) joinReader(r *joinRelation, pairs []joinKeyPair) *joinReader {
 		bound[pair.right] = true
 	}
 	best := 0
+	bestCost := math.Inf(1)
 	consider := func(idx *IndexInfo, columns []string) {
 		n := 0
 		for _, c := range columns {
@@ -404,8 +438,28 @@ func (s *Schema) joinReader(r *joinRelation, pairs []joinKeyPair) *joinReader {
 		if n == len(columns) && idx == nil {
 			score += 64
 		}
-		if n > 0 && score > best {
+		cost := math.Inf(1)
+		if n > 0 && r.distribution != nil {
+			rows := r.total
+			known := true
+			for _, name := range columns[:n] {
+				c := r.distribution.Columns[name]
+				if c == nil {
+					known = false
+					break
+				}
+				rows *= (1 - c.NullFraction) / math.Max(1, c.DistinctEstimate)
+			}
+			if idx == nil && n == len(columns) {
+				rows = math.Min(rows, 1)
+			}
+			if known {
+				cost = accessCost(math.Max(1, rows), idx != nil, false)
+			}
+		}
+		if n > 0 && (cost < bestCost || cost == bestCost && score > best) {
 			best = score
+			bestCost = cost
 			reader.index = idx
 			reader.columns = columns[:n]
 		}
@@ -540,7 +594,8 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 	for depth, i := range p.order {
 		readers[depth] = s.joinReader(p.relations[i], p.pairs(i, mask))
 		r := p.relations[i]
-		if depth > 0 && len(readers[depth].pairs) > 0 && r.total > 256 && estimatedLeft > r.total/16 {
+		hash := p.preferHashJoin(i, mask, estimatedLeft, readers[depth])
+		if depth > 0 && len(readers[depth].pairs) > 0 && hash {
 			if err := s.loadJoinRelation(r); err != nil {
 				return err
 			}
@@ -705,8 +760,18 @@ func (p *joinPlan) description() string {
 		if r.paths != nil {
 			mode = "bounded index"
 		}
-		names = append(names, fmt.Sprintf("%s (%s)", r.alias, mode))
+		names = append(names, fmt.Sprintf("%s (%s; estimated rows=%.3g)", r.alias, mode, r.count))
 		mask |= 1 << i
 	}
 	return strings.Join(names, " -> ")
+}
+
+func (p *joinPlan) preferHashJoin(i int, mask uint64, left float64, reader *joinReader) bool {
+	r := p.relations[i]
+	if r.distribution == nil || len(reader.columns) == 0 {
+		return r.total > 256 && left > r.total/16
+	}
+	probeCost := left * (4 + 3*p.fanout(i, mask))
+	hashCost := r.total + r.count + left
+	return probeCost > hashCost
 }
