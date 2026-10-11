@@ -2,7 +2,6 @@ package sql
 
 import (
 	"bytes"
-	"fmt"
 	"runtime"
 	"strings"
 	"time"
@@ -30,10 +29,20 @@ type QueryProfile struct {
 	started               time.Time
 	heap                  runtime.MemStats
 	stack                 []int
-	points                map[string]int
+	nodes                 map[profileNode]int
+	overflow              int
+	CollapsedInvocations  int64 `json:"collapsed_invocations"`
+}
+
+const maxProfileOperators = 1024
+
+type profileNode struct {
+	parent         int
+	name, relation string
 }
 
 type OperatorProfile struct {
+	Invocations          int64   `json:"invocations"`
 	ID                   int     `json:"id"`
 	ParentID             int     `json:"parent_id"`
 	Operator             string  `json:"operator"`
@@ -51,7 +60,7 @@ type OperatorProfile struct {
 // must stop profiling before releasing the session to a different execution.
 func (s *Schema) StartQueryProfile() *QueryProfile {
 	s.StopQueryProfile()
-	p := &QueryProfile{MemoryLimitBytes: s.memoryBudget(), started: time.Now(), points: make(map[string]int)}
+	p := &QueryProfile{MemoryLimitBytes: s.memoryBudget(), started: time.Now(), nodes: make(map[profileNode]int), overflow: -1}
 	runtime.ReadMemStats(&p.heap)
 	s.profile = p
 	return p
@@ -71,7 +80,7 @@ func (s *Schema) StopQueryProfile() {
 	if p := s.profile; p != nil {
 		p.sample()
 		p.stack = nil
-		p.points = nil
+		p.nodes = nil
 		s.profile = nil
 	}
 }
@@ -90,8 +99,26 @@ func (p *QueryProfile) parent() int {
 }
 
 func (p *QueryProfile) operator(name, relation string) int {
+	return p.operatorUnder(p.parent(), name, relation)
+}
+func (p *QueryProfile) operatorUnder(parent int, name, relation string) int {
+	key := profileNode{parent, name, relation}
+	if id, ok := p.nodes[key]; ok {
+		p.Operators[id].Invocations++
+		return id
+	}
+	if len(p.nodes) >= maxProfileOperators {
+		if p.overflow < 0 {
+			p.overflow = len(p.Operators)
+			p.Operators = append(p.Operators, OperatorProfile{ID: p.overflow, ParentID: -1, Operator: "Collapsed"})
+		}
+		p.CollapsedInvocations++
+		p.Operators[p.overflow].Invocations++
+		return p.overflow
+	}
 	id := len(p.Operators)
-	p.Operators = append(p.Operators, OperatorProfile{ID: id, ParentID: p.parent(), Operator: name, Relation: relation})
+	p.nodes[key] = id
+	p.Operators = append(p.Operators, OperatorProfile{ID: id, ParentID: parent, Operator: name, Relation: relation, Invocations: 1})
 	return id
 }
 
@@ -107,7 +134,7 @@ func (s *Schema) profileSelect(stmt *SelectStmt) func(*ResultSet, error) {
 		op := &p.Operators[id]
 		op.ElapsedMS += float64(time.Since(started)) / float64(time.Millisecond)
 		if result != nil {
-			op.RowsReturned = int64(len(result.Rows))
+			op.RowsReturned += int64(len(result.Rows))
 		}
 		if err != nil {
 			op.Error = err.Error()
@@ -129,9 +156,9 @@ func (s *Schema) ProfileOperator(name, relation string) func(int64, int64, error
 	started := time.Now()
 	return func(input, output int64, err error) {
 		op := &p.Operators[id]
-		op.RowsExamined = input
-		op.RowsReturned = output
-		op.ElapsedMS = float64(time.Since(started)) / float64(time.Millisecond)
+		op.RowsExamined += input
+		op.RowsReturned += output
+		op.ElapsedMS += float64(time.Since(started)) / float64(time.Millisecond)
 		if err != nil {
 			op.Error = err.Error()
 		}
@@ -180,12 +207,7 @@ func (s *Schema) profilePoint(key, value []byte, found bool, elapsed time.Durati
 		return
 	}
 	relation, index := s.profileRelation(key)
-	group := fmt.Sprintf("%d:%s", p.parent(), relation)
-	id, ok := p.points[group]
-	if !ok {
-		id = p.operator("PointLookup", relation)
-		p.points[group] = id
-	}
+	id := p.operator("PointLookup", relation)
 	p.Operators[id].PointLookups++
 	p.Operators[id].ElapsedMS += float64(elapsed) / float64(time.Millisecond)
 	p.PointLookups++
@@ -196,19 +218,22 @@ func (s *Schema) profilePoint(key, value []byte, found bool, elapsed time.Durati
 
 type profileIterator struct {
 	storage.Iterator
-	schema  *Schema
-	profile *QueryProfile
-	id      int
-	visited bool
-	closed  bool
-	started time.Time
+	schema   *Schema
+	profile  *QueryProfile
+	id       int
+	parent   int
+	name     string
+	relation string
+	visited  bool
+	closed   bool
+	started  time.Time
 }
 
 func (s *Schema) profileReader(it storage.Iterator, name string) storage.Iterator {
 	if s.profile == nil {
 		return it
 	}
-	return &profileIterator{Iterator: it, schema: s, profile: s.profile, id: s.profile.operator(name, ""), started: time.Now()}
+	return &profileIterator{Iterator: it, schema: s, profile: s.profile, id: -1, parent: s.profile.parent(), name: name, started: time.Now()}
 }
 
 func (it *profileIterator) visit() {
@@ -218,8 +243,9 @@ func (it *profileIterator) visit() {
 	it.visited = true
 	key := it.Iterator.Key().UserKey
 	relation, index := it.schema.profileRelation(key)
-	if it.profile.Operators[it.id].Relation == "" {
-		it.profile.Operators[it.id].Relation = relation
+	if it.id < 0 || it.relation != relation {
+		it.id = it.profile.operatorUnder(it.parent, it.name, relation)
+		it.relation = relation
 	}
 	it.profile.read(it.id, key, it.Iterator.Value(), index)
 }
@@ -236,6 +262,9 @@ func (it *profileIterator) Close() {
 	}
 	it.closed = true
 	it.Iterator.Close()
+	if it.id < 0 {
+		it.id = it.profile.operatorUnder(it.parent, it.name, "")
+	}
 	it.profile.Operators[it.id].ElapsedMS += float64(time.Since(it.started)) / float64(time.Millisecond)
 }
 
@@ -247,6 +276,7 @@ func (s *Schema) appendProfileResult(rs *ResultSet) {
 	p.sample()
 	rs.Profile = p
 	fields := []ColumnDef{
+		{Name: "invocations", ColType: ColInteger}, {Name: "collapsed_invocations", ColType: ColInteger},
 		{Name: "operator_id", ColType: ColInteger}, {Name: "parent_id", ColType: ColInteger},
 		{Name: "rows_examined", ColType: ColInteger}, {Name: "index_entries_examined", ColType: ColInteger},
 		{Name: "rows_returned", ColType: ColInteger}, {Name: "point_lookups", ColType: ColInteger},
@@ -270,6 +300,7 @@ func (s *Schema) appendProfileResult(rs *ResultSet) {
 		row["opcode"] = NewTextValue(name)
 		row["p4"] = NewTextValue(relation)
 		row["comment"] = NewTextValue("actual execution; inclusive operator time")
+		row["invocations"] = NewIntValue(op.Invocations)
 		row["operator_id"] = NewIntValue(int64(op.ID))
 		row["parent_id"] = NewIntValue(int64(op.ParentID))
 		row["rows_examined"] = NewIntValue(op.RowsExamined)
@@ -285,6 +316,7 @@ func (s *Schema) appendProfileResult(rs *ResultSet) {
 		add("Actual"+op.Operator, op.Relation, op)
 	}
 	row := add("QueryProfile", "", OperatorProfile{ID: -1, ParentID: -1, RowsExamined: p.RowsExamined, IndexEntriesExamined: p.IndexEntriesExamined, PointLookups: p.PointLookups, BytesRead: p.BytesRead, ElapsedMS: p.ElapsedMS})
+	row["collapsed_invocations"] = NewIntValue(p.CollapsedInvocations)
 	row["spill_rows_read"] = NewIntValue(p.SpillRowsRead)
 	row["spill_bytes"] = NewIntValue(p.SpillBytes)
 	row["spill_runs"] = NewIntValue(p.SpillRuns)

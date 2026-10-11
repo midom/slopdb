@@ -15,7 +15,7 @@ LIMIT 20;
 ```
 
 Additional numeric result columns report operator and parent IDs, rows examined,
-index entries examined, rows returned, point lookups, encoded bytes read,
+index entries examined, rows returned, invocations, point lookups, encoded bytes read,
 elapsed milliseconds, lock wait milliseconds and process heap allocations.
 Estimated plan rows use NULL for actual metrics. `Actual...` rows record executed
 operators and the `QueryProfile` row contains statement totals. Operators record
@@ -27,7 +27,7 @@ Go callers also receive a structured `ExecResult.Profile` with the same
 execution's operators and totals. Prepared EXPLAIN ANALYZE statements create
 fresh profiles on each execution. Sessions retain private profile state, and
 ordinary queries have a nil profile. Read counters include work from statement
-retries; failed attempts remain visible as SELECT operators with an error.
+retries; errors from failed attempts remain visible on the aggregated SELECT operator.
 Lock-wait measurements include waits between attempts.
 
 Operator elapsed times include their children and must not be added together.
@@ -40,3 +40,11 @@ deltas across profiling. They include profiler overhead and any concurrent Go
 work, so isolate benchmark runs when comparing allocation samples. They do not
 claim per-operator allocations or peak memory. Profiling itself adds overhead,
 including runtime heap snapshots; use normal executions for throughput timing.
+
+Repeated stages with the same parent, name and relation accumulate their work
+and elapsed time in one row. `invocations` records stage entries, avoiding one
+trace row per indexed probe or correlated execution. Distinct trace nodes are
+capped at 1,024; additional nodes contribute to `ActualCollapsed` and the
+`collapsed_invocations` summary. Statement read, lookup and byte totals remain
+exact when detail is collapsed. Collapsed stage counts combine logical and
+physical work and must not be interpreted as distinct input rows.
