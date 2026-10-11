@@ -142,3 +142,19 @@ Measured execution improvements and remaining bottlenecks are documented in [TPC
 
 The latest indexed joins, selective execution, allocation measurements, and
 TPC-C regression results are in [Join execution improvements](../../docs/tpch-join-plans.md).
+
+Both Go runners accept `-page-size <bytes>` and record the actual configured
+size in JSON. SlopDB targets uncompressed SSTable data blocks; DuckDB uses fixed
+storage blocks. DuckDB rejects 1 MiB (its maximum is 256 KiB).
+
+For equal-data storage comparisons, build `go build -o /tmp/slopdb-bench/storage-snapshot
+./cmd/storage-snapshot`, the two TPC-H runners, and run
+`scripts/storage_page_matrix.py --help`. The matrix keeps reports and data
+outside the repository, preserves fresh directories, runs variants serially,
+and records closed versus compacted/VACUUM/checkpoint file and allocated sizes.
+The TPC-C storage fixture uses a portable JSON snapshot with warehouse/history
+IDs shifted per replica; it is separate from the timed transaction workload.
+TPC-H supports independent answer checking through `--reference-report`.
+Native DuckDB requires its Python package and the existing Linux WAL-only
+preload wrapper for loads with WAL fsync disabled. Unsupported sizes are
+reported as unsupported rather than substituted with a different size.

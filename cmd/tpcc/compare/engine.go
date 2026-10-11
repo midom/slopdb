@@ -58,14 +58,18 @@ func openEngine(c tpcc.Config) (tpcc.Database, error) {
 	var err error
 	switch c.Engine {
 	case "sqlite":
+		if err := validateSQLitePageSize(c.PageSize); err != nil {
+			return nil, err
+		}
 		syncMode := "OFF"
 		if c.WALFsync {
 			syncMode = "FULL"
 		}
 		u := url.URL{Scheme: "file", Path: filepath.Join(c.Dir, "benchmark.sqlite")}
 		q := u.Query()
-		q.Set("_journal_mode", "WAL")
+		// Enable WAL only after applying the page size to a fresh database.
 		q.Set("_synchronous", syncMode)
+		q.Set("_cache_size", "-131072")
 		q.Set("_busy_timeout", fmt.Sprint(c.LockTimeout.Milliseconds()))
 		u.RawQuery = q.Encode()
 		d.database, err = stdsql.Open("sqlite3", u.String())
@@ -73,14 +77,19 @@ func openEngine(c tpcc.Config) (tpcc.Database, error) {
 		d.settings["journal_mode"] = "wal"
 		d.settings["synchronous"] = syncMode
 		d.settings["busy_timeout_ms"] = c.LockTimeout.Milliseconds()
+		d.settings["cache_size_kib"] = 131072
+		d.settings["wal_checkpoint_target_bytes"] = 64 << 20
 		d.settings["transaction_mode"] = "BEGIN IMMEDIATE for writers; BEGIN for read-only transactions"
 		d.settings["wal_fsync"] = c.WALFsync
 	case "duckdb":
+		if err := validateDuckPageSize(c.PageSize); err != nil {
+			return nil, err
+		}
 		path := filepath.Join(c.Dir, "benchmark.duckdb")
 		if !c.WALFsync && (C.skipped_wal_syncs() < 0 || os.Getenv("SLOPDB_TPCC_WAL_FILE") != path+".wal") {
 			return nil, errors.New("DuckDB without WAL fsync requires the benchmark-only preload wrapper and SLOPDB_TPCC_WAL_FILE=<database>.wal; see README")
 		}
-		d.database, err = stdsql.Open("duckdb", path+"?threads=1&memory_limit=1GB")
+		d.database, err = stdsql.Open("duckdb", path+fmt.Sprintf("?threads=1&memory_limit=1GB&default_block_size=%d", duckPageSize(c.PageSize)))
 		d.settings["driver"] = "github.com/duckdb/duckdb-go/v2 v2.10506.0"
 		d.settings["threads"] = 1
 		d.settings["memory_limit"] = "1GB"
@@ -98,8 +107,35 @@ func openEngine(c tpcc.Config) (tpcc.Database, error) {
 	d.database.SetMaxOpenConns(c.Workers + 1)
 	d.database.SetMaxIdleConns(c.Workers + 1)
 	fail := func(err error) (tpcc.Database, error) { d.database.Close(); return nil, err }
+	if c.Engine == "sqlite" {
+		if c.PageSize != 0 {
+			if _, err = d.database.Exec(fmt.Sprintf("PRAGMA page_size=%d", c.PageSize)); err != nil {
+				return fail(err)
+			}
+		}
+		if _, err = d.database.Exec("PRAGMA journal_mode=WAL"); err != nil {
+			return fail(err)
+		}
+	}
 	if err = d.database.Ping(); err != nil {
 		return fail(err)
+	}
+	var actualPageSize int64
+	pageQuery := "PRAGMA page_size"
+	if c.Engine == "duckdb" {
+		pageQuery = "SELECT block_size FROM pragma_database_size()"
+	}
+	if err = d.database.QueryRow(pageQuery).Scan(&actualPageSize); err != nil {
+		return fail(err)
+	}
+	if c.PageSize != 0 && actualPageSize != c.PageSize {
+		return fail(fmt.Errorf("requested page size %d, actual %d", c.PageSize, actualPageSize))
+	}
+	d.settings["page_size_bytes"] = actualPageSize
+	if c.Engine == "sqlite" {
+		if _, err = d.database.Exec(fmt.Sprintf("PRAGMA wal_autocheckpoint=%d", (64<<20)/actualPageSize)); err != nil {
+			return fail(err)
+		}
 	}
 	versionQuery := "SELECT sqlite_version()"
 	if c.Engine == "duckdb" {
@@ -151,6 +187,12 @@ func (d *nativeDatabase) SetupWorkers(count int, queries []string, prepared bool
 		conn, err := d.database.Conn(context.Background())
 		if err != nil {
 			return err
+		}
+		if d.config.Engine == "sqlite" {
+			if _, err := conn.ExecContext(context.Background(), fmt.Sprintf("PRAGMA wal_autocheckpoint=%d", (64<<20)/d.settings["page_size_bytes"].(int64))); err != nil {
+				conn.Close()
+				return err
+			}
 		}
 		w := &nativeWorker{conn: conn, statements: make(map[string]*stdsql.Stmt)}
 		d.workers = append(d.workers, w)

@@ -72,3 +72,9 @@ In particular, DuckDB can exhaust five retries on hot warehouse/district rows,
 and replacing SKIP LOCKED with optimistic retry changes delivery scheduling.
 Read-only snapshots also differ from SlopDB's READ COMMITTED reads. Compare
 committed throughput together with failure/retry counts and tail latency.
+
+`-page-size <bytes>` sets the native storage size before creating the database
+and checks its actual value. SQLite accepts powers of two from 512 through
+65536 bytes; DuckDB accepts 16384 through 262144. Both reject 1 MiB explicitly.
+SQLite uses a 128 MiB cache budget and a byte-equivalent 64 MiB WAL checkpoint
+threshold across page sizes; DuckDB retains one execution thread and 1 GB memory.

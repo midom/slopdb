@@ -29,6 +29,7 @@ import (
 var assets embed.FS
 
 type config struct {
+	PageSize   int64         `json:"requested_page_size_bytes"`
 	Data       string        `json:"data_directory"`
 	Dir        string        `json:"database_directory"`
 	JSON       string        `json:"report_file,omitempty"`
@@ -69,6 +70,7 @@ type queryReport struct {
 }
 
 type report struct {
+	PageSize       int64            `json:"page_size_bytes"`
 	Config         config           `json:"config"`
 	Started        time.Time        `json:"started_at"`
 	GoVersion      string           `json:"go_version"`
@@ -111,8 +113,9 @@ func run() (retErr error) {
 	flag.BoolVar(&c.Prepared, "prepared", true, "prepare each query once before executing")
 	flag.BoolVar(&c.Indexes, "indexes", true, "create the documented secondary indexes after loading")
 	flag.BoolVar(&c.WALFsync, "wal-fsync", false, "enable WAL fsync during loading; WAL stays enabled")
+	flag.Int64Var(&c.PageSize, "page-size", 0, "uncompressed SSTable data-block target in bytes (0 uses persisted/default target)")
 	flag.Parse()
-	if flag.NArg() != 0 || c.Data == "" || c.Runs < 1 || c.Warmups < 0 || c.Timeout <= 0 {
+	if flag.NArg() != 0 || c.PageSize < 0 || c.Data == "" || c.Runs < 1 || c.Warmups < 0 || c.Timeout <= 0 {
 		return errors.New("-data is required; runs and timeout must be positive; warmups must be nonnegative")
 	}
 	selected, err := queryNumbers(c.Queries)
@@ -152,6 +155,7 @@ func run() (retErr error) {
 	parent, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	options := storage.DefaultOptions()
+	options.PageSize = c.PageSize
 	options.DisableWALSync = !c.WALFsync
 	database, err := db.Open(c.Dir, options)
 	if err != nil {
@@ -162,7 +166,7 @@ func run() (retErr error) {
 			retErr = errors.Join(retErr, database.Close())
 		}
 	}()
-	r := report{Config: c, Started: time.Now().UTC(), GoVersion: runtime.Version(), Platform: runtime.GOOS + "/" + runtime.GOARCH, CPUs: runtime.NumCPU()}
+	r := report{PageSize: database.PageSize(), Config: c, Started: time.Now().UTC(), GoVersion: runtime.Version(), Platform: runtime.GOOS + "/" + runtime.GOARCH, CPUs: runtime.NumCPU()}
 	if manifest, e := os.ReadFile(filepath.Join(c.Data, "manifest.json")); e == nil {
 		if !json.Valid(manifest) {
 			return errors.New("invalid data manifest JSON")

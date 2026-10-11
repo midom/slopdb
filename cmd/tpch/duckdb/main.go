@@ -25,6 +25,7 @@ import (
 )
 
 type config struct {
+	PageSize int64         `json:"requested_page_size_bytes"`
 	Data     string        `json:"data_directory"`
 	Database string        `json:"database_file"`
 	Root     string        `json:"query_root"`
@@ -60,6 +61,9 @@ type queryReport struct {
 }
 
 type report struct {
+	WALFsync       bool             `json:"wal_fsync"`
+	WALSyncSkipped int64            `json:"wal_fsync_calls_skipped,omitempty"`
+	PageSize       int64            `json:"page_size_bytes"`
 	Engine         string           `json:"engine"`
 	Version        string           `json:"version"`
 	Driver         string           `json:"driver"`
@@ -103,9 +107,13 @@ func run() (retErr error) {
 	flag.StringVar(&c.Queries, "queries", "all", "all or comma-separated query numbers 1..22")
 	flag.BoolVar(&c.Indexes, "indexes", true, "create the same secondary indexes as SlopDB")
 	flag.StringVar(&c.Memory, "memory-limit", "1GB", "DuckDB memory limit")
+	flag.Int64Var(&c.PageSize, "page-size", 0, "DuckDB block size in bytes (0 uses default; powers of two 16384..262144)")
 	flag.Parse()
 	if flag.NArg() != 0 || c.Data == "" || c.Threads < 1 || c.Runs < 1 || c.Warmups < 0 || c.Timeout <= 0 {
 		return errors.New("invalid arguments: -data, positive threads/runs/timeout, nonnegative warmups required")
+	}
+	if c.PageSize != 0 && (c.PageSize < 16384 || c.PageSize > 262144 || c.PageSize&(c.PageSize-1) != 0) {
+		return fmt.Errorf("unsupported DuckDB page size %d: powers of two 16384..262144 required", c.PageSize)
 	}
 	selected, err := queryNumbers(c.Queries)
 	if err != nil {
@@ -162,12 +170,18 @@ func run() (retErr error) {
 			retErr = errors.Join(retErr, database.Close())
 		}
 	}()
-	r := report{Engine: "DuckDB", Driver: "github.com/duckdb/duckdb-go/v2 v2.10506.0", Config: c, Started: time.Now().UTC(), GoVersion: runtime.Version(), Platform: runtime.GOOS + "/" + runtime.GOARCH, CPUs: runtime.NumCPU(), TableRows: map[string]int64{}}
+	r := report{WALFsync: os.Getenv("SLOPDB_TPCC_WAL_FILE") == "", Engine: "DuckDB", Driver: "github.com/duckdb/duckdb-go/v2 v2.10506.0", Config: c, Started: time.Now().UTC(), GoVersion: runtime.Version(), Platform: runtime.GOOS + "/" + runtime.GOARCH, CPUs: runtime.NumCPU(), TableRows: map[string]int64{}}
 	if raw, e := os.ReadFile(filepath.Join(c.Data, "manifest.json")); e == nil {
 		if !json.Valid(raw) {
 			return errors.New("invalid manifest JSON")
 		}
 		r.Manifest = raw
+	}
+	if err = database.QueryRowContext(ctx, "SELECT block_size FROM pragma_database_size()").Scan(&r.PageSize); err != nil {
+		return err
+	}
+	if c.PageSize != 0 && r.PageSize != c.PageSize {
+		return fmt.Errorf("requested page size %d, actual %d", c.PageSize, r.PageSize)
 	}
 	if err = database.QueryRowContext(ctx, "SELECT version()").Scan(&r.Version); err != nil {
 		return err
@@ -274,6 +288,10 @@ func run() (retErr error) {
 	if syscall.Getrusage(syscall.RUSAGE_SELF, &usage) == nil {
 		r.PeakRSSKiB = usage.Maxrss
 	}
+	r.WALSyncSkipped = skippedWALSyncs()
+	if !r.WALFsync && r.WALSyncSkipped <= 0 {
+		return errors.New("DuckDB no-fsync load skipped no WAL syncs; preload the WAL-only benchmark shim")
+	}
 	raw, err := json.MarshalIndent(r, "", "  ")
 	if err != nil {
 		return err
@@ -289,7 +307,14 @@ func run() (retErr error) {
 }
 
 func open(ctx context.Context, c config) (*sql.DB, error) {
-	database, err := sql.Open("duckdb", c.Database)
+	if wal := os.Getenv("SLOPDB_TPCC_WAL_FILE"); wal != "" && (wal != c.Database+".wal" || skippedWALSyncs() < 0) {
+		return nil, errors.New("invalid or missing DuckDB WAL-only fsync shim")
+	}
+	dsn := c.Database
+	if c.PageSize != 0 {
+		dsn += fmt.Sprintf("?default_block_size=%d", c.PageSize)
+	}
+	database, err := sql.Open("duckdb", dsn)
 	if err != nil {
 		return nil, err
 	}
