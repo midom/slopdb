@@ -1144,8 +1144,8 @@ func (s *Schema) Explain(stmt *ExplainStmt) (*ResultSet, error) {
 		if info := s.tables[inner.From]; info != nil {
 			if _, ok := s.primaryKeyLookup(inner.Where, inner.From, info); ok {
 				addRow("PointLookup", 0, 0, 0, "PRIMARY", "", "single primary key")
-			} else if plan := buildTuplePlan(&SelectStmt{From: inner.From, Where: inner.Where, Limit: -1}, info, nil, tupleConstraints(inner.Where, inner.From, "", info)); plan != nil {
-				addRow("SeekGE", 0, 0, 0, plan.description(), "", "bounded primary key access")
+			} else if plan := s.tuplePlan(&SelectStmt{From: inner.From, Where: inner.Where, Limit: -1}, info); plan != nil {
+				addRow("SeekGE", 0, 0, 0, plan.description(), "", "bounded index access")
 			} else {
 				addRow("Rewind", 0, 0, 0, "", "", "table scan")
 			}
@@ -1174,8 +1174,8 @@ func (s *Schema) Explain(stmt *ExplainStmt) (*ResultSet, error) {
 		if info := s.tables[inner.Table]; info != nil {
 			if _, ok := s.primaryKeyLookup(inner.Where, inner.Table, info); ok {
 				addRow("PointLookup", 0, 0, 0, "PRIMARY", "", "single primary key")
-			} else if plan := buildTuplePlan(&SelectStmt{From: inner.Table, Where: inner.Where, Limit: -1}, info, nil, tupleConstraints(inner.Where, inner.Table, "", info)); plan != nil {
-				addRow("SeekGE", 0, 0, 0, plan.description(), "", "bounded primary key access")
+			} else if plan := s.tuplePlan(&SelectStmt{From: inner.Table, Where: inner.Where, Limit: -1}, info); plan != nil {
+				addRow("SeekGE", 0, 0, 0, plan.description(), "", "bounded index access")
 			} else {
 				addRow("Rewind", 0, 0, 0, "", "", "table scan")
 			}
@@ -4874,7 +4874,7 @@ func (s *Schema) matchingDMLRows(tableName string, info *TableInfo, where Expres
 		}
 		return []storage.KeyValue{{Key: storage.InternalKey{UserKey: key}, Value: value}}, nil
 	}
-	plan := buildTuplePlan(&SelectStmt{From: tableName, Where: where, Limit: -1}, info, nil, tupleConstraints(where, tableName, "", info))
+	plan := s.tuplePlan(&SelectStmt{From: tableName, Where: where, Limit: -1}, info)
 	var intervals []coveringInterval
 	residual := where
 	if plan != nil {
@@ -4885,6 +4885,10 @@ func (s *Schema) matchingDMLRows(tableName string, info *TableInfo, where Expres
 		intervals = []coveringInterval{{prefix, prefixSuccessor(prefix)}}
 	}
 	var rows []storage.KeyValue
+	var seen map[string]bool
+	if plan != nil && variableIndexColumns(info, plan.index) && len(intervals) > 1 {
+		seen = make(map[string]bool)
+	}
 	for _, interval := range intervals {
 		iter := s.newRangeIterator(interval.lower, interval.upper, false)
 		err := func() error {
@@ -4893,10 +4897,34 @@ func (s *Schema) matchingDMLRows(tableName string, info *TableInfo, where Expres
 				if err := s.checkInterrupt(); err != nil {
 					return err
 				}
+				key, data := iter.Key(), iter.Value()
+				if plan != nil && plan.index != nil {
+					rowKey, err := s.accessIndexRowKey(&accessPath{info: info, index: plan.index}, interval, key.UserKey, data)
+					if err != nil {
+						return err
+					}
+					var found bool
+					data, found, err = s.schemaGet(rowKey)
+					if err != nil {
+						return err
+					}
+					if !found {
+						return fmt.Errorf("missing row for index %s", plan.index.Name)
+					}
+					key.UserKey = rowKey
+				}
+				if seen != nil {
+					identity := string(key.UserKey)
+					if seen[identity] {
+						iter.Next()
+						continue
+					}
+					seen[identity] = true
+				}
 				match := true
 				if residual != nil {
 					var err error
-					match, err = s.evalCondition(residual, decodeRow(iter.Value(), info))
+					match, err = s.evalCondition(residual, decodeRow(data, info))
 					if err != nil {
 						return err
 					}
@@ -4905,9 +4933,8 @@ func (s *Schema) matchingDMLRows(tableName string, info *TableInfo, where Expres
 					if offset > 0 {
 						offset--
 					} else {
-						key := iter.Key()
 						key.UserKey = copyBytes(key.UserKey)
-						rows = append(rows, storage.KeyValue{Key: key, Value: copyBytes(iter.Value())})
+						rows = append(rows, storage.KeyValue{Key: key, Value: copyBytes(data)})
 						if limit >= 0 && int64(len(rows)) >= limit {
 							break
 						}
