@@ -43,6 +43,9 @@ causes, failures, and 15 accounting/row-count consistency checks. Checks run
 again after closing and reopening the database. Unexpected failures or failed
 checks produce a nonzero exit status. `-json` saves the same metrics for analysis.
 
+The latest one-minute regression measurement after analytical join changes is
+in [Join execution improvements](../../docs/tpch-join-plans.md).
+
 This is an inspired load test with reduced scale, uniform customer/item choices,
 no terminal think time, and simplified tax, discount, and customer fields. It is
 not a compliant TPC-C benchmark, and the reported new-orders/minute is not tpmC.
@@ -132,3 +135,7 @@ A separate ten-second CPU profile of prepared execution contained no SQL
 parser or tokenizer frames. Binding accounted for approximately 1.1% of sampled
 CPU time. The profile is `/tmp/godb/tpcc-prepared.cpu.pprof`; its run also had
 zero failures or retries and passed all checks after execution and reopening.
+
+SQLite and DuckDB comparisons use the [shared three-engine runner](compare/README.md).
+The latest [one-minute results](../../docs/tpcc-comparison.md) include throughput,
+tail latency, failures, retry counts and durability settings for all three engines.

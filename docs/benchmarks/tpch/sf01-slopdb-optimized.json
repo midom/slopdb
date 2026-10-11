@@ -1,0 +1,6294 @@
+{
+  "config": {
+    "data_directory": "/tmp/godb/tpch-sf01",
+    "database_directory": "/tmp/slopdb-tpch-3705872177",
+    "report_file": "/tmp/godb/tpch-performance-optimized-sf01.json",
+    "query_selection": "all",
+    "runs": 3,
+    "warmups": 1,
+    "query_timeout_ns": 30000000000,
+    "prepared_statements": true,
+    "secondary_indexes": true,
+    "wal_fsync": false
+  },
+  "started_at": "2026-10-11T18:39:34.774942333Z",
+  "go_version": "go1.22.2",
+  "platform": "linux/arm64",
+  "cpus": 4,
+  "data_manifest": {
+    "generator": "DuckDB TPC-H extension DBGEN",
+    "duckdb_version": "1.5.6",
+    "scale_factor": 0.01,
+    "rows": {
+      "region": 5,
+      "nation": 25,
+      "supplier": 100,
+      "customer": 1500,
+      "part": 2000,
+      "partsupp": 8000,
+      "orders": 15000,
+      "lineitem": 60175
+    },
+    "sha256": {
+      "region": "2b12cdddbe69a491b2bf6bea9bc33d4781c56fa4c5cb7f9702860618221c85f2",
+      "nation": "7986406c8b57b41e274247d514dc2e837769073533e1f7fe3463767798367ec6",
+      "supplier": "1616ce014a17ff8e825795f7a343af1582cce81437ace88416c90fa753732030",
+      "customer": "cb51fb2628146829ca0307c0a3e8198fa48aa96d4d87eb4da930b5089196d38c",
+      "part": "291ced66c49d7c387fdba61b14682c3ddff4fca173d3cc178945008854071680",
+      "partsupp": "171d4b70266dc7922d6ea5c81a19778cb1a74c3f876b8d2e920ff7f1ee6aee1c",
+      "orders": "8615292d30469b6b57ab21a00fa3ad6e80ef1a3cd3b8c76ff5f5544f991e8913",
+      "lineitem": "399683ecadd155215812d07e6bf072cd574700ea9a071eee47fd35a95accd44e"
+    },
+    "columns": {
+      "region": [
+        "r_regionkey",
+        "r_name",
+        "r_comment"
+      ],
+      "nation": [
+        "n_nationkey",
+        "n_name",
+        "n_regionkey",
+        "n_comment"
+      ],
+      "supplier": [
+        "s_suppkey",
+        "s_name",
+        "s_address",
+        "s_nationkey",
+        "s_phone",
+        "s_acctbal",
+        "s_comment"
+      ],
+      "customer": [
+        "c_custkey",
+        "c_name",
+        "c_address",
+        "c_nationkey",
+        "c_phone",
+        "c_acctbal",
+        "c_mktsegment",
+        "c_comment"
+      ],
+      "part": [
+        "p_partkey",
+        "p_name",
+        "p_mfgr",
+        "p_brand",
+        "p_type",
+        "p_size",
+        "p_container",
+        "p_retailprice",
+        "p_comment"
+      ],
+      "partsupp": [
+        "ps_partkey",
+        "ps_suppkey",
+        "ps_availqty",
+        "ps_supplycost",
+        "ps_comment"
+      ],
+      "orders": [
+        "o_orderkey",
+        "o_custkey",
+        "o_orderstatus",
+        "o_totalprice",
+        "o_orderdate",
+        "o_orderpriority",
+        "o_clerk",
+        "o_shippriority",
+        "o_comment"
+      ],
+      "lineitem": [
+        "l_orderkey",
+        "l_partkey",
+        "l_suppkey",
+        "l_linenumber",
+        "l_quantity",
+        "l_extendedprice",
+        "l_discount",
+        "l_tax",
+        "l_returnflag",
+        "l_linestatus",
+        "l_shipdate",
+        "l_commitdate",
+        "l_receiptdate",
+        "l_shipinstruct",
+        "l_shipmode",
+        "l_comment"
+      ]
+    },
+    "generate_seconds": 0.31556524708867073
+  },
+  "table_rows": {
+    "customer": 1500,
+    "lineitem": 60175,
+    "nation": 25,
+    "orders": 15000,
+    "part": 2000,
+    "partsupp": 8000,
+    "region": 5,
+    "supplier": 100
+  },
+  "load_seconds": 4.647038064,
+  "reopen_seconds": 0.001487645,
+  "database_bytes_after_load": 13706393,
+  "counts_verified_after_reopen": true,
+  "setup_sql": "CREATE VIEW tpch_revenue AS     SELECT\n        l_suppkey AS supplier_no,\n        sum(l_extendedprice * (1 - l_discount)) AS total_revenue\n    FROM\n        lineitem\n    WHERE\n        l_shipdate \u003e= '1996-01-01'\n      AND l_shipdate \u003c '1996-04-01'\n    GROUP BY\n        supplier_no\n;\n",
+  "run_seconds": 20.480490538,
+  "successful_executions": 66,
+  "timed_out_executions": 0,
+  "failed_executions": 0,
+  "process_peak_rss_kib": 541224,
+  "queries": [
+    {
+      "number": 1,
+      "name": "Pricing summary",
+      "sql": "SELECT\n    l_returnflag,\n    l_linestatus,\n    sum(l_quantity) AS sum_qty,\n    sum(l_extendedprice) AS sum_base_price,\n    sum(l_extendedprice * (1 - l_discount)) AS sum_disc_price,\n    sum(l_extendedprice * (1 - l_discount) * (1 + l_tax)) AS sum_charge,\n    avg(l_quantity) AS avg_qty,\n    avg(l_extendedprice) AS avg_price,\n    avg(l_discount) AS avg_disc,\n    count(*) AS count_order\nFROM\n    lineitem\nWHERE\n    l_shipdate \u003c= '1998-09-02'\nGROUP BY\n    l_returnflag,\n    l_linestatus\nORDER BY\n    l_returnflag,\n    l_linestatus;\n",
+      "prepare_ms": 0.0488,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=lineitem",
+        "Rewind  table scan",
+        "Column  col=l_returnflag",
+        "Column  col=l_linestatus",
+        "Filter l_shipdate \u003c= 1998-09-02 WHERE clause",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 215.391523,
+          "process_cpu_ms": 222.98999999999978,
+          "allocated_bytes": 26555344,
+          "allocations": 374715,
+          "rows": 4
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 147.961361,
+          "process_cpu_ms": 153.42500000000018,
+          "allocated_bytes": 7885288,
+          "allocations": 361194,
+          "rows": 4
+        },
+        {
+          "status": "ok",
+          "wall_ms": 150.284928,
+          "process_cpu_ms": 150.5630000000001,
+          "allocated_bytes": 7884512,
+          "allocations": 361191,
+          "rows": 4
+        },
+        {
+          "status": "ok",
+          "wall_ms": 146.091836,
+          "process_cpu_ms": 146.29099999999926,
+          "allocated_bytes": 7883968,
+          "allocations": 361189,
+          "rows": 4
+        }
+      ],
+      "min_ms": 146.091836,
+      "median_ms": 147.961361,
+      "columns": [
+        "l_returnflag",
+        "l_linestatus",
+        "sum_qty",
+        "sum_base_price",
+        "sum_disc_price",
+        "sum_charge",
+        "avg_qty",
+        "avg_price",
+        "avg_disc",
+        "count_order"
+      ],
+      "results": [
+        [
+          "A",
+          "F",
+          380456,
+          532348211.6499983,
+          505822441.486102,
+          526165934.0008392,
+          25.575154611454693,
+          35785.709306937235,
+          0.05008133906963965,
+          14876
+        ],
+        [
+          "N",
+          "F",
+          8971,
+          12384801.369999997,
+          11798257.208000004,
+          12282485.056933003,
+          25.778735632183906,
+          35588.509683908036,
+          0.04775862068965505,
+          348
+        ],
+        [
+          "N",
+          "O",
+          742802,
+          1041502841.4499979,
+          989737518.634604,
+          1029418531.5233523,
+          25.45498783454988,
+          35691.12920907432,
+          0.04993111956408442,
+          29181
+        ],
+        [
+          "R",
+          "F",
+          381449,
+          534594445.3499986,
+          507996454.4066988,
+          528524219.35890585,
+          25.597168165346933,
+          35874.00653268008,
+          0.049827539927524055,
+          14902
+        ]
+      ]
+    },
+    {
+      "number": 2,
+      "name": "Minimum cost supplier",
+      "sql": "SELECT\n    s_acctbal,\n    s_name,\n    n_name,\n    p_partkey,\n    p_mfgr,\n    s_address,\n    s_phone,\n    s_comment\nFROM\n    part JOIN partsupp ON p_partkey = ps_partkey JOIN supplier ON s_suppkey = ps_suppkey JOIN nation ON s_nationkey = n_nationkey JOIN region ON n_regionkey = r_regionkey\nWHERE\n    p_partkey = ps_partkey\n    AND s_suppkey = ps_suppkey\n    AND p_size = 15\n    AND p_type LIKE '%BRASS'\n    AND s_nationkey = n_nationkey\n    AND n_regionkey = r_regionkey\n    AND r_name = 'EUROPE'\n    AND ps_supplycost = (\n        SELECT\n            min(ps_supplycost)\n        FROM\n            partsupp JOIN supplier ON s_suppkey = ps_suppkey JOIN nation ON s_nationkey = n_nationkey JOIN region ON n_regionkey = r_regionkey\n        WHERE\n            p_partkey = ps_partkey\n            AND s_suppkey = ps_suppkey\n            AND s_nationkey = n_nationkey\n            AND n_regionkey = r_regionkey\n            AND r_name = 'EUROPE')\nORDER BY\n    s_acctbal DESC,\n    n_name,\n    s_name,\n    p_partkey\nLIMIT 100;\n",
+      "prepare_ms": 0.080961,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=part",
+        "Rewind  table scan",
+        "Column  col=s_acctbal",
+        "Column  col=s_name",
+        "Column  col=n_name",
+        "Column  col=p_partkey",
+        "Column  col=p_mfgr",
+        "Column  col=s_address",
+        "Column  col=s_phone",
+        "Column  col=s_comment",
+        "Filter p_partkey = ps_partkey AND s_suppkey = ps_suppkey AND p_size = 15 AND p_type LIKE %BRASS AND s_nationkey = n_nationkey AND n_regionkey = r_regionkey AND r_name = EUROPE AND ps_supplycost = *sql.SubqueryExpr WHERE clause",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "Limit  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 295.563282,
+          "process_cpu_ms": 359.4459999999999,
+          "allocated_bytes": 160714856,
+          "allocations": 950292,
+          "rows": 4
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 285.07873,
+          "process_cpu_ms": 340.85000000000036,
+          "allocated_bytes": 158144864,
+          "allocations": 947863,
+          "rows": 4
+        },
+        {
+          "status": "ok",
+          "wall_ms": 282.787683,
+          "process_cpu_ms": 327.79399999999987,
+          "allocated_bytes": 158103008,
+          "allocations": 947804,
+          "rows": 4
+        },
+        {
+          "status": "ok",
+          "wall_ms": 284.981971,
+          "process_cpu_ms": 331.46199999999953,
+          "allocated_bytes": 158050976,
+          "allocations": 947736,
+          "rows": 4
+        }
+      ],
+      "min_ms": 282.787683,
+      "median_ms": 284.981971,
+      "columns": [
+        "s_acctbal",
+        "s_name",
+        "n_name",
+        "p_partkey",
+        "p_mfgr",
+        "s_address",
+        "s_phone",
+        "s_comment"
+      ],
+      "results": [
+        [
+          4186.95,
+          "Supplier#000000077",
+          "GERMANY",
+          249,
+          "Manufacturer#4",
+          "w5yO 0yjXou 8I4ffzADq,R8tD06x1vbeMpLJF2",
+          "17-281-345-4863",
+          "ainst the blithely ironic packages poach at the regul"
+        ],
+        [
+          1883.37,
+          "Supplier#000000086",
+          "ROMANIA",
+          1015,
+          "Manufacturer#4",
+          "iZLKKWaQADe",
+          "29-903-665-7065",
+          " foxes boost after the carefully silent asymptotes. slyl"
+        ],
+        [
+          1687.81,
+          "Supplier#000000017",
+          "ROMANIA",
+          1634,
+          "Manufacturer#2",
+          "PYN0m9j98GhX42DvBKvURcAd,B",
+          "29-601-884-9219",
+          "se slyly furiously even notornis. furiously regular packa"
+        ],
+        [
+          287.16,
+          "Supplier#000000052",
+          "ROMANIA",
+          323,
+          "Manufacturer#4",
+          "5oGr3pj2sprZNwho8CFW2haaObd0",
+          "29-974-934-4713",
+          "arefully silent pinto beans use furiously furiously even deposits. regular packages are furious"
+        ]
+      ]
+    },
+    {
+      "number": 3,
+      "name": "Shipping priority",
+      "sql": "SELECT\n    l_orderkey,\n    sum(l_extendedprice * (1 - l_discount)) AS revenue,\n    o_orderdate,\n    o_shippriority\nFROM\n    customer JOIN orders ON c_custkey = o_custkey JOIN lineitem ON l_orderkey = o_orderkey\nWHERE\n    c_mktsegment = 'BUILDING'\n    AND c_custkey = o_custkey\n    AND l_orderkey = o_orderkey\n    AND o_orderdate \u003c '1995-03-15'\n    AND l_shipdate \u003e '1995-03-15'\nGROUP BY\n    l_orderkey,\n    o_orderdate,\n    o_shippriority\nORDER BY\n    revenue DESC,\n    o_orderdate\nLIMIT 10;\n",
+      "prepare_ms": 0.05352,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=customer",
+        "Rewind  table scan",
+        "Column  col=l_orderkey",
+        "Column  col=o_orderdate",
+        "Column  col=o_shippriority",
+        "Filter c_mktsegment = BUILDING AND c_custkey = o_custkey AND l_orderkey = o_orderkey AND o_orderdate \u003c 1995-03-15 AND l_shipdate \u003e 1995-03-15 WHERE clause",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "Limit  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 222.213023,
+          "process_cpu_ms": 265.9249999999993,
+          "allocated_bytes": 98377528,
+          "allocations": 785760,
+          "rows": 10
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 203.329447,
+          "process_cpu_ms": 231.52200000000084,
+          "allocated_bytes": 94231592,
+          "allocations": 782480,
+          "rows": 10
+        },
+        {
+          "status": "ok",
+          "wall_ms": 201.672842,
+          "process_cpu_ms": 254.48799999999937,
+          "allocated_bytes": 94261848,
+          "allocations": 782521,
+          "rows": 10
+        },
+        {
+          "status": "ok",
+          "wall_ms": 204.238489,
+          "process_cpu_ms": 249.96499999999833,
+          "allocated_bytes": 94234120,
+          "allocations": 782481,
+          "rows": 10
+        }
+      ],
+      "min_ms": 201.672842,
+      "median_ms": 203.329447,
+      "columns": [
+        "l_orderkey",
+        "revenue",
+        "o_orderdate",
+        "o_shippriority"
+      ],
+      "results": [
+        [
+          47714,
+          267010.5894,
+          "1995-03-11",
+          0
+        ],
+        [
+          22276,
+          266351.55620000005,
+          "1995-01-29",
+          0
+        ],
+        [
+          32965,
+          263768.3414,
+          "1995-02-25",
+          0
+        ],
+        [
+          21956,
+          254541.1285,
+          "1995-02-02",
+          0
+        ],
+        [
+          1637,
+          243512.79809999999,
+          "1995-02-08",
+          0
+        ],
+        [
+          10916,
+          241320.08140000002,
+          "1995-03-11",
+          0
+        ],
+        [
+          30497,
+          208566.69689999998,
+          "1995-02-07",
+          0
+        ],
+        [
+          450,
+          205447.42320000002,
+          "1995-03-05",
+          0
+        ],
+        [
+          47204,
+          204478.5213,
+          "1995-03-13",
+          0
+        ],
+        [
+          9696,
+          201502.21879999997,
+          "1995-02-20",
+          0
+        ]
+      ]
+    },
+    {
+      "number": 4,
+      "name": "Order priority",
+      "sql": "SELECT\n    o_orderpriority,\n    count(*) AS order_count\nFROM\n    orders\nWHERE\n    o_orderdate \u003e= '1993-07-01'\n    AND o_orderdate \u003c '1993-10-01'\n    AND EXISTS (\n        SELECT\n            *\n        FROM\n            lineitem\n        WHERE\n            l_orderkey = o_orderkey\n            AND l_commitdate \u003c l_receiptdate)\nGROUP BY\n    o_orderpriority\nORDER BY\n    o_orderpriority;\n",
+      "prepare_ms": 0.03472,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=orders",
+        "Rewind  table scan",
+        "Column  col=o_orderpriority",
+        "Filter o_orderdate \u003e= 1993-07-01 AND o_orderdate \u003c 1993-10-01 AND *sql.ExistsExpr WHERE clause",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 156.076146,
+          "process_cpu_ms": 203.33200000000033,
+          "allocated_bytes": 117834272,
+          "allocations": 644821,
+          "rows": 5
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 160.604479,
+          "process_cpu_ms": 201.625,
+          "allocated_bytes": 117819576,
+          "allocations": 644629,
+          "rows": 5
+        },
+        {
+          "status": "ok",
+          "wall_ms": 155.931945,
+          "process_cpu_ms": 202.3739999999998,
+          "allocated_bytes": 117874792,
+          "allocations": 644700,
+          "rows": 5
+        },
+        {
+          "status": "ok",
+          "wall_ms": 154.917782,
+          "process_cpu_ms": 176.1869999999999,
+          "allocated_bytes": 117931672,
+          "allocations": 644782,
+          "rows": 5
+        }
+      ],
+      "min_ms": 154.917782,
+      "median_ms": 155.931945,
+      "columns": [
+        "o_orderpriority",
+        "order_count"
+      ],
+      "results": [
+        [
+          "1-URGENT",
+          93
+        ],
+        [
+          "2-HIGH",
+          103
+        ],
+        [
+          "3-MEDIUM",
+          109
+        ],
+        [
+          "4-NOT SPECIFIED",
+          102
+        ],
+        [
+          "5-LOW",
+          128
+        ]
+      ]
+    },
+    {
+      "number": 5,
+      "name": "Local supplier volume",
+      "sql": "SELECT\n    n_name,\n    sum(l_extendedprice * (1 - l_discount)) AS revenue\nFROM\n    customer JOIN orders ON c_custkey = o_custkey JOIN lineitem ON l_orderkey = o_orderkey JOIN supplier ON l_suppkey = s_suppkey AND c_nationkey = s_nationkey JOIN nation ON s_nationkey = n_nationkey JOIN region ON n_regionkey = r_regionkey\nWHERE\n    c_custkey = o_custkey\n    AND l_orderkey = o_orderkey\n    AND l_suppkey = s_suppkey\n    AND c_nationkey = s_nationkey\n    AND s_nationkey = n_nationkey\n    AND n_regionkey = r_regionkey\n    AND r_name = 'ASIA'\n    AND o_orderdate \u003e= '1994-01-01'\n    AND o_orderdate \u003c '1995-01-01'\nGROUP BY\n    n_name\nORDER BY\n    revenue DESC;\n",
+      "prepare_ms": 0.096281,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=customer",
+        "Rewind  table scan",
+        "Column  col=n_name",
+        "Filter c_custkey = o_custkey AND l_orderkey = o_orderkey AND l_suppkey = s_suppkey AND c_nationkey = s_nationkey AND s_nationkey = n_nationkey AND n_regionkey = r_regionkey AND r_name = ASIA AND o_orderdate \u003e= 1994-01-01 AND o_orderdate \u003c 1995-01-01 WHERE clause",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 192.160893,
+          "process_cpu_ms": 242.1299999999992,
+          "allocated_bytes": 120303648,
+          "allocations": 580077,
+          "rows": 5
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 196.499946,
+          "process_cpu_ms": 259.241,
+          "allocated_bytes": 120302760,
+          "allocations": 579652,
+          "rows": 5
+        },
+        {
+          "status": "ok",
+          "wall_ms": 196.280746,
+          "process_cpu_ms": 256.14100000000144,
+          "allocated_bytes": 120269808,
+          "allocations": 579608,
+          "rows": 5
+        },
+        {
+          "status": "ok",
+          "wall_ms": 189.176964,
+          "process_cpu_ms": 219.28900000000067,
+          "allocated_bytes": 120312656,
+          "allocations": 579661,
+          "rows": 5
+        }
+      ],
+      "min_ms": 189.176964,
+      "median_ms": 196.280746,
+      "columns": [
+        "n_name",
+        "revenue"
+      ],
+      "results": [
+        [
+          "VIETNAM",
+          1000926.6998999999
+        ],
+        [
+          "CHINA",
+          740210.757
+        ],
+        [
+          "JAPAN",
+          660651.2424999998
+        ],
+        [
+          "INDONESIA",
+          566379.5276
+        ],
+        [
+          "INDIA",
+          422874.68439999997
+        ]
+      ]
+    },
+    {
+      "number": 6,
+      "name": "Forecasting revenue",
+      "sql": "SELECT\n    sum(l_extendedprice * l_discount) AS revenue\nFROM\n    lineitem\nWHERE\n    l_shipdate \u003e= '1994-01-01'\n    AND l_shipdate \u003c '1995-01-01'\n    AND l_discount BETWEEN 0.05\n    AND 0.07\n    AND l_quantity \u003c 24;\n",
+      "prepare_ms": 0.03272,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=lineitem",
+        "Rewind  table scan",
+        "Filter l_shipdate \u003e= 1994-01-01 AND l_shipdate \u003c 1995-01-01 AND *sql.BetweenExpr AND l_quantity \u003c 24 WHERE clause",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 89.086026,
+          "process_cpu_ms": 89.25400000000081,
+          "allocated_bytes": 8418440,
+          "allocations": 202258,
+          "rows": 1
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 90.689631,
+          "process_cpu_ms": 90.8189999999995,
+          "allocated_bytes": 8413480,
+          "allocations": 202078,
+          "rows": 1
+        },
+        {
+          "status": "ok",
+          "wall_ms": 87.648221,
+          "process_cpu_ms": 87.82799999999952,
+          "allocated_bytes": 8413704,
+          "allocations": 202080,
+          "rows": 1
+        },
+        {
+          "status": "ok",
+          "wall_ms": 89.765427,
+          "process_cpu_ms": 100.96399999999994,
+          "allocated_bytes": 8414320,
+          "allocations": 202083,
+          "rows": 1
+        }
+      ],
+      "min_ms": 87.648221,
+      "median_ms": 89.765427,
+      "columns": [
+        "revenue"
+      ],
+      "results": [
+        [
+          1193053.2252999984
+        ]
+      ]
+    },
+    {
+      "number": 7,
+      "name": "Volume shipping",
+      "sql": "SELECT\n    supp_nation,\n    cust_nation,\n    l_year,\n    sum(volume) AS revenue\nFROM (\n    SELECT\n        n1.n_name AS supp_nation,\n        n2.n_name AS cust_nation,\n        SUBSTR(l_shipdate, 1, 4) AS l_year,\n        l_extendedprice * (1 - l_discount) AS volume\n    FROM\n        supplier JOIN lineitem ON s_suppkey = l_suppkey JOIN orders ON o_orderkey = l_orderkey JOIN customer ON c_custkey = o_custkey JOIN nation n1 ON s_nationkey = n1.n_nationkey JOIN nation n2 ON c_nationkey = n2.n_nationkey\n    WHERE\n        s_suppkey = l_suppkey\n        AND o_orderkey = l_orderkey\n        AND c_custkey = o_custkey\n        AND s_nationkey = n1.n_nationkey\n        AND c_nationkey = n2.n_nationkey\n        AND ((n1.n_name = 'FRANCE'\n                AND n2.n_name = 'GERMANY')\n            OR (n1.n_name = 'GERMANY'\n                AND n2.n_name = 'FRANCE'))\n        AND l_shipdate BETWEEN '1995-01-01'\n        AND '1996-12-31') AS shipping\nGROUP BY\n    supp_nation,\n    cust_nation,\n    l_year\nORDER BY\n    supp_nation,\n    cust_nation,\n    l_year;\n",
+      "prepare_ms": 0.09704,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=(subquery)",
+        "Rewind  table scan",
+        "Column  col=supp_nation",
+        "Column  col=cust_nation",
+        "Column  col=l_year",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 688.428374,
+          "process_cpu_ms": 873.4420000000009,
+          "allocated_bytes": 436872496,
+          "allocations": 1493320,
+          "rows": 4
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 661.005812,
+          "process_cpu_ms": 857.6639999999989,
+          "allocated_bytes": 436667392,
+          "allocations": 1492463,
+          "rows": 4
+        },
+        {
+          "status": "ok",
+          "wall_ms": 667.464992,
+          "process_cpu_ms": 789.7819999999992,
+          "allocated_bytes": 436965040,
+          "allocations": 1492848,
+          "rows": 4
+        },
+        {
+          "status": "ok",
+          "wall_ms": 663.63894,
+          "process_cpu_ms": 838.8949999999986,
+          "allocated_bytes": 436758720,
+          "allocations": 1492582,
+          "rows": 4
+        }
+      ],
+      "min_ms": 661.005812,
+      "median_ms": 663.63894,
+      "columns": [
+        "supp_nation",
+        "cust_nation",
+        "l_year",
+        "revenue"
+      ],
+      "results": [
+        [
+          "FRANCE",
+          "GERMANY",
+          "1995",
+          268068.5774
+        ],
+        [
+          "FRANCE",
+          "GERMANY",
+          "1996",
+          303862.298
+        ],
+        [
+          "GERMANY",
+          "FRANCE",
+          "1995",
+          621159.4882
+        ],
+        [
+          "GERMANY",
+          "FRANCE",
+          "1996",
+          379095.8854
+        ]
+      ]
+    },
+    {
+      "number": 8,
+      "name": "National market share",
+      "sql": "SELECT\n    o_year,\n    sum(\n        CASE WHEN nation = 'BRAZIL' THEN\n            volume\n        ELSE\n            0\n        END) / sum(volume) AS mkt_share\nFROM (\n    SELECT\n        SUBSTR(o_orderdate, 1, 4) AS o_year,\n        l_extendedprice * (1 - l_discount) AS volume,\n        n2.n_name AS nation\n    FROM\n        part JOIN lineitem ON p_partkey = l_partkey JOIN supplier ON s_suppkey = l_suppkey JOIN orders ON l_orderkey = o_orderkey JOIN customer ON o_custkey = c_custkey JOIN nation n1 ON c_nationkey = n1.n_nationkey JOIN nation n2 ON s_nationkey = n2.n_nationkey JOIN region ON n1.n_regionkey = r_regionkey\n    WHERE\n        p_partkey = l_partkey\n        AND s_suppkey = l_suppkey\n        AND l_orderkey = o_orderkey\n        AND o_custkey = c_custkey\n        AND c_nationkey = n1.n_nationkey\n        AND n1.n_regionkey = r_regionkey\n        AND r_name = 'AMERICA'\n        AND s_nationkey = n2.n_nationkey\n        AND o_orderdate BETWEEN '1995-01-01'\n        AND '1996-12-31'\n        AND p_type = 'ECONOMY ANODIZED STEEL') AS all_nations\nGROUP BY\n    o_year\nORDER BY\n    o_year;\n",
+      "prepare_ms": 0.09692,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=(subquery)",
+        "Rewind  table scan",
+        "Column  col=o_year",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 161.663202,
+          "process_cpu_ms": 193.4290000000001,
+          "allocated_bytes": 90400416,
+          "allocations": 497198,
+          "rows": 2
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 152.267574,
+          "process_cpu_ms": 183.96399999999994,
+          "allocated_bytes": 90323056,
+          "allocations": 496503,
+          "rows": 2
+        },
+        {
+          "status": "ok",
+          "wall_ms": 155.615144,
+          "process_cpu_ms": 191.02899999999863,
+          "allocated_bytes": 90322840,
+          "allocations": 496497,
+          "rows": 2
+        },
+        {
+          "status": "ok",
+          "wall_ms": 158.147312,
+          "process_cpu_ms": 193.90599999999904,
+          "allocated_bytes": 90305528,
+          "allocations": 496475,
+          "rows": 2
+        }
+      ],
+      "min_ms": 152.267574,
+      "median_ms": 155.615144,
+      "columns": [
+        "o_year",
+        "mkt_share"
+      ],
+      "results": [
+        [
+          "1995",
+          0
+        ],
+        [
+          "1996",
+          0
+        ]
+      ]
+    },
+    {
+      "number": 9,
+      "name": "Product type profit",
+      "sql": "SELECT\n    nation,\n    o_year,\n    sum(amount) AS sum_profit\nFROM (\n    SELECT\n        n_name AS nation,\n        SUBSTR(o_orderdate, 1, 4) AS o_year,\n        l_extendedprice * (1 - l_discount) - ps_supplycost * l_quantity AS amount\n    FROM\n        part JOIN lineitem ON p_partkey = l_partkey JOIN supplier ON s_suppkey = l_suppkey JOIN partsupp ON ps_suppkey = l_suppkey AND ps_partkey = l_partkey JOIN orders ON o_orderkey = l_orderkey JOIN nation ON s_nationkey = n_nationkey\n    WHERE\n        s_suppkey = l_suppkey\n        AND ps_suppkey = l_suppkey\n        AND ps_partkey = l_partkey\n        AND p_partkey = l_partkey\n        AND o_orderkey = l_orderkey\n        AND s_nationkey = n_nationkey\n        AND p_name LIKE '%green%') AS profit\nGROUP BY\n    nation,\n    o_year\nORDER BY\n    nation,\n    o_year DESC;\n",
+      "prepare_ms": 0.092801,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=(subquery)",
+        "Rewind  table scan",
+        "Column  col=nation",
+        "Column  col=o_year",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 317.066746,
+          "process_cpu_ms": 392.28399999999965,
+          "allocated_bytes": 225719248,
+          "allocations": 935756,
+          "rows": 173
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 316.819746,
+          "process_cpu_ms": 414.28900000000067,
+          "allocated_bytes": 225340200,
+          "allocations": 934952,
+          "rows": 173
+        },
+        {
+          "status": "ok",
+          "wall_ms": 310.706407,
+          "process_cpu_ms": 385.4509999999973,
+          "allocated_bytes": 225364088,
+          "allocations": 934985,
+          "rows": 173
+        },
+        {
+          "status": "ok",
+          "wall_ms": 325.966733,
+          "process_cpu_ms": 403.1990000000005,
+          "allocated_bytes": 225297000,
+          "allocations": 934896,
+          "rows": 173
+        }
+      ],
+      "min_ms": 310.706407,
+      "median_ms": 316.819746,
+      "columns": [
+        "nation",
+        "o_year",
+        "sum_profit"
+      ],
+      "results": [
+        [
+          "ALGERIA",
+          "1998",
+          97864.56819999998
+        ],
+        [
+          "ALGERIA",
+          "1997",
+          368231.6695000001
+        ],
+        [
+          "ALGERIA",
+          "1996",
+          196525.80459999997
+        ],
+        [
+          "ALGERIA",
+          "1995",
+          341438.6885
+        ],
+        [
+          "ALGERIA",
+          "1994",
+          677444.0160000001
+        ],
+        [
+          "ALGERIA",
+          "1993",
+          458756.9157
+        ],
+        [
+          "ALGERIA",
+          "1992",
+          549243.9511
+        ],
+        [
+          "ARGENTINA",
+          "1998",
+          80448.76800000001
+        ],
+        [
+          "ARGENTINA",
+          "1997",
+          186279.1618
+        ],
+        [
+          "ARGENTINA",
+          "1996",
+          154041.8822
+        ],
+        [
+          "ARGENTINA",
+          "1995",
+          113143.3119
+        ],
+        [
+          "ARGENTINA",
+          "1994",
+          169680.4239
+        ],
+        [
+          "ARGENTINA",
+          "1993",
+          116513.81409999999
+        ],
+        [
+          "ARGENTINA",
+          "1992",
+          202404.7608
+        ],
+        [
+          "BRAZIL",
+          "1998",
+          75952.5946
+        ],
+        [
+          "BRAZIL",
+          "1997",
+          190548.11039999998
+        ],
+        [
+          "BRAZIL",
+          "1996",
+          219059.06919999997
+        ],
+        [
+          "BRAZIL",
+          "1995",
+          186435.2023
+        ],
+        [
+          "BRAZIL",
+          "1994",
+          96835.187
+        ],
+        [
+          "BRAZIL",
+          "1993",
+          186365.41089999996
+        ],
+        [
+          "BRAZIL",
+          "1992",
+          152546.44389999998
+        ],
+        [
+          "CANADA",
+          "1998",
+          101030.3336
+        ],
+        [
+          "CANADA",
+          "1997",
+          101197.34409999999
+        ],
+        [
+          "CANADA",
+          "1996",
+          257697.13549999997
+        ],
+        [
+          "CANADA",
+          "1995",
+          91474.88200000001
+        ],
+        [
+          "CANADA",
+          "1994",
+          249182.7548
+        ],
+        [
+          "CANADA",
+          "1993",
+          185737.83789999998
+        ],
+        [
+          "CANADA",
+          "1992",
+          143371.7465
+        ],
+        [
+          "CHINA",
+          "1998",
+          508364.54439999996
+        ],
+        [
+          "CHINA",
+          "1997",
+          650235.1645999998
+        ],
+        [
+          "CHINA",
+          "1996",
+          911366.0697999999
+        ],
+        [
+          "CHINA",
+          "1995",
+          797268.4075999999
+        ],
+        [
+          "CHINA",
+          "1994",
+          529989.3095000001
+        ],
+        [
+          "CHINA",
+          "1993",
+          573864.3972
+        ],
+        [
+          "CHINA",
+          "1992",
+          751688.7613
+        ],
+        [
+          "EGYPT",
+          "1998",
+          306325.2842
+        ],
+        [
+          "EGYPT",
+          "1997",
+          568461.6699
+        ],
+        [
+          "EGYPT",
+          "1996",
+          465081.92319999996
+        ],
+        [
+          "EGYPT",
+          "1995",
+          542886.5087
+        ],
+        [
+          "EGYPT",
+          "1994",
+          745807.8123
+        ],
+        [
+          "EGYPT",
+          "1993",
+          381503.20079999993
+        ],
+        [
+          "EGYPT",
+          "1992",
+          641866.4367000001
+        ],
+        [
+          "ETHIOPIA",
+          "1998",
+          226054.5716
+        ],
+        [
+          "ETHIOPIA",
+          "1997",
+          585193.2802
+        ],
+        [
+          "ETHIOPIA",
+          "1996",
+          405412.77410000004
+        ],
+        [
+          "ETHIOPIA",
+          "1995",
+          270455.76369999995
+        ],
+        [
+          "ETHIOPIA",
+          "1994",
+          567875.4279
+        ],
+        [
+          "ETHIOPIA",
+          "1993",
+          412302.28709999996
+        ],
+        [
+          "ETHIOPIA",
+          "1992",
+          551284.5821
+        ],
+        [
+          "FRANCE",
+          "1998",
+          135723.40500000003
+        ],
+        [
+          "FRANCE",
+          "1997",
+          249664.75779999996
+        ],
+        [
+          "FRANCE",
+          "1996",
+          175882.89340000003
+        ],
+        [
+          "FRANCE",
+          "1995",
+          116394.78659999999
+        ],
+        [
+          "FRANCE",
+          "1994",
+          197695.24379999997
+        ],
+        [
+          "FRANCE",
+          "1993",
+          231878.62009999994
+        ],
+        [
+          "FRANCE",
+          "1992",
+          199131.20369999995
+        ],
+        [
+          "GERMANY",
+          "1998",
+          172741.10239999997
+        ],
+        [
+          "GERMANY",
+          "1997",
+          393833.4659999999
+        ],
+        [
+          "GERMANY",
+          "1996",
+          335634.5936
+        ],
+        [
+          "GERMANY",
+          "1995",
+          378106.0763
+        ],
+        [
+          "GERMANY",
+          "1994",
+          250107.66529999996
+        ],
+        [
+          "GERMANY",
+          "1993",
+          327154.9365
+        ],
+        [
+          "GERMANY",
+          "1992",
+          387240.08849999995
+        ],
+        [
+          "INDIA",
+          "1998",
+          347548.7603999999
+        ],
+        [
+          "INDIA",
+          "1997",
+          656797.9670000001
+        ],
+        [
+          "INDIA",
+          "1996",
+          522759.35289999994
+        ],
+        [
+          "INDIA",
+          "1995",
+          574428.6693
+        ],
+        [
+          "INDIA",
+          "1994",
+          741983.7845999999
+        ],
+        [
+          "INDIA",
+          "1993",
+          729948.5340999999
+        ],
+        [
+          "INDIA",
+          "1992",
+          661061.1415000001
+        ],
+        [
+          "INDONESIA",
+          "1998",
+          91791.5096
+        ],
+        [
+          "INDONESIA",
+          "1997",
+          183956.46130000002
+        ],
+        [
+          "INDONESIA",
+          "1996",
+          415234.7848
+        ],
+        [
+          "INDONESIA",
+          "1995",
+          427155.38039999997
+        ],
+        [
+          "INDONESIA",
+          "1994",
+          286271.2875
+        ],
+        [
+          "INDONESIA",
+          "1993",
+          551178.8823
+        ],
+        [
+          "INDONESIA",
+          "1992",
+          274513.2685
+        ],
+        [
+          "IRAN",
+          "1998",
+          47959.821899999995
+        ],
+        [
+          "IRAN",
+          "1997",
+          184335.06149999998
+        ],
+        [
+          "IRAN",
+          "1996",
+          223115.2464
+        ],
+        [
+          "IRAN",
+          "1995",
+          125339.09270000001
+        ],
+        [
+          "IRAN",
+          "1994",
+          117228.31219999999
+        ],
+        [
+          "IRAN",
+          "1993",
+          208030.32289999997
+        ],
+        [
+          "IRAN",
+          "1992",
+          161835.5475
+        ],
+        [
+          "IRAQ",
+          "1998",
+          161797.4924
+        ],
+        [
+          "IRAQ",
+          "1997",
+          224876.54360000003
+        ],
+        [
+          "IRAQ",
+          "1996",
+          145277.898
+        ],
+        [
+          "IRAQ",
+          "1995",
+          467955.2504999999
+        ],
+        [
+          "IRAQ",
+          "1994",
+          97455.299
+        ],
+        [
+          "IRAQ",
+          "1993",
+          114821.644
+        ],
+        [
+          "IRAQ",
+          "1992",
+          213307.15739999997
+        ],
+        [
+          "JAPAN",
+          "1998",
+          307594.598
+        ],
+        [
+          "JAPAN",
+          "1997",
+          339018.14879999997
+        ],
+        [
+          "JAPAN",
+          "1996",
+          649578.3368000002
+        ],
+        [
+          "JAPAN",
+          "1995",
+          671644.0911000001
+        ],
+        [
+          "JAPAN",
+          "1994",
+          576266.2386
+        ],
+        [
+          "JAPAN",
+          "1993",
+          514190.84369999997
+        ],
+        [
+          "JAPAN",
+          "1992",
+          534914.9338999998
+        ],
+        [
+          "JORDAN",
+          "1996",
+          33460.2447
+        ],
+        [
+          "JORDAN",
+          "1995",
+          20364.162300000004
+        ],
+        [
+          "JORDAN",
+          "1994",
+          15528.608800000002
+        ],
+        [
+          "JORDAN",
+          "1993",
+          14640.988899999998
+        ],
+        [
+          "JORDAN",
+          "1992",
+          10904.293099999999
+        ],
+        [
+          "KENYA",
+          "1998",
+          521926.5198
+        ],
+        [
+          "KENYA",
+          "1997",
+          559632.3408000001
+        ],
+        [
+          "KENYA",
+          "1996",
+          772855.7939
+        ],
+        [
+          "KENYA",
+          "1995",
+          516452.50669999997
+        ],
+        [
+          "KENYA",
+          "1994",
+          543665.8154
+        ],
+        [
+          "KENYA",
+          "1993",
+          866924.8754000001
+        ],
+        [
+          "KENYA",
+          "1992",
+          567410.5502000002
+        ],
+        [
+          "MOROCCO",
+          "1998",
+          217794.4973
+        ],
+        [
+          "MOROCCO",
+          "1997",
+          439240.9286999999
+        ],
+        [
+          "MOROCCO",
+          "1996",
+          399969.468
+        ],
+        [
+          "MOROCCO",
+          "1995",
+          258131.9398
+        ],
+        [
+          "MOROCCO",
+          "1994",
+          386972.14239999995
+        ],
+        [
+          "MOROCCO",
+          "1993",
+          145468.0381
+        ],
+        [
+          "MOROCCO",
+          "1992",
+          284314.28130000003
+        ],
+        [
+          "MOZAMBIQUE",
+          "1998",
+          518693.2237999999
+        ],
+        [
+          "MOZAMBIQUE",
+          "1997",
+          613873.2961000002
+        ],
+        [
+          "MOZAMBIQUE",
+          "1996",
+          936793.5612
+        ],
+        [
+          "MOZAMBIQUE",
+          "1995",
+          727204.7718000001
+        ],
+        [
+          "MOZAMBIQUE",
+          "1994",
+          1104618.1807
+        ],
+        [
+          "MOZAMBIQUE",
+          "1993",
+          893266.0530000001
+        ],
+        [
+          "MOZAMBIQUE",
+          "1992",
+          1062432.0883999998
+        ],
+        [
+          "PERU",
+          "1998",
+          287242.9797
+        ],
+        [
+          "PERU",
+          "1997",
+          532358.3659999999
+        ],
+        [
+          "PERU",
+          "1996",
+          398435.75070000003
+        ],
+        [
+          "PERU",
+          "1995",
+          462031.6250999999
+        ],
+        [
+          "PERU",
+          "1994",
+          304235.4118
+        ],
+        [
+          "PERU",
+          "1993",
+          505885.48899999994
+        ],
+        [
+          "PERU",
+          "1992",
+          382290.0947
+        ],
+        [
+          "ROMANIA",
+          "1998",
+          357824.5528
+        ],
+        [
+          "ROMANIA",
+          "1997",
+          569806.5564000001
+        ],
+        [
+          "ROMANIA",
+          "1996",
+          732001.5568
+        ],
+        [
+          "ROMANIA",
+          "1995",
+          408657.11540000007
+        ],
+        [
+          "ROMANIA",
+          "1994",
+          540702.5463
+        ],
+        [
+          "ROMANIA",
+          "1993",
+          883158.5056
+        ],
+        [
+          "ROMANIA",
+          "1992",
+          505488.9501
+        ],
+        [
+          "RUSSIA",
+          "1998",
+          34448.63569999999
+        ],
+        [
+          "RUSSIA",
+          "1997",
+          314972.04459999996
+        ],
+        [
+          "RUSSIA",
+          "1996",
+          430049.58209999994
+        ],
+        [
+          "RUSSIA",
+          "1995",
+          360538.05859999993
+        ],
+        [
+          "RUSSIA",
+          "1994",
+          301791.01139999996
+        ],
+        [
+          "RUSSIA",
+          "1993",
+          308993.9622
+        ],
+        [
+          "RUSSIA",
+          "1992",
+          289868.6564
+        ],
+        [
+          "SAUDI ARABIA",
+          "1998",
+          16502.41
+        ],
+        [
+          "SAUDI ARABIA",
+          "1997",
+          61830.9556
+        ],
+        [
+          "SAUDI ARABIA",
+          "1996",
+          213650.28089999998
+        ],
+        [
+          "SAUDI ARABIA",
+          "1995",
+          62668.72499999999
+        ],
+        [
+          "SAUDI ARABIA",
+          "1994",
+          94629.15379999997
+        ],
+        [
+          "SAUDI ARABIA",
+          "1993",
+          57768.307100000005
+        ],
+        [
+          "SAUDI ARABIA",
+          "1992",
+          66520.1093
+        ],
+        [
+          "UNITED KINGDOM",
+          "1998",
+          80437.6523
+        ],
+        [
+          "UNITED KINGDOM",
+          "1997",
+          252509.7351
+        ],
+        [
+          "UNITED KINGDOM",
+          "1996",
+          231152.85820000002
+        ],
+        [
+          "UNITED KINGDOM",
+          "1995",
+          181310.88079999998
+        ],
+        [
+          "UNITED KINGDOM",
+          "1994",
+          239161.20609999998
+        ],
+        [
+          "UNITED KINGDOM",
+          "1993",
+          122103.11420000001
+        ],
+        [
+          "UNITED KINGDOM",
+          "1992",
+          60882.308000000005
+        ],
+        [
+          "UNITED STATES",
+          "1998",
+          440347.66579999996
+        ],
+        [
+          "UNITED STATES",
+          "1997",
+          652958.9371000001
+        ],
+        [
+          "UNITED STATES",
+          "1996",
+          1004593.8282000001
+        ],
+        [
+          "UNITED STATES",
+          "1995",
+          860144.1028999998
+        ],
+        [
+          "UNITED STATES",
+          "1994",
+          807797.4877
+        ],
+        [
+          "UNITED STATES",
+          "1993",
+          736669.4710999998
+        ],
+        [
+          "UNITED STATES",
+          "1992",
+          877851.4102999999
+        ],
+        [
+          "VIETNAM",
+          "1998",
+          358248.0159
+        ],
+        [
+          "VIETNAM",
+          "1997",
+          394817.28419999994
+        ],
+        [
+          "VIETNAM",
+          "1996",
+          439390.08359999995
+        ],
+        [
+          "VIETNAM",
+          "1995",
+          418626.63250000007
+        ],
+        [
+          "VIETNAM",
+          "1994",
+          422644.8168
+        ],
+        [
+          "VIETNAM",
+          "1993",
+          309063.40199999994
+        ],
+        [
+          "VIETNAM",
+          "1992",
+          716126.5377999999
+        ]
+      ]
+    },
+    {
+      "number": 10,
+      "name": "Returned item reporting",
+      "sql": "SELECT\n    c_custkey,\n    c_name,\n    sum(l_extendedprice * (1 - l_discount)) AS revenue,\n    c_acctbal,\n    n_name,\n    c_address,\n    c_phone,\n    c_comment\nFROM\n    customer JOIN orders ON c_custkey = o_custkey JOIN lineitem ON l_orderkey = o_orderkey JOIN nation ON c_nationkey = n_nationkey\nWHERE\n    c_custkey = o_custkey\n    AND l_orderkey = o_orderkey\n    AND o_orderdate \u003e= '1993-10-01'\n    AND o_orderdate \u003c '1994-01-01'\n    AND l_returnflag = 'R'\n    AND c_nationkey = n_nationkey\nGROUP BY\n    c_custkey,\n    c_name,\n    c_acctbal,\n    c_phone,\n    n_name,\n    c_address,\n    c_comment\nORDER BY\n    revenue DESC\nLIMIT 20;\n",
+      "prepare_ms": 0.06504,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=customer",
+        "Rewind  table scan",
+        "Column  col=c_custkey",
+        "Column  col=c_name",
+        "Column  col=c_acctbal",
+        "Column  col=n_name",
+        "Column  col=c_address",
+        "Column  col=c_phone",
+        "Column  col=c_comment",
+        "Filter c_custkey = o_custkey AND l_orderkey = o_orderkey AND o_orderdate \u003e= 1993-10-01 AND o_orderdate \u003c 1994-01-01 AND l_returnflag = R AND c_nationkey = n_nationkey WHERE clause",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "Limit  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 211.673512,
+          "process_cpu_ms": 257.0560000000005,
+          "allocated_bytes": 111802512,
+          "allocations": 739084,
+          "rows": 20
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 213.822518,
+          "process_cpu_ms": 273.0949999999975,
+          "allocated_bytes": 111825392,
+          "allocations": 738742,
+          "rows": 20
+        },
+        {
+          "status": "ok",
+          "wall_ms": 217.83481,
+          "process_cpu_ms": 252.8179999999993,
+          "allocated_bytes": 111808184,
+          "allocations": 738715,
+          "rows": 20
+        },
+        {
+          "status": "ok",
+          "wall_ms": 210.369388,
+          "process_cpu_ms": 254.46099999999933,
+          "allocated_bytes": 111770336,
+          "allocations": 738668,
+          "rows": 20
+        }
+      ],
+      "min_ms": 210.369388,
+      "median_ms": 213.822518,
+      "columns": [
+        "c_custkey",
+        "c_name",
+        "revenue",
+        "c_acctbal",
+        "n_name",
+        "c_address",
+        "c_phone",
+        "c_comment"
+      ],
+      "results": [
+        [
+          679,
+          "Customer#000000679",
+          378211.32519999996,
+          1394.44,
+          "IRAN",
+          "jhLZlG1fRiSE0 wDLOCguVB96dH6a5",
+          "20-146-696-9508",
+          "oys. furiously silent pinto beans"
+        ],
+        [
+          1201,
+          "Customer#000001201",
+          374331.53400000004,
+          5165.39,
+          "IRAN",
+          "gLo85h4Cst5ckn40ZKR6403KjW26YCWAFZsq d",
+          "20-825-400-1187",
+          "r foxes boost blithely final accounts. furiously silent ideas unwind. blithely even dependencies wake slyly; sly"
+        ],
+        [
+          422,
+          "Customer#000000422",
+          366451.0126,
+          -272.14,
+          "INDONESIA",
+          "rtds1qwEinDWYhyIbRusRgXBDxGJraP,C,S zDwA",
+          "19-299-247-2444",
+          " are carefully. slyly regular requests hag"
+        ],
+        [
+          334,
+          "Customer#000000334",
+          360370.755,
+          -405.91,
+          "EGYPT",
+          "dbdZdUyWQaZX7DoCO",
+          "14-947-291-5002",
+          "r, bold pinto beans according to the blithely final theodolites can snooze slyly even packages. carefully ironic acc"
+        ],
+        [
+          805,
+          "Customer#000000805",
+          359448.9036,
+          511.69,
+          "IRAN",
+          "woguVtOjwvC8LLtPRALISNwAOFRf70Pfqk",
+          "20-732-989-5653",
+          " quickly unusual accounts haggle carefully after the even accounts. deposits cajole carefully bravely spec"
+        ],
+        [
+          932,
+          "Customer#000000932",
+          341608.2753,
+          6553.37,
+          "JORDAN",
+          "kdRqB0ezhkUePSc",
+          "23-300-708-7927",
+          "ound the regular accounts. quickly ironic requests try to "
+        ],
+        [
+          853,
+          "Customer#000000853",
+          341236.6245999999,
+          -444.73,
+          "BRAZIL",
+          "7,rRbAvqK4hSqm,ljEDolyjRp8Mu44xSTG",
+          "12-869-161-3468",
+          "l foxes affix. furiously regular foxes"
+        ],
+        [
+          872,
+          "Customer#000000872",
+          338328.7808,
+          -858.61,
+          "PERU",
+          "xfbTIe1pgWq0jqdm7gQP6iXqcs2RcSk",
+          "27-357-139-7164",
+          "unts believe across the ironic instructions. packages nag re"
+        ],
+        [
+          737,
+          "Customer#000000737",
+          338185.3365,
+          2501.74,
+          "CHINA",
+          "eNHkZHYWXIpf8Ct,F2Aej BwxkZ6LTW",
+          "28-658-938-1102",
+          "ackages. blithely daring packages detect slyly around the carefully busy excuses. f"
+        ],
+        [
+          1118,
+          "Customer#000001118",
+          319875.728,
+          4130.18,
+          "IRAQ",
+          "bjK0newm53R2CoNAtvQsIqh",
+          "21-583-715-8627",
+          "ecial sentiments. express deposits across the blithely express packages wake quickly across the attainments. platele"
+        ],
+        [
+          223,
+          "Customer#000000223",
+          319564.275,
+          7476.2,
+          "SAUDI ARABIA",
+          "MyQxUcG0P QCetmG00GlF",
+          "30-193-643-1517",
+          "xcuses. silent theodolites across the carefully bold excuses sleep ironic, final courts. regular excuses"
+        ],
+        [
+          808,
+          "Customer#000000808",
+          314774.6167,
+          5561.93,
+          "ROMANIA",
+          "9Y4G8hokyDQJOlcCUe4OypX smFlME6d Kr",
+          "29-531-319-7726",
+          "usual pinto beans use carefully. express ideas boost. ironic, ironic Tir"
+        ],
+        [
+          478,
+          "Customer#000000478",
+          299651.80260000005,
+          -210.4,
+          "ARGENTINA",
+          "PFtAWWSniG43yWAgtjFPN0DrhyMCDIm",
+          "11-655-291-2694",
+          "even asymptotes haggle carefully slyl"
+        ],
+        [
+          1441,
+          "Customer#000001441",
+          294705.39350000006,
+          9465.15,
+          "UNITED KINGDOM",
+          "y,221QWUv0CvgCVkRwsrOUpRshWpcjKkrHu",
+          "33-681-334-4499",
+          "ccounts are furiously above the slyly even foxes. furiously even requests hagg"
+        ],
+        [
+          1478,
+          "Customer#000001478",
+          294431.91780000005,
+          9701.54,
+          "GERMANY",
+          "vTjnwinnB9YeA1VxKYoQELaZJm,HW",
+          "17-420-484-5959",
+          "nal instructions. quickly regular excuses haggle after the sl"
+        ],
+        [
+          211,
+          "Customer#000000211",
+          287905.6368,
+          4198.72,
+          "JORDAN",
+          "79JF5cssWlB3ME",
+          "23-965-335-9471",
+          "unusual requests haggle after the unusual, ironic ideas. ironic orbits hinder carefully quickly final p"
+        ],
+        [
+          197,
+          "Customer#000000197",
+          283190.48069999996,
+          9860.22,
+          "ARGENTINA",
+          "7M5Az MBdx4Ey1XTn",
+          "11-107-312-6585",
+          "latelets doze fluffily blithely final dep"
+        ],
+        [
+          1030,
+          "Customer#000001030",
+          282557.3566,
+          6359.27,
+          "INDIA",
+          "4ByZpJpVJRD",
+          "18-759-877-1870",
+          " the final accounts. quick platelets are carefully. instructions a"
+        ],
+        [
+          1049,
+          "Customer#000001049",
+          281134.1117,
+          8747.99,
+          "INDONESIA",
+          "Q1ZcOmJjQi2VKeIk",
+          "19-499-258-2851",
+          "sleep carefully final deposits. furiously bold depo"
+        ],
+        [
+          1094,
+          "Customer#000001094",
+          274877.444,
+          2544.49,
+          "BRAZIL",
+          "dls,MNN7EbF3GYrY3eRwSeOBZYd5o,cg",
+          "12-234-721-9871",
+          "structions among the furiously final pinto beans haggle fluffily "
+        ]
+      ]
+    },
+    {
+      "number": 11,
+      "name": "Important stock identification",
+      "sql": "SELECT\n    ps_partkey,\n    sum(ps_supplycost * ps_availqty) AS value\nFROM\n    partsupp JOIN supplier ON ps_suppkey = s_suppkey JOIN nation ON s_nationkey = n_nationkey\nWHERE\n    ps_suppkey = s_suppkey\n    AND s_nationkey = n_nationkey\n    AND n_name = 'GERMANY'\nGROUP BY\n    ps_partkey\nHAVING\n    sum(ps_supplycost * ps_availqty) \u003e (\n        SELECT\n            sum(ps_supplycost * ps_availqty) * 0.0001000000\n        FROM\n            partsupp JOIN supplier ON ps_suppkey = s_suppkey JOIN nation ON s_nationkey = n_nationkey\n        WHERE\n            ps_suppkey = s_suppkey\n            AND s_nationkey = n_nationkey\n            AND n_name = 'GERMANY')\nORDER BY\n    value DESC;\n",
+      "prepare_ms": 0.064641,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=partsupp",
+        "Rewind  table scan",
+        "Column  col=ps_partkey",
+        "Filter ps_suppkey = s_suppkey AND s_nationkey = n_nationkey AND n_name = GERMANY WHERE clause",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 86.171697,
+          "process_cpu_ms": 98.77800000000207,
+          "allocated_bytes": 41685528,
+          "allocations": 382612,
+          "rows": 359
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 90.176109,
+          "process_cpu_ms": 112.67199999999866,
+          "allocated_bytes": 41690456,
+          "allocations": 382224,
+          "rows": 359
+        },
+        {
+          "status": "ok",
+          "wall_ms": 88.303183,
+          "process_cpu_ms": 98.70200000000114,
+          "allocated_bytes": 41675728,
+          "allocations": 382205,
+          "rows": 359
+        },
+        {
+          "status": "ok",
+          "wall_ms": 89.048226,
+          "process_cpu_ms": 99.63600000000224,
+          "allocated_bytes": 41709200,
+          "allocations": 382249,
+          "rows": 359
+        }
+      ],
+      "min_ms": 88.303183,
+      "median_ms": 89.048226,
+      "columns": [
+        "ps_partkey",
+        "value"
+      ],
+      "results": [
+        [
+          1376,
+          13271249.89
+        ],
+        [
+          788,
+          9498648.06
+        ],
+        [
+          1071,
+          9388264.4
+        ],
+        [
+          1768,
+          9207199.75
+        ],
+        [
+          1168,
+          8881908.959999999
+        ],
+        [
+          1084,
+          8709494.16
+        ],
+        [
+          1415,
+          8471489.56
+        ],
+        [
+          1338,
+          8293841.12
+        ],
+        [
+          124,
+          8203209.3
+        ],
+        [
+          1232,
+          8111663.34
+        ],
+        [
+          1643,
+          7975862.75
+        ],
+        [
+          1952,
+          7936947.61
+        ],
+        [
+          1944,
+          7880018.6
+        ],
+        [
+          1884,
+          7513422.84
+        ],
+        [
+          942,
+          7511018.76
+        ],
+        [
+          670,
+          7299956.800000001
+        ],
+        [
+          1532,
+          7222347.199999999
+        ],
+        [
+          1052,
+          7158586
+        ],
+        [
+          455,
+          7064285.84
+        ],
+        [
+          1176,
+          7060670.890000001
+        ],
+        [
+          143,
+          7037648.64
+        ],
+        [
+          1653,
+          6949533.7
+        ],
+        [
+          1140,
+          6929464.08
+        ],
+        [
+          1076,
+          6877472.960000001
+        ],
+        [
+          2000,
+          6720009.38
+        ],
+        [
+          348,
+          6681307.34
+        ],
+        [
+          810,
+          6576640.95
+        ],
+        [
+          943,
+          6458641.7
+        ],
+        [
+          720,
+          6391330.27
+        ],
+        [
+          1748,
+          6341530.4
+        ],
+        [
+          1241,
+          6304944.66
+        ],
+        [
+          1384,
+          6279261.12
+        ],
+        [
+          1784,
+          6247863.25
+        ],
+        [
+          984,
+          6136927
+        ],
+        [
+          445,
+          6127784.28
+        ],
+        [
+          1976,
+          6079237.08
+        ],
+        [
+          1609,
+          6022720.8
+        ],
+        [
+          1563,
+          5978195.08
+        ],
+        [
+          452,
+          5838052
+        ],
+        [
+          222,
+          5737162.24
+        ],
+        [
+          1629,
+          5703117.12
+        ],
+        [
+          1454,
+          5694804.18
+        ],
+        [
+          1082,
+          5681981.25
+        ],
+        [
+          691,
+          5633589.720000001
+        ],
+        [
+          1474,
+          5614673.64
+        ],
+        [
+          1900,
+          5591905.359999999
+        ],
+        [
+          262,
+          5553285.32
+        ],
+        [
+          1876,
+          5517997.59
+        ],
+        [
+          1027,
+          5490916
+        ],
+        [
+          1833,
+          5451495
+        ],
+        [
+          513,
+          5374426.22
+        ],
+        [
+          752,
+          5358919.7
+        ],
+        [
+          1367,
+          5352773.25
+        ],
+        [
+          543,
+          5189101.68
+        ],
+        [
+          1144,
+          5174388.5600000005
+        ],
+        [
+          403,
+          5126118.15
+        ],
+        [
+          1406,
+          5121886.44
+        ],
+        [
+          320,
+          5072099.76
+        ],
+        [
+          1940,
+          5069178.399999999
+        ],
+        [
+          1503,
+          5050895.5
+        ],
+        [
+          1437,
+          5039590.600000001
+        ],
+        [
+          743,
+          5039271.42
+        ],
+        [
+          82,
+          4995939
+        ],
+        [
+          916,
+          4994730.1
+        ],
+        [
+          732,
+          4932809.82
+        ],
+        [
+          356,
+          4879860.09
+        ],
+        [
+          1592,
+          4831242.6
+        ],
+        [
+          1043,
+          4825921.3100000005
+        ],
+        [
+          132,
+          4781984.14
+        ],
+        [
+          1006,
+          4733954.64
+        ],
+        [
+          497,
+          4711173.600000001
+        ],
+        [
+          1008,
+          4565588.85
+        ],
+        [
+          1370,
+          4563830.100000001
+        ],
+        [
+          216,
+          4561143.8
+        ],
+        [
+          34,
+          4501982.71
+        ],
+        [
+          1908,
+          4417931.8
+        ],
+        [
+          982,
+          4391495.46
+        ],
+        [
+          1652,
+          4358793.14
+        ],
+        [
+          614,
+          4356657.45
+        ],
+        [
+          1552,
+          4355541.7
+        ],
+        [
+          359,
+          4353566.87
+        ],
+        [
+          1104,
+          4347515.9
+        ],
+        [
+          198,
+          4315049
+        ],
+        [
+          998,
+          4167784.8800000004
+        ],
+        [
+          1543,
+          4159568.16
+        ],
+        [
+          1308,
+          4153124.95
+        ],
+        [
+          474,
+          4123819.2
+        ],
+        [
+          1394,
+          4122729.3299999996
+        ],
+        [
+          271,
+          4095180.96
+        ],
+        [
+          908,
+          4088856.2
+        ],
+        [
+          1135,
+          4045014.13
+        ],
+        [
+          1632,
+          4010794.9
+        ],
+        [
+          1362,
+          3982060.16
+        ],
+        [
+          158,
+          3941881.65
+        ],
+        [
+          1852,
+          3923035.02
+        ],
+        [
+          1556,
+          3896709.54
+        ],
+        [
+          584,
+          3843848.3000000003
+        ],
+        [
+          885,
+          3826021.1599999997
+        ],
+        [
+          376,
+          3781201.96
+        ],
+        [
+          712,
+          3749696.8000000003
+        ],
+        [
+          2,
+          3743241.43
+        ],
+        [
+          676,
+          3735715.1999999997
+        ],
+        [
+          1832,
+          3709008.5999999996
+        ],
+        [
+          1955,
+          3702794.6999999997
+        ],
+        [
+          68,
+          3690702.41
+        ],
+        [
+          1435,
+          3659114.1
+        ],
+        [
+          1443,
+          3656762.84
+        ],
+        [
+          1278,
+          3653100.6599999997
+        ],
+        [
+          1920,
+          3647892.54
+        ],
+        [
+          423,
+          3602031.8000000003
+        ],
+        [
+          818,
+          3589047.6
+        ],
+        [
+          779,
+          3559597.5300000003
+        ],
+        [
+          485,
+          3558511.4400000004
+        ],
+        [
+          552,
+          3555470.1
+        ],
+        [
+          1269,
+          3510427.6500000004
+        ],
+        [
+          1602,
+          3492117.6999999997
+        ],
+        [
+          426,
+          3486888.02
+        ],
+        [
+          1452,
+          3480825.5999999996
+        ],
+        [
+          756,
+          3469373.7
+        ],
+        [
+          832,
+          3447746.46
+        ],
+        [
+          1493,
+          3446867.4
+        ],
+        [
+          1650,
+          3417752.58
+        ],
+        [
+          205,
+          3403046.25
+        ],
+        [
+          93,
+          3361425.8899999997
+        ],
+        [
+          76,
+          3342081.82
+        ],
+        [
+          1759,
+          3303050.4
+        ],
+        [
+          886,
+          3302180.6999999997
+        ],
+        [
+          1544,
+          3288573.16
+        ],
+        [
+          1932,
+          3270900.4000000004
+        ],
+        [
+          489,
+          3253368.3
+        ],
+        [
+          594,
+          3177408.5700000003
+        ],
+        [
+          184,
+          3177162.05
+        ],
+        [
+          950,
+          3165213.01
+        ],
+        [
+          1124,
+          3143279.36
+        ],
+        [
+          106,
+          3099021.98
+        ],
+        [
+          1964,
+          3016553.1
+        ],
+        [
+          384,
+          2964262.77
+        ],
+        [
+          974,
+          2959497.0999999996
+        ],
+        [
+          964,
+          2951329.4499999997
+        ],
+        [
+          1984,
+          2907345.36
+        ],
+        [
+          200,
+          2895688.3200000003
+        ],
+        [
+          683,
+          2829476.95
+        ],
+        [
+          1564,
+          2816506.56
+        ],
+        [
+          546,
+          2788059.64
+        ],
+        [
+          502,
+          2780828.64
+        ],
+        [
+          396,
+          2778421.39
+        ],
+        [
+          203,
+          2761439.88
+        ],
+        [
+          866,
+          2753031.1999999997
+        ],
+        [
+          1743,
+          2743889.4899999998
+        ],
+        [
+          1041,
+          2738083.92
+        ],
+        [
+          1432,
+          2713412.16
+        ],
+        [
+          43,
+          2587359.58
+        ],
+        [
+          941,
+          2587091.52
+        ],
+        [
+          1890,
+          2558739.69
+        ],
+        [
+          1866,
+          2545838.4
+        ],
+        [
+          747,
+          2511745.32
+        ],
+        [
+          776,
+          2506489.89
+        ],
+        [
+          554,
+          2505417.25
+        ],
+        [
+          1210,
+          2490820.92
+        ],
+        [
+          1239,
+          2405206.3000000003
+        ],
+        [
+          443,
+          2382150.05
+        ],
+        [
+          1661,
+          2370574.16
+        ],
+        [
+          1079,
+          2363505.11
+        ],
+        [
+          1329,
+          2305870.42
+        ],
+        [
+          1691,
+          2261159.92
+        ],
+        [
+          1247,
+          2239553.2800000003
+        ],
+        [
+          1752,
+          2230055.7600000002
+        ],
+        [
+          150,
+          2217043.59
+        ],
+        [
+          1814,
+          2213635.2
+        ],
+        [
+          289,
+          2187160.4499999997
+        ],
+        [
+          1400,
+          2139845.1
+        ],
+        [
+          1898,
+          2130114.96
+        ],
+        [
+          1809,
+          2122758.7199999997
+        ],
+        [
+          884,
+          2107479.56
+        ],
+        [
+          1038,
+          2096868.97
+        ],
+        [
+          1318,
+          2051302.4400000002
+        ],
+        [
+          524,
+          2035262.22
+        ],
+        [
+          414,
+          2029692.4499999997
+        ],
+        [
+          298,
+          2026981.74
+        ],
+        [
+          1996,
+          2020953.5399999998
+        ],
+        [
+          1742,
+          2019190.7999999998
+        ],
+        [
+          1620,
+          2010112
+        ],
+        [
+          877,
+          1956429.1800000002
+        ],
+        [
+          1332,
+          1919029.56
+        ],
+        [
+          1536,
+          1859318.1500000001
+        ],
+        [
+          1116,
+          1852588.28
+        ],
+        [
+          447,
+          1817951.32
+        ],
+        [
+          1676,
+          1802306.08
+        ],
+        [
+          1911,
+          1779646.44
+        ],
+        [
+          1459,
+          1767602.3
+        ],
+        [
+          576,
+          1761838.75
+        ],
+        [
+          1273,
+          1754235.01
+        ],
+        [
+          583,
+          1725649.9200000002
+        ],
+        [
+          532,
+          1682311.48
+        ],
+        [
+          1732,
+          1652831.2000000002
+        ],
+        [
+          1572,
+          1650953.52
+        ],
+        [
+          1889,
+          1638443.72
+        ],
+        [
+          476,
+          1631154.06
+        ],
+        [
+          1221,
+          1629883.46
+        ],
+        [
+          1792,
+          1606346.1
+        ],
+        [
+          243,
+          1603235.16
+        ],
+        [
+          328,
+          1569826.72
+        ],
+        [
+          1999,
+          1553706
+        ],
+        [
+          1611,
+          1529857.01
+        ],
+        [
+          643,
+          1512838.8
+        ],
+        [
+          1276,
+          1467567.2799999998
+        ],
+        [
+          1823,
+          1462292.9999999998
+        ],
+        [
+          1,
+          1456050.96
+        ],
+        [
+          27,
+          1425832.4
+        ],
+        [
+          632,
+          1408087.26
+        ],
+        [
+          1184,
+          1406101.78
+        ],
+        [
+          252,
+          1379186.35
+        ],
+        [
+          392,
+          1354813.18
+        ],
+        [
+          1215,
+          1344383.2000000002
+        ],
+        [
+          26,
+          1337002.8900000001
+        ],
+        [
+          84,
+          1334146.71
+        ],
+        [
+          784,
+          1327297.01
+        ],
+        [
+          1803,
+          1327045.06
+        ],
+        [
+          352,
+          1326102.34
+        ],
+        [
+          165,
+          1289075.76
+        ],
+        [
+          176,
+          1285866.2
+        ],
+        [
+          1314,
+          1244173.26
+        ],
+        [
+          1701,
+          1239095.4400000002
+        ],
+        [
+          844,
+          1225696.05
+        ],
+        [
+          1988,
+          1216798.33
+        ],
+        [
+          1847,
+          1202012.13
+        ],
+        [
+          1706,
+          1184125.1
+        ],
+        [
+          744,
+          1182820.8
+        ],
+        [
+          230,
+          1165932.3
+        ],
+        [
+          418,
+          1078321.4400000002
+        ],
+        [
+          174,
+          1060584.8
+        ],
+        [
+          1073,
+          1028449.89
+        ],
+        [
+          1726,
+          1018673.04
+        ],
+        [
+          1206,
+          1002319.49
+        ],
+        [
+          1343,
+          998105.76
+        ],
+        [
+          952,
+          997684.24
+        ],
+        [
+          484,
+          991530.93
+        ],
+        [
+          932,
+          980620.6799999999
+        ],
+        [
+          843,
+          978862.9199999999
+        ],
+        [
+          1841,
+          962131.8600000001
+        ],
+        [
+          494,
+          957575.34
+        ],
+        [
+          659,
+          954291.0499999999
+        ],
+        [
+          251,
+          939764.7
+        ],
+        [
+          1413,
+          936951.94
+        ],
+        [
+          572,
+          906111.99
+        ],
+        [
+          32,
+          894484.09
+        ],
+        [
+          9,
+          893905.9199999999
+        ],
+        [
+          1498,
+          890887.85
+        ],
+        [
+          1790,
+          878923.64
+        ],
+        [
+          1670,
+          854046.43
+        ],
+        [
+          876,
+          842245.6699999999
+        ],
+        [
+          1758,
+          841275.42
+        ],
+        [
+          930,
+          832963.6799999999
+        ],
+        [
+          284,
+          826642.6000000001
+        ],
+        [
+          1710,
+          811504.38
+        ],
+        [
+          1047,
+          791214.45
+        ],
+        [
+          653,
+          788974.21
+        ],
+        [
+          315,
+          770526.0499999999
+        ],
+        [
+          1734,
+          763569.4
+        ],
+        [
+          1017,
+          715302.72
+        ],
+        [
+          1305,
+          713351.43
+        ],
+        [
+          77,
+          688865.82
+        ],
+        [
+          1512,
+          682434.15
+        ],
+        [
+          276,
+          680239.04
+        ],
+        [
+          1284,
+          671225.9400000001
+        ],
+        [
+          1356,
+          665716.83
+        ],
+        [
+          800,
+          663414.65
+        ],
+        [
+          117,
+          639650.88
+        ],
+        [
+          652,
+          635629.28
+        ],
+        [
+          57,
+          630987.4400000001
+        ],
+        [
+          1426,
+          628241.25
+        ],
+        [
+          1196,
+          622427.16
+        ],
+        [
+          51,
+          622249.54
+        ],
+        [
+          1846,
+          621068.7999999999
+        ],
+        [
+          601,
+          615942.6
+        ],
+        [
+          645,
+          607985.8400000001
+        ],
+        [
+          684,
+          571490.7000000001
+        ],
+        [
+          465,
+          570337.4
+        ],
+        [
+          562,
+          567651.24
+        ],
+        [
+          387,
+          556634.76
+        ],
+        [
+          1152,
+          555989.28
+        ],
+        [
+          1202,
+          553818.1799999999
+        ],
+        [
+          1112,
+          552658.6799999999
+        ],
+        [
+          304,
+          535868.1599999999
+        ],
+        [
+          368,
+          526995.84
+        ],
+        [
+          1800,
+          526711.11
+        ],
+        [
+          1148,
+          515702.16000000003
+        ],
+        [
+          225,
+          513587.57
+        ],
+        [
+          324,
+          500954.58
+        ],
+        [
+          586,
+          499475.58
+        ],
+        [
+          1576,
+          494401.05
+        ],
+        [
+          1484,
+          462396.27
+        ],
+        [
+          126,
+          461263.74
+        ],
+        [
+          1132,
+          455492.24
+        ],
+        [
+          622,
+          449685.6
+        ],
+        [
+          1160,
+          448183.06
+        ],
+        [
+          1352,
+          439967.04000000004
+        ],
+        [
+          18,
+          426442.07999999996
+        ],
+        [
+          7,
+          414558.2
+        ],
+        [
+          833,
+          398540.87
+        ],
+        [
+          1694,
+          376443.98
+        ],
+        [
+          650,
+          370900.99
+        ],
+        [
+          1504,
+          370815.9
+        ],
+        [
+          432,
+          370528.51999999996
+        ],
+        [
+          612,
+          367894.5
+        ],
+        [
+          542,
+          367653.66
+        ],
+        [
+          456,
+          360911.32
+        ],
+        [
+          52,
+          358792.36
+        ],
+        [
+          1346,
+          350637.43
+        ],
+        [
+          59,
+          342221.48000000004
+        ],
+        [
+          1107,
+          341805.2
+        ],
+        [
+          1171,
+          334938.04
+        ],
+        [
+          1062,
+          326445.89999999997
+        ],
+        [
+          592,
+          313081.75
+        ],
+        [
+          1750,
+          312229.33
+        ],
+        [
+          1843,
+          309456.95
+        ],
+        [
+          180,
+          308539.84
+        ],
+        [
+          899,
+          301989.5
+        ],
+        [
+          1180,
+          293452.5
+        ],
+        [
+          522,
+          291601.75
+        ],
+        [
+          249,
+          282520.32
+        ],
+        [
+          1584,
+          278559.38
+        ],
+        [
+          1404,
+          276057.89999999997
+        ],
+        [
+          1265,
+          271079.76
+        ],
+        [
+          154,
+          269641.42
+        ],
+        [
+          1295,
+          265566.56
+        ],
+        [
+          1523,
+          263158.9
+        ],
+        [
+          1635,
+          254834.56000000003
+        ],
+        [
+          1776,
+          234181.19999999998
+        ],
+        [
+          1097,
+          234113.55000000002
+        ],
+        [
+          1258,
+          233500.61000000002
+        ],
+        [
+          621,
+          233431.30000000002
+        ],
+        [
+          152,
+          229781.6
+        ],
+        [
+          278,
+          216372.84
+        ],
+        [
+          232,
+          211879.92
+        ],
+        [
+          1684,
+          201386.22
+        ],
+        [
+          1243,
+          199587.53999999998
+        ],
+        [
+          976,
+          197432.1
+        ],
+        [
+          819,
+          191475.90000000002
+        ],
+        [
+          1943,
+          191247.75999999998
+        ],
+        [
+          853,
+          189232.64
+        ],
+        [
+          400,
+          188941.19999999998
+        ],
+        [
+          639,
+          186533.28
+        ],
+        [
+          851,
+          184103.16
+        ],
+        [
+          909,
+          175099
+        ],
+        [
+          257,
+          169033.44
+        ],
+        [
+          1445,
+          164888.68
+        ],
+        [
+          1855,
+          164614.81
+        ],
+        [
+          1252,
+          158680.9
+        ],
+        [
+          1014,
+          156465.82
+        ],
+        [
+          1717,
+          148325.75
+        ],
+        [
+          1032,
+          146408.4
+        ],
+        [
+          780,
+          136296.26
+        ],
+        [
+          918,
+          135268.32
+        ],
+        [
+          690,
+          133826.88
+        ],
+        [
+          711,
+          113268.84
+        ],
+        [
+          332,
+          112181.3
+        ],
+        [
+          1596,
+          110565
+        ],
+        [
+          295,
+          97604.25
+        ]
+      ]
+    },
+    {
+      "number": 12,
+      "name": "Shipping modes",
+      "sql": "SELECT\n    l_shipmode,\n    sum(\n        CASE WHEN o_orderpriority = '1-URGENT'\n            OR o_orderpriority = '2-HIGH' THEN\n            1\n        ELSE\n            0\n        END) AS high_line_count,\n    sum(\n        CASE WHEN o_orderpriority \u003c\u003e '1-URGENT'\n            AND o_orderpriority \u003c\u003e '2-HIGH' THEN\n            1\n        ELSE\n            0\n        END) AS low_line_count\nFROM\n    orders JOIN lineitem ON o_orderkey = l_orderkey\nWHERE\n    o_orderkey = l_orderkey\n    AND l_shipmode IN ('MAIL', 'SHIP')\n    AND l_commitdate \u003c l_receiptdate\n    AND l_shipdate \u003c l_commitdate\n    AND l_receiptdate \u003e= '1994-01-01'\n    AND l_receiptdate \u003c '1995-01-01'\nGROUP BY\n    l_shipmode\nORDER BY\n    l_shipmode;\n",
+      "prepare_ms": 0.05732,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=orders",
+        "Rewind  table scan",
+        "Column  col=l_shipmode",
+        "Filter o_orderkey = l_orderkey AND *sql.InListExpr AND l_commitdate \u003c l_receiptdate AND l_shipdate \u003c l_commitdate AND l_receiptdate \u003e= 1994-01-01 AND l_receiptdate \u003c 1995-01-01 WHERE clause",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 208.450622,
+          "process_cpu_ms": 240.40999999999985,
+          "allocated_bytes": 86943296,
+          "allocations": 1002028,
+          "rows": 2
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 217.585689,
+          "process_cpu_ms": 250.3780000000006,
+          "allocated_bytes": 87006936,
+          "allocations": 1001689,
+          "rows": 2
+        },
+        {
+          "status": "ok",
+          "wall_ms": 216.967768,
+          "process_cpu_ms": 260.90300000000207,
+          "allocated_bytes": 86993064,
+          "allocations": 1001671,
+          "rows": 2
+        },
+        {
+          "status": "ok",
+          "wall_ms": 213.924158,
+          "process_cpu_ms": 244.4290000000001,
+          "allocated_bytes": 87007592,
+          "allocations": 1001690,
+          "rows": 2
+        }
+      ],
+      "min_ms": 213.924158,
+      "median_ms": 216.967768,
+      "columns": [
+        "l_shipmode",
+        "high_line_count",
+        "low_line_count"
+      ],
+      "results": [
+        [
+          "MAIL",
+          64,
+          86
+        ],
+        [
+          "SHIP",
+          61,
+          96
+        ]
+      ]
+    },
+    {
+      "number": 13,
+      "name": "Customer distribution",
+      "sql": "SELECT\n    c_count,\n    count(*) AS custdist\nFROM (\n    SELECT\n        c_custkey,\n        count(o_orderkey) AS c_count\n    FROM\n        customer\n    LEFT OUTER JOIN orders ON c_custkey = o_custkey\n    AND o_comment NOT LIKE '%special%requests%'\nGROUP BY\n    c_custkey) AS c_orders\nGROUP BY\n    c_count\nORDER BY\n    custdist DESC,\n    c_count DESC;\n",
+      "prepare_ms": 0.045,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=(subquery)",
+        "Rewind  table scan",
+        "Column  col=c_count",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 195.624503,
+          "process_cpu_ms": 232.84600000000137,
+          "allocated_bytes": 113034200,
+          "allocations": 1131195,
+          "rows": 32
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 195.973624,
+          "process_cpu_ms": 241.37900000000081,
+          "allocated_bytes": 113058776,
+          "allocations": 1131045,
+          "rows": 32
+        },
+        {
+          "status": "ok",
+          "wall_ms": 201.406121,
+          "process_cpu_ms": 242.80199999999968,
+          "allocated_bytes": 113025816,
+          "allocations": 1131002,
+          "rows": 32
+        },
+        {
+          "status": "ok",
+          "wall_ms": 201.03532,
+          "process_cpu_ms": 244.23899999999776,
+          "allocated_bytes": 113049016,
+          "allocations": 1131029,
+          "rows": 32
+        }
+      ],
+      "min_ms": 195.973624,
+      "median_ms": 201.03532,
+      "columns": [
+        "c_count",
+        "custdist"
+      ],
+      "results": [
+        [
+          0,
+          500
+        ],
+        [
+          10,
+          69
+        ],
+        [
+          9,
+          66
+        ],
+        [
+          11,
+          63
+        ],
+        [
+          12,
+          60
+        ],
+        [
+          8,
+          60
+        ],
+        [
+          14,
+          56
+        ],
+        [
+          13,
+          55
+        ],
+        [
+          21,
+          48
+        ],
+        [
+          20,
+          45
+        ],
+        [
+          7,
+          45
+        ],
+        [
+          18,
+          43
+        ],
+        [
+          19,
+          42
+        ],
+        [
+          17,
+          42
+        ],
+        [
+          16,
+          42
+        ],
+        [
+          15,
+          41
+        ],
+        [
+          22,
+          37
+        ],
+        [
+          24,
+          30
+        ],
+        [
+          6,
+          30
+        ],
+        [
+          23,
+          26
+        ],
+        [
+          25,
+          20
+        ],
+        [
+          5,
+          18
+        ],
+        [
+          26,
+          17
+        ],
+        [
+          27,
+          13
+        ],
+        [
+          29,
+          7
+        ],
+        [
+          28,
+          6
+        ],
+        [
+          4,
+          6
+        ],
+        [
+          31,
+          4
+        ],
+        [
+          3,
+          3
+        ],
+        [
+          32,
+          2
+        ],
+        [
+          30,
+          2
+        ],
+        [
+          2,
+          2
+        ]
+      ]
+    },
+    {
+      "number": 14,
+      "name": "Promotion effect",
+      "sql": "SELECT\n    100.00 * sum(\n        CASE WHEN p_type LIKE 'PROMO%' THEN\n            l_extendedprice * (1 - l_discount)\n        ELSE\n            0\n        END) / sum(l_extendedprice * (1 - l_discount)) AS promo_revenue\nFROM\n    lineitem JOIN part ON l_partkey = p_partkey\nWHERE\n    l_partkey = p_partkey\n    AND l_shipdate \u003e= '1995-09-01'\n    AND l_shipdate \u003c '1995-10-01';\n",
+      "prepare_ms": 0.0448,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=lineitem",
+        "Rewind  table scan",
+        "Filter l_partkey = p_partkey AND l_shipdate \u003e= 1995-09-01 AND l_shipdate \u003c 1995-10-01 WHERE clause",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 248.611702,
+          "process_cpu_ms": 300.8719999999994,
+          "allocated_bytes": 87127160,
+          "allocations": 1173531,
+          "rows": 1
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 250.654988,
+          "process_cpu_ms": 281.1320000000014,
+          "allocated_bytes": 87119824,
+          "allocations": 1173244,
+          "rows": 1
+        },
+        {
+          "status": "ok",
+          "wall_ms": 251.52255,
+          "process_cpu_ms": 308.9569999999985,
+          "allocated_bytes": 87120288,
+          "allocations": 1173247,
+          "rows": 1
+        },
+        {
+          "status": "ok",
+          "wall_ms": 248.201821,
+          "process_cpu_ms": 274.3179999999993,
+          "allocated_bytes": 87119712,
+          "allocations": 1173243,
+          "rows": 1
+        }
+      ],
+      "min_ms": 248.201821,
+      "median_ms": 250.654988,
+      "columns": [
+        "promo_revenue"
+      ],
+      "results": [
+        [
+          15.486545812284078
+        ]
+      ]
+    },
+    {
+      "number": 15,
+      "name": "Top supplier",
+      "sql": "SELECT\n    s_suppkey,\n    s_name,\n    s_address,\n    s_phone,\n    total_revenue\nFROM\n    supplier JOIN tpch_revenue ON s_suppkey = supplier_no\nWHERE\n    s_suppkey = supplier_no\n    AND total_revenue = (\n        SELECT\n            max(total_revenue)\n        FROM tpch_revenue)\nORDER BY\n    s_suppkey;\n",
+      "prepare_ms": 0.03728,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=supplier",
+        "Rewind  table scan",
+        "Column  col=s_suppkey",
+        "Column  col=s_name",
+        "Column  col=s_address",
+        "Column  col=s_phone",
+        "Column  col=total_revenue",
+        "Filter s_suppkey = supplier_no AND total_revenue = *sql.SubqueryExpr WHERE clause",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 148.504684,
+          "process_cpu_ms": 148.84799999999814,
+          "allocated_bytes": 14797048,
+          "allocations": 386054,
+          "rows": 1
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 150.710329,
+          "process_cpu_ms": 164.20799999999872,
+          "allocated_bytes": 14793816,
+          "allocations": 385880,
+          "rows": 1
+        },
+        {
+          "status": "ok",
+          "wall_ms": 149.476606,
+          "process_cpu_ms": 155.1820000000007,
+          "allocated_bytes": 14792432,
+          "allocations": 385874,
+          "rows": 1
+        },
+        {
+          "status": "ok",
+          "wall_ms": 150.239288,
+          "process_cpu_ms": 161.8650000000016,
+          "allocated_bytes": 14793576,
+          "allocations": 385881,
+          "rows": 1
+        }
+      ],
+      "min_ms": 149.476606,
+      "median_ms": 150.239288,
+      "columns": [
+        "s_suppkey",
+        "s_name",
+        "s_address",
+        "s_phone",
+        "total_revenue"
+      ],
+      "results": [
+        [
+          21,
+          "Supplier#000000021",
+          "TZoQwNFFO i,baXpbpin02,hvuhE,GRVIKm ",
+          "12-253-590-5816",
+          1161099.4635999997
+        ]
+      ]
+    },
+    {
+      "number": 16,
+      "name": "Parts supplier relationship",
+      "sql": "SELECT\n    p_brand,\n    p_type,\n    p_size,\n    count(DISTINCT ps_suppkey) AS supplier_cnt\nFROM\n    partsupp JOIN part ON p_partkey = ps_partkey\nWHERE\n    p_partkey = ps_partkey\n    AND p_brand \u003c\u003e 'Brand#45'\n    AND p_type NOT LIKE 'MEDIUM POLISHED%'\n    AND p_size IN (49, 14, 23, 45, 19, 3, 36, 9)\n    AND ps_suppkey NOT IN (\n        SELECT\n            s_suppkey\n        FROM\n            supplier\n        WHERE\n            s_comment LIKE '%Customer%Complaints%')\nGROUP BY\n    p_brand,\n    p_type,\n    p_size\nORDER BY\n    supplier_cnt DESC,\n    p_brand,\n    p_type,\n    p_size;\n",
+      "prepare_ms": 0.067041,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=partsupp",
+        "Rewind  table scan",
+        "Column  col=p_brand",
+        "Column  col=p_type",
+        "Column  col=p_size",
+        "Filter p_partkey = ps_partkey AND p_brand \u003c\u003e Brand#45 AND p_type NOT LIKE MEDIUM POLISHED% AND *sql.InListExpr AND ps_suppkey NOT IN *sql.SubqueryExpr WHERE clause",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 48.421024,
+          "process_cpu_ms": 60.31100000000151,
+          "allocated_bytes": 21203336,
+          "allocations": 274187,
+          "rows": 296
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 47.028781,
+          "process_cpu_ms": 47.13999999999942,
+          "allocated_bytes": 21194808,
+          "allocations": 273782,
+          "rows": 296
+        },
+        {
+          "status": "ok",
+          "wall_ms": 49.515868,
+          "process_cpu_ms": 58.04399999999805,
+          "allocated_bytes": 21192528,
+          "allocations": 273778,
+          "rows": 296
+        },
+        {
+          "status": "ok",
+          "wall_ms": 48.356345,
+          "process_cpu_ms": 57.125,
+          "allocated_bytes": 21209264,
+          "allocations": 273801,
+          "rows": 296
+        }
+      ],
+      "min_ms": 47.028781,
+      "median_ms": 48.356345,
+      "columns": [
+        "p_brand",
+        "p_type",
+        "p_size",
+        "supplier_cnt"
+      ],
+      "results": [
+        [
+          "Brand#14",
+          "PROMO BRUSHED STEEL",
+          9,
+          8
+        ],
+        [
+          "Brand#35",
+          "SMALL POLISHED COPPER",
+          14,
+          8
+        ],
+        [
+          "Brand#22",
+          "LARGE BURNISHED TIN",
+          36,
+          6
+        ],
+        [
+          "Brand#11",
+          "ECONOMY BURNISHED NICKEL",
+          49,
+          4
+        ],
+        [
+          "Brand#11",
+          "LARGE PLATED TIN",
+          23,
+          4
+        ],
+        [
+          "Brand#11",
+          "MEDIUM ANODIZED BRASS",
+          45,
+          4
+        ],
+        [
+          "Brand#11",
+          "MEDIUM BRUSHED BRASS",
+          45,
+          4
+        ],
+        [
+          "Brand#11",
+          "PROMO ANODIZED BRASS",
+          3,
+          4
+        ],
+        [
+          "Brand#11",
+          "PROMO ANODIZED BRASS",
+          49,
+          4
+        ],
+        [
+          "Brand#11",
+          "PROMO ANODIZED TIN",
+          45,
+          4
+        ],
+        [
+          "Brand#11",
+          "PROMO BURNISHED BRASS",
+          36,
+          4
+        ],
+        [
+          "Brand#11",
+          "SMALL ANODIZED TIN",
+          45,
+          4
+        ],
+        [
+          "Brand#11",
+          "SMALL PLATED COPPER",
+          45,
+          4
+        ],
+        [
+          "Brand#11",
+          "STANDARD POLISHED NICKEL",
+          45,
+          4
+        ],
+        [
+          "Brand#11",
+          "STANDARD POLISHED TIN",
+          45,
+          4
+        ],
+        [
+          "Brand#12",
+          "ECONOMY BURNISHED COPPER",
+          45,
+          4
+        ],
+        [
+          "Brand#12",
+          "LARGE ANODIZED TIN",
+          45,
+          4
+        ],
+        [
+          "Brand#12",
+          "LARGE BURNISHED BRASS",
+          19,
+          4
+        ],
+        [
+          "Brand#12",
+          "LARGE PLATED STEEL",
+          36,
+          4
+        ],
+        [
+          "Brand#12",
+          "MEDIUM PLATED BRASS",
+          23,
+          4
+        ],
+        [
+          "Brand#12",
+          "PROMO BRUSHED COPPER",
+          14,
+          4
+        ],
+        [
+          "Brand#12",
+          "PROMO BURNISHED BRASS",
+          49,
+          4
+        ],
+        [
+          "Brand#12",
+          "SMALL ANODIZED COPPER",
+          23,
+          4
+        ],
+        [
+          "Brand#12",
+          "STANDARD ANODIZED BRASS",
+          3,
+          4
+        ],
+        [
+          "Brand#12",
+          "STANDARD BURNISHED TIN",
+          23,
+          4
+        ],
+        [
+          "Brand#12",
+          "STANDARD PLATED STEEL",
+          36,
+          4
+        ],
+        [
+          "Brand#13",
+          "ECONOMY PLATED STEEL",
+          23,
+          4
+        ],
+        [
+          "Brand#13",
+          "ECONOMY POLISHED BRASS",
+          9,
+          4
+        ],
+        [
+          "Brand#13",
+          "ECONOMY POLISHED COPPER",
+          9,
+          4
+        ],
+        [
+          "Brand#13",
+          "LARGE ANODIZED TIN",
+          19,
+          4
+        ],
+        [
+          "Brand#13",
+          "LARGE BURNISHED TIN",
+          49,
+          4
+        ],
+        [
+          "Brand#13",
+          "LARGE POLISHED BRASS",
+          3,
+          4
+        ],
+        [
+          "Brand#13",
+          "MEDIUM ANODIZED STEEL",
+          36,
+          4
+        ],
+        [
+          "Brand#13",
+          "MEDIUM PLATED COPPER",
+          19,
+          4
+        ],
+        [
+          "Brand#13",
+          "PROMO BRUSHED COPPER",
+          49,
+          4
+        ],
+        [
+          "Brand#13",
+          "PROMO PLATED TIN",
+          19,
+          4
+        ],
+        [
+          "Brand#13",
+          "SMALL BRUSHED NICKEL",
+          19,
+          4
+        ],
+        [
+          "Brand#13",
+          "SMALL BURNISHED BRASS",
+          45,
+          4
+        ],
+        [
+          "Brand#14",
+          "ECONOMY ANODIZED STEEL",
+          19,
+          4
+        ],
+        [
+          "Brand#14",
+          "ECONOMY BURNISHED TIN",
+          23,
+          4
+        ],
+        [
+          "Brand#14",
+          "ECONOMY PLATED STEEL",
+          45,
+          4
+        ],
+        [
+          "Brand#14",
+          "ECONOMY PLATED TIN",
+          9,
+          4
+        ],
+        [
+          "Brand#14",
+          "LARGE ANODIZED NICKEL",
+          9,
+          4
+        ],
+        [
+          "Brand#14",
+          "LARGE BRUSHED NICKEL",
+          45,
+          4
+        ],
+        [
+          "Brand#14",
+          "SMALL ANODIZED NICKEL",
+          45,
+          4
+        ],
+        [
+          "Brand#14",
+          "SMALL BURNISHED COPPER",
+          14,
+          4
+        ],
+        [
+          "Brand#14",
+          "SMALL BURNISHED TIN",
+          23,
+          4
+        ],
+        [
+          "Brand#15",
+          "ECONOMY ANODIZED STEEL",
+          36,
+          4
+        ],
+        [
+          "Brand#15",
+          "ECONOMY BRUSHED BRASS",
+          36,
+          4
+        ],
+        [
+          "Brand#15",
+          "ECONOMY BURNISHED BRASS",
+          14,
+          4
+        ],
+        [
+          "Brand#15",
+          "ECONOMY PLATED STEEL",
+          45,
+          4
+        ],
+        [
+          "Brand#15",
+          "LARGE ANODIZED BRASS",
+          45,
+          4
+        ],
+        [
+          "Brand#15",
+          "LARGE ANODIZED COPPER",
+          3,
+          4
+        ],
+        [
+          "Brand#15",
+          "MEDIUM ANODIZED COPPER",
+          9,
+          4
+        ],
+        [
+          "Brand#15",
+          "MEDIUM PLATED TIN",
+          9,
+          4
+        ],
+        [
+          "Brand#15",
+          "PROMO POLISHED TIN",
+          49,
+          4
+        ],
+        [
+          "Brand#15",
+          "SMALL POLISHED STEEL",
+          19,
+          4
+        ],
+        [
+          "Brand#15",
+          "STANDARD BURNISHED STEEL",
+          45,
+          4
+        ],
+        [
+          "Brand#15",
+          "STANDARD PLATED NICKEL",
+          19,
+          4
+        ],
+        [
+          "Brand#15",
+          "STANDARD PLATED TIN",
+          3,
+          4
+        ],
+        [
+          "Brand#21",
+          "ECONOMY ANODIZED STEEL",
+          19,
+          4
+        ],
+        [
+          "Brand#21",
+          "ECONOMY BRUSHED TIN",
+          49,
+          4
+        ],
+        [
+          "Brand#21",
+          "LARGE BURNISHED COPPER",
+          19,
+          4
+        ],
+        [
+          "Brand#21",
+          "MEDIUM ANODIZED TIN",
+          9,
+          4
+        ],
+        [
+          "Brand#21",
+          "MEDIUM BURNISHED STEEL",
+          23,
+          4
+        ],
+        [
+          "Brand#21",
+          "PROMO BRUSHED STEEL",
+          23,
+          4
+        ],
+        [
+          "Brand#21",
+          "PROMO BURNISHED COPPER",
+          19,
+          4
+        ],
+        [
+          "Brand#21",
+          "STANDARD PLATED BRASS",
+          49,
+          4
+        ],
+        [
+          "Brand#21",
+          "STANDARD POLISHED TIN",
+          36,
+          4
+        ],
+        [
+          "Brand#22",
+          "ECONOMY BURNISHED NICKEL",
+          19,
+          4
+        ],
+        [
+          "Brand#22",
+          "LARGE ANODIZED STEEL",
+          3,
+          4
+        ],
+        [
+          "Brand#22",
+          "LARGE BURNISHED STEEL",
+          23,
+          4
+        ],
+        [
+          "Brand#22",
+          "LARGE BURNISHED STEEL",
+          45,
+          4
+        ],
+        [
+          "Brand#22",
+          "LARGE BURNISHED TIN",
+          45,
+          4
+        ],
+        [
+          "Brand#22",
+          "LARGE POLISHED NICKEL",
+          19,
+          4
+        ],
+        [
+          "Brand#22",
+          "MEDIUM ANODIZED TIN",
+          9,
+          4
+        ],
+        [
+          "Brand#22",
+          "MEDIUM BRUSHED BRASS",
+          14,
+          4
+        ],
+        [
+          "Brand#22",
+          "MEDIUM BRUSHED COPPER",
+          3,
+          4
+        ],
+        [
+          "Brand#22",
+          "MEDIUM BRUSHED COPPER",
+          45,
+          4
+        ],
+        [
+          "Brand#22",
+          "MEDIUM BURNISHED TIN",
+          19,
+          4
+        ],
+        [
+          "Brand#22",
+          "MEDIUM BURNISHED TIN",
+          23,
+          4
+        ],
+        [
+          "Brand#22",
+          "MEDIUM PLATED BRASS",
+          49,
+          4
+        ],
+        [
+          "Brand#22",
+          "PROMO BRUSHED BRASS",
+          9,
+          4
+        ],
+        [
+          "Brand#22",
+          "PROMO BRUSHED STEEL",
+          36,
+          4
+        ],
+        [
+          "Brand#22",
+          "SMALL BRUSHED NICKEL",
+          3,
+          4
+        ],
+        [
+          "Brand#22",
+          "SMALL BURNISHED STEEL",
+          23,
+          4
+        ],
+        [
+          "Brand#22",
+          "STANDARD PLATED NICKEL",
+          3,
+          4
+        ],
+        [
+          "Brand#22",
+          "STANDARD PLATED TIN",
+          19,
+          4
+        ],
+        [
+          "Brand#23",
+          "ECONOMY BRUSHED COPPER",
+          9,
+          4
+        ],
+        [
+          "Brand#23",
+          "LARGE ANODIZED COPPER",
+          14,
+          4
+        ],
+        [
+          "Brand#23",
+          "LARGE PLATED BRASS",
+          49,
+          4
+        ],
+        [
+          "Brand#23",
+          "MEDIUM BRUSHED NICKEL",
+          3,
+          4
+        ],
+        [
+          "Brand#23",
+          "PROMO ANODIZED COPPER",
+          19,
+          4
+        ],
+        [
+          "Brand#23",
+          "PROMO BURNISHED COPPER",
+          14,
+          4
+        ],
+        [
+          "Brand#23",
+          "PROMO POLISHED BRASS",
+          14,
+          4
+        ],
+        [
+          "Brand#23",
+          "SMALL BRUSHED BRASS",
+          49,
+          4
+        ],
+        [
+          "Brand#23",
+          "SMALL BRUSHED COPPER",
+          45,
+          4
+        ],
+        [
+          "Brand#23",
+          "SMALL BURNISHED COPPER",
+          49,
+          4
+        ],
+        [
+          "Brand#23",
+          "SMALL PLATED BRASS",
+          36,
+          4
+        ],
+        [
+          "Brand#23",
+          "SMALL POLISHED BRASS",
+          9,
+          4
+        ],
+        [
+          "Brand#23",
+          "STANDARD BRUSHED TIN",
+          3,
+          4
+        ],
+        [
+          "Brand#23",
+          "STANDARD PLATED BRASS",
+          9,
+          4
+        ],
+        [
+          "Brand#23",
+          "STANDARD PLATED STEEL",
+          36,
+          4
+        ],
+        [
+          "Brand#23",
+          "STANDARD PLATED TIN",
+          19,
+          4
+        ],
+        [
+          "Brand#24",
+          "ECONOMY BRUSHED BRASS",
+          36,
+          4
+        ],
+        [
+          "Brand#24",
+          "ECONOMY PLATED COPPER",
+          36,
+          4
+        ],
+        [
+          "Brand#24",
+          "LARGE PLATED NICKEL",
+          36,
+          4
+        ],
+        [
+          "Brand#24",
+          "MEDIUM PLATED STEEL",
+          19,
+          4
+        ],
+        [
+          "Brand#24",
+          "PROMO POLISHED BRASS",
+          14,
+          4
+        ],
+        [
+          "Brand#24",
+          "SMALL ANODIZED COPPER",
+          3,
+          4
+        ],
+        [
+          "Brand#24",
+          "STANDARD BRUSHED BRASS",
+          14,
+          4
+        ],
+        [
+          "Brand#24",
+          "STANDARD BRUSHED STEEL",
+          14,
+          4
+        ],
+        [
+          "Brand#24",
+          "STANDARD POLISHED NICKEL",
+          14,
+          4
+        ],
+        [
+          "Brand#25",
+          "ECONOMY BURNISHED TIN",
+          19,
+          4
+        ],
+        [
+          "Brand#25",
+          "ECONOMY PLATED NICKEL",
+          23,
+          4
+        ],
+        [
+          "Brand#25",
+          "LARGE ANODIZED NICKEL",
+          23,
+          4
+        ],
+        [
+          "Brand#25",
+          "LARGE BRUSHED NICKEL",
+          19,
+          4
+        ],
+        [
+          "Brand#25",
+          "LARGE BURNISHED TIN",
+          49,
+          4
+        ],
+        [
+          "Brand#25",
+          "MEDIUM BURNISHED NICKEL",
+          49,
+          4
+        ],
+        [
+          "Brand#25",
+          "MEDIUM PLATED BRASS",
+          45,
+          4
+        ],
+        [
+          "Brand#25",
+          "PROMO ANODIZED TIN",
+          3,
+          4
+        ],
+        [
+          "Brand#25",
+          "PROMO BURNISHED COPPER",
+          45,
+          4
+        ],
+        [
+          "Brand#25",
+          "PROMO PLATED NICKEL",
+          3,
+          4
+        ],
+        [
+          "Brand#25",
+          "SMALL BURNISHED COPPER",
+          3,
+          4
+        ],
+        [
+          "Brand#25",
+          "SMALL PLATED TIN",
+          36,
+          4
+        ],
+        [
+          "Brand#25",
+          "STANDARD ANODIZED TIN",
+          9,
+          4
+        ],
+        [
+          "Brand#25",
+          "STANDARD PLATED NICKEL",
+          36,
+          4
+        ],
+        [
+          "Brand#31",
+          "ECONOMY BURNISHED COPPER",
+          36,
+          4
+        ],
+        [
+          "Brand#31",
+          "ECONOMY PLATED STEEL",
+          23,
+          4
+        ],
+        [
+          "Brand#31",
+          "LARGE PLATED NICKEL",
+          14,
+          4
+        ],
+        [
+          "Brand#31",
+          "MEDIUM BURNISHED COPPER",
+          3,
+          4
+        ],
+        [
+          "Brand#31",
+          "MEDIUM PLATED TIN",
+          36,
+          4
+        ],
+        [
+          "Brand#31",
+          "PROMO ANODIZED NICKEL",
+          9,
+          4
+        ],
+        [
+          "Brand#31",
+          "PROMO POLISHED TIN",
+          23,
+          4
+        ],
+        [
+          "Brand#31",
+          "SMALL ANODIZED COPPER",
+          3,
+          4
+        ],
+        [
+          "Brand#31",
+          "SMALL ANODIZED COPPER",
+          45,
+          4
+        ],
+        [
+          "Brand#31",
+          "SMALL BRUSHED NICKEL",
+          23,
+          4
+        ],
+        [
+          "Brand#31",
+          "SMALL PLATED COPPER",
+          36,
+          4
+        ],
+        [
+          "Brand#32",
+          "ECONOMY ANODIZED COPPER",
+          36,
+          4
+        ],
+        [
+          "Brand#32",
+          "ECONOMY PLATED COPPER",
+          9,
+          4
+        ],
+        [
+          "Brand#32",
+          "LARGE ANODIZED STEEL",
+          14,
+          4
+        ],
+        [
+          "Brand#32",
+          "MEDIUM ANODIZED STEEL",
+          49,
+          4
+        ],
+        [
+          "Brand#32",
+          "MEDIUM BURNISHED BRASS",
+          9,
+          4
+        ],
+        [
+          "Brand#32",
+          "MEDIUM BURNISHED BRASS",
+          49,
+          4
+        ],
+        [
+          "Brand#32",
+          "PROMO BRUSHED STEEL",
+          23,
+          4
+        ],
+        [
+          "Brand#32",
+          "PROMO BURNISHED TIN",
+          45,
+          4
+        ],
+        [
+          "Brand#32",
+          "SMALL ANODIZED TIN",
+          9,
+          4
+        ],
+        [
+          "Brand#32",
+          "SMALL BRUSHED COPPER",
+          3,
+          4
+        ],
+        [
+          "Brand#32",
+          "SMALL PLATED COPPER",
+          45,
+          4
+        ],
+        [
+          "Brand#32",
+          "SMALL POLISHED STEEL",
+          36,
+          4
+        ],
+        [
+          "Brand#32",
+          "SMALL POLISHED TIN",
+          45,
+          4
+        ],
+        [
+          "Brand#32",
+          "STANDARD PLATED STEEL",
+          36,
+          4
+        ],
+        [
+          "Brand#33",
+          "ECONOMY BURNISHED COPPER",
+          14,
+          4
+        ],
+        [
+          "Brand#33",
+          "ECONOMY POLISHED BRASS",
+          14,
+          4
+        ],
+        [
+          "Brand#33",
+          "LARGE BRUSHED TIN",
+          36,
+          4
+        ],
+        [
+          "Brand#33",
+          "MEDIUM ANODIZED BRASS",
+          3,
+          4
+        ],
+        [
+          "Brand#33",
+          "MEDIUM BURNISHED COPPER",
+          14,
+          4
+        ],
+        [
+          "Brand#33",
+          "MEDIUM PLATED STEEL",
+          49,
+          4
+        ],
+        [
+          "Brand#33",
+          "PROMO PLATED STEEL",
+          49,
+          4
+        ],
+        [
+          "Brand#33",
+          "PROMO PLATED TIN",
+          49,
+          4
+        ],
+        [
+          "Brand#33",
+          "PROMO POLISHED STEEL",
+          9,
+          4
+        ],
+        [
+          "Brand#33",
+          "SMALL ANODIZED COPPER",
+          23,
+          4
+        ],
+        [
+          "Brand#33",
+          "SMALL BRUSHED STEEL",
+          3,
+          4
+        ],
+        [
+          "Brand#33",
+          "SMALL BURNISHED NICKEL",
+          3,
+          4
+        ],
+        [
+          "Brand#33",
+          "STANDARD PLATED NICKEL",
+          36,
+          4
+        ],
+        [
+          "Brand#34",
+          "ECONOMY ANODIZED TIN",
+          49,
+          4
+        ],
+        [
+          "Brand#34",
+          "LARGE ANODIZED BRASS",
+          23,
+          4
+        ],
+        [
+          "Brand#34",
+          "LARGE BRUSHED COPPER",
+          23,
+          4
+        ],
+        [
+          "Brand#34",
+          "LARGE BURNISHED TIN",
+          49,
+          4
+        ],
+        [
+          "Brand#34",
+          "LARGE PLATED BRASS",
+          45,
+          4
+        ],
+        [
+          "Brand#34",
+          "MEDIUM BRUSHED COPPER",
+          9,
+          4
+        ],
+        [
+          "Brand#34",
+          "MEDIUM BRUSHED TIN",
+          14,
+          4
+        ],
+        [
+          "Brand#34",
+          "MEDIUM BURNISHED NICKEL",
+          3,
+          4
+        ],
+        [
+          "Brand#34",
+          "SMALL ANODIZED STEEL",
+          23,
+          4
+        ],
+        [
+          "Brand#34",
+          "SMALL BRUSHED TIN",
+          9,
+          4
+        ],
+        [
+          "Brand#34",
+          "SMALL PLATED BRASS",
+          14,
+          4
+        ],
+        [
+          "Brand#34",
+          "STANDARD ANODIZED NICKEL",
+          36,
+          4
+        ],
+        [
+          "Brand#34",
+          "STANDARD BRUSHED TIN",
+          19,
+          4
+        ],
+        [
+          "Brand#34",
+          "STANDARD BURNISHED TIN",
+          23,
+          4
+        ],
+        [
+          "Brand#34",
+          "STANDARD PLATED NICKEL",
+          36,
+          4
+        ],
+        [
+          "Brand#35",
+          "PROMO BURNISHED BRASS",
+          3,
+          4
+        ],
+        [
+          "Brand#35",
+          "PROMO BURNISHED STEEL",
+          14,
+          4
+        ],
+        [
+          "Brand#35",
+          "PROMO PLATED BRASS",
+          19,
+          4
+        ],
+        [
+          "Brand#35",
+          "STANDARD ANODIZED NICKEL",
+          14,
+          4
+        ],
+        [
+          "Brand#35",
+          "STANDARD ANODIZED STEEL",
+          23,
+          4
+        ],
+        [
+          "Brand#35",
+          "STANDARD BRUSHED BRASS",
+          3,
+          4
+        ],
+        [
+          "Brand#35",
+          "STANDARD BRUSHED NICKEL",
+          49,
+          4
+        ],
+        [
+          "Brand#35",
+          "STANDARD PLATED STEEL",
+          14,
+          4
+        ],
+        [
+          "Brand#41",
+          "MEDIUM ANODIZED NICKEL",
+          9,
+          4
+        ],
+        [
+          "Brand#41",
+          "MEDIUM BRUSHED TIN",
+          9,
+          4
+        ],
+        [
+          "Brand#41",
+          "MEDIUM PLATED STEEL",
+          19,
+          4
+        ],
+        [
+          "Brand#41",
+          "PROMO ANODIZED NICKEL",
+          9,
+          4
+        ],
+        [
+          "Brand#41",
+          "SMALL ANODIZED STEEL",
+          45,
+          4
+        ],
+        [
+          "Brand#41",
+          "SMALL POLISHED COPPER",
+          14,
+          4
+        ],
+        [
+          "Brand#41",
+          "STANDARD ANODIZED NICKEL",
+          9,
+          4
+        ],
+        [
+          "Brand#41",
+          "STANDARD ANODIZED TIN",
+          36,
+          4
+        ],
+        [
+          "Brand#41",
+          "STANDARD ANODIZED TIN",
+          49,
+          4
+        ],
+        [
+          "Brand#41",
+          "STANDARD BRUSHED TIN",
+          45,
+          4
+        ],
+        [
+          "Brand#41",
+          "STANDARD PLATED TIN",
+          49,
+          4
+        ],
+        [
+          "Brand#42",
+          "ECONOMY BRUSHED COPPER",
+          14,
+          4
+        ],
+        [
+          "Brand#42",
+          "LARGE ANODIZED NICKEL",
+          49,
+          4
+        ],
+        [
+          "Brand#42",
+          "MEDIUM PLATED TIN",
+          45,
+          4
+        ],
+        [
+          "Brand#42",
+          "PROMO BRUSHED STEEL",
+          19,
+          4
+        ],
+        [
+          "Brand#42",
+          "PROMO BURNISHED TIN",
+          49,
+          4
+        ],
+        [
+          "Brand#42",
+          "PROMO PLATED STEEL",
+          19,
+          4
+        ],
+        [
+          "Brand#42",
+          "PROMO PLATED STEEL",
+          45,
+          4
+        ],
+        [
+          "Brand#42",
+          "STANDARD BURNISHED NICKEL",
+          49,
+          4
+        ],
+        [
+          "Brand#42",
+          "STANDARD PLATED COPPER",
+          19,
+          4
+        ],
+        [
+          "Brand#43",
+          "ECONOMY ANODIZED COPPER",
+          19,
+          4
+        ],
+        [
+          "Brand#43",
+          "ECONOMY ANODIZED NICKEL",
+          49,
+          4
+        ],
+        [
+          "Brand#43",
+          "ECONOMY PLATED TIN",
+          19,
+          4
+        ],
+        [
+          "Brand#43",
+          "ECONOMY POLISHED TIN",
+          45,
+          4
+        ],
+        [
+          "Brand#43",
+          "LARGE BURNISHED COPPER",
+          3,
+          4
+        ],
+        [
+          "Brand#43",
+          "LARGE POLISHED TIN",
+          45,
+          4
+        ],
+        [
+          "Brand#43",
+          "MEDIUM ANODIZED BRASS",
+          14,
+          4
+        ],
+        [
+          "Brand#43",
+          "MEDIUM ANODIZED COPPER",
+          36,
+          4
+        ],
+        [
+          "Brand#43",
+          "MEDIUM ANODIZED COPPER",
+          49,
+          4
+        ],
+        [
+          "Brand#43",
+          "MEDIUM BURNISHED TIN",
+          23,
+          4
+        ],
+        [
+          "Brand#43",
+          "PROMO BRUSHED BRASS",
+          36,
+          4
+        ],
+        [
+          "Brand#43",
+          "PROMO BURNISHED STEEL",
+          3,
+          4
+        ],
+        [
+          "Brand#43",
+          "PROMO POLISHED BRASS",
+          19,
+          4
+        ],
+        [
+          "Brand#43",
+          "SMALL BRUSHED NICKEL",
+          9,
+          4
+        ],
+        [
+          "Brand#43",
+          "SMALL POLISHED STEEL",
+          19,
+          4
+        ],
+        [
+          "Brand#43",
+          "STANDARD ANODIZED BRASS",
+          3,
+          4
+        ],
+        [
+          "Brand#43",
+          "STANDARD PLATED TIN",
+          14,
+          4
+        ],
+        [
+          "Brand#44",
+          "ECONOMY ANODIZED NICKEL",
+          36,
+          4
+        ],
+        [
+          "Brand#44",
+          "ECONOMY POLISHED NICKEL",
+          23,
+          4
+        ],
+        [
+          "Brand#44",
+          "LARGE ANODIZED BRASS",
+          19,
+          4
+        ],
+        [
+          "Brand#44",
+          "LARGE BRUSHED TIN",
+          3,
+          4
+        ],
+        [
+          "Brand#44",
+          "MEDIUM BRUSHED STEEL",
+          19,
+          4
+        ],
+        [
+          "Brand#44",
+          "MEDIUM BURNISHED COPPER",
+          45,
+          4
+        ],
+        [
+          "Brand#44",
+          "MEDIUM BURNISHED NICKEL",
+          23,
+          4
+        ],
+        [
+          "Brand#44",
+          "MEDIUM PLATED COPPER",
+          14,
+          4
+        ],
+        [
+          "Brand#44",
+          "SMALL ANODIZED COPPER",
+          23,
+          4
+        ],
+        [
+          "Brand#44",
+          "SMALL ANODIZED TIN",
+          45,
+          4
+        ],
+        [
+          "Brand#44",
+          "SMALL PLATED COPPER",
+          19,
+          4
+        ],
+        [
+          "Brand#44",
+          "STANDARD ANODIZED COPPER",
+          3,
+          4
+        ],
+        [
+          "Brand#44",
+          "STANDARD ANODIZED NICKEL",
+          36,
+          4
+        ],
+        [
+          "Brand#51",
+          "ECONOMY ANODIZED STEEL",
+          9,
+          4
+        ],
+        [
+          "Brand#51",
+          "ECONOMY PLATED NICKEL",
+          49,
+          4
+        ],
+        [
+          "Brand#51",
+          "ECONOMY POLISHED COPPER",
+          9,
+          4
+        ],
+        [
+          "Brand#51",
+          "ECONOMY POLISHED STEEL",
+          49,
+          4
+        ],
+        [
+          "Brand#51",
+          "LARGE BURNISHED BRASS",
+          19,
+          4
+        ],
+        [
+          "Brand#51",
+          "LARGE POLISHED STEEL",
+          19,
+          4
+        ],
+        [
+          "Brand#51",
+          "MEDIUM ANODIZED TIN",
+          14,
+          4
+        ],
+        [
+          "Brand#51",
+          "PROMO BRUSHED BRASS",
+          23,
+          4
+        ],
+        [
+          "Brand#51",
+          "PROMO POLISHED STEEL",
+          49,
+          4
+        ],
+        [
+          "Brand#51",
+          "SMALL BRUSHED TIN",
+          36,
+          4
+        ],
+        [
+          "Brand#51",
+          "SMALL POLISHED STEEL",
+          49,
+          4
+        ],
+        [
+          "Brand#51",
+          "STANDARD BRUSHED COPPER",
+          3,
+          4
+        ],
+        [
+          "Brand#51",
+          "STANDARD BRUSHED NICKEL",
+          19,
+          4
+        ],
+        [
+          "Brand#51",
+          "STANDARD BURNISHED COPPER",
+          19,
+          4
+        ],
+        [
+          "Brand#52",
+          "ECONOMY ANODIZED BRASS",
+          14,
+          4
+        ],
+        [
+          "Brand#52",
+          "ECONOMY ANODIZED COPPER",
+          36,
+          4
+        ],
+        [
+          "Brand#52",
+          "ECONOMY BURNISHED NICKEL",
+          19,
+          4
+        ],
+        [
+          "Brand#52",
+          "ECONOMY BURNISHED STEEL",
+          36,
+          4
+        ],
+        [
+          "Brand#52",
+          "ECONOMY PLATED TIN",
+          23,
+          4
+        ],
+        [
+          "Brand#52",
+          "LARGE BRUSHED NICKEL",
+          19,
+          4
+        ],
+        [
+          "Brand#52",
+          "LARGE BURNISHED TIN",
+          45,
+          4
+        ],
+        [
+          "Brand#52",
+          "LARGE PLATED STEEL",
+          9,
+          4
+        ],
+        [
+          "Brand#52",
+          "LARGE PLATED TIN",
+          9,
+          4
+        ],
+        [
+          "Brand#52",
+          "LARGE POLISHED NICKEL",
+          36,
+          4
+        ],
+        [
+          "Brand#52",
+          "MEDIUM BURNISHED TIN",
+          45,
+          4
+        ],
+        [
+          "Brand#52",
+          "SMALL ANODIZED NICKEL",
+          36,
+          4
+        ],
+        [
+          "Brand#52",
+          "SMALL ANODIZED STEEL",
+          9,
+          4
+        ],
+        [
+          "Brand#52",
+          "SMALL BRUSHED STEEL",
+          23,
+          4
+        ],
+        [
+          "Brand#52",
+          "SMALL BURNISHED NICKEL",
+          14,
+          4
+        ],
+        [
+          "Brand#52",
+          "STANDARD POLISHED STEEL",
+          19,
+          4
+        ],
+        [
+          "Brand#53",
+          "LARGE BURNISHED NICKEL",
+          23,
+          4
+        ],
+        [
+          "Brand#53",
+          "LARGE PLATED BRASS",
+          9,
+          4
+        ],
+        [
+          "Brand#53",
+          "LARGE PLATED STEEL",
+          49,
+          4
+        ],
+        [
+          "Brand#53",
+          "MEDIUM BRUSHED COPPER",
+          3,
+          4
+        ],
+        [
+          "Brand#53",
+          "MEDIUM BRUSHED STEEL",
+          45,
+          4
+        ],
+        [
+          "Brand#53",
+          "SMALL BRUSHED BRASS",
+          36,
+          4
+        ],
+        [
+          "Brand#53",
+          "STANDARD PLATED STEEL",
+          45,
+          4
+        ],
+        [
+          "Brand#54",
+          "ECONOMY ANODIZED BRASS",
+          9,
+          4
+        ],
+        [
+          "Brand#54",
+          "ECONOMY BRUSHED TIN",
+          19,
+          4
+        ],
+        [
+          "Brand#54",
+          "ECONOMY POLISHED BRASS",
+          49,
+          4
+        ],
+        [
+          "Brand#54",
+          "LARGE ANODIZED BRASS",
+          49,
+          4
+        ],
+        [
+          "Brand#54",
+          "LARGE BURNISHED BRASS",
+          49,
+          4
+        ],
+        [
+          "Brand#54",
+          "LARGE BURNISHED TIN",
+          14,
+          4
+        ],
+        [
+          "Brand#54",
+          "LARGE POLISHED BRASS",
+          19,
+          4
+        ],
+        [
+          "Brand#54",
+          "MEDIUM BURNISHED STEEL",
+          3,
+          4
+        ],
+        [
+          "Brand#54",
+          "SMALL BURNISHED STEEL",
+          19,
+          4
+        ],
+        [
+          "Brand#54",
+          "SMALL PLATED BRASS",
+          23,
+          4
+        ],
+        [
+          "Brand#54",
+          "SMALL PLATED TIN",
+          14,
+          4
+        ],
+        [
+          "Brand#55",
+          "LARGE BRUSHED NICKEL",
+          9,
+          4
+        ],
+        [
+          "Brand#55",
+          "LARGE PLATED TIN",
+          9,
+          4
+        ],
+        [
+          "Brand#55",
+          "LARGE POLISHED STEEL",
+          36,
+          4
+        ],
+        [
+          "Brand#55",
+          "MEDIUM BRUSHED TIN",
+          45,
+          4
+        ],
+        [
+          "Brand#55",
+          "PROMO BRUSHED STEEL",
+          36,
+          4
+        ],
+        [
+          "Brand#55",
+          "PROMO BURNISHED STEEL",
+          14,
+          4
+        ],
+        [
+          "Brand#55",
+          "SMALL PLATED COPPER",
+          45,
+          4
+        ],
+        [
+          "Brand#55",
+          "STANDARD ANODIZED BRASS",
+          36,
+          4
+        ],
+        [
+          "Brand#55",
+          "STANDARD BRUSHED COPPER",
+          3,
+          4
+        ],
+        [
+          "Brand#55",
+          "STANDARD BRUSHED STEEL",
+          19,
+          4
+        ]
+      ]
+    },
+    {
+      "number": 17,
+      "name": "Small quantity order revenue",
+      "sql": "SELECT\n    sum(l_extendedprice) / 7.0 AS avg_yearly\nFROM\n    lineitem JOIN part ON p_partkey = l_partkey\nWHERE\n    p_partkey = l_partkey\n    AND p_brand = 'Brand#23'\n    AND p_container = 'MED BOX'\n    AND l_quantity \u003c (\n        SELECT\n            0.2 * avg(l_quantity)\n        FROM\n            lineitem\n        WHERE\n            l_partkey = p_partkey);\n",
+      "prepare_ms": 0.04072,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=lineitem",
+        "Rewind  table scan",
+        "Filter p_partkey = l_partkey AND p_brand = Brand#23 AND p_container = MED BOX AND l_quantity \u003c *sql.SubqueryExpr WHERE clause",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 209.723466,
+          "process_cpu_ms": 247.42199999999866,
+          "allocated_bytes": 82742736,
+          "allocations": 1044076,
+          "rows": 1
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 208.263222,
+          "process_cpu_ms": 231.15999999999985,
+          "allocated_bytes": 82737368,
+          "allocations": 1043825,
+          "rows": 1
+        },
+        {
+          "status": "ok",
+          "wall_ms": 204.58613,
+          "process_cpu_ms": 235.7300000000032,
+          "allocated_bytes": 82736616,
+          "allocations": 1043820,
+          "rows": 1
+        },
+        {
+          "status": "ok",
+          "wall_ms": 202.053763,
+          "process_cpu_ms": 239.07300000000032,
+          "allocated_bytes": 82737032,
+          "allocations": 1043823,
+          "rows": 1
+        }
+      ],
+      "min_ms": 202.053763,
+      "median_ms": 204.58613,
+      "columns": [
+        "avg_yearly"
+      ],
+      "results": [
+        [
+          null
+        ]
+      ]
+    },
+    {
+      "number": 18,
+      "name": "Large volume customer",
+      "sql": "SELECT\n    c_name,\n    c_custkey,\n    o_orderkey,\n    o_orderdate,\n    o_totalprice,\n    sum(l_quantity)\nFROM\n    customer JOIN orders ON c_custkey = o_custkey JOIN lineitem ON o_orderkey = l_orderkey\nWHERE\n    o_orderkey IN (\n        SELECT\n            l_orderkey\n        FROM\n            lineitem\n        GROUP BY\n            l_orderkey\n        HAVING\n            sum(l_quantity) \u003e 300)\n    AND c_custkey = o_custkey\n    AND o_orderkey = l_orderkey\nGROUP BY\n    c_name,\n    c_custkey,\n    o_orderkey,\n    o_orderdate,\n    o_totalprice\nORDER BY\n    o_totalprice DESC,\n    o_orderdate\nLIMIT 100;\n",
+      "prepare_ms": 0.057401,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=customer",
+        "Rewind  table scan",
+        "Column  col=c_name",
+        "Column  col=c_custkey",
+        "Column  col=o_orderkey",
+        "Column  col=o_orderdate",
+        "Column  col=o_totalprice",
+        "Filter o_orderkey IN *sql.SubqueryExpr AND c_custkey = o_custkey AND o_orderkey = l_orderkey WHERE clause",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "Limit  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 231.758291,
+          "process_cpu_ms": 286.45500000000175,
+          "allocated_bytes": 112634560,
+          "allocations": 945297,
+          "rows": 2
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 232.775735,
+          "process_cpu_ms": 263.96399999999994,
+          "allocated_bytes": 112634928,
+          "allocations": 945021,
+          "rows": 2
+        },
+        {
+          "status": "ok",
+          "wall_ms": 234.80174,
+          "process_cpu_ms": 292.6319999999978,
+          "allocated_bytes": 112624544,
+          "allocations": 944969,
+          "rows": 2
+        },
+        {
+          "status": "ok",
+          "wall_ms": 232.653414,
+          "process_cpu_ms": 277.90499999999884,
+          "allocated_bytes": 112626256,
+          "allocations": 944981,
+          "rows": 2
+        }
+      ],
+      "min_ms": 232.653414,
+      "median_ms": 232.775735,
+      "columns": [
+        "c_name",
+        "c_custkey",
+        "o_orderkey",
+        "o_orderdate",
+        "o_totalprice",
+        "SUM"
+      ],
+      "results": [
+        [
+          "Customer#000000667",
+          667,
+          29158,
+          "1995-10-21",
+          439687.23,
+          305
+        ],
+        [
+          "Customer#000000178",
+          178,
+          6882,
+          "1997-04-09",
+          422359.65,
+          303
+        ]
+      ]
+    },
+    {
+      "number": 19,
+      "name": "Discounted revenue",
+      "sql": "SELECT\n    sum(l_extendedprice * (1 - l_discount)) AS revenue\nFROM\n    lineitem JOIN part ON p_partkey = l_partkey\nWHERE (p_partkey = l_partkey\n    AND p_brand = 'Brand#12'\n    AND p_container IN ('SM CASE', 'SM BOX', 'SM PACK', 'SM PKG')\n    AND l_quantity \u003e= 1\n    AND l_quantity \u003c= 1 + 10\n    AND p_size BETWEEN 1 AND 5\n    AND l_shipmode IN ('AIR', 'AIR REG')\n    AND l_shipinstruct = 'DELIVER IN PERSON')\n    OR (p_partkey = l_partkey\n        AND p_brand = 'Brand#23'\n        AND p_container IN ('MED BAG', 'MED BOX', 'MED PKG', 'MED PACK')\n        AND l_quantity \u003e= 10\n        AND l_quantity \u003c= 10 + 10\n        AND p_size BETWEEN 1 AND 10\n        AND l_shipmode IN ('AIR', 'AIR REG')\n        AND l_shipinstruct = 'DELIVER IN PERSON')\n    OR (p_partkey = l_partkey\n        AND p_brand = 'Brand#34'\n        AND p_container IN ('LG CASE', 'LG BOX', 'LG PACK', 'LG PKG')\n        AND l_quantity \u003e= 20\n        AND l_quantity \u003c= 20 + 10\n        AND p_size BETWEEN 1 AND 15\n        AND l_shipmode IN ('AIR', 'AIR REG')\n        AND l_shipinstruct = 'DELIVER IN PERSON');\n",
+      "prepare_ms": 0.134041,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=lineitem",
+        "Rewind  table scan",
+        "Filter p_partkey = l_partkey AND p_brand = Brand#12 AND *sql.InListExpr AND l_quantity \u003e= 1 AND l_quantity \u003c= 1 + 10 AND *sql.BetweenExpr AND *sql.InListExpr AND l_shipinstruct = DELIVER IN PERSON OR p_partkey = l_partkey AND p_brand = Brand#23 AND *sql.InListExpr AND l_quantity \u003e= 10 AND l_quantity \u003c= 10 + 10 AND *sql.BetweenExpr AND *sql.InListExpr AND l_shipinstruct = DELIVER IN PERSON OR p_partkey = l_partkey AND p_brand = Brand#34 AND *sql.InListExpr AND l_quantity \u003e= 20 AND l_quantity \u003c= 20 + 10 AND *sql.BetweenExpr AND *sql.InListExpr AND l_shipinstruct = DELIVER IN PERSON WHERE clause",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 757.869781,
+          "process_cpu_ms": 974.0099999999984,
+          "allocated_bytes": 400942912,
+          "allocations": 2075170,
+          "rows": 1
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 708.396913,
+          "process_cpu_ms": 905.4900000000016,
+          "allocated_bytes": 401002120,
+          "allocations": 2074249,
+          "rows": 1
+        },
+        {
+          "status": "ok",
+          "wall_ms": 690.847381,
+          "process_cpu_ms": 833.2860000000001,
+          "allocated_bytes": 401112984,
+          "allocations": 2074394,
+          "rows": 1
+        },
+        {
+          "status": "ok",
+          "wall_ms": 711.374082,
+          "process_cpu_ms": 907.2170000000006,
+          "allocated_bytes": 401077144,
+          "allocations": 2074349,
+          "rows": 1
+        }
+      ],
+      "min_ms": 690.847381,
+      "median_ms": 708.396913,
+      "columns": [
+        "revenue"
+      ],
+      "results": [
+        [
+          22923.028
+        ]
+      ]
+    },
+    {
+      "number": 20,
+      "name": "Potential part promotion",
+      "sql": "SELECT\n    s_name,\n    s_address\nFROM\n    supplier JOIN nation ON s_nationkey = n_nationkey\nWHERE\n    s_suppkey IN (\n        SELECT\n            ps_suppkey\n        FROM\n            partsupp\n        WHERE\n            ps_partkey IN (\n                SELECT\n                    p_partkey\n                FROM\n                    part\n                WHERE\n                    p_name LIKE 'forest%')\n                AND ps_availqty \u003e (\n                    SELECT\n                        0.5 * sum(l_quantity)\n                    FROM\n                        lineitem\n                    WHERE\n                        l_partkey = ps_partkey\n                        AND l_suppkey = ps_suppkey\n                        AND l_shipdate \u003e= '1994-01-01'\n                        AND l_shipdate \u003c '1995-01-01'))\n            AND s_nationkey = n_nationkey\n            AND n_name = 'CANADA'\n        ORDER BY\n            s_name;\n",
+      "prepare_ms": 0.0596,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=supplier",
+        "Rewind  table scan",
+        "Column  col=s_name",
+        "Column  col=s_address",
+        "Filter s_suppkey IN *sql.SubqueryExpr AND s_nationkey = n_nationkey AND n_name = CANADA WHERE clause",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 68.312324,
+          "process_cpu_ms": 68.41500000000087,
+          "allocated_bytes": 60864104,
+          "allocations": 289517,
+          "rows": 1
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 70.38397,
+          "process_cpu_ms": 70.5580000000009,
+          "allocated_bytes": 60618352,
+          "allocations": 288964,
+          "rows": 1
+        },
+        {
+          "status": "ok",
+          "wall_ms": 72.365775,
+          "process_cpu_ms": 104.84399999999732,
+          "allocated_bytes": 60564320,
+          "allocations": 288876,
+          "rows": 1
+        },
+        {
+          "status": "ok",
+          "wall_ms": 72.124975,
+          "process_cpu_ms": 98.51300000000265,
+          "allocated_bytes": 60586512,
+          "allocations": 288930,
+          "rows": 1
+        }
+      ],
+      "min_ms": 70.38397,
+      "median_ms": 72.124975,
+      "columns": [
+        "s_name",
+        "s_address"
+      ],
+      "results": [
+        [
+          "Supplier#000000013",
+          "kgTZjbt4CAa4c3SlirlBLqIL41YbCj"
+        ]
+      ]
+    },
+    {
+      "number": 21,
+      "name": "Suppliers who kept orders waiting",
+      "sql": "SELECT\n    s_name,\n    count(*) AS numwait\nFROM\n    supplier JOIN lineitem l1 ON s_suppkey = l1.l_suppkey JOIN orders ON o_orderkey = l1.l_orderkey JOIN nation ON s_nationkey = n_nationkey\nWHERE\n    s_suppkey = l1.l_suppkey\n    AND o_orderkey = l1.l_orderkey\n    AND o_orderstatus = 'F'\n    AND l1.l_receiptdate \u003e l1.l_commitdate\n    AND EXISTS (\n        SELECT\n            *\n        FROM\n            lineitem l2\n        WHERE\n            l2.l_orderkey = l1.l_orderkey\n            AND l2.l_suppkey \u003c\u003e l1.l_suppkey)\n    AND NOT EXISTS (\n        SELECT\n            *\n        FROM\n            lineitem l3\n        WHERE\n            l3.l_orderkey = l1.l_orderkey\n            AND l3.l_suppkey \u003c\u003e l1.l_suppkey\n            AND l3.l_receiptdate \u003e l3.l_commitdate)\n    AND s_nationkey = n_nationkey\n    AND n_name = 'SAUDI ARABIA'\nGROUP BY\n    s_name\nORDER BY\n    numwait DESC,\n    s_name\nLIMIT 100;\n",
+      "prepare_ms": 0.0772,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=supplier",
+        "Rewind  table scan",
+        "Column  col=s_name",
+        "Filter s_suppkey = l1.l_suppkey AND o_orderkey = l1.l_orderkey AND o_orderstatus = F AND l1.l_receiptdate \u003e l1.l_commitdate AND *sql.ExistsExpr AND *sql.ExistsExpr AND s_nationkey = n_nationkey AND n_name = SAUDI ARABIA WHERE clause",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "Limit  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 443.036161,
+          "process_cpu_ms": 565.4540000000015,
+          "allocated_bytes": 247708248,
+          "allocations": 1308261,
+          "rows": 1
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 457.998326,
+          "process_cpu_ms": 585.5169999999998,
+          "allocated_bytes": 247633112,
+          "allocations": 1307686,
+          "rows": 1
+        },
+        {
+          "status": "ok",
+          "wall_ms": 460.017612,
+          "process_cpu_ms": 590.4569999999985,
+          "allocated_bytes": 247745176,
+          "allocations": 1307812,
+          "rows": 1
+        },
+        {
+          "status": "ok",
+          "wall_ms": 459.114849,
+          "process_cpu_ms": 557.7199999999975,
+          "allocated_bytes": 247662248,
+          "allocations": 1307697,
+          "rows": 1
+        }
+      ],
+      "min_ms": 457.998326,
+      "median_ms": 459.114849,
+      "columns": [
+        "s_name",
+        "numwait"
+      ],
+      "results": [
+        [
+          "Supplier#000000074",
+          9
+        ]
+      ]
+    },
+    {
+      "number": 22,
+      "name": "Global sales opportunity",
+      "sql": "SELECT\n    cntrycode,\n    count(*) AS numcust,\n    sum(c_acctbal) AS totacctbal\nFROM (\n    SELECT\n        SUBSTR(c_phone, 1, 2) AS cntrycode,\n        c_acctbal\n    FROM\n        customer\n    WHERE\n        SUBSTR(c_phone, 1, 2) IN ('13', '31', '23', '29', '30', '18', '17')\n        AND c_acctbal \u003e (\n            SELECT\n                avg(c_acctbal)\n            FROM\n                customer\n            WHERE\n                c_acctbal \u003e 0.00\n                AND SUBSTR(c_phone, 1, 2) IN ('13', '31', '23', '29', '30', '18', '17'))\n            AND NOT EXISTS (\n                SELECT\n                    *\n                FROM\n                    orders\n                WHERE\n                    o_custkey = c_custkey)) AS custsale\nGROUP BY\n    cntrycode\nORDER BY\n    cntrycode;\n",
+      "prepare_ms": 0.07072,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=(subquery)",
+        "Rewind  table scan",
+        "Column  col=cntrycode",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 27.690243,
+          "process_cpu_ms": 29.804000000000087,
+          "allocated_bytes": 17114480,
+          "allocations": 103127,
+          "rows": 7
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 28.925847,
+          "process_cpu_ms": 38.265000000003056,
+          "allocated_bytes": 17105848,
+          "allocations": 102575,
+          "rows": 7
+        },
+        {
+          "status": "ok",
+          "wall_ms": 29.034366,
+          "process_cpu_ms": 38.237999999997555,
+          "allocated_bytes": 17097192,
+          "allocations": 102559,
+          "rows": 7
+        },
+        {
+          "status": "ok",
+          "wall_ms": 27.529522,
+          "process_cpu_ms": 28.820999999999913,
+          "allocated_bytes": 17106000,
+          "allocations": 102584,
+          "rows": 7
+        }
+      ],
+      "min_ms": 27.529522,
+      "median_ms": 28.925847,
+      "columns": [
+        "cntrycode",
+        "numcust",
+        "totacctbal"
+      ],
+      "results": [
+        [
+          "13",
+          10,
+          75359.29
+        ],
+        [
+          "17",
+          8,
+          62288.98
+        ],
+        [
+          "18",
+          14,
+          111072.44999999998
+        ],
+        [
+          "23",
+          5,
+          40458.86
+        ],
+        [
+          "29",
+          11,
+          88722.85
+        ],
+        [
+          "30",
+          17,
+          122189.33000000002
+        ],
+        [
+          "31",
+          8,
+          66313.16
+        ]
+      ]
+    }
+  ]
+}

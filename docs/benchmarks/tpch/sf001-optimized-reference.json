@@ -1,0 +1,226 @@
+{
+  "sqlite_version": "3.45.1",
+  "data_directory": "/tmp/godb/tpch-sf001",
+  "queries": [
+    {
+      "number": 1,
+      "sqlite_ms": 7.221420295536518,
+      "rows": 4,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "/tmp/godb/tpch-duckdb-sf001.json": "pass"
+      }
+    },
+    {
+      "number": 2,
+      "sqlite_ms": 0.20904093980789185,
+      "rows": 0,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "/tmp/godb/tpch-duckdb-sf001.json": "pass"
+      }
+    },
+    {
+      "number": 3,
+      "sqlite_ms": 0.47620106488466263,
+      "rows": 8,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "/tmp/godb/tpch-duckdb-sf001.json": "pass"
+      }
+    },
+    {
+      "number": 4,
+      "sqlite_ms": 0.18048007041215897,
+      "rows": 5,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "/tmp/godb/tpch-duckdb-sf001.json": "pass"
+      }
+    },
+    {
+      "number": 5,
+      "sqlite_ms": 0.42720139026641846,
+      "rows": 0,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "/tmp/godb/tpch-duckdb-sf001.json": "pass"
+      }
+    },
+    {
+      "number": 6,
+      "sqlite_ms": 0.417160801589489,
+      "rows": 1,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "/tmp/godb/tpch-duckdb-sf001.json": "pass"
+      }
+    },
+    {
+      "number": 7,
+      "sqlite_ms": 2.1103257313370705,
+      "rows": 0,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "/tmp/godb/tpch-duckdb-sf001.json": "pass"
+      }
+    },
+    {
+      "number": 8,
+      "sqlite_ms": 0.2650003880262375,
+      "rows": 2,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "/tmp/godb/tpch-duckdb-sf001.json": "pass"
+      }
+    },
+    {
+      "number": 9,
+      "sqlite_ms": 1.4574453234672546,
+      "rows": 60,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "/tmp/godb/tpch-duckdb-sf001.json": "pass"
+      }
+    },
+    {
+      "number": 10,
+      "sqlite_ms": 0.5911625921726227,
+      "rows": 20,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "/tmp/godb/tpch-duckdb-sf001.json": "pass"
+      }
+    },
+    {
+      "number": 11,
+      "sqlite_ms": 0.25984086096286774,
+      "rows": 0,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "/tmp/godb/tpch-duckdb-sf001.json": "pass"
+      }
+    },
+    {
+      "number": 12,
+      "sqlite_ms": 0.5229618400335312,
+      "rows": 2,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "/tmp/godb/tpch-duckdb-sf001.json": "pass"
+      }
+    },
+    {
+      "number": 13,
+      "sqlite_ms": 1.041642390191555,
+      "rows": 27,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "/tmp/godb/tpch-duckdb-sf001.json": "pass"
+      }
+    },
+    {
+      "number": 14,
+      "sqlite_ms": 0.14991965144872665,
+      "rows": 1,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "/tmp/godb/tpch-duckdb-sf001.json": "pass"
+      }
+    },
+    {
+      "number": 15,
+      "sqlite_ms": 0.38640107959508896,
+      "rows": 1,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "/tmp/godb/tpch-duckdb-sf001.json": "pass"
+      }
+    },
+    {
+      "number": 16,
+      "sqlite_ms": 0.35992078483104706,
+      "rows": 34,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "/tmp/godb/tpch-duckdb-sf001.json": "pass"
+      }
+    },
+    {
+      "number": 17,
+      "sqlite_ms": 0.08108094334602356,
+      "rows": 1,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "/tmp/godb/tpch-duckdb-sf001.json": "pass"
+      }
+    },
+    {
+      "number": 18,
+      "sqlite_ms": 1.6043251380324364,
+      "rows": 0,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "/tmp/godb/tpch-duckdb-sf001.json": "pass"
+      }
+    },
+    {
+      "number": 19,
+      "sqlite_ms": 0.2446817234158516,
+      "rows": 1,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "/tmp/godb/tpch-duckdb-sf001.json": "pass"
+      }
+    },
+    {
+      "number": 20,
+      "sqlite_ms": 0.15415996313095093,
+      "rows": 0,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "/tmp/godb/tpch-duckdb-sf001.json": "pass"
+      }
+    },
+    {
+      "number": 21,
+      "sqlite_ms": 3.552330657839775,
+      "rows": 0,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "/tmp/godb/tpch-duckdb-sf001.json": "pass"
+      }
+    },
+    {
+      "number": 22,
+      "sqlite_ms": 0.21956022828817368,
+      "rows": 7,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "/tmp/godb/tpch-duckdb-sf001.json": "pass"
+      }
+    }
+  ]
+}

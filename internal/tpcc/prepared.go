@@ -1,8 +1,8 @@
-package main
+package tpcc
 
 import (
 	"fmt"
-	"slopdb/db"
+
 	"strconv"
 	"strings"
 )
@@ -38,12 +38,12 @@ const (
 
 type preparedStatements struct {
 	enabled     bool
-	statements  map[string]*db.Stmt
+	statements  map[string]Statement
 	stockCounts []string
 }
 
-func prepareWorkload(database *db.Database, c config) (*preparedStatements, error) {
-	p := &preparedStatements{enabled: c.Prepared, statements: make(map[string]*db.Stmt), stockCounts: make([]string, min(c.Items, 300)+1)}
+func prepareWorkload(database Database, c Config) (*preparedStatements, error) {
+	p := &preparedStatements{enabled: c.Prepared, statements: make(map[string]Statement), stockCounts: make([]string, min(c.Items, 300)+1)}
 	templates := []string{warehouseRead, customerRead, districtLock, districtNext, orderInsert, pendingInsert, itemRead, stockLock, stockUpdate, lineInsert, orderTotal, warehousePay, districtPay, customerPay, historyInsert, lastOrder, orderLines, pendingLock, pendingDelete, orderCustomer, orderCarrier, lineSum, lineDelivered, customerDelivery, districtRead, recentItems, "COMMIT"}
 	// Twenty recent orders have at most 300 lines. Prepare every IN-list arity
 	// before timing, so even stock-level never parses SQL inside the workload.
@@ -60,6 +60,10 @@ func prepareWorkload(database *db.Database, c config) (*preparedStatements, erro
 			}
 			p.statements[query] = stmt
 		}
+	}
+	if err := database.SetupWorkers(c.Workers, templates, c.Prepared); err != nil {
+		p.Close()
+		return nil, err
 	}
 	return p, nil
 }

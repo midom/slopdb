@@ -1,0 +1,101 @@
+{
+  "measured_on": "2026-10-11",
+  "workload": "reduced TPC-C-like (not compliant TPC-C)",
+  "config": {
+    "workers": 10,
+    "duration_ns": 60000000000,
+    "warehouses": 2,
+    "districts_per_warehouse": 10,
+    "customers_per_district": 100,
+    "items": 1000,
+    "seed": 42,
+    "max_retries": 5,
+    "lock_timeout_ns": 250000000,
+    "transaction_timeout_ns": 5000000000,
+    "prepared_statements": true,
+    "wal_fsync": false
+  },
+  "engines": {
+    "slopdb": {
+      "report": "slopdb-comparison.json",
+      "committed": 133339,
+      "failed": 0,
+      "expected_rollbacks": 582,
+      "canceled_at_shutdown": 8,
+      "retries": 0,
+      "transactions_per_second": 2222.3137989929405,
+      "mean_ms": 4.477410924515725,
+      "p50_ms": 2.910208,
+      "p95_ms": 14.833685,
+      "p99_ms": 24.452233,
+      "max_ms": 83.950931,
+      "engine_info": {
+        "deadlock_detection": true,
+        "engine": "slopdb",
+        "storage": "disk",
+        "transaction_mode": "READ COMMITTED, row locking",
+        "wal": true,
+        "wal_fsync": false
+      }
+    },
+    "sqlite": {
+      "report": "sqlite-comparison.json",
+      "committed": 159838,
+      "failed": 0,
+      "expected_rollbacks": 670,
+      "canceled_at_shutdown": 10,
+      "retries": 1071,
+      "transactions_per_second": 2663.963850812477,
+      "mean_ms": 3.7238149639072153,
+      "p50_ms": 0.368281,
+      "p95_ms": 1.198764,
+      "p99_ms": 104.821233,
+      "max_ms": 1225.763863,
+      "engine_info": {
+        "busy_timeout_ms": 250,
+        "driver": "github.com/mattn/go-sqlite3 v1.14.43",
+        "engine": "sqlite",
+        "journal_mode": "wal",
+        "prepared_per_worker": true,
+        "storage": "disk",
+        "synchronous": "OFF",
+        "transaction_mode": "BEGIN IMMEDIATE for writers; BEGIN for read-only transactions",
+        "version": "3.51.3",
+        "wal_fsync": false
+      }
+    },
+    "duckdb": {
+      "report": "duckdb-comparison.json",
+      "committed": 14225,
+      "failed": 372,
+      "expected_rollbacks": 64,
+      "canceled_at_shutdown": 10,
+      "retries": 10401,
+      "transactions_per_second": 237.08276016600374,
+      "mean_ms": 38.069111685905106,
+      "p50_ms": 17.490172,
+      "p95_ms": 126.125297,
+      "p99_ms": 206.640618,
+      "max_ms": 332.777634,
+      "engine_info": {
+        "driver": "github.com/duckdb/duckdb-go/v2 v2.10506.0",
+        "engine": "duckdb",
+        "memory_limit": "1GB",
+        "prepared_per_worker": true,
+        "storage": "disk",
+        "threads": 1,
+        "transaction_mode": "snapshot isolation; optimistic write conflict retries",
+        "version": "v1.5.6",
+        "wal_fsync": false,
+        "wal_fsync_calls_skipped": 13108,
+        "wal_fsync_mode": "benchmark-only LD_PRELOAD bypass for exact WAL path; checkpoint sync unchanged"
+      }
+    }
+  },
+  "ratios": {
+    "sqlite_vs_slopdb_tps": 1.198734333566967,
+    "slopdb_vs_duckdb_tps": 9.373578228281515,
+    "sqlite_vs_duckdb_tps": 11.236430050616873,
+    "sqlite_vs_slopdb_p99": 4.286775485903476
+  }
+}

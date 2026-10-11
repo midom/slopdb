@@ -1,0 +1,326 @@
+{
+  "config": {
+    "data_directory": "/tmp/godb/tpch-sf01",
+    "database_directory": "/tmp/slopdb-tpch-954049251",
+    "report_file": "/tmp/godb/tpch-sf01-scans.json",
+    "query_selection": "1,6",
+    "runs": 3,
+    "warmups": 1,
+    "query_timeout_ns": 10000000000,
+    "prepared_statements": true,
+    "secondary_indexes": true,
+    "wal_fsync": false
+  },
+  "started_at": "2026-10-11T17:48:34.448870967Z",
+  "go_version": "go1.22.2",
+  "platform": "linux/arm64",
+  "cpus": 4,
+  "data_manifest": {
+    "generator": "DuckDB TPC-H extension DBGEN",
+    "duckdb_version": "1.5.6",
+    "scale_factor": 0.01,
+    "rows": {
+      "region": 5,
+      "nation": 25,
+      "supplier": 100,
+      "customer": 1500,
+      "part": 2000,
+      "partsupp": 8000,
+      "orders": 15000,
+      "lineitem": 60175
+    },
+    "sha256": {
+      "region": "2b12cdddbe69a491b2bf6bea9bc33d4781c56fa4c5cb7f9702860618221c85f2",
+      "nation": "7986406c8b57b41e274247d514dc2e837769073533e1f7fe3463767798367ec6",
+      "supplier": "1616ce014a17ff8e825795f7a343af1582cce81437ace88416c90fa753732030",
+      "customer": "cb51fb2628146829ca0307c0a3e8198fa48aa96d4d87eb4da930b5089196d38c",
+      "part": "291ced66c49d7c387fdba61b14682c3ddff4fca173d3cc178945008854071680",
+      "partsupp": "171d4b70266dc7922d6ea5c81a19778cb1a74c3f876b8d2e920ff7f1ee6aee1c",
+      "orders": "8615292d30469b6b57ab21a00fa3ad6e80ef1a3cd3b8c76ff5f5544f991e8913",
+      "lineitem": "399683ecadd155215812d07e6bf072cd574700ea9a071eee47fd35a95accd44e"
+    },
+    "columns": {
+      "region": [
+        "r_regionkey",
+        "r_name",
+        "r_comment"
+      ],
+      "nation": [
+        "n_nationkey",
+        "n_name",
+        "n_regionkey",
+        "n_comment"
+      ],
+      "supplier": [
+        "s_suppkey",
+        "s_name",
+        "s_address",
+        "s_nationkey",
+        "s_phone",
+        "s_acctbal",
+        "s_comment"
+      ],
+      "customer": [
+        "c_custkey",
+        "c_name",
+        "c_address",
+        "c_nationkey",
+        "c_phone",
+        "c_acctbal",
+        "c_mktsegment",
+        "c_comment"
+      ],
+      "part": [
+        "p_partkey",
+        "p_name",
+        "p_mfgr",
+        "p_brand",
+        "p_type",
+        "p_size",
+        "p_container",
+        "p_retailprice",
+        "p_comment"
+      ],
+      "partsupp": [
+        "ps_partkey",
+        "ps_suppkey",
+        "ps_availqty",
+        "ps_supplycost",
+        "ps_comment"
+      ],
+      "orders": [
+        "o_orderkey",
+        "o_custkey",
+        "o_orderstatus",
+        "o_totalprice",
+        "o_orderdate",
+        "o_orderpriority",
+        "o_clerk",
+        "o_shippriority",
+        "o_comment"
+      ],
+      "lineitem": [
+        "l_orderkey",
+        "l_partkey",
+        "l_suppkey",
+        "l_linenumber",
+        "l_quantity",
+        "l_extendedprice",
+        "l_discount",
+        "l_tax",
+        "l_returnflag",
+        "l_linestatus",
+        "l_shipdate",
+        "l_commitdate",
+        "l_receiptdate",
+        "l_shipinstruct",
+        "l_shipmode",
+        "l_comment"
+      ]
+    },
+    "generate_seconds": 0.31556524708867073
+  },
+  "table_rows": {
+    "customer": 1500,
+    "lineitem": 60175,
+    "nation": 25,
+    "orders": 15000,
+    "part": 2000,
+    "partsupp": 8000,
+    "region": 5,
+    "supplier": 100
+  },
+  "load_seconds": 4.5237274880000005,
+  "reopen_seconds": 0.001415524,
+  "database_bytes_after_load": 13706393,
+  "counts_verified_after_reopen": true,
+  "run_seconds": 3.916913946,
+  "successful_executions": 6,
+  "timed_out_executions": 0,
+  "failed_executions": 0,
+  "process_peak_rss_kib": 459816,
+  "queries": [
+    {
+      "number": 1,
+      "name": "Pricing summary",
+      "sql": "SELECT\n    l_returnflag,\n    l_linestatus,\n    sum(l_quantity) AS sum_qty,\n    sum(l_extendedprice) AS sum_base_price,\n    sum(l_extendedprice * (1 - l_discount)) AS sum_disc_price,\n    sum(l_extendedprice * (1 - l_discount) * (1 + l_tax)) AS sum_charge,\n    avg(l_quantity) AS avg_qty,\n    avg(l_extendedprice) AS avg_price,\n    avg(l_discount) AS avg_disc,\n    count(*) AS count_order\nFROM\n    lineitem\nWHERE\n    l_shipdate \u003c= '1998-09-02'\nGROUP BY\n    l_returnflag,\n    l_linestatus\nORDER BY\n    l_returnflag,\n    l_linestatus;\n",
+      "prepare_ms": 0.0584,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=lineitem",
+        "Rewind  table scan",
+        "Column  col=l_returnflag",
+        "Column  col=l_linestatus",
+        "Filter l_shipdate \u003c= 1998-09-02 WHERE clause",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 856.993837,
+          "process_cpu_ms": 1226.6789999999992,
+          "allocated_bytes": 728065464,
+          "allocations": 1175097,
+          "rows": 4
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 678.758074,
+          "process_cpu_ms": 970.4079999999994,
+          "allocated_bytes": 709087464,
+          "allocations": 1161121,
+          "rows": 4
+        },
+        {
+          "status": "ok",
+          "wall_ms": 668.976686,
+          "process_cpu_ms": 956.2399999999998,
+          "allocated_bytes": 709348744,
+          "allocations": 1161546,
+          "rows": 4
+        },
+        {
+          "status": "ok",
+          "wall_ms": 700.489218,
+          "process_cpu_ms": 1062.9760000000006,
+          "allocated_bytes": 708981320,
+          "allocations": 1161023,
+          "rows": 4
+        }
+      ],
+      "min_ms": 668.976686,
+      "median_ms": 678.758074,
+      "columns": [
+        "l_returnflag",
+        "l_linestatus",
+        "sum_qty",
+        "sum_base_price",
+        "sum_disc_price",
+        "sum_charge",
+        "avg_qty",
+        "avg_price",
+        "avg_disc",
+        "count_order"
+      ],
+      "results": [
+        [
+          "A",
+          "F",
+          380456,
+          532348211.6499983,
+          505822441.486102,
+          526165934.0008392,
+          25.575154611454693,
+          35785.709306937235,
+          0.05008133906963965,
+          14876
+        ],
+        [
+          "N",
+          "F",
+          8971,
+          12384801.369999997,
+          11798257.208000004,
+          12282485.056933003,
+          25.778735632183906,
+          35588.509683908036,
+          0.04775862068965505,
+          348
+        ],
+        [
+          "N",
+          "O",
+          742802,
+          1041502841.4499979,
+          989737518.634604,
+          1029418531.5233523,
+          25.45498783454988,
+          35691.12920907432,
+          0.04993111956408442,
+          29181
+        ],
+        [
+          "R",
+          "F",
+          381449,
+          534594445.3499986,
+          507996454.4066988,
+          528524219.35890585,
+          25.597168165346933,
+          35874.00653268008,
+          0.049827539927524055,
+          14902
+        ]
+      ]
+    },
+    {
+      "number": 6,
+      "name": "Forecasting revenue",
+      "sql": "SELECT\n    sum(l_extendedprice * l_discount) AS revenue\nFROM\n    lineitem\nWHERE\n    l_shipdate \u003e= '1994-01-01'\n    AND l_shipdate \u003c '1995-01-01'\n    AND l_discount BETWEEN 0.05\n    AND 0.07\n    AND l_quantity \u003c 24;\n",
+      "prepare_ms": 0.03464,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=lineitem",
+        "Rewind  table scan",
+        "Filter l_shipdate \u003e= 1994-01-01 AND l_shipdate \u003c 1995-01-01 AND *sql.BetweenExpr AND l_quantity \u003c 24 WHERE clause",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 239.702945,
+          "process_cpu_ms": 314.53700000000026,
+          "allocated_bytes": 226751536,
+          "allocations": 692873,
+          "rows": 1
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 252.128501,
+          "process_cpu_ms": 345.4979999999996,
+          "allocated_bytes": 226775296,
+          "allocations": 692760,
+          "rows": 1
+        },
+        {
+          "status": "ok",
+          "wall_ms": 258.87092,
+          "process_cpu_ms": 397.21600000000035,
+          "allocated_bytes": 226730784,
+          "allocations": 692636,
+          "rows": 1
+        },
+        {
+          "status": "ok",
+          "wall_ms": 259.841083,
+          "process_cpu_ms": 388.3580000000002,
+          "allocated_bytes": 226761696,
+          "allocations": 692653,
+          "rows": 1
+        }
+      ],
+      "min_ms": 252.128501,
+      "median_ms": 258.87092,
+      "columns": [
+        "revenue"
+      ],
+      "results": [
+        [
+          1193053.2252999984
+        ]
+      ]
+    }
+  ]
+}

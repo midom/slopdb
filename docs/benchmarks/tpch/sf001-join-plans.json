@@ -1,0 +1,2594 @@
+{
+  "config": {
+    "data_directory": "/tmp/godb/tpch-sf001",
+    "database_directory": "/tmp/slopdb-tpch-3797291164",
+    "report_file": "/tmp/godb/tpch-after-joins-small.json",
+    "query_selection": "all",
+    "runs": 3,
+    "warmups": 1,
+    "query_timeout_ns": 10000000000,
+    "prepared_statements": true,
+    "secondary_indexes": true,
+    "wal_fsync": false
+  },
+  "started_at": "2026-10-11T20:16:37.972418175Z",
+  "go_version": "go1.22.2",
+  "platform": "linux/arm64",
+  "cpus": 4,
+  "data_manifest": {
+    "generator": "DuckDB TPC-H extension DBGEN",
+    "duckdb_version": "1.5.6",
+    "scale_factor": 0.001,
+    "rows": {
+      "region": 5,
+      "nation": 25,
+      "supplier": 10,
+      "customer": 150,
+      "part": 200,
+      "partsupp": 800,
+      "orders": 1500,
+      "lineitem": 6005
+    },
+    "sha256": {
+      "region": "2b12cdddbe69a491b2bf6bea9bc33d4781c56fa4c5cb7f9702860618221c85f2",
+      "nation": "7986406c8b57b41e274247d514dc2e837769073533e1f7fe3463767798367ec6",
+      "supplier": "1ce468cd4bfa9c9a6580f1a3711c300f438672f8a4c62f9b4a167d2760e83a81",
+      "customer": "52fe9def82aa1837dcb017044f0b87c0adb9d142e234748d505186ee15a5682b",
+      "part": "e644402b9b7ac7c98decf480c272b238e4845f2a835eb7566c95760cf526e957",
+      "partsupp": "0749c620c7d114ecfb553c34ff813603bd521efc999d3ae1300dfdbd93f6d096",
+      "orders": "322ed1edbc38903551aaef50b06d228668c0afcea106a3e8e05ee7706e56b056",
+      "lineitem": "022315ad9cb6596f47b8745928362d9fba99138562c59535b523a71bfdd02850"
+    },
+    "columns": {
+      "region": [
+        "r_regionkey",
+        "r_name",
+        "r_comment"
+      ],
+      "nation": [
+        "n_nationkey",
+        "n_name",
+        "n_regionkey",
+        "n_comment"
+      ],
+      "supplier": [
+        "s_suppkey",
+        "s_name",
+        "s_address",
+        "s_nationkey",
+        "s_phone",
+        "s_acctbal",
+        "s_comment"
+      ],
+      "customer": [
+        "c_custkey",
+        "c_name",
+        "c_address",
+        "c_nationkey",
+        "c_phone",
+        "c_acctbal",
+        "c_mktsegment",
+        "c_comment"
+      ],
+      "part": [
+        "p_partkey",
+        "p_name",
+        "p_mfgr",
+        "p_brand",
+        "p_type",
+        "p_size",
+        "p_container",
+        "p_retailprice",
+        "p_comment"
+      ],
+      "partsupp": [
+        "ps_partkey",
+        "ps_suppkey",
+        "ps_availqty",
+        "ps_supplycost",
+        "ps_comment"
+      ],
+      "orders": [
+        "o_orderkey",
+        "o_custkey",
+        "o_orderstatus",
+        "o_totalprice",
+        "o_orderdate",
+        "o_orderpriority",
+        "o_clerk",
+        "o_shippriority",
+        "o_comment"
+      ],
+      "lineitem": [
+        "l_orderkey",
+        "l_partkey",
+        "l_suppkey",
+        "l_linenumber",
+        "l_quantity",
+        "l_extendedprice",
+        "l_discount",
+        "l_tax",
+        "l_returnflag",
+        "l_linestatus",
+        "l_shipdate",
+        "l_commitdate",
+        "l_receiptdate",
+        "l_shipinstruct",
+        "l_shipmode",
+        "l_comment"
+      ]
+    },
+    "generate_seconds": 0.10302177909761667
+  },
+  "table_rows": {
+    "customer": 150,
+    "lineitem": 6005,
+    "nation": 25,
+    "orders": 1500,
+    "part": 200,
+    "partsupp": 800,
+    "region": 5,
+    "supplier": 10
+  },
+  "load_seconds": 0.406646233,
+  "reopen_seconds": 0.001184283,
+  "database_bytes_after_load": 3309094,
+  "counts_verified_after_reopen": true,
+  "setup_sql": "CREATE VIEW tpch_revenue AS     SELECT\n        l_suppkey AS supplier_no,\n        sum(l_extendedprice * (1 - l_discount)) AS total_revenue\n    FROM\n        lineitem\n    WHERE\n        l_shipdate \u003e= '1996-01-01'\n      AND l_shipdate \u003c '1996-04-01'\n    GROUP BY\n        supplier_no\n;\n",
+  "run_seconds": 1.473812348,
+  "successful_executions": 66,
+  "timed_out_executions": 0,
+  "failed_executions": 0,
+  "process_peak_rss_kib": 41532,
+  "queries": [
+    {
+      "number": 1,
+      "name": "Pricing summary",
+      "sql": "SELECT\n    l_returnflag,\n    l_linestatus,\n    sum(l_quantity) AS sum_qty,\n    sum(l_extendedprice) AS sum_base_price,\n    sum(l_extendedprice * (1 - l_discount)) AS sum_disc_price,\n    sum(l_extendedprice * (1 - l_discount) * (1 + l_tax)) AS sum_charge,\n    avg(l_quantity) AS avg_qty,\n    avg(l_extendedprice) AS avg_price,\n    avg(l_discount) AS avg_disc,\n    count(*) AS count_order\nFROM\n    lineitem\nWHERE\n    l_shipdate \u003c= '1998-09-02'\nGROUP BY\n    l_returnflag,\n    l_linestatus\nORDER BY\n    l_returnflag,\n    l_linestatus;\n",
+      "prepare_ms": 0.04708,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=lineitem",
+        "Rewind  table scan",
+        "Column  col=l_returnflag",
+        "Column  col=l_linestatus",
+        "Filter l_shipdate \u003c= 1998-09-02 WHERE clause",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 15.029965,
+          "process_cpu_ms": 16.163999999999987,
+          "allocated_bytes": 837888,
+          "allocations": 36627,
+          "rows": 4
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 15.132166,
+          "process_cpu_ms": 16.091000000000008,
+          "allocated_bytes": 829824,
+          "allocations": 36312,
+          "rows": 4
+        },
+        {
+          "status": "ok",
+          "wall_ms": 14.722645,
+          "process_cpu_ms": 15.802000000000021,
+          "allocated_bytes": 830216,
+          "allocations": 36315,
+          "rows": 4
+        },
+        {
+          "status": "ok",
+          "wall_ms": 14.567604,
+          "process_cpu_ms": 14.621999999999957,
+          "allocated_bytes": 829464,
+          "allocations": 36311,
+          "rows": 4
+        }
+      ],
+      "min_ms": 14.567604,
+      "median_ms": 14.722645,
+      "columns": [
+        "l_returnflag",
+        "l_linestatus",
+        "sum_qty",
+        "sum_base_price",
+        "sum_disc_price",
+        "sum_charge",
+        "avg_qty",
+        "avg_price",
+        "avg_disc",
+        "count_order"
+      ],
+      "results": [
+        [
+          "A",
+          "F",
+          37474,
+          37569624.63999998,
+          35676192.096999995,
+          37101416.22242404,
+          25.354533152909337,
+          25419.231826792948,
+          0.050866035182679493,
+          1478
+        ],
+        [
+          "N",
+          "F",
+          1041,
+          1041301.07,
+          999060.8979999998,
+          1036450.80228,
+          27.394736842105264,
+          27402.659736842103,
+          0.042894736842105284,
+          38
+        ],
+        [
+          "N",
+          "O",
+          75168,
+          75384955.36999969,
+          71653166.30340016,
+          74498798.13307281,
+          25.558653519211152,
+          25632.422771166166,
+          0.04969738184291069,
+          2941
+        ],
+        [
+          "R",
+          "F",
+          36511,
+          36570841.24,
+          34738472.87580004,
+          36169060.11219294,
+          25.059025394646532,
+          25100.09693891558,
+          0.050027453671928686,
+          1457
+        ]
+      ]
+    },
+    {
+      "number": 2,
+      "name": "Minimum cost supplier",
+      "sql": "SELECT\n    s_acctbal,\n    s_name,\n    n_name,\n    p_partkey,\n    p_mfgr,\n    s_address,\n    s_phone,\n    s_comment\nFROM\n    part JOIN partsupp ON p_partkey = ps_partkey JOIN supplier ON s_suppkey = ps_suppkey JOIN nation ON s_nationkey = n_nationkey JOIN region ON n_regionkey = r_regionkey\nWHERE\n    p_partkey = ps_partkey\n    AND s_suppkey = ps_suppkey\n    AND p_size = 15\n    AND p_type LIKE '%BRASS'\n    AND s_nationkey = n_nationkey\n    AND n_regionkey = r_regionkey\n    AND r_name = 'EUROPE'\n    AND ps_supplycost = (\n        SELECT\n            min(ps_supplycost)\n        FROM\n            partsupp JOIN supplier ON s_suppkey = ps_suppkey JOIN nation ON s_nationkey = n_nationkey JOIN region ON n_regionkey = r_regionkey\n        WHERE\n            p_partkey = ps_partkey\n            AND s_suppkey = ps_suppkey\n            AND s_nationkey = n_nationkey\n            AND n_regionkey = r_regionkey\n            AND r_name = 'EUROPE')\nORDER BY\n    s_acctbal DESC,\n    n_name,\n    s_name,\n    p_partkey\nLIMIT 100;\n",
+      "prepare_ms": 0.08932,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "JoinPlan supplier (scan/hash) -\u003e nation (equality join) -\u003e region (equality join) -\u003e partsupp (equality join) -\u003e part (bounded index) estimated order; selective input counts refine execution",
+        "JoinAccess SCAN supplier: index probes or hash input chosen by cardinality",
+        "JoinAccess PRIMARY nation: index probes or hash input chosen by cardinality",
+        "JoinAccess PRIMARY region: index probes or hash input chosen by cardinality",
+        "JoinAccess partsupp_supplier partsupp: index probes or hash input chosen by cardinality",
+        "JoinAccess PRIMARY part: index probes or hash input chosen by cardinality",
+        "Column  col=s_acctbal",
+        "Column  col=s_name",
+        "Column  col=n_name",
+        "Column  col=p_partkey",
+        "Column  col=p_mfgr",
+        "Column  col=s_address",
+        "Column  col=s_phone",
+        "Column  col=s_comment",
+        "Filter p_partkey = ps_partkey AND s_suppkey = ps_suppkey AND p_size = 15 AND p_type LIKE %BRASS AND s_nationkey = n_nationkey AND n_regionkey = r_regionkey AND r_name = EUROPE AND ps_supplycost = *sql.SubqueryExpr WHERE clause",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "Limit  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 0.406761,
+          "process_cpu_ms": 0.4150000000000773,
+          "allocated_bytes": 118112,
+          "allocations": 2043,
+          "rows": 0
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 0.570682,
+          "process_cpu_ms": 0.49099999999998545,
+          "allocated_bytes": 92312,
+          "allocations": 1397,
+          "rows": 0
+        },
+        {
+          "status": "ok",
+          "wall_ms": 0.514962,
+          "process_cpu_ms": 1.350999999999999,
+          "allocated_bytes": 92848,
+          "allocations": 1400,
+          "rows": 0
+        },
+        {
+          "status": "ok",
+          "wall_ms": 0.314801,
+          "process_cpu_ms": 0.36000000000001364,
+          "allocated_bytes": 92448,
+          "allocations": 1400,
+          "rows": 0
+        }
+      ],
+      "min_ms": 0.314801,
+      "median_ms": 0.514962,
+      "columns": [
+        "s_acctbal",
+        "s_name",
+        "n_name",
+        "p_partkey",
+        "p_mfgr",
+        "s_address",
+        "s_phone",
+        "s_comment"
+      ]
+    },
+    {
+      "number": 3,
+      "name": "Shipping priority",
+      "sql": "SELECT\n    l_orderkey,\n    sum(l_extendedprice * (1 - l_discount)) AS revenue,\n    o_orderdate,\n    o_shippriority\nFROM\n    customer JOIN orders ON c_custkey = o_custkey JOIN lineitem ON l_orderkey = o_orderkey\nWHERE\n    c_mktsegment = 'BUILDING'\n    AND c_custkey = o_custkey\n    AND l_orderkey = o_orderkey\n    AND o_orderdate \u003c '1995-03-15'\n    AND l_shipdate \u003e '1995-03-15'\nGROUP BY\n    l_orderkey,\n    o_orderdate,\n    o_shippriority\nORDER BY\n    revenue DESC,\n    o_orderdate\nLIMIT 10;\n",
+      "prepare_ms": 0.04336,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "JoinPlan customer (bounded index) -\u003e orders (bounded index) -\u003e lineitem (bounded index) estimated order; selective input counts refine execution",
+        "JoinAccess customer_segment customer: index probes or hash input chosen by cardinality",
+        "JoinAccess orders_customer orders: index probes or hash input chosen by cardinality",
+        "JoinAccess PRIMARY lineitem: index probes or hash input chosen by cardinality",
+        "Column  col=l_orderkey",
+        "Column  col=o_orderdate",
+        "Column  col=o_shippriority",
+        "Filter c_mktsegment = BUILDING AND c_custkey = o_custkey AND l_orderkey = o_orderkey AND o_orderdate \u003c 1995-03-15 AND l_shipdate \u003e 1995-03-15 WHERE clause",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "Limit  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 19.7379,
+          "process_cpu_ms": 24.357999999999947,
+          "allocated_bytes": 7280840,
+          "allocations": 49738,
+          "rows": 8
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 18.067695,
+          "process_cpu_ms": 20.956999999999994,
+          "allocated_bytes": 6940560,
+          "allocations": 49181,
+          "rows": 8
+        },
+        {
+          "status": "ok",
+          "wall_ms": 16.967531,
+          "process_cpu_ms": 18.929000000000087,
+          "allocated_bytes": 6930048,
+          "allocations": 49155,
+          "rows": 8
+        },
+        {
+          "status": "ok",
+          "wall_ms": 16.187969,
+          "process_cpu_ms": 16.908000000000015,
+          "allocated_bytes": 6945184,
+          "allocations": 49482,
+          "rows": 8
+        }
+      ],
+      "min_ms": 16.187969,
+      "median_ms": 16.967531,
+      "columns": [
+        "l_orderkey",
+        "revenue",
+        "o_orderdate",
+        "o_shippriority"
+      ],
+      "results": [
+        [
+          1637,
+          164224.9253,
+          "1995-02-08",
+          0
+        ],
+        [
+          5191,
+          49378.309400000006,
+          "1994-12-11",
+          0
+        ],
+        [
+          742,
+          43728.048,
+          "1994-12-23",
+          0
+        ],
+        [
+          3492,
+          43716.072400000005,
+          "1994-11-24",
+          0
+        ],
+        [
+          2883,
+          36666.9612,
+          "1995-01-23",
+          0
+        ],
+        [
+          998,
+          11785.548600000002,
+          "1994-11-26",
+          0
+        ],
+        [
+          3430,
+          4726.6775,
+          "1994-12-12",
+          0
+        ],
+        [
+          4423,
+          3055.9365,
+          "1995-02-17",
+          0
+        ]
+      ]
+    },
+    {
+      "number": 4,
+      "name": "Order priority",
+      "sql": "SELECT\n    o_orderpriority,\n    count(*) AS order_count\nFROM\n    orders\nWHERE\n    o_orderdate \u003e= '1993-07-01'\n    AND o_orderdate \u003c '1993-10-01'\n    AND EXISTS (\n        SELECT\n            *\n        FROM\n            lineitem\n        WHERE\n            l_orderkey = o_orderkey\n            AND l_commitdate \u003c l_receiptdate)\nGROUP BY\n    o_orderpriority\nORDER BY\n    o_orderpriority;\n",
+      "prepare_ms": 0.03324,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=orders",
+        "Rewind  table scan",
+        "Column  col=o_orderpriority",
+        "Filter o_orderdate \u003e= 1993-07-01 AND o_orderdate \u003c 1993-10-01 AND *sql.ExistsExpr WHERE clause",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 2.229407,
+          "process_cpu_ms": 2.97199999999998,
+          "allocated_bytes": 770776,
+          "allocations": 7980,
+          "rows": 5
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 1.683725,
+          "process_cpu_ms": 2.3500000000000227,
+          "allocated_bytes": 766360,
+          "allocations": 7784,
+          "rows": 5
+        },
+        {
+          "status": "ok",
+          "wall_ms": 1.588365,
+          "process_cpu_ms": 1.5970000000000937,
+          "allocated_bytes": 766328,
+          "allocations": 7786,
+          "rows": 5
+        },
+        {
+          "status": "ok",
+          "wall_ms": 1.565325,
+          "process_cpu_ms": 1.572999999999979,
+          "allocated_bytes": 768072,
+          "allocations": 7794,
+          "rows": 5
+        }
+      ],
+      "min_ms": 1.565325,
+      "median_ms": 1.588365,
+      "columns": [
+        "o_orderpriority",
+        "order_count"
+      ],
+      "results": [
+        [
+          "1-URGENT",
+          9
+        ],
+        [
+          "2-HIGH",
+          7
+        ],
+        [
+          "3-MEDIUM",
+          9
+        ],
+        [
+          "4-NOT SPECIFIED",
+          8
+        ],
+        [
+          "5-LOW",
+          12
+        ]
+      ]
+    },
+    {
+      "number": 5,
+      "name": "Local supplier volume",
+      "sql": "SELECT\n    n_name,\n    sum(l_extendedprice * (1 - l_discount)) AS revenue\nFROM\n    customer JOIN orders ON c_custkey = o_custkey JOIN lineitem ON l_orderkey = o_orderkey JOIN supplier ON l_suppkey = s_suppkey AND c_nationkey = s_nationkey JOIN nation ON s_nationkey = n_nationkey JOIN region ON n_regionkey = r_regionkey\nWHERE\n    c_custkey = o_custkey\n    AND l_orderkey = o_orderkey\n    AND l_suppkey = s_suppkey\n    AND c_nationkey = s_nationkey\n    AND s_nationkey = n_nationkey\n    AND n_regionkey = r_regionkey\n    AND r_name = 'ASIA'\n    AND o_orderdate \u003e= '1994-01-01'\n    AND o_orderdate \u003c '1995-01-01'\nGROUP BY\n    n_name\nORDER BY\n    revenue DESC;\n",
+      "prepare_ms": 0.05308,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "JoinPlan supplier (scan/hash) -\u003e nation (equality join) -\u003e region (equality join) -\u003e customer (equality join) -\u003e orders (bounded index) -\u003e lineitem (equality join) estimated order; selective input counts refine execution",
+        "JoinAccess SCAN supplier: index probes or hash input chosen by cardinality",
+        "JoinAccess PRIMARY nation: index probes or hash input chosen by cardinality",
+        "JoinAccess PRIMARY region: index probes or hash input chosen by cardinality",
+        "JoinAccess customer_nation customer: index probes or hash input chosen by cardinality",
+        "JoinAccess orders_customer orders: index probes or hash input chosen by cardinality",
+        "JoinAccess PRIMARY lineitem: index probes or hash input chosen by cardinality",
+        "Column  col=n_name",
+        "Filter c_custkey = o_custkey AND l_orderkey = o_orderkey AND l_suppkey = s_suppkey AND c_nationkey = s_nationkey AND s_nationkey = n_nationkey AND n_regionkey = r_regionkey AND r_name = ASIA AND o_orderdate \u003e= 1994-01-01 AND o_orderdate \u003c 1995-01-01 WHERE clause",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 1.355564,
+          "process_cpu_ms": 1.3630000000000564,
+          "allocated_bytes": 515008,
+          "allocations": 5152,
+          "rows": 0
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 1.688845,
+          "process_cpu_ms": 2.3450000000000273,
+          "allocated_bytes": 503856,
+          "allocations": 4703,
+          "rows": 0
+        },
+        {
+          "status": "ok",
+          "wall_ms": 1.212844,
+          "process_cpu_ms": 1.44399999999996,
+          "allocated_bytes": 504840,
+          "allocations": 4706,
+          "rows": 0
+        },
+        {
+          "status": "ok",
+          "wall_ms": 1.221084,
+          "process_cpu_ms": 1.2289999999999281,
+          "allocated_bytes": 502808,
+          "allocations": 4701,
+          "rows": 0
+        }
+      ],
+      "min_ms": 1.212844,
+      "median_ms": 1.221084,
+      "columns": [
+        "n_name",
+        "revenue"
+      ]
+    },
+    {
+      "number": 6,
+      "name": "Forecasting revenue",
+      "sql": "SELECT\n    sum(l_extendedprice * l_discount) AS revenue\nFROM\n    lineitem\nWHERE\n    l_shipdate \u003e= '1994-01-01'\n    AND l_shipdate \u003c '1995-01-01'\n    AND l_discount BETWEEN 0.05\n    AND 0.07\n    AND l_quantity \u003c 24;\n",
+      "prepare_ms": 0.02432,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=lineitem",
+        "Rewind  table scan",
+        "Filter l_shipdate \u003e= 1994-01-01 AND l_shipdate \u003c 1995-01-01 AND *sql.BetweenExpr AND l_quantity \u003c 24 WHERE clause",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 3.844171,
+          "process_cpu_ms": 4.784999999999968,
+          "allocated_bytes": 1016056,
+          "allocations": 9854,
+          "rows": 1
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 3.60317,
+          "process_cpu_ms": 3.61200000000008,
+          "allocated_bytes": 932040,
+          "allocations": 9613,
+          "rows": 1
+        },
+        {
+          "status": "ok",
+          "wall_ms": 4.225693,
+          "process_cpu_ms": 5.390999999999963,
+          "allocated_bytes": 932784,
+          "allocations": 9615,
+          "rows": 1
+        },
+        {
+          "status": "ok",
+          "wall_ms": 3.43037,
+          "process_cpu_ms": 3.437999999999988,
+          "allocated_bytes": 929448,
+          "allocations": 9607,
+          "rows": 1
+        }
+      ],
+      "min_ms": 3.43037,
+      "median_ms": 3.60317,
+      "columns": [
+        "revenue"
+      ],
+      "results": [
+        [
+          77949.91860000002
+        ]
+      ]
+    },
+    {
+      "number": 7,
+      "name": "Volume shipping",
+      "sql": "SELECT\n    supp_nation,\n    cust_nation,\n    l_year,\n    sum(volume) AS revenue\nFROM (\n    SELECT\n        n1.n_name AS supp_nation,\n        n2.n_name AS cust_nation,\n        SUBSTR(l_shipdate, 1, 4) AS l_year,\n        l_extendedprice * (1 - l_discount) AS volume\n    FROM\n        supplier JOIN lineitem ON s_suppkey = l_suppkey JOIN orders ON o_orderkey = l_orderkey JOIN customer ON c_custkey = o_custkey JOIN nation n1 ON s_nationkey = n1.n_nationkey JOIN nation n2 ON c_nationkey = n2.n_nationkey\n    WHERE\n        s_suppkey = l_suppkey\n        AND o_orderkey = l_orderkey\n        AND c_custkey = o_custkey\n        AND s_nationkey = n1.n_nationkey\n        AND c_nationkey = n2.n_nationkey\n        AND ((n1.n_name = 'FRANCE'\n                AND n2.n_name = 'GERMANY')\n            OR (n1.n_name = 'GERMANY'\n                AND n2.n_name = 'FRANCE'))\n        AND l_shipdate BETWEEN '1995-01-01'\n        AND '1996-12-31') AS shipping\nGROUP BY\n    supp_nation,\n    cust_nation,\n    l_year\nORDER BY\n    supp_nation,\n    cust_nation,\n    l_year;\n",
+      "prepare_ms": 0.081401,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=(subquery)",
+        "Rewind  table scan",
+        "Column  col=supp_nation",
+        "Column  col=cust_nation",
+        "Column  col=l_year",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 9.400068,
+          "process_cpu_ms": 10.882999999999925,
+          "allocated_bytes": 3858352,
+          "allocations": 29768,
+          "rows": 0
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 9.75879,
+          "process_cpu_ms": 11.232999999999947,
+          "allocated_bytes": 3780432,
+          "allocations": 29101,
+          "rows": 0
+        },
+        {
+          "status": "ok",
+          "wall_ms": 8.900027,
+          "process_cpu_ms": 8.940000000000055,
+          "allocated_bytes": 3782840,
+          "allocations": 29107,
+          "rows": 0
+        },
+        {
+          "status": "ok",
+          "wall_ms": 9.60047,
+          "process_cpu_ms": 11.31000000000006,
+          "allocated_bytes": 3788032,
+          "allocations": 29118,
+          "rows": 0
+        }
+      ],
+      "min_ms": 8.900027,
+      "median_ms": 9.60047,
+      "columns": [
+        "supp_nation",
+        "cust_nation",
+        "l_year",
+        "revenue"
+      ]
+    },
+    {
+      "number": 8,
+      "name": "National market share",
+      "sql": "SELECT\n    o_year,\n    sum(\n        CASE WHEN nation = 'BRAZIL' THEN\n            volume\n        ELSE\n            0\n        END) / sum(volume) AS mkt_share\nFROM (\n    SELECT\n        SUBSTR(o_orderdate, 1, 4) AS o_year,\n        l_extendedprice * (1 - l_discount) AS volume,\n        n2.n_name AS nation\n    FROM\n        part JOIN lineitem ON p_partkey = l_partkey JOIN supplier ON s_suppkey = l_suppkey JOIN orders ON l_orderkey = o_orderkey JOIN customer ON o_custkey = c_custkey JOIN nation n1 ON c_nationkey = n1.n_nationkey JOIN nation n2 ON s_nationkey = n2.n_nationkey JOIN region ON n1.n_regionkey = r_regionkey\n    WHERE\n        p_partkey = l_partkey\n        AND s_suppkey = l_suppkey\n        AND l_orderkey = o_orderkey\n        AND o_custkey = c_custkey\n        AND c_nationkey = n1.n_nationkey\n        AND n1.n_regionkey = r_regionkey\n        AND r_name = 'AMERICA'\n        AND s_nationkey = n2.n_nationkey\n        AND o_orderdate BETWEEN '1995-01-01'\n        AND '1996-12-31'\n        AND p_type = 'ECONOMY ANODIZED STEEL') AS all_nations\nGROUP BY\n    o_year\nORDER BY\n    o_year;\n",
+      "prepare_ms": 0.0862,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=(subquery)",
+        "Rewind  table scan",
+        "Column  col=o_year",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 2.908529,
+          "process_cpu_ms": 2.91599999999994,
+          "allocated_bytes": 1259488,
+          "allocations": 11303,
+          "rows": 2
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 3.09093,
+          "process_cpu_ms": 4.26400000000001,
+          "allocated_bytes": 1206688,
+          "allocations": 10628,
+          "rows": 2
+        },
+        {
+          "status": "ok",
+          "wall_ms": 2.541848,
+          "process_cpu_ms": 3.004000000000019,
+          "allocated_bytes": 1208488,
+          "allocations": 10630,
+          "rows": 2
+        },
+        {
+          "status": "ok",
+          "wall_ms": 2.567968,
+          "process_cpu_ms": 2.562000000000012,
+          "allocated_bytes": 1205448,
+          "allocations": 10622,
+          "rows": 2
+        }
+      ],
+      "min_ms": 2.541848,
+      "median_ms": 2.567968,
+      "columns": [
+        "o_year",
+        "mkt_share"
+      ],
+      "results": [
+        [
+          "1995",
+          0
+        ],
+        [
+          "1996",
+          0
+        ]
+      ]
+    },
+    {
+      "number": 9,
+      "name": "Product type profit",
+      "sql": "SELECT\n    nation,\n    o_year,\n    sum(amount) AS sum_profit\nFROM (\n    SELECT\n        n_name AS nation,\n        SUBSTR(o_orderdate, 1, 4) AS o_year,\n        l_extendedprice * (1 - l_discount) - ps_supplycost * l_quantity AS amount\n    FROM\n        part JOIN lineitem ON p_partkey = l_partkey JOIN supplier ON s_suppkey = l_suppkey JOIN partsupp ON ps_suppkey = l_suppkey AND ps_partkey = l_partkey JOIN orders ON o_orderkey = l_orderkey JOIN nation ON s_nationkey = n_nationkey\n    WHERE\n        s_suppkey = l_suppkey\n        AND ps_suppkey = l_suppkey\n        AND ps_partkey = l_partkey\n        AND p_partkey = l_partkey\n        AND o_orderkey = l_orderkey\n        AND s_nationkey = n_nationkey\n        AND p_name LIKE '%green%') AS profit\nGROUP BY\n    nation,\n    o_year\nORDER BY\n    nation,\n    o_year DESC;\n",
+      "prepare_ms": 0.06452,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=(subquery)",
+        "Rewind  table scan",
+        "Column  col=nation",
+        "Column  col=o_year",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 10.231031,
+          "process_cpu_ms": 11.5150000000001,
+          "allocated_bytes": 4610256,
+          "allocations": 37862,
+          "rows": 60
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 10.597112,
+          "process_cpu_ms": 12.822000000000003,
+          "allocated_bytes": 4536312,
+          "allocations": 37285,
+          "rows": 60
+        },
+        {
+          "status": "ok",
+          "wall_ms": 10.755152,
+          "process_cpu_ms": 12.389999999999986,
+          "allocated_bytes": 4552784,
+          "allocations": 37814,
+          "rows": 60
+        },
+        {
+          "status": "ok",
+          "wall_ms": 10.712312,
+          "process_cpu_ms": 13.005999999999972,
+          "allocated_bytes": 4538744,
+          "allocations": 37293,
+          "rows": 60
+        }
+      ],
+      "min_ms": 10.597112,
+      "median_ms": 10.712312,
+      "columns": [
+        "nation",
+        "o_year",
+        "sum_profit"
+      ],
+      "results": [
+        [
+          "ARGENTINA",
+          "1998",
+          17779.069700000007
+        ],
+        [
+          "ARGENTINA",
+          "1997",
+          13943.953800000003
+        ],
+        [
+          "ARGENTINA",
+          "1996",
+          7641.422700000003
+        ],
+        [
+          "ARGENTINA",
+          "1995",
+          20892.7525
+        ],
+        [
+          "ARGENTINA",
+          "1994",
+          15088.352599999998
+        ],
+        [
+          "ARGENTINA",
+          "1993",
+          17586.344600000004
+        ],
+        [
+          "ARGENTINA",
+          "1992",
+          28732.461499999994
+        ],
+        [
+          "ETHIOPIA",
+          "1998",
+          28217.159999999996
+        ],
+        [
+          "ETHIOPIA",
+          "1996",
+          33970.65
+        ],
+        [
+          "ETHIOPIA",
+          "1995",
+          37720.35
+        ],
+        [
+          "ETHIOPIA",
+          "1994",
+          37251.01
+        ],
+        [
+          "ETHIOPIA",
+          "1993",
+          23782.61
+        ],
+        [
+          "IRAN",
+          "1997",
+          23590.007999999998
+        ],
+        [
+          "IRAN",
+          "1996",
+          7428.232500000005
+        ],
+        [
+          "IRAN",
+          "1995",
+          21000.996499999994
+        ],
+        [
+          "IRAN",
+          "1994",
+          29408.13
+        ],
+        [
+          "IRAN",
+          "1993",
+          49876.41499999999
+        ],
+        [
+          "IRAN",
+          "1992",
+          52064.24
+        ],
+        [
+          "IRAQ",
+          "1998",
+          11619.960399999996
+        ],
+        [
+          "IRAQ",
+          "1997",
+          47910.246
+        ],
+        [
+          "IRAQ",
+          "1996",
+          18459.567499999997
+        ],
+        [
+          "IRAQ",
+          "1995",
+          32782.37010000001
+        ],
+        [
+          "IRAQ",
+          "1994",
+          9041.2317
+        ],
+        [
+          "IRAQ",
+          "1993",
+          30687.2625
+        ],
+        [
+          "IRAQ",
+          "1992",
+          29098.2557
+        ],
+        [
+          "KENYA",
+          "1998",
+          33148.3345
+        ],
+        [
+          "KENYA",
+          "1997",
+          54355.016500000005
+        ],
+        [
+          "KENYA",
+          "1996",
+          53607.4854
+        ],
+        [
+          "KENYA",
+          "1995",
+          85354.8738
+        ],
+        [
+          "KENYA",
+          "1994",
+          102904.2511
+        ],
+        [
+          "KENYA",
+          "1993",
+          109310.80840000001
+        ],
+        [
+          "KENYA",
+          "1992",
+          138534.121
+        ],
+        [
+          "MOROCCO",
+          "1998",
+          157058.2328
+        ],
+        [
+          "MOROCCO",
+          "1997",
+          88669.96099999998
+        ],
+        [
+          "MOROCCO",
+          "1996",
+          236833.66719999994
+        ],
+        [
+          "MOROCCO",
+          "1995",
+          381575.86679999996
+        ],
+        [
+          "MOROCCO",
+          "1994",
+          243523.4336
+        ],
+        [
+          "MOROCCO",
+          "1993",
+          232196.78029999995
+        ],
+        [
+          "MOROCCO",
+          "1992",
+          347434.14520000014
+        ],
+        [
+          "PERU",
+          "1998",
+          101109.01959999997
+        ],
+        [
+          "PERU",
+          "1997",
+          58073.086599999995
+        ],
+        [
+          "PERU",
+          "1996",
+          30360.521799999995
+        ],
+        [
+          "PERU",
+          "1995",
+          138451.77999999997
+        ],
+        [
+          "PERU",
+          "1994",
+          55023.063200000004
+        ],
+        [
+          "PERU",
+          "1993",
+          110409.08629999998
+        ],
+        [
+          "PERU",
+          "1992",
+          70946.1916
+        ],
+        [
+          "UNITED KINGDOM",
+          "1998",
+          139685.044
+        ],
+        [
+          "UNITED KINGDOM",
+          "1997",
+          183502.04979999998
+        ],
+        [
+          "UNITED KINGDOM",
+          "1996",
+          374085.28839999996
+        ],
+        [
+          "UNITED KINGDOM",
+          "1995",
+          548356.7983999999
+        ],
+        [
+          "UNITED KINGDOM",
+          "1994",
+          266982.7679999999
+        ],
+        [
+          "UNITED KINGDOM",
+          "1993",
+          717309.4640000002
+        ],
+        [
+          "UNITED KINGDOM",
+          "1992",
+          79540.60160000001
+        ],
+        [
+          "UNITED STATES",
+          "1998",
+          32847.96
+        ],
+        [
+          "UNITED STATES",
+          "1997",
+          30849.5
+        ],
+        [
+          "UNITED STATES",
+          "1996",
+          56125.46000000001
+        ],
+        [
+          "UNITED STATES",
+          "1995",
+          15961.7977
+        ],
+        [
+          "UNITED STATES",
+          "1994",
+          31671.2
+        ],
+        [
+          "UNITED STATES",
+          "1993",
+          55057.469
+        ],
+        [
+          "UNITED STATES",
+          "1992",
+          51970.23
+        ]
+      ]
+    },
+    {
+      "number": 10,
+      "name": "Returned item reporting",
+      "sql": "SELECT\n    c_custkey,\n    c_name,\n    sum(l_extendedprice * (1 - l_discount)) AS revenue,\n    c_acctbal,\n    n_name,\n    c_address,\n    c_phone,\n    c_comment\nFROM\n    customer JOIN orders ON c_custkey = o_custkey JOIN lineitem ON l_orderkey = o_orderkey JOIN nation ON c_nationkey = n_nationkey\nWHERE\n    c_custkey = o_custkey\n    AND l_orderkey = o_orderkey\n    AND o_orderdate \u003e= '1993-10-01'\n    AND o_orderdate \u003c '1994-01-01'\n    AND l_returnflag = 'R'\n    AND c_nationkey = n_nationkey\nGROUP BY\n    c_custkey,\n    c_name,\n    c_acctbal,\n    c_phone,\n    n_name,\n    c_address,\n    c_comment\nORDER BY\n    revenue DESC\nLIMIT 20;\n",
+      "prepare_ms": 0.059001,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "JoinPlan orders (bounded index) -\u003e lineitem (equality join) -\u003e customer (equality join) -\u003e nation (equality join) estimated order; selective input counts refine execution",
+        "JoinAccess orders_date orders: index probes or hash input chosen by cardinality",
+        "JoinAccess PRIMARY lineitem: index probes or hash input chosen by cardinality",
+        "JoinAccess PRIMARY customer: index probes or hash input chosen by cardinality",
+        "JoinAccess PRIMARY nation: index probes or hash input chosen by cardinality",
+        "Column  col=c_custkey",
+        "Column  col=c_name",
+        "Column  col=c_acctbal",
+        "Column  col=n_name",
+        "Column  col=c_address",
+        "Column  col=c_phone",
+        "Column  col=c_comment",
+        "Filter c_custkey = o_custkey AND l_orderkey = o_orderkey AND o_orderdate \u003e= 1993-10-01 AND o_orderdate \u003c 1994-01-01 AND l_returnflag = R AND c_nationkey = n_nationkey WHERE clause",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "Limit  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 9.515829,
+          "process_cpu_ms": 9.551999999999907,
+          "allocated_bytes": 2631688,
+          "allocations": 26888,
+          "rows": 20
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 10.304431,
+          "process_cpu_ms": 11.857000000000085,
+          "allocated_bytes": 2623000,
+          "allocations": 26503,
+          "rows": 20
+        },
+        {
+          "status": "ok",
+          "wall_ms": 9.433148,
+          "process_cpu_ms": 9.448999999999955,
+          "allocated_bytes": 2624032,
+          "allocations": 26502,
+          "rows": 20
+        },
+        {
+          "status": "ok",
+          "wall_ms": 10.745993,
+          "process_cpu_ms": 12.011999999999944,
+          "allocated_bytes": 2623032,
+          "allocations": 26502,
+          "rows": 20
+        }
+      ],
+      "min_ms": 9.433148,
+      "median_ms": 10.304431,
+      "columns": [
+        "c_custkey",
+        "c_name",
+        "revenue",
+        "c_acctbal",
+        "n_name",
+        "c_address",
+        "c_phone",
+        "c_comment"
+      ],
+      "results": [
+        [
+          121,
+          "Customer#000000121",
+          282635.17189999996,
+          6428.32,
+          "PERU",
+          "zwrDoaY2gxCkdTXFaxNc",
+          "27-411-990-2959",
+          "he unusual, unusual deposits nag quickly instructions. slyly "
+        ],
+        [
+          124,
+          "Customer#000000124",
+          222182.5188,
+          1842.49,
+          "CHINA",
+          "R7Pt5r4VyoO0w,Rd",
+          "28-183-750-7809",
+          "ing requests haggle. quickly regular dep"
+        ],
+        [
+          106,
+          "Customer#000000106",
+          190241.3334,
+          3288.42,
+          "ARGENTINA",
+          "vkocmr6H6dl",
+          "11-751-989-4627",
+          "ns are furiously final foxes. slyly even accounts thrash fluffily. slyly regular accounts across the u"
+        ],
+        [
+          16,
+          "Customer#000000016",
+          161422.0461,
+          4681.03,
+          "IRAN",
+          "P2IQMff18ercaYrO,40",
+          "20-781-609-3107",
+          "ests cajole. pinto beans detect slyly. final packages cajole slyly "
+        ],
+        [
+          44,
+          "Customer#000000044",
+          149364.56519999998,
+          7315.94,
+          "MOZAMBIQUE",
+          "dI0Nc9bvnxXHCWu10bSVn,NEJ2kwdyqvI",
+          "26-190-260-5375",
+          "fily regular asymptotes. ironic, pend"
+        ],
+        [
+          71,
+          "Customer#000000071",
+          129481.02450000001,
+          -611.19,
+          "GERMANY",
+          "8FkQFLN34pFe50URKft43ntisSegsO3SKF0wUyZp",
+          "17-710-812-5403",
+          "e slyly about the slyly bold theodolites. furiously regular deposits a"
+        ],
+        [
+          89,
+          "Customer#000000089",
+          121663.1243,
+          1530.76,
+          "KENYA",
+          "Oy90ruRha47cUlCimutBTvJc6",
+          "24-394-451-5404",
+          "theodolites x-ray carefully even pinto beans. carefully final requests dazzle"
+        ],
+        [
+          112,
+          "Customer#000000112",
+          111137.71409999998,
+          2953.35,
+          "ROMANIA",
+          "aOLKkYPcTaNoDLHBh7Z",
+          "29-233-262-8382",
+          "uickly. express, ironic accounts are carefully. courts sleep along the blithely i"
+        ],
+        [
+          62,
+          "Customer#000000062",
+          106368.0153,
+          595.61,
+          "GERMANY",
+          "yBhgYoDvZX1",
+          "17-361-978-7059",
+          "e carefully final requests. fluffily regular deposits haggle among the ironic warhors"
+        ],
+        [
+          146,
+          "Customer#000000146",
+          103265.98879999999,
+          3328.68,
+          "CANADA",
+          "lNuGN4kRxTJtiZ01tVyAX1t Ont",
+          "13-835-723-3223",
+          "ptotes sleep carefully across the accounts. pending pinto be"
+        ],
+        [
+          19,
+          "Customer#000000019",
+          99306.0127,
+          8914.71,
+          "CHINA",
+          "yO0XPkiuSWk0vN FfcH5 IA3oBYy ",
+          "28-396-526-5053",
+          "ly final pinto beans boost carefully. furiously unusual requests boost furiously"
+        ],
+        [
+          145,
+          "Customer#000000145",
+          99256.9018,
+          9748.93,
+          "JORDAN",
+          "HaHjEzYGOMPrOtXKLeJRVRx",
+          "23-562-444-8454",
+          "kly alongside of the slyly final packages. carefully e"
+        ],
+        [
+          103,
+          "Customer#000000103",
+          97311.77240000002,
+          2757.45,
+          "INDONESIA",
+          "Tgiza4WfhTbezHUo yly4x,D6nN50SR",
+          "19-216-107-2107",
+          "ending accounts along the packages use according to the sly, special ideas. instructions above the carefull"
+        ],
+        [
+          136,
+          "Customer#000000136",
+          95855.398,
+          -842.39,
+          "GERMANY",
+          "bCfzh0xVoZjaPJ0o8Z",
+          "17-501-210-4726",
+          "ng to the regular, regular theodolites. final theodolites alongside of the carefully"
+        ],
+        [
+          53,
+          "Customer#000000053",
+          92568.9124,
+          4113.64,
+          "MOROCCO",
+          "kDQujt7Ll72zSexpBht7Q1WToFWvlcdKIP",
+          "25-168-852-5363",
+          "ts. carefully regular ideas across the blithely final packages cajole car"
+        ],
+        [
+          49,
+          "Customer#000000049",
+          90965.7262,
+          4573.94,
+          "IRAN",
+          "PdKqM4TlA OLTjaeRmvH7QWDu80USfslgqutF",
+          "20-908-631-4424",
+          "quests haggle! furiously unusual theodolites cajole carefully. t"
+        ],
+        [
+          37,
+          "Customer#000000037",
+          88065.74579999999,
+          -917.75,
+          "INDIA",
+          "Um5WbwJ0X8QCOy75y",
+          "18-385-235-7162",
+          "above the slyly regular accounts sleep along the carefull"
+        ],
+        [
+          82,
+          "Customer#000000082",
+          86998.9644,
+          9468.34,
+          "CHINA",
+          "tJkXm2PQBWPRRYkIXPg0YdM03E",
+          "28-159-442-5305",
+          "old requests. slyly bold courts sleep carefully packag"
+        ],
+        [
+          125,
+          "Customer#000000125",
+          84808.068,
+          -234.12,
+          "ROMANIA",
+          "1v813O59ruviiLESzSi7ufFXGLH7U6p,Tk203",
+          "29-261-996-3120",
+          "lose ideas snooze. packages cajole final foxes. furi"
+        ],
+        [
+          59,
+          "Customer#000000059",
+          84655.5711,
+          3458.6,
+          "ARGENTINA",
+          "tfcob0wJRYdypIJLzBckGW",
+          "11-355-584-3112",
+          "s asymptotes wake. slyly ironic deposits haggle furiously; slyly regula"
+        ]
+      ]
+    },
+    {
+      "number": 11,
+      "name": "Important stock identification",
+      "sql": "SELECT\n    ps_partkey,\n    sum(ps_supplycost * ps_availqty) AS value\nFROM\n    partsupp JOIN supplier ON ps_suppkey = s_suppkey JOIN nation ON s_nationkey = n_nationkey\nWHERE\n    ps_suppkey = s_suppkey\n    AND s_nationkey = n_nationkey\n    AND n_name = 'GERMANY'\nGROUP BY\n    ps_partkey\nHAVING\n    sum(ps_supplycost * ps_availqty) \u003e (\n        SELECT\n            sum(ps_supplycost * ps_availqty) * 0.0001000000\n        FROM\n            partsupp JOIN supplier ON ps_suppkey = s_suppkey JOIN nation ON s_nationkey = n_nationkey\n        WHERE\n            ps_suppkey = s_suppkey\n            AND s_nationkey = n_nationkey\n            AND n_name = 'GERMANY')\nORDER BY\n    value DESC;\n",
+      "prepare_ms": 0.059441,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "JoinPlan supplier (scan/hash) -\u003e nation (equality join) -\u003e partsupp (equality join) estimated order; selective input counts refine execution",
+        "JoinAccess SCAN supplier: index probes or hash input chosen by cardinality",
+        "JoinAccess PRIMARY nation: index probes or hash input chosen by cardinality",
+        "JoinAccess partsupp_supplier partsupp: index probes or hash input chosen by cardinality",
+        "Column  col=ps_partkey",
+        "Filter ps_suppkey = s_suppkey AND s_nationkey = n_nationkey AND n_name = GERMANY WHERE clause",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 0.274161,
+          "process_cpu_ms": 0.2800000000000864,
+          "allocated_bytes": 68680,
+          "allocations": 1239,
+          "rows": 0
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 0.17416,
+          "process_cpu_ms": 0.18000000000006366,
+          "allocated_bytes": 59136,
+          "allocations": 831,
+          "rows": 0
+        },
+        {
+          "status": "ok",
+          "wall_ms": 0.16848,
+          "process_cpu_ms": 0.17300000000000182,
+          "allocated_bytes": 58656,
+          "allocations": 828,
+          "rows": 0
+        },
+        {
+          "status": "ok",
+          "wall_ms": 0.178401,
+          "process_cpu_ms": 0.18299999999999272,
+          "allocated_bytes": 59024,
+          "allocations": 830,
+          "rows": 0
+        }
+      ],
+      "min_ms": 0.16848,
+      "median_ms": 0.17416,
+      "columns": [
+        "ps_partkey",
+        "value"
+      ]
+    },
+    {
+      "number": 12,
+      "name": "Shipping modes",
+      "sql": "SELECT\n    l_shipmode,\n    sum(\n        CASE WHEN o_orderpriority = '1-URGENT'\n            OR o_orderpriority = '2-HIGH' THEN\n            1\n        ELSE\n            0\n        END) AS high_line_count,\n    sum(\n        CASE WHEN o_orderpriority \u003c\u003e '1-URGENT'\n            AND o_orderpriority \u003c\u003e '2-HIGH' THEN\n            1\n        ELSE\n            0\n        END) AS low_line_count\nFROM\n    orders JOIN lineitem ON o_orderkey = l_orderkey\nWHERE\n    o_orderkey = l_orderkey\n    AND l_shipmode IN ('MAIL', 'SHIP')\n    AND l_commitdate \u003c l_receiptdate\n    AND l_shipdate \u003c l_commitdate\n    AND l_receiptdate \u003e= '1994-01-01'\n    AND l_receiptdate \u003c '1995-01-01'\nGROUP BY\n    l_shipmode\nORDER BY\n    l_shipmode;\n",
+      "prepare_ms": 0.04732,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "JoinPlan lineitem (bounded index) -\u003e orders (equality join) estimated order; selective input counts refine execution",
+        "JoinAccess lineitem_receiptdate lineitem: index probes or hash input chosen by cardinality",
+        "JoinAccess PRIMARY orders: index probes or hash input chosen by cardinality",
+        "Column  col=l_shipmode",
+        "Filter o_orderkey = l_orderkey AND *sql.InListExpr AND l_commitdate \u003c l_receiptdate AND l_shipdate \u003c l_commitdate AND l_receiptdate \u003e= 1994-01-01 AND l_receiptdate \u003c 1995-01-01 WHERE clause",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 3.828372,
+          "process_cpu_ms": 4.337999999999965,
+          "allocated_bytes": 1065152,
+          "allocations": 12328,
+          "rows": 2
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 3.548491,
+          "process_cpu_ms": 3.5570000000000164,
+          "allocated_bytes": 966344,
+          "allocations": 11816,
+          "rows": 2
+        },
+        {
+          "status": "ok",
+          "wall_ms": 4.003612,
+          "process_cpu_ms": 5.016999999999939,
+          "allocated_bytes": 970496,
+          "allocations": 11828,
+          "rows": 2
+        },
+        {
+          "status": "ok",
+          "wall_ms": 3.456691,
+          "process_cpu_ms": 3.629000000000019,
+          "allocated_bytes": 972216,
+          "allocations": 11831,
+          "rows": 2
+        }
+      ],
+      "min_ms": 3.456691,
+      "median_ms": 3.548491,
+      "columns": [
+        "l_shipmode",
+        "high_line_count",
+        "low_line_count"
+      ],
+      "results": [
+        [
+          "MAIL",
+          5,
+          5
+        ],
+        [
+          "SHIP",
+          5,
+          10
+        ]
+      ]
+    },
+    {
+      "number": 13,
+      "name": "Customer distribution",
+      "sql": "SELECT\n    c_count,\n    count(*) AS custdist\nFROM (\n    SELECT\n        c_custkey,\n        count(o_orderkey) AS c_count\n    FROM\n        customer\n    LEFT OUTER JOIN orders ON c_custkey = o_custkey\n    AND o_comment NOT LIKE '%special%requests%'\nGROUP BY\n    c_custkey) AS c_orders\nGROUP BY\n    c_count\nORDER BY\n    custdist DESC,\n    c_count DESC;\n",
+      "prepare_ms": 0.03404,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=(subquery)",
+        "Rewind  table scan",
+        "Column  col=c_count",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 7.144062,
+          "process_cpu_ms": 7.95799999999997,
+          "allocated_bytes": 2337320,
+          "allocations": 23241,
+          "rows": 27
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 6.719861,
+          "process_cpu_ms": 6.781000000000063,
+          "allocated_bytes": 2331664,
+          "allocations": 23049,
+          "rows": 27
+        },
+        {
+          "status": "ok",
+          "wall_ms": 7.399622,
+          "process_cpu_ms": 8.673000000000002,
+          "allocated_bytes": 2331272,
+          "allocations": 23050,
+          "rows": 27
+        },
+        {
+          "status": "ok",
+          "wall_ms": 6.922261,
+          "process_cpu_ms": 6.9529999999999745,
+          "allocated_bytes": 2332352,
+          "allocations": 23053,
+          "rows": 27
+        }
+      ],
+      "min_ms": 6.719861,
+      "median_ms": 6.922261,
+      "columns": [
+        "c_count",
+        "custdist"
+      ],
+      "results": [
+        [
+          0,
+          50
+        ],
+        [
+          17,
+          7
+        ],
+        [
+          16,
+          7
+        ],
+        [
+          12,
+          7
+        ],
+        [
+          20,
+          6
+        ],
+        [
+          13,
+          6
+        ],
+        [
+          22,
+          5
+        ],
+        [
+          15,
+          5
+        ],
+        [
+          10,
+          5
+        ],
+        [
+          8,
+          5
+        ],
+        [
+          21,
+          4
+        ],
+        [
+          14,
+          4
+        ],
+        [
+          11,
+          4
+        ],
+        [
+          9,
+          4
+        ],
+        [
+          7,
+          4
+        ],
+        [
+          6,
+          4
+        ],
+        [
+          4,
+          4
+        ],
+        [
+          23,
+          3
+        ],
+        [
+          19,
+          3
+        ],
+        [
+          28,
+          2
+        ],
+        [
+          26,
+          2
+        ],
+        [
+          25,
+          2
+        ],
+        [
+          24,
+          2
+        ],
+        [
+          18,
+          2
+        ],
+        [
+          30,
+          1
+        ],
+        [
+          5,
+          1
+        ],
+        [
+          3,
+          1
+        ]
+      ]
+    },
+    {
+      "number": 14,
+      "name": "Promotion effect",
+      "sql": "SELECT\n    100.00 * sum(\n        CASE WHEN p_type LIKE 'PROMO%' THEN\n            l_extendedprice * (1 - l_discount)\n        ELSE\n            0\n        END) / sum(l_extendedprice * (1 - l_discount)) AS promo_revenue\nFROM\n    lineitem JOIN part ON l_partkey = p_partkey\nWHERE\n    l_partkey = p_partkey\n    AND l_shipdate \u003e= '1995-09-01'\n    AND l_shipdate \u003c '1995-10-01';\n",
+      "prepare_ms": 0.03964,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "JoinPlan part (scan/hash) -\u003e lineitem (bounded index) estimated order; selective input counts refine execution",
+        "JoinAccess SCAN part: index probes or hash input chosen by cardinality",
+        "JoinAccess lineitem_part_supplier lineitem: index probes or hash input chosen by cardinality",
+        "Filter l_partkey = p_partkey AND l_shipdate \u003e= 1995-09-01 AND l_shipdate \u003c 1995-10-01 WHERE clause",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 1.191484,
+          "process_cpu_ms": 1.2000000000000455,
+          "allocated_bytes": 430152,
+          "allocations": 4052,
+          "rows": 1
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 1.042043,
+          "process_cpu_ms": 1.0509999999999309,
+          "allocated_bytes": 419856,
+          "allocations": 3758,
+          "rows": 1
+        },
+        {
+          "status": "ok",
+          "wall_ms": 1.663365,
+          "process_cpu_ms": 2.8360000000000127,
+          "allocated_bytes": 423048,
+          "allocations": 3766,
+          "rows": 1
+        },
+        {
+          "status": "ok",
+          "wall_ms": 1.125723,
+          "process_cpu_ms": 1.1319999999998345,
+          "allocated_bytes": 421440,
+          "allocations": 3762,
+          "rows": 1
+        }
+      ],
+      "min_ms": 1.042043,
+      "median_ms": 1.125723,
+      "columns": [
+        "promo_revenue"
+      ],
+      "results": [
+        [
+          15.230212611597247
+        ]
+      ]
+    },
+    {
+      "number": 15,
+      "name": "Top supplier",
+      "sql": "SELECT\n    s_suppkey,\n    s_name,\n    s_address,\n    s_phone,\n    total_revenue\nFROM\n    supplier JOIN tpch_revenue ON s_suppkey = supplier_no\nWHERE\n    s_suppkey = supplier_no\n    AND total_revenue = (\n        SELECT\n            max(total_revenue)\n        FROM tpch_revenue)\nORDER BY\n    s_suppkey;\n",
+      "prepare_ms": 0.02912,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=supplier",
+        "Rewind  table scan",
+        "Column  col=s_suppkey",
+        "Column  col=s_name",
+        "Column  col=s_address",
+        "Column  col=s_phone",
+        "Column  col=total_revenue",
+        "Filter s_suppkey = supplier_no AND total_revenue = *sql.SubqueryExpr WHERE clause",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 1.575445,
+          "process_cpu_ms": 1.58199999999988,
+          "allocated_bytes": 368040,
+          "allocations": 5532,
+          "rows": 1
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 1.449085,
+          "process_cpu_ms": 1.502999999999929,
+          "allocated_bytes": 363168,
+          "allocations": 5352,
+          "rows": 1
+        },
+        {
+          "status": "ok",
+          "wall_ms": 1.461924,
+          "process_cpu_ms": 1.4700000000000273,
+          "allocated_bytes": 364048,
+          "allocations": 5353,
+          "rows": 1
+        },
+        {
+          "status": "ok",
+          "wall_ms": 1.439724,
+          "process_cpu_ms": 1.446999999999889,
+          "allocated_bytes": 365200,
+          "allocations": 5357,
+          "rows": 1
+        }
+      ],
+      "min_ms": 1.439724,
+      "median_ms": 1.449085,
+      "columns": [
+        "s_suppkey",
+        "s_name",
+        "s_address",
+        "s_phone",
+        "total_revenue"
+      ],
+      "results": [
+        [
+          10,
+          "Supplier#000000010",
+          "9QtKQKXK24fBTYIsb2",
+          "34-852-489-8585",
+          797313.3838000002
+        ]
+      ]
+    },
+    {
+      "number": 16,
+      "name": "Parts supplier relationship",
+      "sql": "SELECT\n    p_brand,\n    p_type,\n    p_size,\n    count(DISTINCT ps_suppkey) AS supplier_cnt\nFROM\n    partsupp JOIN part ON p_partkey = ps_partkey\nWHERE\n    p_partkey = ps_partkey\n    AND p_brand \u003c\u003e 'Brand#45'\n    AND p_type NOT LIKE 'MEDIUM POLISHED%'\n    AND p_size IN (49, 14, 23, 45, 19, 3, 36, 9)\n    AND ps_suppkey NOT IN (\n        SELECT\n            s_suppkey\n        FROM\n            supplier\n        WHERE\n            s_comment LIKE '%Customer%Complaints%')\nGROUP BY\n    p_brand,\n    p_type,\n    p_size\nORDER BY\n    supplier_cnt DESC,\n    p_brand,\n    p_type,\n    p_size;\n",
+      "prepare_ms": 0.04836,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "JoinPlan part (bounded index) -\u003e partsupp (equality join) estimated order; selective input counts refine execution",
+        "JoinAccess part_size part: index probes or hash input chosen by cardinality",
+        "JoinAccess partsupp_part_supplier partsupp: index probes or hash input chosen by cardinality",
+        "Column  col=p_brand",
+        "Column  col=p_type",
+        "Column  col=p_size",
+        "Filter p_partkey = ps_partkey AND p_brand \u003c\u003e Brand#45 AND p_type NOT LIKE MEDIUM POLISHED% AND *sql.InListExpr AND ps_suppkey NOT IN *sql.SubqueryExpr WHERE clause",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 2.140686,
+          "process_cpu_ms": 2.147999999999911,
+          "allocated_bytes": 1083896,
+          "allocations": 10116,
+          "rows": 34
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 2.502248,
+          "process_cpu_ms": 3.8329999999998563,
+          "allocated_bytes": 1074472,
+          "allocations": 9711,
+          "rows": 34
+        },
+        {
+          "status": "ok",
+          "wall_ms": 2.001966,
+          "process_cpu_ms": 2.106999999999971,
+          "allocated_bytes": 1073648,
+          "allocations": 9707,
+          "rows": 34
+        },
+        {
+          "status": "ok",
+          "wall_ms": 1.919966,
+          "process_cpu_ms": 1.9259999999999309,
+          "allocated_bytes": 1071344,
+          "allocations": 9701,
+          "rows": 34
+        }
+      ],
+      "min_ms": 1.919966,
+      "median_ms": 2.001966,
+      "columns": [
+        "p_brand",
+        "p_type",
+        "p_size",
+        "supplier_cnt"
+      ],
+      "results": [
+        [
+          "Brand#11",
+          "PROMO ANODIZED TIN",
+          45,
+          4
+        ],
+        [
+          "Brand#11",
+          "SMALL PLATED COPPER",
+          45,
+          4
+        ],
+        [
+          "Brand#11",
+          "STANDARD POLISHED TIN",
+          45,
+          4
+        ],
+        [
+          "Brand#13",
+          "MEDIUM ANODIZED STEEL",
+          36,
+          4
+        ],
+        [
+          "Brand#14",
+          "SMALL ANODIZED NICKEL",
+          45,
+          4
+        ],
+        [
+          "Brand#15",
+          "LARGE ANODIZED BRASS",
+          45,
+          4
+        ],
+        [
+          "Brand#21",
+          "LARGE BURNISHED COPPER",
+          19,
+          4
+        ],
+        [
+          "Brand#23",
+          "ECONOMY BRUSHED COPPER",
+          9,
+          4
+        ],
+        [
+          "Brand#25",
+          "MEDIUM PLATED BRASS",
+          45,
+          4
+        ],
+        [
+          "Brand#31",
+          "ECONOMY PLATED STEEL",
+          23,
+          4
+        ],
+        [
+          "Brand#31",
+          "PROMO POLISHED TIN",
+          23,
+          4
+        ],
+        [
+          "Brand#32",
+          "MEDIUM BURNISHED BRASS",
+          49,
+          4
+        ],
+        [
+          "Brand#33",
+          "LARGE BRUSHED TIN",
+          36,
+          4
+        ],
+        [
+          "Brand#33",
+          "SMALL BURNISHED NICKEL",
+          3,
+          4
+        ],
+        [
+          "Brand#34",
+          "LARGE PLATED BRASS",
+          45,
+          4
+        ],
+        [
+          "Brand#34",
+          "MEDIUM BRUSHED COPPER",
+          9,
+          4
+        ],
+        [
+          "Brand#34",
+          "SMALL PLATED BRASS",
+          14,
+          4
+        ],
+        [
+          "Brand#35",
+          "STANDARD ANODIZED STEEL",
+          23,
+          4
+        ],
+        [
+          "Brand#43",
+          "PROMO POLISHED BRASS",
+          19,
+          4
+        ],
+        [
+          "Brand#43",
+          "SMALL BRUSHED NICKEL",
+          9,
+          4
+        ],
+        [
+          "Brand#44",
+          "SMALL PLATED COPPER",
+          19,
+          4
+        ],
+        [
+          "Brand#52",
+          "MEDIUM BURNISHED TIN",
+          45,
+          4
+        ],
+        [
+          "Brand#52",
+          "SMALL BURNISHED NICKEL",
+          14,
+          4
+        ],
+        [
+          "Brand#53",
+          "MEDIUM BRUSHED COPPER",
+          3,
+          4
+        ],
+        [
+          "Brand#55",
+          "STANDARD ANODIZED BRASS",
+          36,
+          4
+        ],
+        [
+          "Brand#55",
+          "STANDARD BRUSHED COPPER",
+          3,
+          4
+        ],
+        [
+          "Brand#13",
+          "SMALL BRUSHED NICKEL",
+          19,
+          2
+        ],
+        [
+          "Brand#25",
+          "SMALL BURNISHED COPPER",
+          3,
+          2
+        ],
+        [
+          "Brand#43",
+          "MEDIUM ANODIZED BRASS",
+          14,
+          2
+        ],
+        [
+          "Brand#53",
+          "STANDARD PLATED STEEL",
+          45,
+          2
+        ],
+        [
+          "Brand#24",
+          "MEDIUM PLATED STEEL",
+          19,
+          1
+        ],
+        [
+          "Brand#51",
+          "ECONOMY POLISHED STEEL",
+          49,
+          1
+        ],
+        [
+          "Brand#53",
+          "LARGE BURNISHED NICKEL",
+          23,
+          1
+        ],
+        [
+          "Brand#54",
+          "ECONOMY ANODIZED BRASS",
+          9,
+          1
+        ]
+      ]
+    },
+    {
+      "number": 17,
+      "name": "Small quantity order revenue",
+      "sql": "SELECT\n    sum(l_extendedprice) / 7.0 AS avg_yearly\nFROM\n    lineitem JOIN part ON p_partkey = l_partkey\nWHERE\n    p_partkey = l_partkey\n    AND p_brand = 'Brand#23'\n    AND p_container = 'MED BOX'\n    AND l_quantity \u003c (\n        SELECT\n            0.2 * avg(l_quantity)\n        FROM\n            lineitem\n        WHERE\n            l_partkey = p_partkey);\n",
+      "prepare_ms": 0.030121,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "JoinPlan part (scan/hash) -\u003e lineitem (equality join) estimated order; selective input counts refine execution",
+        "JoinAccess SCAN part: index probes or hash input chosen by cardinality",
+        "JoinAccess lineitem_part_supplier lineitem: index probes or hash input chosen by cardinality",
+        "Filter p_partkey = l_partkey AND p_brand = Brand#23 AND p_container = MED BOX AND l_quantity \u003c *sql.SubqueryExpr WHERE clause",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 0.358841,
+          "process_cpu_ms": 0.36599999999998545,
+          "allocated_bytes": 60912,
+          "allocations": 1513,
+          "rows": 1
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 0.326161,
+          "process_cpu_ms": 0.33100000000013097,
+          "allocated_bytes": 54008,
+          "allocations": 1254,
+          "rows": 1
+        },
+        {
+          "status": "ok",
+          "wall_ms": 0.288561,
+          "process_cpu_ms": 0.2940000000000964,
+          "allocated_bytes": 54216,
+          "allocations": 1255,
+          "rows": 1
+        },
+        {
+          "status": "ok",
+          "wall_ms": 0.286321,
+          "process_cpu_ms": 0.29099999999994,
+          "allocated_bytes": 54744,
+          "allocations": 1258,
+          "rows": 1
+        }
+      ],
+      "min_ms": 0.286321,
+      "median_ms": 0.288561,
+      "columns": [
+        "avg_yearly"
+      ],
+      "results": [
+        [
+          null
+        ]
+      ]
+    },
+    {
+      "number": 18,
+      "name": "Large volume customer",
+      "sql": "SELECT\n    c_name,\n    c_custkey,\n    o_orderkey,\n    o_orderdate,\n    o_totalprice,\n    sum(l_quantity)\nFROM\n    customer JOIN orders ON c_custkey = o_custkey JOIN lineitem ON o_orderkey = l_orderkey\nWHERE\n    o_orderkey IN (\n        SELECT\n            l_orderkey\n        FROM\n            lineitem\n        GROUP BY\n            l_orderkey\n        HAVING\n            sum(l_quantity) \u003e 300)\n    AND c_custkey = o_custkey\n    AND o_orderkey = l_orderkey\nGROUP BY\n    c_name,\n    c_custkey,\n    o_orderkey,\n    o_orderdate,\n    o_totalprice\nORDER BY\n    o_totalprice DESC,\n    o_orderdate\nLIMIT 100;\n",
+      "prepare_ms": 0.04312,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "JoinPlan customer (scan/hash) -\u003e orders (equality join) -\u003e lineitem (equality join) estimated order; selective input counts refine execution",
+        "JoinAccess SCAN customer: index probes or hash input chosen by cardinality",
+        "JoinAccess orders_customer orders: index probes or hash input chosen by cardinality",
+        "JoinAccess PRIMARY lineitem: index probes or hash input chosen by cardinality",
+        "Column  col=c_name",
+        "Column  col=c_custkey",
+        "Column  col=o_orderkey",
+        "Column  col=o_orderdate",
+        "Column  col=o_totalprice",
+        "Filter o_orderkey IN *sql.SubqueryExpr AND c_custkey = o_custkey AND o_orderkey = l_orderkey WHERE clause",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "Limit  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 9.019787,
+          "process_cpu_ms": 10.480000000000018,
+          "allocated_bytes": 1873488,
+          "allocations": 40568,
+          "rows": 0
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 8.299426,
+          "process_cpu_ms": 8.50200000000018,
+          "allocated_bytes": 1866568,
+          "allocations": 40269,
+          "rows": 0
+        },
+        {
+          "status": "ok",
+          "wall_ms": 9.017547,
+          "process_cpu_ms": 10.253000000000156,
+          "allocated_bytes": 1865376,
+          "allocations": 40263,
+          "rows": 0
+        },
+        {
+          "status": "ok",
+          "wall_ms": 8.184305,
+          "process_cpu_ms": 8.192999999999984,
+          "allocated_bytes": 1865704,
+          "allocations": 40266,
+          "rows": 0
+        }
+      ],
+      "min_ms": 8.184305,
+      "median_ms": 8.299426,
+      "columns": [
+        "c_name",
+        "c_custkey",
+        "o_orderkey",
+        "o_orderdate",
+        "o_totalprice",
+        "SUM"
+      ]
+    },
+    {
+      "number": 19,
+      "name": "Discounted revenue",
+      "sql": "SELECT\n    sum(l_extendedprice * (1 - l_discount)) AS revenue\nFROM\n    lineitem JOIN part ON p_partkey = l_partkey\nWHERE (p_partkey = l_partkey\n    AND p_brand = 'Brand#12'\n    AND p_container IN ('SM CASE', 'SM BOX', 'SM PACK', 'SM PKG')\n    AND l_quantity \u003e= 1\n    AND l_quantity \u003c= 1 + 10\n    AND p_size BETWEEN 1 AND 5\n    AND l_shipmode IN ('AIR', 'AIR REG')\n    AND l_shipinstruct = 'DELIVER IN PERSON')\n    OR (p_partkey = l_partkey\n        AND p_brand = 'Brand#23'\n        AND p_container IN ('MED BAG', 'MED BOX', 'MED PKG', 'MED PACK')\n        AND l_quantity \u003e= 10\n        AND l_quantity \u003c= 10 + 10\n        AND p_size BETWEEN 1 AND 10\n        AND l_shipmode IN ('AIR', 'AIR REG')\n        AND l_shipinstruct = 'DELIVER IN PERSON')\n    OR (p_partkey = l_partkey\n        AND p_brand = 'Brand#34'\n        AND p_container IN ('LG CASE', 'LG BOX', 'LG PACK', 'LG PKG')\n        AND l_quantity \u003e= 20\n        AND l_quantity \u003c= 20 + 10\n        AND p_size BETWEEN 1 AND 15\n        AND l_shipmode IN ('AIR', 'AIR REG')\n        AND l_shipinstruct = 'DELIVER IN PERSON');\n",
+      "prepare_ms": 0.082361,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "JoinPlan part (bounded index) -\u003e lineitem (equality join) estimated order; selective input counts refine execution",
+        "JoinAccess part_size part: index probes or hash input chosen by cardinality",
+        "JoinAccess lineitem_part_supplier lineitem: index probes or hash input chosen by cardinality",
+        "Filter p_partkey = l_partkey AND p_brand = Brand#12 AND *sql.InListExpr AND l_quantity \u003e= 1 AND l_quantity \u003c= 1 + 10 AND *sql.BetweenExpr AND *sql.InListExpr AND l_shipinstruct = DELIVER IN PERSON OR p_partkey = l_partkey AND p_brand = Brand#23 AND *sql.InListExpr AND l_quantity \u003e= 10 AND l_quantity \u003c= 10 + 10 AND *sql.BetweenExpr AND *sql.InListExpr AND l_shipinstruct = DELIVER IN PERSON OR p_partkey = l_partkey AND p_brand = Brand#34 AND *sql.InListExpr AND l_quantity \u003e= 20 AND l_quantity \u003c= 20 + 10 AND *sql.BetweenExpr AND *sql.InListExpr AND l_shipinstruct = DELIVER IN PERSON WHERE clause",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 16.38113,
+          "process_cpu_ms": 16.420000000000073,
+          "allocated_bytes": 973776,
+          "allocations": 27359,
+          "rows": 1
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 16.54181,
+          "process_cpu_ms": 17.675000000000182,
+          "allocated_bytes": 950032,
+          "allocations": 26339,
+          "rows": 1
+        },
+        {
+          "status": "ok",
+          "wall_ms": 15.647087,
+          "process_cpu_ms": 15.787000000000035,
+          "allocated_bytes": 950216,
+          "allocations": 26338,
+          "rows": 1
+        },
+        {
+          "status": "ok",
+          "wall_ms": 15.776048,
+          "process_cpu_ms": 15.825000000000045,
+          "allocated_bytes": 948472,
+          "allocations": 26331,
+          "rows": 1
+        }
+      ],
+      "min_ms": 15.647087,
+      "median_ms": 15.776048,
+      "columns": [
+        "revenue"
+      ],
+      "results": [
+        [
+          null
+        ]
+      ]
+    },
+    {
+      "number": 20,
+      "name": "Potential part promotion",
+      "sql": "SELECT\n    s_name,\n    s_address\nFROM\n    supplier JOIN nation ON s_nationkey = n_nationkey\nWHERE\n    s_suppkey IN (\n        SELECT\n            ps_suppkey\n        FROM\n            partsupp\n        WHERE\n            ps_partkey IN (\n                SELECT\n                    p_partkey\n                FROM\n                    part\n                WHERE\n                    p_name LIKE 'forest%')\n                AND ps_availqty \u003e (\n                    SELECT\n                        0.5 * sum(l_quantity)\n                    FROM\n                        lineitem\n                    WHERE\n                        l_partkey = ps_partkey\n                        AND l_suppkey = ps_suppkey\n                        AND l_shipdate \u003e= '1994-01-01'\n                        AND l_shipdate \u003c '1995-01-01'))\n            AND s_nationkey = n_nationkey\n            AND n_name = 'CANADA'\n        ORDER BY\n            s_name;\n",
+      "prepare_ms": 0.05424,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "JoinPlan supplier (scan/hash) -\u003e nation (equality join) estimated order; selective input counts refine execution",
+        "JoinAccess SCAN supplier: index probes or hash input chosen by cardinality",
+        "JoinAccess PRIMARY nation: index probes or hash input chosen by cardinality",
+        "Column  col=s_name",
+        "Column  col=s_address",
+        "Filter s_suppkey IN *sql.SubqueryExpr AND s_nationkey = n_nationkey AND n_name = CANADA WHERE clause",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 0.944363,
+          "process_cpu_ms": 0.9529999999999745,
+          "allocated_bytes": 258952,
+          "allocations": 3295,
+          "rows": 0
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 0.821163,
+          "process_cpu_ms": 0.8299999999999272,
+          "allocated_bytes": 244256,
+          "allocations": 2869,
+          "rows": 0
+        },
+        {
+          "status": "ok",
+          "wall_ms": 0.780482,
+          "process_cpu_ms": 0.7870000000000346,
+          "allocated_bytes": 244464,
+          "allocations": 2871,
+          "rows": 0
+        },
+        {
+          "status": "ok",
+          "wall_ms": 0.832843,
+          "process_cpu_ms": 0.8389999999999418,
+          "allocated_bytes": 244240,
+          "allocations": 2869,
+          "rows": 0
+        }
+      ],
+      "min_ms": 0.780482,
+      "median_ms": 0.821163,
+      "columns": [
+        "s_name",
+        "s_address"
+      ]
+    },
+    {
+      "number": 21,
+      "name": "Suppliers who kept orders waiting",
+      "sql": "SELECT\n    s_name,\n    count(*) AS numwait\nFROM\n    supplier JOIN lineitem l1 ON s_suppkey = l1.l_suppkey JOIN orders ON o_orderkey = l1.l_orderkey JOIN nation ON s_nationkey = n_nationkey\nWHERE\n    s_suppkey = l1.l_suppkey\n    AND o_orderkey = l1.l_orderkey\n    AND o_orderstatus = 'F'\n    AND l1.l_receiptdate \u003e l1.l_commitdate\n    AND EXISTS (\n        SELECT\n            *\n        FROM\n            lineitem l2\n        WHERE\n            l2.l_orderkey = l1.l_orderkey\n            AND l2.l_suppkey \u003c\u003e l1.l_suppkey)\n    AND NOT EXISTS (\n        SELECT\n            *\n        FROM\n            lineitem l3\n        WHERE\n            l3.l_orderkey = l1.l_orderkey\n            AND l3.l_suppkey \u003c\u003e l1.l_suppkey\n            AND l3.l_receiptdate \u003e l3.l_commitdate)\n    AND s_nationkey = n_nationkey\n    AND n_name = 'SAUDI ARABIA'\nGROUP BY\n    s_name\nORDER BY\n    numwait DESC,\n    s_name\nLIMIT 100;\n",
+      "prepare_ms": 0.06484,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "JoinPlan supplier (scan/hash) -\u003e nation (equality join) -\u003e l1 (equality join) -\u003e orders (equality join) estimated order; selective input counts refine execution",
+        "JoinAccess SCAN supplier: index probes or hash input chosen by cardinality",
+        "JoinAccess PRIMARY nation: index probes or hash input chosen by cardinality",
+        "JoinAccess lineitem_supplier l1: index probes or hash input chosen by cardinality",
+        "JoinAccess PRIMARY orders: index probes or hash input chosen by cardinality",
+        "Column  col=s_name",
+        "Filter s_suppkey = l1.l_suppkey AND o_orderkey = l1.l_orderkey AND o_orderstatus = F AND l1.l_receiptdate \u003e l1.l_commitdate AND *sql.ExistsExpr AND *sql.ExistsExpr AND s_nationkey = n_nationkey AND n_name = SAUDI ARABIA WHERE clause",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "Limit  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 253.274128,
+          "process_cpu_ms": 325.827,
+          "allocated_bytes": 125338936,
+          "allocations": 1186740,
+          "rows": 0
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 252.695766,
+          "process_cpu_ms": 321.1010000000001,
+          "allocated_bytes": 125332896,
+          "allocations": 1186313,
+          "rows": 0
+        },
+        {
+          "status": "ok",
+          "wall_ms": 249.557277,
+          "process_cpu_ms": 319.778,
+          "allocated_bytes": 125374144,
+          "allocations": 1186423,
+          "rows": 0
+        },
+        {
+          "status": "ok",
+          "wall_ms": 245.954105,
+          "process_cpu_ms": 318.96500000000015,
+          "allocated_bytes": 125372608,
+          "allocations": 1186452,
+          "rows": 0
+        }
+      ],
+      "min_ms": 245.954105,
+      "median_ms": 249.557277,
+      "columns": [
+        "s_name",
+        "numwait"
+      ]
+    },
+    {
+      "number": 22,
+      "name": "Global sales opportunity",
+      "sql": "SELECT\n    cntrycode,\n    count(*) AS numcust,\n    sum(c_acctbal) AS totacctbal\nFROM (\n    SELECT\n        SUBSTR(c_phone, 1, 2) AS cntrycode,\n        c_acctbal\n    FROM\n        customer\n    WHERE\n        SUBSTR(c_phone, 1, 2) IN ('13', '31', '23', '29', '30', '18', '17')\n        AND c_acctbal \u003e (\n            SELECT\n                avg(c_acctbal)\n            FROM\n                customer\n            WHERE\n                c_acctbal \u003e 0.00\n                AND SUBSTR(c_phone, 1, 2) IN ('13', '31', '23', '29', '30', '18', '17'))\n            AND NOT EXISTS (\n                SELECT\n                    *\n                FROM\n                    orders\n                WHERE\n                    o_custkey = c_custkey)) AS custsale\nGROUP BY\n    cntrycode\nORDER BY\n    cntrycode;\n",
+      "prepare_ms": 0.078881,
+      "plan": [
+        "Init  Start of query",
+        "Trace  ",
+        "OpenRead  table=(subquery)",
+        "Rewind  table scan",
+        "Column  col=cntrycode",
+        "SorterOpen  ",
+        "SorterSort  ",
+        "ResultRow  ",
+        "Next  ",
+        "Halt  "
+      ],
+      "warmups": [
+        {
+          "status": "ok",
+          "wall_ms": 1.281844,
+          "process_cpu_ms": 1.2890000000002146,
+          "allocated_bytes": 292632,
+          "allocations": 4270,
+          "rows": 7
+        }
+      ],
+      "samples": [
+        {
+          "status": "ok",
+          "wall_ms": 1.013883,
+          "process_cpu_ms": 1.0199999999999818,
+          "allocated_bytes": 247960,
+          "allocations": 3677,
+          "rows": 7
+        },
+        {
+          "status": "ok",
+          "wall_ms": 0.995603,
+          "process_cpu_ms": 1.0019999999999527,
+          "allocated_bytes": 248696,
+          "allocations": 3681,
+          "rows": 7
+        },
+        {
+          "status": "ok",
+          "wall_ms": 0.985483,
+          "process_cpu_ms": 0.9940000000001419,
+          "allocated_bytes": 249416,
+          "allocations": 3684,
+          "rows": 7
+        }
+      ],
+      "min_ms": 0.985483,
+      "median_ms": 0.995603,
+      "columns": [
+        "cntrycode",
+        "numcust",
+        "totacctbal"
+      ],
+      "results": [
+        [
+          "13",
+          1,
+          5679.84
+        ],
+        [
+          "17",
+          1,
+          9127.27
+        ],
+        [
+          "18",
+          2,
+          14647.99
+        ],
+        [
+          "23",
+          1,
+          9255.67
+        ],
+        [
+          "29",
+          2,
+          17195.08
+        ],
+        [
+          "30",
+          1,
+          7638.57
+        ],
+        [
+          "31",
+          1,
+          9331.13
+        ]
+      ]
+    }
+  ]
+}

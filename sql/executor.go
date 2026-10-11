@@ -77,6 +77,12 @@ type Schema struct {
 	txLatest         map[string]int
 	txState          *schemaState
 	statementChanges int64
+	subqueryMemos    map[*SelectStmt]*subqueryMemo
+	existsMemos      map[*SelectStmt]*subqueryMemo
+	selectValues     map[string]storage.PointValue
+	selectValueBytes int
+	likePatterns     map[likePatternKey]likePattern
+	subquerySets     map[*ResultSet]*subqueryMembership
 	selectDepth      int
 	triggerDepth     int
 	viewDepth        int
@@ -1007,11 +1013,33 @@ func (s *Schema) Explain(stmt *ExplainStmt) (*ResultSet, error) {
 			tname = "(subquery)"
 		}
 		info := s.tables[tname]
+		join := s.makeJoinPlan(inner)
 		tuple := s.tuplePlan(inner, info)
 		covering := s.coveringPlan(inner, tname, info)
 		_, point := s.primaryKeyLookup(inner.Where, tname, info)
 		ordered := false
-		if tuple != nil {
+		if join != nil {
+			addRow("JoinPlan", 0, 0, 0, join.description(), "", "estimated order; selective input counts refine execution")
+			var mask uint64
+			for _, i := range join.order {
+				r := join.relations[i]
+				reader := s.joinReader(r, join.pairs(i, mask))
+				access := "SCAN"
+				if len(reader.columns) > 0 {
+					access = "PRIMARY"
+					if reader.index != nil {
+						access = reader.index.Name
+					}
+				} else if len(r.paths) > 0 {
+					access = "PRIMARY"
+					if r.paths[0].index != nil {
+						access = r.paths[0].index.Name
+					}
+				}
+				addRow("JoinAccess", 0, 0, 0, access, "", r.alias+": index probes or hash input chosen by cardinality")
+				mask |= 1 << i
+			}
+		} else if tuple != nil {
 			ordered = tuple.ordered
 			opcode := "OpenRead"
 			if tuple.index != nil {
@@ -1050,7 +1078,7 @@ func (s *Schema) Explain(stmt *ExplainStmt) (*ResultSet, error) {
 			addRow("Filter", 0, 0, 0, exprString(inner.Where), "", "WHERE clause")
 		}
 
-		if tuple != nil || point {
+		if join != nil || tuple != nil || point {
 			// Bounded access was described above.
 		} else if covering != nil {
 			direction := "forward"
@@ -2655,6 +2683,17 @@ func (s *Schema) findMatchingRowsViaIndex(where Expression, tableName string) ([
 	if key, ok := s.primaryKeyLookup(where, tableName, s.tables[tableName]); ok {
 		return [][]byte{key}, true
 	}
+	if bin, ok := where.(*BinaryExpr); ok && bin.Op == "AND" {
+		info := s.tables[tableName]
+		for _, term := range andTerms(where) {
+			if typedIndexEquality(term, info) {
+				if keys, ok := s.findMatchingRowsViaIndex(term, tableName); ok {
+					return keys, true
+				}
+			}
+		}
+		return nil, false
+	}
 	bin, ok := where.(*BinaryExpr)
 	if !ok || bin.Op != "=" {
 		return nil, false
@@ -3674,6 +3713,9 @@ func (s *Schema) Select(stmt *SelectStmt) (*ResultSet, error) {
 			return nil, err
 		}
 	}
+	if s.selectDepth == 0 {
+		defer s.clearSelectCaches()
+	}
 	s.selectDepth++
 	defer func() { s.selectDepth-- }()
 	if s.selectDepth > 100 {
@@ -3686,6 +3728,7 @@ func (s *Schema) Select(stmt *SelectStmt) (*ResultSet, error) {
 	orderedIndex := false
 	coveringProjection := false
 	conditionSatisfied := false
+	expressionsReady := false
 	rs := &ResultSet{}
 	tableName := strings.ToLower(stmt.From)
 
@@ -3767,7 +3810,65 @@ func (s *Schema) Select(stmt *SelectStmt) (*ResultSet, error) {
 	rows := make([]map[string]Value, 0)
 	var rowKeys [][]string
 
-	if stmt.FromExpr != nil {
+	streamedGroups := false
+	streamedRead := false
+	if info != nil && stmt.FromExpr == nil && tableName != "" {
+		var streamErr error
+		rows, streamedGroups, streamErr = s.streamAggregateScan(stmt, info, exprCols)
+		if streamErr != nil {
+			return nil, streamErr
+		}
+		if !streamedGroups {
+			rows, streamedRead, streamErr = s.streamSelectScan(stmt, info)
+			if streamErr != nil {
+				return nil, streamErr
+			}
+		}
+	}
+	if streamedGroups || streamedRead {
+		// Group output continues through the common DISTINCT/ORDER/LIMIT path.
+	} else if plan := s.makeJoinPlan(stmt); plan != nil {
+		expressionsReady = !stmt.SelectAll && !hasAggregates(stmt) && len(stmt.GroupBy) == 0 && stmt.Having == nil
+		for _, c := range stmt.Columns {
+			if c.Star {
+				expressionsReady = false
+			}
+		}
+		orderInputs := make(map[string]bool)
+		if expressionsReady {
+			for _, o := range stmt.OrderBy {
+				names, _ := s.expressionDependencies(o.Expr)
+				for _, name := range names {
+					orderInputs[name] = true
+				}
+			}
+		}
+		if err := s.walkJoinPlan(plan, func(row map[string]Value) error {
+			if !expressionsReady {
+				rows = append(rows, copyRow(row))
+				return nil
+			}
+			projected := make(map[string]Value, len(exprCols)+len(orderInputs))
+			for _, ec := range exprCols {
+				v, err := s.evalExpr(ec.expr, row)
+				if err != nil {
+					return err
+				}
+				projected[ec.name] = v
+			}
+			for name := range orderInputs {
+				if _, exists := projected[name]; !exists {
+					if v, ok := row[name]; ok {
+						projected[name] = v
+					}
+				}
+			}
+			rows = append(rows, projected)
+			return nil
+		}); err != nil {
+			return nil, err
+		}
+	} else if stmt.FromExpr != nil {
 		if subExpr, ok := stmt.FromExpr.(*SubqueryExpr); ok {
 			subRS, err := s.Select(subExpr.Stmt)
 			if err != nil {
@@ -3902,6 +4003,12 @@ func (s *Schema) Select(stmt *SelectStmt) (*ResultSet, error) {
 			var scanErr error
 			if trackKeys {
 				baseRows, scanErr = s.scanTableLimit(tableName, info, prefix, scanLimit, scanReverse, &baseKeys)
+			} else if len(stmt.Joins) > 0 {
+				if needed := joinRequiredNames(stmt); needed != nil {
+					baseRows, scanErr = s.scanJoinTable(tableName, stmt.FromAlias, info, needed)
+				} else {
+					baseRows, scanErr = s.scanTableLimit(tableName, info, prefix, scanLimit, scanReverse)
+				}
 			} else {
 				baseRows, scanErr = s.scanTableLimit(tableName, info, prefix, scanLimit, scanReverse)
 			}
@@ -3960,7 +4067,7 @@ func (s *Schema) Select(stmt *SelectStmt) (*ResultSet, error) {
 		}
 	}
 
-	if len(exprCols) > 0 && !coveringProjection {
+	if len(exprCols) > 0 && !coveringProjection && !streamedGroups && !expressionsReady {
 		for i := range rows {
 			original := make(map[string]Value)
 			for k, v := range rows[i] {
@@ -3982,7 +4089,7 @@ func (s *Schema) Select(stmt *SelectStmt) (*ResultSet, error) {
 	hasAgg := hasAggregates(stmt)
 	hasGroupBy := len(stmt.GroupBy) > 0 || stmt.Having != nil
 
-	if hasAgg || hasGroupBy {
+	if (hasAgg || hasGroupBy) && !streamedGroups {
 		var err error
 		rows, rowKeys, err = s.processGroups(stmt, rows, info, exprCols, rowKeys)
 		if err != nil {
@@ -4044,7 +4151,19 @@ func (s *Schema) Select(stmt *SelectStmt) (*ResultSet, error) {
 		}
 	}
 
-	if !coveringProjection && !(stmt.SelectAll && !needQualified && info != nil && stmt.FromExpr == nil && len(stmt.Joins) == 0 && !hasAgg && !hasGroupBy) {
+	if expressionsReady {
+		selected := make(map[string]bool)
+		for _, col := range rs.Columns {
+			selected[col.Name] = true
+		}
+		for _, row := range rows {
+			for name := range row {
+				if !selected[name] {
+					delete(row, name)
+				}
+			}
+		}
+	} else if !coveringProjection && !(stmt.SelectAll && !needQualified && info != nil && stmt.FromExpr == nil && len(stmt.Joins) == 0 && !hasAgg && !hasGroupBy) {
 		for i, row := range rows {
 			projected := make(map[string]Value)
 			for _, col := range rs.Columns {
@@ -4473,7 +4592,7 @@ func (s *Schema) scanTableLimit(tableName string, info *TableInfo, prefix string
 	if limit == 0 {
 		return nil, nil
 	}
-	rowMap := make(map[string]map[string]Value)
+	var rows []map[string]Value
 	var keys []string
 	var iter storage.Iterator
 	if s.inTx {
@@ -4482,68 +4601,46 @@ func (s *Schema) scanTableLimit(tableName string, info *TableInfo, prefix string
 		iter = s.newIterator()
 	}
 	defer iter.Close()
-
 	if reverse {
 		iter.Seek([]byte(prefix + "\xff"))
-		revCount := 0
-		for {
+		iter.Prev()
+	} else {
+		iter.Seek([]byte(prefix))
+	}
+	for n := 0; iter.Valid(); n++ {
+		if n%128 == 0 {
+			if err := s.checkInterrupt(); err != nil {
+				return nil, err
+			}
+		}
+		userKey := iter.Key().UserKey
+		if !bytes.HasPrefix(userKey, []byte(prefix)) {
+			break
+		}
+		rows = append(rows, decodeRow(iter.Value(), info))
+		if len(keySets) > 0 {
+			keys = append(keys, string(userKey))
+		}
+		if limit >= 0 && int64(len(rows)) >= limit {
+			break
+		}
+		if reverse {
 			iter.Prev()
-			if !iter.Valid() {
-				break
-			}
-			key := string(iter.Key().UserKey)
-			if !strings.HasPrefix(key, prefix) {
-				break
-			}
-			row := decodeRow(iter.Value(), info)
-			rowMap[key] = row
-			keys = append(keys, key)
-			revCount++
-			if revCount%100 == 0 {
-				if err := s.checkInterrupt(); err != nil {
-					return nil, err
-				}
-			}
-			if limit >= 0 && int64(len(keys)) >= limit {
-				break
-			}
+		} else {
+			iter.Next()
+		}
+	}
+	if reverse {
+		for i, j := 0, len(rows)-1; i < j; i, j = i+1, j-1 {
+			rows[i], rows[j] = rows[j], rows[i]
 		}
 		for i, j := 0, len(keys)-1; i < j; i, j = i+1, j-1 {
 			keys[i], keys[j] = keys[j], keys[i]
 		}
-	} else {
-		iter.Seek([]byte(prefix))
-		scanCount := 0
-		for iter.Valid() {
-			key := string(iter.Key().UserKey)
-			if !strings.HasPrefix(key, prefix) {
-				if key > prefix {
-					break
-				}
-				iter.Next()
-				continue
-			}
-			row := decodeRow(iter.Value(), info)
-			rowMap[key] = row
-			keys = append(keys, key)
-			iter.Next()
-			scanCount++
-			if scanCount%100 == 0 {
-				if err := s.checkInterrupt(); err != nil {
-					return nil, err
-				}
-			}
-			if limit >= 0 && int64(len(keys)) >= limit {
-				break
-			}
-		}
 	}
-
-	var rows []map[string]Value
-	for _, k := range keys {
-		rows = append(rows, rowMap[k])
-		for _, keySet := range keySets {
-			*keySet = append(*keySet, []string{k})
+	for _, keySet := range keySets {
+		for _, key := range keys {
+			*keySet = append(*keySet, []string{key})
 		}
 	}
 	return rows, storage.IteratorError(iter)
@@ -4628,90 +4725,7 @@ func (s *Schema) addJoinColumns(rs *ResultSet, jc JoinClause, baseColumns []Colu
 		baseExist[name] = true
 	}
 }
-func (s *Schema) executeJoins(stmt *SelectStmt, baseRows []map[string]Value, baseKeys [][]string) ([]map[string]Value, [][]string, error) {
-	result := baseRows
-	resultKeys := baseKeys
-	trackKeys := stmt.Lock != nil || stmt.trackRows
-	for _, jc := range stmt.Joins {
-		joinRows, columns, joinKeys, err := s.getJoinRows(jc, trackKeys)
-		if err != nil {
-			return nil, nil, err
-		}
-		alias := jc.Alias
-		if alias == "" {
-			alias = jc.Table
-		}
-		var next []map[string]Value
-		var nextKeys [][]string
-		for i, left := range result {
-			if err := s.checkInterrupt(); err != nil {
-				return nil, nil, err
-			}
-			matched := false
-			for j, right := range joinRows {
-				combined := s.combineRowsWithAlias(left, right, alias)
-				match := true
-				using := jc.Using
-				if jc.Type == "NATURAL" {
-					using = nil
-					for _, col := range columns {
-						if _, ok := left[col.Name]; ok {
-							using = append(using, col.Name)
-						}
-					}
-				}
-				for _, name := range using {
-					a, b := left[name], right[name]
-					if a.Null || b.Null || ValueCompare(a, b) != 0 {
-						match = false
-						break
-					}
-				}
-				if jc.On != nil && match {
-					match, err = s.evalCondition(jc.On, combined)
-					if err != nil {
-						return nil, nil, err
-					}
-				}
-				if match {
-					matched = true
-					next = append(next, combined)
-					if trackKeys {
-						var keys []string
-						if resultKeys != nil {
-							keys = append(keys, resultKeys[i]...)
-						}
-						if joinKeys != nil {
-							keys = append(keys, joinKeys[j]...)
-						}
-						nextKeys = append(nextKeys, keys)
-					}
-				}
-			}
-			if !matched && jc.Type == "LEFT" {
-				null := make(map[string]Value)
-				for _, col := range columns {
-					null[col.Name] = NewNullValue()
-				}
-				next = append(next, s.combineRowsWithAlias(left, null, alias))
-				if trackKeys {
-					var keys []string
-					if resultKeys != nil {
-						keys = resultKeys[i]
-					}
-					nextKeys = append(nextKeys, keys)
-				}
-			}
-		}
-		if jc.Type == "RIGHT" {
-			return nil, nil, fmt.Errorf("RIGHT JOIN is not supported")
-		}
-		result = next
-		resultKeys = nextKeys
-	}
-	return result, resultKeys, nil
-}
-func (s *Schema) getJoinRows(jc JoinClause, locking bool) ([]map[string]Value, []ColumnDef, [][]string, error) {
+func (s *Schema) getJoinRows(jc JoinClause, locking bool, needed map[string]bool) ([]map[string]Value, []ColumnDef, [][]string, error) {
 	if jc.Subquery != nil {
 		rs, err := s.Select(jc.Subquery)
 		if err != nil {
@@ -4726,6 +4740,8 @@ func (s *Schema) getJoinRows(jc JoinClause, locking bool) ([]map[string]Value, [
 		var err error
 		if locking {
 			rows, err = s.scanTableLimit(name, info, tableDataPrefix(name), -1, false, &keys)
+		} else if needed != nil {
+			rows, err = s.scanJoinTable(name, jc.Alias, info, needed)
 		} else {
 			rows, err = s.scanTable(name, info, nil, tableDataPrefix(name))
 		}
@@ -4783,10 +4799,7 @@ func (s *Schema) makeNullRow(rows []map[string]Value) map[string]Value {
 }
 
 func (s *Schema) evalSubquery(sub *SelectStmt, outer map[string]Value) (*ResultSet, error) {
-	prev := s.outerRow
-	s.outerRow = outer
-	defer func() { s.outerRow = prev }()
-	return s.Select(sub)
+	return s.executeSubquery(sub, outer)
 }
 func (s *Schema) evalSubqueryValue(sub *SelectStmt, outer map[string]Value) (Value, error) {
 	rs, err := s.evalSubquery(sub, outer)
@@ -5273,7 +5286,7 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 	case *SubqueryExpr:
 		return s.evalSubqueryValue(e.Stmt, row)
 	case *ExistsExpr:
-		rs, err := s.evalSubquery(e.Stmt, row)
+		rs, err := s.executeSubqueryMode(e.Stmt, row, true)
 		if err != nil {
 			return NewNullValue(), err
 		}
@@ -5824,20 +5837,14 @@ func (s *Schema) evalBinary(e *BinaryExpr, row map[string]Value) (Value, error) 
 			if len(rs.Columns) != 1 {
 				return NewNullValue(), fmt.Errorf("IN subquery must return one column")
 			}
-			hasNull := lv.Null
-			for _, sr := range rs.Rows {
-				v := sr[rs.Columns[0].Name]
-				if v.Null {
-					hasNull = true
+			membership := s.membership(rs)
+			if !lv.Null && membership.values[string(appendEqualityKey(nil, lv))] {
+				if e.Op == "NOT IN" {
+					return NewIntValue(0), nil
 				}
-				if !lv.Null && !v.Null && ValueCompare(lv, v) == 0 {
-					if e.Op == "NOT IN" {
-						return NewIntValue(0), nil
-					}
-					return NewIntValue(1), nil
-				}
+				return NewIntValue(1), nil
 			}
-			if len(rs.Rows) > 0 && hasNull {
+			if len(rs.Rows) > 0 && (lv.Null || membership.hasNull) {
 				return NewNullValue(), nil
 			}
 			if e.Op == "NOT IN" {
@@ -5859,7 +5866,7 @@ func (s *Schema) evalBinary(e *BinaryExpr, row map[string]Value) (Value, error) 
 		if lv.Null || rv.Null {
 			return NewNullValue(), nil
 		}
-		if likeMatchEsc(lv.String(), rv.String(), e.Escape) {
+		if s.matchLike(lv.String(), rv.String(), e.Escape) {
 			return NewIntValue(1), nil
 		}
 		return NewIntValue(0), nil
@@ -5875,7 +5882,7 @@ func (s *Schema) evalBinary(e *BinaryExpr, row map[string]Value) (Value, error) 
 		if lv.Null || rv.Null {
 			return NewNullValue(), nil
 		}
-		if likeMatchEsc(lv.String(), rv.String(), e.Escape) {
+		if s.matchLike(lv.String(), rv.String(), e.Escape) {
 			return NewIntValue(0), nil
 		}
 		return NewIntValue(1), nil
@@ -6182,48 +6189,7 @@ func globMatch(str, pattern string) bool {
 	return err == nil && matched
 }
 func likeMatchEsc(str, pattern string, escape byte) bool {
-	type token struct {
-		r    rune
-		wild bool
-	}
-	var tokens []token
-	runes := []rune(pattern)
-	fold := func(r rune) rune {
-		if r >= 'A' && r <= 'Z' {
-			return r + ('a' - 'A')
-		}
-		return r
-	}
-	for i := 0; i < len(runes); i++ {
-		r := runes[i]
-		if escape != 0 && r == rune(escape) {
-			i++
-			if i == len(runes) {
-				return false
-			}
-			tokens = append(tokens, token{r: fold(runes[i])})
-		} else {
-			tokens = append(tokens, token{r: fold(r), wild: r == '%' || r == '_'})
-		}
-	}
-	input := []rune(str)
-	previous := make([]bool, len(input)+1)
-	previous[0] = true
-	for _, t := range tokens {
-		next := make([]bool, len(input)+1)
-		if t.wild && t.r == '%' {
-			next[0] = previous[0]
-		}
-		for j := 1; j <= len(input); j++ {
-			if t.wild && t.r == '%' {
-				next[j] = previous[j] || next[j-1]
-			} else if t.wild && t.r == '_' || t.r == fold(input[j-1]) {
-				next[j] = previous[j-1]
-			}
-		}
-		previous = next
-	}
-	return previous[len(input)]
+	return compileLike(pattern, escape).match(str)
 }
 
 func (s *Schema) evalDateTimeArgs(args []Expression, row map[string]Value) (time.Time, error) {

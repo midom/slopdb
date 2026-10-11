@@ -1,0 +1,226 @@
+{
+  "sqlite_version": "3.45.1",
+  "data_directory": "/tmp/godb/tpch-sf01",
+  "queries": [
+    {
+      "number": 1,
+      "sqlite_ms": 92.08475891500711,
+      "rows": 4,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "docs/benchmarks/tpch/sf01-duckdb.json": "pass"
+      }
+    },
+    {
+      "number": 2,
+      "sqlite_ms": 0.41404087096452713,
+      "rows": 4,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "docs/benchmarks/tpch/sf01-duckdb.json": "pass"
+      }
+    },
+    {
+      "number": 3,
+      "sqlite_ms": 7.286662235856056,
+      "rows": 10,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "docs/benchmarks/tpch/sf01-duckdb.json": "pass"
+      }
+    },
+    {
+      "number": 4,
+      "sqlite_ms": 1.493365503847599,
+      "rows": 5,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "docs/benchmarks/tpch/sf01-duckdb.json": "pass"
+      }
+    },
+    {
+      "number": 5,
+      "sqlite_ms": 3.5536913201212883,
+      "rows": 5,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "docs/benchmarks/tpch/sf01-duckdb.json": "pass"
+      }
+    },
+    {
+      "number": 6,
+      "sqlite_ms": 5.847657099366188,
+      "rows": 1,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "docs/benchmarks/tpch/sf01-duckdb.json": "pass"
+      }
+    },
+    {
+      "number": 7,
+      "sqlite_ms": 30.32585233449936,
+      "rows": 4,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "docs/benchmarks/tpch/sf01-duckdb.json": "pass"
+      }
+    },
+    {
+      "number": 8,
+      "sqlite_ms": 0.8482029661536217,
+      "rows": 2,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "docs/benchmarks/tpch/sf01-duckdb.json": "pass"
+      }
+    },
+    {
+      "number": 9,
+      "sqlite_ms": 12.653117999434471,
+      "rows": 173,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "docs/benchmarks/tpch/sf01-duckdb.json": "pass"
+      }
+    },
+    {
+      "number": 10,
+      "sqlite_ms": 4.374134354293346,
+      "rows": 20,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "docs/benchmarks/tpch/sf01-duckdb.json": "pass"
+      }
+    },
+    {
+      "number": 11,
+      "sqlite_ms": 1.09932292252779,
+      "rows": 359,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "docs/benchmarks/tpch/sf01-duckdb.json": "pass"
+      }
+    },
+    {
+      "number": 12,
+      "sqlite_ms": 6.754539906978607,
+      "rows": 2,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "docs/benchmarks/tpch/sf01-duckdb.json": "pass"
+      }
+    },
+    {
+      "number": 13,
+      "sqlite_ms": 11.354194022715092,
+      "rows": 32,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "docs/benchmarks/tpch/sf01-duckdb.json": "pass"
+      }
+    },
+    {
+      "number": 14,
+      "sqlite_ms": 0.9492030367255211,
+      "rows": 1,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "docs/benchmarks/tpch/sf01-duckdb.json": "pass"
+      }
+    },
+    {
+      "number": 15,
+      "sqlite_ms": 4.2854128405451775,
+      "rows": 1,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "docs/benchmarks/tpch/sf01-duckdb.json": "pass"
+      }
+    },
+    {
+      "number": 16,
+      "sqlite_ms": 2.063967287540436,
+      "rows": 296,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "docs/benchmarks/tpch/sf01-duckdb.json": "pass"
+      }
+    },
+    {
+      "number": 17,
+      "sqlite_ms": 0.23320037871599197,
+      "rows": 1,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "docs/benchmarks/tpch/sf01-duckdb.json": "pass"
+      }
+    },
+    {
+      "number": 18,
+      "sqlite_ms": 15.250765718519688,
+      "rows": 2,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "docs/benchmarks/tpch/sf01-duckdb.json": "pass"
+      }
+    },
+    {
+      "number": 19,
+      "sqlite_ms": 0.8207214996218681,
+      "rows": 1,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "docs/benchmarks/tpch/sf01-duckdb.json": "pass"
+      }
+    },
+    {
+      "number": 20,
+      "sqlite_ms": 0.8173622190952301,
+      "rows": 1,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "docs/benchmarks/tpch/sf01-duckdb.json": "pass"
+      }
+    },
+    {
+      "number": 21,
+      "sqlite_ms": 1.4832839369773865,
+      "rows": 1,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "docs/benchmarks/tpch/sf01-duckdb.json": "pass"
+      }
+    },
+    {
+      "number": 22,
+      "sqlite_ms": 1.0206839069724083,
+      "rows": 7,
+      "translation": "pass",
+      "slopdb": "pass",
+      "duckdb": {
+        "docs/benchmarks/tpch/sf01-duckdb.json": "pass"
+      }
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+CREATE INDEX partsupp_part_supplier ON partsupp(ps_partkey, ps_suppkey);
+CREATE INDEX nation_region ON nation(n_regionkey);
+CREATE INDEX supplier_nation ON supplier(s_nationkey);
+CREATE INDEX customer_nation ON customer(c_nationkey);
+CREATE INDEX customer_segment ON customer(c_mktsegment);
+CREATE INDEX orders_customer ON orders(o_custkey);
+CREATE INDEX orders_date ON orders(o_orderdate);
+CREATE INDEX lineitem_part_supplier ON lineitem(l_partkey, l_suppkey);
+CREATE INDEX lineitem_supplier ON lineitem(l_suppkey);
+CREATE INDEX lineitem_shipdate ON lineitem(l_shipdate);
+CREATE INDEX lineitem_receiptdate ON lineitem(l_receiptdate);
+CREATE INDEX partsupp_supplier ON partsupp(ps_suppkey);
+CREATE INDEX part_size ON part(p_size);
+CREATE INDEX part_type ON part(p_type);
