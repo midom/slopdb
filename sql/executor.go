@@ -2908,6 +2908,15 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 		}
 	}
 
+	if stmt.OnConflict != nil {
+		if viewInsert {
+			return 0, nil, fmt.Errorf("ON CONFLICT is not supported on views")
+		}
+		if err := s.validateOnConflict(stmt.OnConflict, info); err != nil {
+			return 0, nil, err
+		}
+	}
+
 	s.statementChanges = 0
 	seen := make(map[string]bool)
 	for _, name := range stmt.ColumnNames {
@@ -3044,13 +3053,44 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 		if err := s.fireTriggers(tableName, "INSERT", "BEFORE", nil, row); err != nil {
 			return 0, nil, err
 		}
+		if stmt.OnConflict != nil {
+			handled, updated, err := s.handleInsertConflict(tableName, info, row, stmt.OnConflict)
+			if err != nil {
+				return 0, nil, err
+			}
+			if handled {
+				// Successful conflict actions reserve generated AUTOINCREMENT IDs
+				// just like ordinary insertion, including across database reopening.
+				if pkCol != nil && pkCol.AutoIncrement {
+					if nextID > s.getAutoincMax(tableName) {
+						s.setAutoincMax(tableName, nextID)
+					}
+					if err := s.saveAutoincMax(); err != nil {
+						return 0, nil, err
+					}
+				}
+				if updated != nil {
+					s.statementChanges++
+					returningRows = append(returningRows, updated)
+				}
+				continue
+			}
+		}
 		if stmt.Replace {
 			if err := s.deleteConflicts(tableName, info, row); err != nil {
 				return 0, nil, err
 			}
 		}
-		if err := s.checkConstraints(tableName, info, row, nil); err != nil {
-			return 0, nil, err
+		var constraintErr error
+		if stmt.OnConflict != nil {
+			// Non-unique checks ran before conflict resolution. Do not evaluate
+			// volatile CHECK expressions a second time on an actual insertion.
+			constraintErr = s.checkUniqueConstraintsOriginal(tableName, info, row, nil, nil)
+		} else {
+			constraintErr = s.checkConstraints(tableName, info, row, nil)
+		}
+		if constraintErr != nil {
+			return 0, nil, constraintErr
 		}
 
 		data := encodeRow(row, info)
@@ -3151,15 +3191,13 @@ func (s *Schema) checkConstraints(tableName string, info *TableInfo, row map[str
 }
 
 func (s *Schema) checkConstraintsOriginal(tableName string, info *TableInfo, row map[string]Value, rowKey []byte, original map[string]Value) error {
-	if err := validatePrimaryKey(info, row); err != nil {
+	if err := s.checkNonUniqueConstraints(tableName, info, row); err != nil {
 		return err
 	}
-	if err := validateRowTypes(info, row); err != nil {
-		return err
-	}
-	if err := s.validateIndexedRow(tableName, row); err != nil {
-		return err
-	}
+	return s.checkUniqueConstraintsOriginal(tableName, info, row, rowKey, original)
+}
+
+func (s *Schema) checkUniqueConstraintsOriginal(tableName string, info *TableInfo, row map[string]Value, rowKey []byte, original map[string]Value) error {
 	checkUnique := func(columns []string) error {
 		unchanged := original != nil
 		for _, col := range columns {
@@ -3172,31 +3210,6 @@ func (s *Schema) checkConstraintsOriginal(tableName string, info *TableInfo, row
 			return nil
 		}
 		return s.checkUnique(tableName, columns, row, rowKey, info)
-	}
-	for _, col := range info.Columns {
-		if col.NotNull {
-			if v, ok := row[col.Name]; ok && v.Null {
-				return fmt.Errorf("NOT NULL constraint failed: %s.%s", tableName, col.Name)
-			}
-		}
-		if col.Check != nil {
-			v, err := s.evalExpr(col.Check, row)
-			match := v.Null || truthValue(v)
-			if err != nil {
-				return fmt.Errorf("CHECK constraint failed: %s.%s: %v", tableName, col.Name, err)
-			}
-			if !match {
-				return fmt.Errorf("CHECK constraint failed: %s.%s", tableName, col.Name)
-			}
-		}
-	}
-
-	for _, expr := range info.TableCheck {
-		v, err := s.evalExpr(expr, row)
-		match := v.Null || truthValue(v)
-		if err != nil || !match {
-			return fmt.Errorf("CHECK constraint failed: %s", tableName)
-		}
 	}
 
 	pkCol := s.getPKColumn(info)
@@ -3235,6 +3248,45 @@ func (s *Schema) checkConstraintsOriginal(tableName string, info *TableInfo, row
 	for _, cols := range info.TableUnique {
 		if err := checkUnique(cols); err != nil {
 			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *Schema) checkNonUniqueConstraints(tableName string, info *TableInfo, row map[string]Value) error {
+	if err := validatePrimaryKey(info, row); err != nil {
+		return err
+	}
+	if err := validateRowTypes(info, row); err != nil {
+		return err
+	}
+	if err := s.validateIndexedRow(tableName, row); err != nil {
+		return err
+	}
+	for _, col := range info.Columns {
+		if col.NotNull {
+			if v, ok := row[col.Name]; ok && v.Null {
+				return fmt.Errorf("NOT NULL constraint failed: %s.%s", tableName, col.Name)
+			}
+		}
+		if col.Check != nil {
+			v, err := s.evalExpr(col.Check, row)
+			match := v.Null || truthValue(v)
+			if err != nil {
+				return fmt.Errorf("CHECK constraint failed: %s.%s: %v", tableName, col.Name, err)
+			}
+			if !match {
+				return fmt.Errorf("CHECK constraint failed: %s.%s", tableName, col.Name)
+			}
+		}
+	}
+
+	for _, expr := range info.TableCheck {
+		v, err := s.evalExpr(expr, row)
+		match := v.Null || truthValue(v)
+		if err != nil || !match {
+			return fmt.Errorf("CHECK constraint failed: %s", tableName)
 		}
 	}
 
@@ -3522,13 +3574,44 @@ func (s *Schema) insertFromSelect(stmt *InsertStmt, info *TableInfo) (int64, *Re
 		if err := s.fireTriggers(tableName, "INSERT", "BEFORE", nil, row); err != nil {
 			return 0, nil, err
 		}
+		if stmt.OnConflict != nil {
+			handled, updated, err := s.handleInsertConflict(tableName, info, row, stmt.OnConflict)
+			if err != nil {
+				return 0, nil, err
+			}
+			if handled {
+				// Successful conflict actions reserve generated AUTOINCREMENT IDs
+				// just like ordinary insertion, including across database reopening.
+				if pkCol != nil && pkCol.AutoIncrement {
+					if nextID > s.getAutoincMax(tableName) {
+						s.setAutoincMax(tableName, nextID)
+					}
+					if err := s.saveAutoincMax(); err != nil {
+						return 0, nil, err
+					}
+				}
+				if updated != nil {
+					s.statementChanges++
+					returningRows = append(returningRows, updated)
+				}
+				continue
+			}
+		}
 		if stmt.Replace {
 			if err := s.deleteConflicts(tableName, info, row); err != nil {
 				return 0, nil, err
 			}
 		}
-		if err := s.checkConstraints(tableName, info, row, nil); err != nil {
-			return 0, nil, err
+		var constraintErr error
+		if stmt.OnConflict != nil {
+			// Non-unique checks ran before conflict resolution. Do not evaluate
+			// volatile CHECK expressions a second time on an actual insertion.
+			constraintErr = s.checkUniqueConstraintsOriginal(tableName, info, row, nil, nil)
+		} else {
+			constraintErr = s.checkConstraints(tableName, info, row, nil)
+		}
+		if constraintErr != nil {
+			return 0, nil, constraintErr
 		}
 
 		data := encodeRow(row, info)
@@ -5153,78 +5236,10 @@ func (s *Schema) Update(stmt *UpdateStmt) (int64, *ResultSet, error) {
 	var returning []map[string]Value
 	for _, entry := range entries {
 		original := decodeRow(entry.Value, info)
-		if err := s.lockRow(table, info, original, entry.Key.UserKey); err != nil {
+		row, err := s.applyRowUpdate(table, info, entry.Key.UserKey, original, stmt.Set, original)
+		if err != nil {
 			return 0, nil, err
 		}
-		row := make(map[string]Value)
-		for k, v := range original {
-			row[k] = v
-		}
-		for _, set := range stmt.Set {
-			v, err := s.evalExpr(set.Value, original)
-			if err != nil {
-				return 0, nil, err
-			}
-			for _, col := range info.Columns {
-				if col.Name == strings.ToLower(set.Column) {
-					v = applyAffinity(v, col.ColType)
-					break
-				}
-			}
-			row[strings.ToLower(set.Column)] = v
-		}
-		beforeTriggers := len(s.txWrites)
-		if err := s.fireTriggers(table, "UPDATE", "BEFORE", original, row); err != nil {
-			return 0, nil, err
-		}
-
-		key := entry.Key.UserKey
-		if len(info.PKColumns) > 0 {
-			if err := validatePrimaryKey(info, row); err != nil {
-				return 0, nil, err
-			}
-			key = info.encodePK(table, row)
-		}
-		if err := s.lockRow(table, info, row, key); err != nil {
-			return 0, nil, err
-		}
-		indexedRow := original
-		if len(s.txWrites) != beforeTriggers {
-			// BEFORE triggers may have changed or removed the indexed row. Compare
-			// against its current state before skipping any index mutations.
-			data, found, err := s.schemaGet(entry.Key.UserKey)
-			if err != nil {
-				return 0, nil, err
-			}
-			indexedRow = nil
-			if found {
-				indexedRow = decodeRow(data, info)
-			}
-		}
-		if err := s.checkConstraintsOriginal(table, info, row, entry.Key.UserKey, indexedRow); err != nil {
-			return 0, nil, err
-		}
-		if err := s.updateChangedIndexes(table, indexedRow, row, entry.Key.UserKey, key); err != nil {
-			return 0, nil, err
-		}
-		if !bytes.Equal(key, entry.Key.UserKey) {
-			if err := s.remove(entry.Key.UserKey); err != nil {
-				return 0, nil, err
-			}
-		}
-		if err := s.write(key, encodeRow(row, info)); err != nil {
-			return 0, nil, err
-		}
-		if len(info.PKColumns) == 1 && !bytes.Equal(key, entry.Key.UserKey) {
-			v := row[info.PKColumns[0]]
-			if v.Type == ColInteger && v.Int >= s.rowIDCount[table] {
-				s.rowIDCount[table] = v.Int + 1
-			}
-		}
-		if err := s.fireTriggers(table, "UPDATE", "AFTER", original, row); err != nil {
-			return 0, nil, err
-		}
-
 		returning = append(returning, row)
 	}
 	var rs *ResultSet
@@ -5237,6 +5252,85 @@ func (s *Schema) Update(stmt *UpdateStmt) (int64, *ResultSet, error) {
 	}
 	return int64(len(entries)), rs, nil
 }
+
+// applyRowUpdate is shared by UPDATE and UPSERT. Both paths retain identical
+// locking, trigger, constraint, primary-key, and index mutation semantics.
+func (s *Schema) applyRowUpdate(table string, info *TableInfo, oldKey []byte, original map[string]Value, sets []UpdateSet, evaluationRow map[string]Value) (map[string]Value, error) {
+	if err := s.lockRow(table, info, original, oldKey); err != nil {
+		return nil, err
+	}
+	row := make(map[string]Value)
+	for k, v := range original {
+		row[k] = v
+	}
+	for _, set := range sets {
+		v, err := s.evalExpr(set.Value, evaluationRow)
+		if err != nil {
+			return nil, err
+		}
+		for _, col := range info.Columns {
+			if col.Name == strings.ToLower(set.Column) {
+				v = applyAffinity(v, col.ColType)
+				break
+			}
+		}
+		row[strings.ToLower(set.Column)] = v
+	}
+	beforeTriggers := len(s.txWrites)
+	if err := s.fireTriggers(table, "UPDATE", "BEFORE", original, row); err != nil {
+		return nil, err
+	}
+
+	key := oldKey
+	if len(info.PKColumns) > 0 {
+		if err := validatePrimaryKey(info, row); err != nil {
+			return nil, err
+		}
+		key = info.encodePK(table, row)
+	}
+	if err := s.lockRow(table, info, row, key); err != nil {
+		return nil, err
+	}
+	indexedRow := original
+	if len(s.txWrites) != beforeTriggers {
+		// BEFORE triggers may have changed or removed the indexed row. Compare
+		// against its current state before skipping any index mutations.
+		data, found, err := s.schemaGet(oldKey)
+		if err != nil {
+			return nil, err
+		}
+		indexedRow = nil
+		if found {
+			indexedRow = decodeRow(data, info)
+		}
+	}
+	if err := s.checkConstraintsOriginal(table, info, row, oldKey, indexedRow); err != nil {
+		return nil, err
+	}
+	if err := s.updateChangedIndexes(table, indexedRow, row, oldKey, key); err != nil {
+		return nil, err
+	}
+	if !bytes.Equal(key, oldKey) {
+		if err := s.remove(oldKey); err != nil {
+			return nil, err
+		}
+	}
+	if err := s.write(key, encodeRow(row, info)); err != nil {
+		return nil, err
+	}
+	if len(info.PKColumns) == 1 && !bytes.Equal(key, oldKey) {
+		v := row[info.PKColumns[0]]
+		if v.Type == ColInteger && v.Int >= s.rowIDCount[table] {
+			s.rowIDCount[table] = v.Int + 1
+		}
+	}
+	if err := s.fireTriggers(table, "UPDATE", "AFTER", original, row); err != nil {
+		return nil, err
+	}
+
+	return row, nil
+}
+
 func (s *Schema) modifyView(table, event string, sets []UpdateSet, where Expression, limit, offset int64, returning []SelectColumn) (int64, *ResultSet, error) {
 	found := false
 	for _, tr := range s.triggers {

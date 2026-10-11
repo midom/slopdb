@@ -133,3 +133,5 @@ TPC-C-style workload passed a ten-worker race run, then a sixty-second ordinary
 run with WAL enabled and fsync disabled, including all fifteen consistency
 checks before and after close/reopen. Results are documented with the load
 [tester](../cmd/tpcc/README.md).
+
+`INSERT ... ON CONFLICT` supports explicit PRIMARY KEY/UNIQUE targets, DO NOTHING, and DO UPDATE with excluded values and an optional WHERE. See [UPSERT semantics](upsert.md) for constraints, triggers, concurrency, generated IDs, and supported target syntax.
