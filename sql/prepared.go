@@ -145,7 +145,9 @@ func (q *PreparedQuery) newBound() *BoundQuery {
 			st.prepared = &preparedExecutionPlan{owner: q, where: st.Where, fromAlias: st.FromAlias}
 		}
 	case *UpdateStmt:
-		st.prepared = &preparedExecutionPlan{owner: q, where: st.Where}
+		if st.With == nil {
+			st.prepared = &preparedExecutionPlan{owner: q, where: st.Where}
+		}
 	}
 	b.statements = []Statement{stmt}
 	return b

@@ -45,6 +45,7 @@ type Token struct {
 }
 
 var keywords = map[string]bool{
+	"WITH": true, "RECURSIVE": true, "MATERIALIZED": true,
 	"CREATE": true, "TABLE": true, "INSERT": true, "INTO": true,
 	"VALUES": true, "SELECT": true, "FROM": true, "WHERE": true,
 	"DELETE": true, "UPDATE": true, "SET": true, "DROP": true,

@@ -73,6 +73,7 @@ type IndexDef struct {
 }
 
 type InsertStmt struct {
+	With          *WithClause
 	Table         string
 	ColumnNames   []string
 	Values        []Expression
@@ -84,25 +85,28 @@ type InsertStmt struct {
 }
 
 type SelectStmt struct {
-	prepared    *preparedExecutionPlan
-	Columns     []SelectColumn
-	From        string
-	FromAlias   string
-	FromExpr    Expression
-	Joins       []JoinClause
-	Virtual     *VirtualTable
-	Where       Expression
-	OrderBy     []OrderByClause
-	Limit       int64
-	Offset      int64
-	LimitParam  int // one-based parameter index; zero means a constant
-	OffsetParam int
-	SelectAll   bool
-	Distinct    bool
-	GroupBy     []Expression
-	Having      Expression
-	Lock        *SelectLock
-	trackRows   bool // retain physical row origins when expanding a view
+	prepared     *preparedExecutionPlan
+	With         *WithClause
+	Compound     *UnionStmt
+	materialized *ResultSet
+	Columns      []SelectColumn
+	From         string
+	FromAlias    string
+	FromExpr     Expression
+	Joins        []JoinClause
+	Virtual      *VirtualTable
+	Where        Expression
+	OrderBy      []OrderByClause
+	Limit        int64
+	Offset       int64
+	LimitParam   int // one-based parameter index; zero means a constant
+	OffsetParam  int
+	SelectAll    bool
+	Distinct     bool
+	GroupBy      []Expression
+	Having       Expression
+	Lock         *SelectLock
+	trackRows    bool // retain physical row origins when expanding a view
 }
 
 // SelectLock applies to rows from tables in this SELECT's query block.
@@ -140,6 +144,7 @@ type OrderByClause struct {
 }
 
 type DeleteStmt struct {
+	With        *WithClause
 	From        string
 	Where       Expression
 	Limit       int64
@@ -151,6 +156,7 @@ type DeleteStmt struct {
 
 type UpdateStmt struct {
 	prepared    *preparedExecutionPlan
+	With        *WithClause
 	Table       string
 	Set         []UpdateSet
 	Where       Expression
@@ -259,6 +265,7 @@ type AlterTableStmt struct {
 type VacuumStmt struct{}
 
 type UnionStmt struct {
+	With        *WithClause
 	LimitParam  int
 	OffsetParam int
 	Left        *SelectStmt

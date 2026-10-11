@@ -55,7 +55,7 @@ type preparedExecutionPlan struct {
 }
 
 func preparedSelectEligible(stmt *SelectStmt) bool {
-	if stmt.FromExpr != nil || stmt.Virtual != nil || len(stmt.Joins) != 0 || stmt.From == "" {
+	if stmt.With != nil || stmt.Compound != nil || stmt.materialized != nil || stmt.FromExpr != nil || stmt.Virtual != nil || len(stmt.Joins) != 0 || stmt.From == "" {
 		return false
 	}
 	safe := true
@@ -87,6 +87,10 @@ func (s *Schema) restorePreparedPlan(previous *preparedExecutionPlan) { s.prepar
 
 func (s *Schema) usePreparedPlan(p *preparedExecutionPlan, info *TableInfo) *preparedExecutionPlan {
 	previous := s.preparedPlan
+	if s.cteScope != nil {
+		s.preparedPlan = nil
+		return previous
+	}
 	catalog, state := s.readCatalogVersion, s.readStateVersion
 	if s.parent == nil {
 		catalog, state = s.catalogVersion, s.stateVersion

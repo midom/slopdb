@@ -26,6 +26,9 @@ type PointUpdate struct {
 }
 
 func (s *Schema) PreparePointUpdate(stmt *UpdateStmt) *PointUpdate {
+	if stmt.With != nil || s.cteScope != nil {
+		return nil
+	}
 	info := s.tables[strings.ToLower(stmt.Table)]
 	if stmt.prepared == nil || info == nil {
 		return s.preparePointUpdateUncached(stmt)
@@ -55,7 +58,7 @@ func (s *Schema) PreparePointUpdate(stmt *UpdateStmt) *PointUpdate {
 	return &plan
 }
 func (s *Schema) preparePointUpdateUncached(stmt *UpdateStmt) *PointUpdate {
-	if s.parent == nil || len(stmt.Returning) > 0 {
+	if stmt.With != nil || s.cteScope != nil || s.parent == nil || len(stmt.Returning) > 0 {
 		return nil
 	}
 	table := strings.ToLower(stmt.Table)

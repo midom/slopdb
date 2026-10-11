@@ -69,6 +69,9 @@ func Open(dir string, opt *storage.Options) (*Database, error) {
 		return nil, fmt.Errorf("query temporary directory must be outside the database directory")
 	}
 
+	if opt.MaxCTEIterations < 0 || opt.MaxCTERows < 0 {
+		return nil, fmt.Errorf("CTE limits must not be negative")
+	}
 	lsm, err := storage.NewLSMTree(dir, opt)
 	if err != nil {
 		return nil, err
