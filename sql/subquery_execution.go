@@ -21,6 +21,11 @@ type subqueryMembership struct {
 // Resolve names lexically, including references inside nested query blocks.
 // Unknown catalogs and derived tables conservatively disable memoization.
 func (s *Schema) subqueryDependencies(stmt *SelectStmt) ([]string, bool) {
+	// Catalog-only lexical analysis cannot distinguish a persistent table
+	// from a CTE shadowing it. Such scopes also change between recursion steps.
+	if s.cteScope != nil {
+		return nil, false
+	}
 	free := make(map[string]bool)
 	safe := true
 	depth := 0
@@ -126,7 +131,7 @@ func (s *Schema) subqueryDependencies(stmt *SelectStmt) ([]string, bool) {
 // Bind exact typed outer comparisons for the existing physical index plans.
 // Mixed-type comparisons keep their column semantics and use the fallback.
 func (s *Schema) bindCorrelatedWhere(q *SelectStmt, outer map[string]Value) *SelectStmt {
-	if q.FromExpr != nil {
+	if s.cteScope != nil || q.With != nil || q.Compound != nil || q.materialized != nil || q.FromExpr != nil {
 		return q
 	}
 	info := s.tables[q.From]
@@ -294,7 +299,7 @@ func (s *Schema) clearSelectCaches() {
 // EXISTS ignores projection values and stops after the first qualifying row,
 // while preserving offsets, empty inputs, aggregate semantics, and errors.
 func (s *Schema) readExists(q *SelectStmt) (*ResultSet, bool, error) {
-	if q.FromExpr != nil || q.Virtual != nil || q.Lock != nil || q.trackRows || q.Distinct || hasAggregates(q) || len(q.GroupBy) > 0 || q.Having != nil || len(q.OrderBy) > 0 {
+	if s.cteScope != nil || q.With != nil || q.Compound != nil || q.materialized != nil || q.FromExpr != nil || q.Virtual != nil || q.Lock != nil || q.trackRows || q.Distinct || hasAggregates(q) || len(q.GroupBy) > 0 || q.Having != nil || len(q.OrderBy) > 0 {
 		return nil, false, nil
 	}
 	info := s.tables[q.From]
