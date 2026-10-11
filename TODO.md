@@ -1,0 +1,118 @@
+# slopdb — TODO
+
+## Query Operators (10/10 done)
+
+- [x] BETWEEN / NOT BETWEEN
+- [x] IN / NOT IN (static + subquery)
+- [x] LIKE / NOT LIKE / GLOB / NOT GLOB / REGEXP
+- [x] DISTINCT
+- [x] CASE WHEN ... THEN ... ELSE ... END
+- [x] CAST(expr AS type)
+- [x] UNION / UNION ALL / INTERSECT / EXCEPT
+
+## Aggregates & Grouping (8/8 done)
+## Joins (7/7 done)
+## Subqueries (5/5 done)
+## Data Types & Expressions (18/18 done)
+## DML Extensions (4/5 done)
+
+- [x] Multi-row INSERT, INSERT...SELECT, REPLACE, RETURNING
+- [ ] UPSERT (ON CONFLICT)
+
+## Views & Triggers (5/5 done)
+## Query Plan & Introspection (4/4 done)
+## Constraints (8/8 done)
+## Schema Operations (5/5 done)
+## Transactions (9/9 done)
+
+- [x] BEGIN/COMMIT/ROLLBACK and savepoints, with statement rollback on errors
+- [x] Independent concurrent transactions through `Database.Begin()` and SQL sessions through `Database.NewSession()`
+- [x] Pessimistic row and UNIQUE value locking, with catalog locks for transactional DDL
+- [x] Query timeout overrides, lock-wait timeouts and optional deadlock detection
+- [x] SELECT FOR UPDATE / FOR SHARE / LOCK IN SHARE MODE, NOWAIT and SKIP LOCKED
+
+Only READ COMMITTED is supported. Each statement sees the latest committed data
+plus its transaction's writes; nonrepeatable reads and phantoms are allowed.
+Transaction lifetimes overlap, while SQL execution and atomic commits are
+serialized. Writers hold row and UNIQUE value locks until commit or rollback;
+blocked statements release the execution mutex, wait in queue order, then
+re-evaluate current committed rows. Ordinary SELECTs do not acquire row locks.
+Different rows in the same table can be written independently. DDL takes an
+exclusive catalog lock; writes take shared catalog locks. Failed statements
+release their new locks, while rollback to a savepoint retains transaction locks.
+Generated IDs are reserved across active transactions, so rollback may leave gaps.
+`Database.Exec` retains a default session; use independent handles for separate
+goroutines' transactions. Closing a session or database rolls back pending
+transactions and wakes lock waiters.
+
+Append `FOR UPDATE` to SELECT for exclusive row locks, or `FOR SHARE` / `LOCK IN
+SHARE MODE` for shared row locks. Shared readers can coexist; updates, deletes
+and exclusive reads wait for incompatible locks. Locks last until commit or
+rollback in a transaction, or until statement completion in autocommit. A
+transaction can upgrade its shared lock when no other reader holds it.
+
+Append `NOWAIT` after the locking clause to return `db.ErrLockNotAvailable`
+immediately on row contention. Append `SKIP LOCKED` instead to omit conflicting
+rows without waiting. These modifiers apply only to row locks; catalog waits
+still use the configured lock timeout. NOWAIT failure rolls back the statement's
+new locks and upgrades, preserving earlier transaction work and locks.
+
+For example: `BEGIN; SELECT id FROM jobs WHERE status = 'ready' ORDER BY id
+LIMIT 1 FOR UPDATE SKIP LOCKED;` then update the selected job and commit. Simple
+queries sort candidates, skip unavailable rows, and continue until LIMIT is
+filled. OFFSET counts available rows, and scanned OFFSET rows remain locked;
+LIMIT 0 acquires no row locks. Joins lock participating rows from all direct
+tables atomically per result, so a skipped join result leaves no partial locks.
+Views retain underlying row keys through projection, grouping and DISTINCT.
+Aggregate, GROUP BY and DISTINCT locking reads protect all matching input rows
+before collapsing them; SKIP LOCKED removes unavailable input rows first.
+Locking clauses do not propagate into derived tables or expression subqueries:
+add a clause inside each nested SELECT that needs locks. Locking clauses on
+compound SELECTs (UNION / INTERSECT / EXCEPT) are rejected. Empty results take no
+row or gap locks, consistent with READ COMMITTED allowing phantoms.
+
+`storage.Options.QueryTimeout` sets the default SQL call timeout (default zero,
+unlimited); `LockTimeout` sets the wait budget from the first blocked acquisition
+in a SQL call (default 30 seconds with `DefaultOptions`). `ExecWithOptions` and
+`ExecContextWithOptions` accept `db.ExecOptions.Timeout` and `LockTimeout`
+duration pointers: nil inherits the default. A zero query timeout disables its
+limit; a zero lock timeout fails immediately with `db.ErrLockTimeout` on
+contention, while uncontended operations still succeed. Negative durations
+are rejected. Caller context deadlines still apply and cannot be extended by an
+override. Query timeouts include queuing behind the database or session mutex;
+SQL execution and storage waits respond to cancellation cooperatively.
+
+Set `storage.Options.DeadlockDetection` to detect wait-for cycles (disabled by
+default). The requesting transaction becomes the victim, is rolled back, and
+returns `db.ErrDeadlock`; retry the entire transaction. `db.ErrLockTimeout` also
+matches `context.DeadlineExceeded`. Lock timeout or query cancellation rolls back
+only the interrupted statement, preserving earlier transaction writes and locks;
+call rollback to release them. CLI flags are `--query-timeout`, `--lock-timeout`
+and `--deadlock-detection`. Optimistic version validation remains a final safeguard
+and reports `db.ErrConflict` if external writes bypass the lock manager.
+
+## Storage Engine (13/13 done)
+
+Normal startup reads SSTable indexes, bloom filters and checksummed metadata,
+then replays any outstanding WAL records. SSTables store their maximum sequence,
+key bounds and range tombstones between the index and the footer. Data block
+CRCs are checked on reads.
+
+SQL indexes are maintained atomically with their rows. Set
+`storage.Options.VerifyIndexesOnOpen = true` to scan rows, validate indexed types
+and reconcile indexes on every open for diagnostics. Ordinary writes continue
+to enforce strict indexed types. Row-ID counters initialize lazily with bounded
+reverse seeks. `VACUUM` flushes writes and compacts SSTables.
+
+## Miscellaneous (5/9 done)
+
+- [x] SQL comments (-- and /* */)
+- [x] NULLS FIRST / LAST in ORDER BY
+- [x] ESCAPE for LIKE
+- [x] COLLATE (no-op)
+- [x] IF NOT EXISTS (CREATE TABLE/INDEX)
+- [ ] Table-valued functions
+- [ ] Common Table Expressions (WITH / CTE)
+- [ ] Window functions (ROW_NUMBER, RANK, etc.)
+- [ ] Recursive CTEs
+- [ ] generate_series / virtual tables

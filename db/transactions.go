@@ -1,0 +1,247 @@
+package db
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sync/atomic"
+	"time"
+
+	"slopdb/sql"
+)
+
+// ErrConflict identifies a transaction validation failure requiring a retry.
+var ErrConflict = sql.ErrConflict
+
+var (
+	ErrTxDone        = errors.New("transaction already committed or rolled back")
+	ErrSessionClosed = errors.New("session closed")
+)
+
+// Session is an independent SQL connection to an open Database. BEGIN, COMMIT,
+// ROLLBACK and savepoints affect only this session. All transactions use READ
+// COMMITTED: each statement sees current committed data and its own writes.
+// Calls are safe from multiple goroutines, but callers sharing a session also
+// share its transaction. Use separate sessions for independent transactions.
+// Sessions execute concurrently using MVCC statement snapshots. Writers hold
+// row and unique-value locks until commit or rollback; commits publish one atomic
+// storage batch. Catalog changes take an exclusive logical catalog lock.
+type Session struct {
+	db           *Database
+	schema       *sql.Schema
+	closed       bool
+	closing      atomic.Bool
+	gate         contextMutex
+	activeCancel context.CancelFunc
+}
+
+func (db *Database) NewSession() (*Session, error) {
+	if db.closed.Load() {
+		return nil, errors.New("database closed")
+	}
+	// Catalog copying can wait for metadata publication. Keep that work outside
+	// the lifecycle mutex so active queries can register cancellation promptly.
+	session := &Session{db: db, schema: db.schema.NewSession()}
+	db.installLocks(session.schema)
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	if db.closed.Load() {
+		return nil, errors.New("database closed")
+	}
+	db.sessions[session] = struct{}{}
+	return session, nil
+}
+
+func (s *Session) Exec(query string) (*ExecResult, error) {
+	return s.ExecContext(context.Background(), query)
+}
+
+func (s *Session) ExecContext(ctx context.Context, query string) (*ExecResult, error) {
+	return s.ExecContextWithOptions(ctx, query, ExecOptions{})
+}
+
+func (s *Session) ExecWithOptions(query string, options ExecOptions) (*ExecResult, error) {
+	return s.ExecContextWithOptions(context.Background(), query, options)
+}
+
+func (s *Session) ExecContextWithOptions(ctx context.Context, query string, options ExecOptions) (*ExecResult, error) {
+	ctx, cancel, lockTimeout, err := s.db.queryContext(ctx, options)
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
+	if err := s.gate.LockContext(ctx); err != nil {
+		return nil, err
+	}
+	defer s.gate.Unlock()
+	statements, parseErr := sql.Parse(query)
+	if parseErr != nil {
+		return nil, fmt.Errorf("parse error: %w", parseErr)
+	}
+	return s.execParsed(ctx, statements, cancel, false, lockTimeout)
+}
+
+func (s *Session) execParsed(ctx context.Context, statements []sql.Statement, cancel context.CancelFunc, bound bool, lockTimeout time.Duration) (*ExecResult, error) {
+	if err := s.db.execution.RLockContext(ctx); err != nil {
+		return nil, err
+	}
+	defer s.db.execution.RUnlock()
+	s.db.mu.Lock()
+	if s.closed || s.db.closed.Load() {
+		s.db.mu.Unlock()
+		if bound {
+			return nil, ErrTxDone
+		}
+		return nil, ErrSessionClosed
+	}
+	if s.closing.Load() {
+		s.db.mu.Unlock()
+		cancel()
+		return nil, ctx.Err()
+	}
+	if bound && !s.schema.InTransaction() {
+		s.db.mu.Unlock()
+		return nil, ErrTxDone
+	}
+	s.activeCancel = cancel
+	s.db.mu.Unlock()
+	defer func() { s.db.mu.Lock(); s.activeCancel = nil; s.db.mu.Unlock() }()
+	if !bound {
+		if result, handled, err := s.tryPointUpdate(ctx, statements); handled {
+			return result, err
+		}
+	}
+	result, err := s.db.execStatements(ctx, statements, s.schema, bound, lockTimeout)
+	if bound && !s.schema.InTransaction() {
+		s.db.mu.Lock()
+		s.closeLocked()
+		s.db.mu.Unlock()
+	}
+	return result, err
+}
+
+// Close discards this session's uncommitted writes. It does not close the database.
+func (s *Session) Close() error {
+	s.closing.Store(true)
+	s.db.mu.Lock()
+	if s.activeCancel != nil {
+		s.activeCancel()
+	}
+	s.db.mu.Unlock()
+	s.gate.Lock()
+	defer s.gate.Unlock()
+	_ = s.db.execution.RLockContext(context.Background())
+	defer s.db.execution.RUnlock()
+	s.db.mu.Lock()
+	defer s.db.mu.Unlock()
+	s.closeLocked()
+	return nil
+}
+
+func (s *Session) closeLocked() {
+	if !s.closed {
+		s.closing.Store(true)
+		if s.activeCancel != nil {
+			s.activeCancel()
+		}
+		_ = s.schema.Rollback()
+		s.db.locks.release(s.schema)
+		s.db.locks.forget(s.schema)
+		s.closed = true
+		delete(s.db.sessions, s)
+	}
+}
+
+// Tx owns a private session for one transaction. A deadlock victim is rolled
+// back; retry the entire transaction using Database.Begin. A lock timeout or
+// cancelled statement preserves earlier writes and locks until explicit rollback.
+type Tx struct {
+	session *Session
+}
+
+func (db *Database) Begin() (*Tx, error) {
+	return db.BeginContext(context.Background())
+}
+
+// BeginContext checks ctx while starting the transaction. Subsequent operations
+// use the contexts passed to ExecContext or CommitContext.
+func (db *Database) BeginContext(ctx context.Context) (*Tx, error) {
+	ctx, cancel, lockTimeout, err := db.queryContext(ctx, ExecOptions{})
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
+	session, err := db.NewSession()
+	if err != nil {
+		return nil, err
+	}
+	session.gate.Lock()
+	_, err = session.execParsed(ctx, []sql.Statement{&sql.BeginStmt{}}, cancel, false, lockTimeout)
+	session.gate.Unlock()
+	if err != nil {
+		session.Close()
+		return nil, err
+	}
+	return &Tx{session: session}, nil
+}
+
+func (tx *Tx) Exec(query string) (*ExecResult, error) {
+	return tx.ExecContext(context.Background(), query)
+}
+
+func (tx *Tx) ExecContext(ctx context.Context, query string) (*ExecResult, error) {
+	return tx.ExecContextWithOptions(ctx, query, ExecOptions{})
+}
+
+func (tx *Tx) ExecWithOptions(query string, options ExecOptions) (*ExecResult, error) {
+	return tx.ExecContextWithOptions(context.Background(), query, options)
+}
+
+func (tx *Tx) ExecContextWithOptions(ctx context.Context, query string, options ExecOptions) (*ExecResult, error) {
+	s := tx.session
+	ctx, cancel, lockTimeout, err := s.db.queryContext(ctx, options)
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
+	if err := s.gate.LockContext(ctx); err != nil {
+		return nil, err
+	}
+	defer s.gate.Unlock()
+	statements, err := sql.Parse(query)
+	if err != nil {
+		return nil, fmt.Errorf("parse error: %w", err)
+	}
+	return s.execParsed(ctx, statements, cancel, true, lockTimeout)
+}
+
+func (tx *Tx) Commit() error {
+	return tx.CommitContext(context.Background())
+}
+
+func (tx *Tx) CommitContext(ctx context.Context) error {
+	_, err := tx.ExecContext(ctx, "COMMIT")
+	return err
+}
+
+func (tx *Tx) Rollback() error {
+	s := tx.session
+	s.closing.Store(true)
+	s.db.mu.Lock()
+	if s.activeCancel != nil {
+		s.activeCancel()
+	}
+	s.db.mu.Unlock()
+	s.gate.Lock()
+	defer s.gate.Unlock()
+	_ = s.db.execution.RLockContext(context.Background())
+	defer s.db.execution.RUnlock()
+	s.db.mu.Lock()
+	defer s.db.mu.Unlock()
+	if s.closed || !s.schema.InTransaction() {
+		return ErrTxDone
+	}
+	err := s.schema.Rollback()
+	s.closeLocked()
+	return err
+}
