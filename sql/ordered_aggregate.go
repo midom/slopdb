@@ -139,3 +139,14 @@ func (s *Schema) walkTypedOrderedAggregate(t *typedAggregate, info *TableInfo, n
 	}
 	return nil
 }
+
+// Closing a group's DISTINCT stores also releases their statement ownership.
+// The accumulator may then be reused without retaining prior temporary engines.
+func closeAggregateDisks(g *aggregateGroup) {
+	for i := range g.states {
+		if disk := g.states[i].distinctDisk; disk != nil {
+			disk.close()
+			g.states[i].distinctDisk = nil
+		}
+	}
+}

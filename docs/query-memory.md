@@ -30,7 +30,11 @@ comparison. Simple projections are evaluated once per input row.
 GROUP BY on a leading clustered primary-key prefix consumes one ordered physical
 interval with one typed/ordinary accumulator and finalizes each group as its key
 changes. This avoids retaining a group map or spilling/restarting an already
-ordered input. GROUP BY aliases and ordinal references are resolved before
+ordered input. Each finalized group closes and unregisters only its own DISTINCT
+spill stores, and releases their engine/cache pointers before reusing the
+accumulator. Statement cleanup detaches the remaining ownership list before
+closing it, preserving cleanup after errors and cancellation.
+GROUP BY aliases and ordinal references are resolved before
 checking the prefix; secondary indexes, point sets, joins and multiple intervals
 keep their existing safe paths.
 

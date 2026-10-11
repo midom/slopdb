@@ -284,10 +284,14 @@ func (s *Schema) executeSubqueryMode(sub *SelectStmt, outer map[string]Value, ex
 }
 
 func (s *Schema) clearSelectCaches() {
-	for _, disk := range s.queryDisks {
+	// Detach ownership before close, which otherwise prunes this slice while
+	// ranging it and could skip stores still open after errors/cancellation.
+	disks := s.queryDisks
+	s.queryDisks = nil
+	for _, disk := range disks {
 		disk.close()
 	}
-	s.queryDisks = nil
+	clear(disks)
 	s.subqueryMemos = nil
 	s.existsMemos = nil
 	s.subquerySets = nil

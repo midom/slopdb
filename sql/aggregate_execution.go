@@ -328,13 +328,7 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 	var result []map[string]Value
 	scratch := make(map[string]Value, len(baseNames)+len(exprCols))
 	emit := func(g *aggregateGroup) error {
-		defer func() {
-			for i := range g.states {
-				if g.states[i].distinctDisk != nil {
-					g.states[i].distinctDisk.close()
-				}
-			}
-		}()
+		defer closeAggregateDisks(g)
 		clear(scratch)
 		g.base = scratch
 		for i, name := range baseNames {
@@ -567,11 +561,7 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 		// Groups were finalized while reading the clustered prefix.
 	} else if errors.Is(readErr, errAggregateSpill) {
 		for _, g := range groups {
-			for i := range g.states {
-				if g.states[i].distinctDisk != nil {
-					g.states[i].distinctDisk.close()
-				}
-			}
+			closeAggregateDisks(g)
 		}
 		groups = make(map[string]*aggregateGroup)
 		order = nil
