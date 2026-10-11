@@ -77,7 +77,7 @@ func Open(dir string, opt *storage.Options) (*Database, error) {
 		return nil, err
 	}
 
-	schema, err := sql.NewSchemaWithOptions(lsm, opt.BlockSize, opt)
+	schema, err := sql.NewSchemaWithOptions(lsm, int(lsm.PageSize()), opt)
 	if err != nil {
 		lsm.Close()
 		return nil, err
@@ -247,6 +247,12 @@ func (db *Database) execStatements(ctx context.Context, stmts []sql.Statement, s
 				switch stmt.(type) {
 				case *sql.BeginStmt, *sql.CommitStmt, *sql.RollbackStmt, *sql.SavepointStmt, *sql.ReleaseStmt, *sql.SelectStmt, *sql.UnionStmt, *sql.ExplainStmt, *sql.ShowStmt, *sql.VacuumStmt:
 					result, err = executor.execStatement(stmt)
+				case *sql.PragmaStmt:
+					if stmt.(*sql.PragmaStmt).Name == "page_size" {
+						result, err = executor.execStatement(stmt)
+					} else {
+						err = schema.ExecuteStatement(func() error { var e error; result, e = executor.execStatement(stmt); return e })
+					}
 				default:
 					err = schema.ExecuteStatement(func() error { var e error; result, e = executor.execStatement(stmt); return e })
 				}

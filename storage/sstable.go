@@ -76,6 +76,18 @@ func NewSSTableWriter(path string, opt *Options) (*SSTableWriter, error) {
 		opt = DefaultOptions()
 	}
 	options := *opt
+	if options.PageSize != 0 {
+		if err := ValidatePageSize(options.PageSize); err != nil {
+			return nil, err
+		}
+		options.BlockSize = int(options.PageSize)
+	}
+	if options.BlockSize == 0 {
+		options.BlockSize = int(DefaultPageSize)
+	}
+	if err := validateBlockTarget(int64(options.BlockSize)); err != nil {
+		return nil, err
+	}
 	compression, err := options.compressionType(0)
 	if err != nil {
 		return nil, err

@@ -27,7 +27,8 @@ type Options struct {
 	MaxCTERows           int64  // recursive CTE emitted rows; default 1,000,000, zero unlimited
 	Dir                  string
 	WriteBufferSize      int             // memtable size in bytes before flush (default 4MB)
-	BlockSize            int             // SSTable block size (default 4096)
+	BlockSize            int             // legacy block target; PageSize/stored target take precedence over default 4096
+	PageSize             int64           // uncompressed SSTable data-block target; 0 reuses stored size/default 4096
 	MaxLevels            int             // number of levels (default 7)
 	BloomBitsKey         int             // bits per key for bloom filter (default 10)
 	BlockCacheSize       int             // decoded block-cache byte budget; default 128 MiB

@@ -58,6 +58,8 @@ func (l *LSMTree) Backup(ctx context.Context, destination string) (err error) {
 	}
 	defer func() { _ = os.RemoveAll(stage) }()
 	options := *l.opt
+	options.PageSize = 0
+	options.BlockSize = int(l.PageSize())
 	options.Dir = stage
 	options.DisableWAL = false
 	options.DisableWALSync = false
@@ -177,6 +179,13 @@ func (l *LSMTree) CheckIntegrity(ctx context.Context) (report IntegrityReport, e
 	if l.closed {
 		l.mu.Unlock()
 		return report, fmt.Errorf("database closed")
+	}
+	if _, found, optionsErr := readPageOptions(l.dir); optionsErr != nil || !found {
+		l.mu.Unlock()
+		if optionsErr != nil {
+			return report, optionsErr
+		}
+		return report, fmt.Errorf("OPTIONS: missing page configuration")
 	}
 	manifest, readErr := os.ReadFile(filepath.Join(l.dir, "MANIFEST"))
 	if readErr == nil {
