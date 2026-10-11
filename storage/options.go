@@ -21,6 +21,8 @@ const (
 )
 
 type Options struct {
+	QueryMemoryBytes     int64  // per-operator working budget; zero selects 64 MiB, negative is invalid
+	QueryTempDir         string // temporary operator spills; empty uses the OS temp directory
 	Dir                  string
 	WriteBufferSize      int             // memtable size in bytes before flush (default 4MB)
 	BlockSize            int             // SSTable block size (default 4096)

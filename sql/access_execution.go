@@ -277,9 +277,20 @@ func (s *Schema) walkAccessRaw(info *TableInfo, needed map[string]bool, paths []
 	}
 	columns := columnsFor(info)
 	var seen map[string]bool
-	if len(paths) > 1 {
+	overlap := len(paths) > 1
+	for _, path := range paths {
+		overlap = overlap || len(path.intervals) > 1
+	}
+	if overlap {
 		seen = make(map[string]bool)
 	}
+	var seenBytes int64
+	var seenDisk *diskHash
+	defer func() {
+		if seenDisk != nil {
+			seenDisk.close()
+		}
+	}()
 	checks := 0
 	accept := func(data, key []byte, cols []scanColumn) error {
 		checks++
@@ -288,12 +299,42 @@ func (s *Schema) walkAccessRaw(info *TableInfo, needed map[string]bool, paths []
 				return err
 			}
 		}
-		if seen != nil {
+		if seen != nil || seenDisk != nil {
 			k := string(key)
-			if seen[k] {
-				return nil
+			if seenDisk == nil {
+				if seen[k] {
+					return nil
+				}
+				if seenBytes+int64(len(k)+64) > s.memoryBudget()/4 {
+					var err error
+					seenDisk, err = newDiskHash(s)
+					if err != nil {
+						return err
+					}
+					for old := range seen {
+						if err = seenDisk.add(old, nil); err != nil {
+							return err
+						}
+					}
+					seen = nil
+				} else {
+					seen[k] = true
+					seenBytes += int64(len(k) + 64)
+				}
 			}
-			seen[k] = true
+			if seenDisk != nil {
+				duplicate := false
+				err := seenDisk.walk(k, func(map[string]Value) error { duplicate = true; return errAccessStop })
+				if err != nil && !errors.Is(err, errAccessStop) {
+					return err
+				}
+				if duplicate {
+					return nil
+				}
+				if err = seenDisk.add(k, nil); err != nil {
+					return err
+				}
+			}
 		}
 		return visit(data, cols)
 	}

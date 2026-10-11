@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -42,6 +44,31 @@ func Open(dir string, opt *storage.Options) (*Database, error) {
 	if opt.QueryTimeout < 0 || opt.LockTimeout < 0 {
 		return nil, fmt.Errorf("timeouts must not be negative")
 	}
+	if opt.QueryMemoryBytes < 0 {
+		return nil, fmt.Errorf("query memory budget must not be negative")
+	}
+	tempParent := opt.QueryTempDir
+	if tempParent == "" {
+		tempParent = os.TempDir()
+	}
+	dbPath, e := filepath.Abs(dir)
+	if e != nil {
+		return nil, e
+	}
+	tempPath, e := filepath.Abs(tempParent)
+	if e != nil {
+		return nil, e
+	}
+	if resolved, e := filepath.EvalSymlinks(dbPath); e == nil {
+		dbPath = resolved
+	}
+	if resolved, e := filepath.EvalSymlinks(tempPath); e == nil {
+		tempPath = resolved
+	}
+	if rel, e := filepath.Rel(dbPath, tempPath); e == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return nil, fmt.Errorf("query temporary directory must be outside the database directory")
+	}
+
 	lsm, err := storage.NewLSMTree(dir, opt)
 	if err != nil {
 		return nil, err

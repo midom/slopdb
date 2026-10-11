@@ -2,21 +2,27 @@ package sql
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 )
 
 type aggregateState struct {
-	count     int64
-	integer   int64
-	total     float64
-	allInt    bool
-	overflow  bool
-	best      Value
-	seen      map[string]bool
-	parts     []string
-	separator string
+	owner        *Schema
+	distinctDisk *diskHash
+	seenBytes    int64
+	partsBytes   int64
+	count        int64
+	integer      int64
+	total        float64
+	allInt       bool
+	overflow     bool
+	best         Value
+	seen         map[string]bool
+	parts        []string
+	separator    string
 }
 
 func (s *Schema) addAggregate(a *aggregateState, f *FuncCallExpr, row map[string]Value) error {
@@ -30,7 +36,7 @@ func (s *Schema) addAggregate(a *aggregateState, f *FuncCallExpr, row map[string
 	if err != nil {
 		return err
 	}
-	return addAggregateValue(a, f, v)
+	return s.addAggregateValue(a, f, v)
 }
 
 // Typed scans bind/evaluate arguments before this common state transition.
@@ -39,7 +45,15 @@ func addAggregateValue(a *aggregateState, f *FuncCallExpr, v Value) error {
 	if v.Null {
 		return nil
 	}
-	if f.Distinct {
+	if f.Distinct && a.owner != nil {
+		ok, err := a.owner.aggregateDistinct(a, v)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return nil
+		}
+	} else if f.Distinct {
 		if a.seen == nil {
 			a.seen = make(map[string]bool)
 		}
@@ -62,7 +76,9 @@ func addAggregateValue(a *aggregateState, f *FuncCallExpr, v Value) error {
 			a.best = v
 		}
 	case "GROUP_CONCAT":
-		a.parts = append(a.parts, v.String())
+		part := v.String()
+		a.parts = append(a.parts, part)
+		a.partsBytes += int64(len(part) + 16)
 	case "SUM", "AVG", "TOTAL":
 		if v.Type != ColInteger && v.Type != ColReal {
 			return fmt.Errorf("%s requires numeric arguments", name)
@@ -305,6 +321,10 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 	}
 	var baseNames []string
 	namesReady := false
+	var groupMemory int64
+	for _, g := range groups {
+		groupMemory += aggregateGroupMemory(g)
+	}
 	accept := func(input map[string]Value) error {
 		row = input
 		if plan == nil && qualified {
@@ -329,6 +349,10 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 		}
 		k := string(key)
 		g := groups[k]
+		var before int64
+		if g != nil {
+			before = aggregateGroupMemory(g)
+		}
 		if g == nil {
 			g = newGroup()
 			groups[k] = g
@@ -353,6 +377,10 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 			if err := s.addAggregate(&g.states[i], f, row); err != nil {
 				return err
 			}
+		}
+		groupMemory += aggregateGroupMemory(g) - before
+		if groupMemory > s.memoryBudget() {
+			return errAggregateSpill
 		}
 		return nil
 	}
@@ -390,12 +418,19 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 			readErr = s.walkAccess(info, bareNeeded, paths, accept)
 		}
 	}
-	if readErr != nil {
+	if readErr != nil && !errors.Is(readErr, errAggregateSpill) {
 		return nil, true, readErr
 	}
 	var result []map[string]Value
 	scratch := make(map[string]Value, len(baseNames)+len(exprCols))
-	for _, g := range order {
+	emit := func(g *aggregateGroup) error {
+		defer func() {
+			for i := range g.states {
+				if g.states[i].distinctDisk != nil {
+					g.states[i].distinctDisk.close()
+				}
+			}
+		}()
 		clear(scratch)
 		g.base = scratch
 		for i, name := range baseNames {
@@ -410,7 +445,7 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 				if len(f.Args) > 1 {
 					v, err := s.evalExpr(f.Args[1], g.base)
 					if err != nil {
-						return nil, true, err
+						return err
 					}
 					g.states[i].separator = ""
 					if !v.Null {
@@ -420,7 +455,7 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 			}
 			v, err := aggregateValue(&g.states[i], f)
 			if err != nil {
-				return nil, true, err
+				return err
 			}
 			values[i] = v
 		}
@@ -435,11 +470,11 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 		for _, ec := range exprCols {
 			expr, err := replace(ec.expr)
 			if err != nil {
-				return nil, true, err
+				return err
 			}
 			v, err := s.evalExpr(expr, g.base)
 			if err != nil {
-				return nil, true, err
+				return err
 			}
 			g.base[ec.name] = v
 		}
@@ -447,11 +482,11 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 			if containsAggregate(o.Expr) {
 				expr, err := replace(o.Expr)
 				if err != nil {
-					return nil, true, err
+					return err
 				}
 				v, err := s.evalExpr(expr, g.base)
 				if err != nil {
-					return nil, true, err
+					return err
 				}
 				g.base[fmt.Sprintf("\x00order%d", i)] = v
 			}
@@ -459,18 +494,145 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 		if stmt.Having != nil {
 			expr, err := replace(stmt.Having)
 			if err != nil {
-				return nil, true, err
+				return err
 			}
 			match, err := s.evalCondition(expr, g.base)
 			if err != nil {
-				return nil, true, err
+				return err
 			}
 			if !match {
-				continue
+				return nil
 			}
 		}
 		result = append(result, copyRow(g.base))
+		return nil
 	}
+	if errors.Is(readErr, errAggregateSpill) {
+		for _, g := range groups {
+			for i := range g.states {
+				if g.states[i].distinctDisk != nil {
+					g.states[i].distinctDisk.close()
+				}
+			}
+		}
+		groups = make(map[string]*aggregateGroup)
+		order = nil
+		sorter := newSpillSorter(s, func(a, b spillRecord) bool {
+			if a.Key != b.Key {
+				return a.Key < b.Key
+			}
+			return a.Seq < b.Seq
+		})
+		defer sorter.close()
+		finish := s.ProfileOperator("SpillAggregate", stmt.From)
+		if plan != nil {
+			plan = s.makeJoinPlan(stmt)
+		}
+		var inputs int64
+		capture := func(input map[string]Value) error {
+			if plan == nil && qualified {
+				qualifyAccessRow(input, stmt.From, alias)
+			}
+			if plan == nil && stmt.Where != nil {
+				ok, e := s.evalCondition(stmt.Where, input)
+				if e != nil {
+					return e
+				}
+				if !ok {
+					return nil
+				}
+			}
+			var key []byte
+			for _, expr := range groupExprs {
+				v, e := s.evalExpr(expr, input)
+				if e != nil {
+					return e
+				}
+				key = append(key, valueIdentity(v)...)
+			}
+			inputs++
+			return sorter.add(input, nil, string(key))
+		}
+		if plan != nil {
+			readErr = s.walkJoinPlan(plan, capture)
+		} else {
+			readErr = s.walkAccess(info, bareNeeded, nil, capture)
+		}
+		var last string
+		var current *aggregateGroup
+		var firstSeq int64
+		if readErr == nil {
+			readErr = sorter.walk(func(rec spillRecord) error {
+				if current == nil || rec.Key != last {
+					if current != nil {
+						before := len(result)
+						if e := emit(current); e != nil {
+							return e
+						}
+						if len(result) > before {
+							result[len(result)-1]["\x00groupseq"] = NewIntValue(firstSeq)
+						}
+					}
+					clear(groups)
+					order = nil
+					current = &aggregateGroup{states: make([]aggregateState, len(functions))}
+					groups[rec.Key] = current
+					last = rec.Key
+					firstSeq = rec.Seq
+				}
+				// Input predicates were checked before sorting; the accumulator only
+				// sees qualified accepted rows from the same statement snapshot.
+				current.inputs++
+				if current.inputs == 1 {
+					if !namesReady {
+						for _, name := range sortedAccessNames(representative) {
+							if _, ok := rec.Row[name]; ok {
+								baseNames = append(baseNames, name)
+							}
+						}
+						namesReady = true
+					}
+					current.baseValues = make([]Value, len(baseNames))
+					for i, name := range baseNames {
+						current.baseValues[i] = rec.Row[name]
+					}
+				}
+				for i, f := range functions {
+					if e := s.addAggregate(&current.states[i], f, rec.Row); e != nil {
+						return e
+					}
+				}
+				return nil
+			})
+		}
+		if readErr == nil && current != nil {
+			before := len(result)
+			readErr = emit(current)
+			if len(result) > before {
+				result[len(result)-1]["\x00groupseq"] = NewIntValue(firstSeq)
+			}
+		}
+		if finish != nil {
+			finish(inputs, int64(len(result)), readErr)
+		}
+		if readErr != nil {
+			return nil, true, readErr
+		}
+		sort.SliceStable(result, func(i, j int) bool { return result[i]["\x00groupseq"].Int < result[j]["\x00groupseq"].Int })
+		for _, row := range result {
+			delete(row, "\x00groupseq")
+		}
+	} else {
+		for _, g := range order {
+			if err := s.checkInterrupt(); err != nil {
+				return nil, true, err
+			}
+			if err := emit(g); err != nil {
+				return nil, true, err
+			}
+		}
+	}
+
 	for i, o := range stmt.OrderBy {
 		if containsAggregate(o.Expr) {
 			stmt.OrderBy[i].Expr = &ColumnRefExpr{Name: fmt.Sprintf("\x00order%d", i)}

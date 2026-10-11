@@ -409,13 +409,15 @@ func (p *joinPlan) chooseOrder() {
 }
 
 type joinReader struct {
-	relation  *joinRelation
-	pairs     []joinKeyPair
-	index     *IndexInfo
-	columns   []string
-	buckets   map[string][]map[string]Value
-	cache     map[string][]map[string]Value
-	cacheRows int
+	disk       *diskHash
+	cacheBytes int64
+	relation   *joinRelation
+	pairs      []joinKeyPair
+	index      *IndexInfo
+	columns    []string
+	buckets    map[string][]map[string]Value
+	cache      map[string][]map[string]Value
+	cacheRows  int
 }
 
 func (s *Schema) joinReader(r *joinRelation, pairs []joinKeyPair) *joinReader {
@@ -498,6 +500,9 @@ func (s *Schema) readerRows(reader *joinReader, left map[string]Value) ([]map[st
 	if !valid {
 		return nil, nil
 	}
+	if reader.disk != nil {
+		return nil, nil
+	}
 	if rows, ok := reader.cache[key]; ok {
 		return rows, nil
 	}
@@ -542,23 +547,22 @@ func (s *Schema) readerRows(reader *joinReader, left map[string]Value) ([]map[st
 					rows = append(rows, copyRow(row))
 					return nil
 				})
-				if err == nil && len(reader.cache) < 4096 && reader.cacheRows+len(rows) <= 8192 {
+				var bytes int64
+				for _, row := range rows {
+					bytes += rowMemory(row)
+				}
+				if err == nil && len(reader.cache) < 4096 && reader.cacheRows+len(rows) <= 8192 && reader.cacheBytes+bytes <= s.memoryBudget()/4 {
 					reader.cache[key] = rows
 					reader.cacheRows += len(rows)
+					reader.cacheBytes += bytes
 				}
 				return rows, err
 			}
 		}
 	}
 	if reader.buckets == nil {
-		if err := s.loadJoinRelation(r); err != nil {
+		if err := s.buildJoinBuckets(reader); err != nil {
 			return nil, err
-		}
-		reader.buckets = make(map[string][]map[string]Value)
-		for _, row := range r.rows {
-			if k, ok := joinRowKey(row, reader.pairs, true); ok {
-				reader.buckets[k] = append(reader.buckets[k], row)
-			}
 		}
 	}
 	return reader.buckets[key], nil
@@ -579,7 +583,7 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 			r.count = float64(n)
 			load = n <= 2048
 		}
-		if load {
+		if load && r.count*256 <= float64(s.memoryBudget()/4) {
 			if err := s.loadJoinRelation(r); err != nil {
 				return err
 			}
@@ -588,6 +592,13 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 	p.chooseOrder()
 	row := make(map[string]Value)
 	readers := make([]*joinReader, len(p.order))
+	defer func() {
+		for _, reader := range readers {
+			if reader != nil && reader.disk != nil {
+				reader.disk.close()
+			}
+		}
+	}()
 	predicates := make([][]Expression, len(p.order))
 	var mask uint64
 	estimatedLeft := 1.0
@@ -595,7 +606,7 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 		readers[depth] = s.joinReader(p.relations[i], p.pairs(i, mask))
 		r := p.relations[i]
 		hash := p.preferHashJoin(i, mask, estimatedLeft, readers[depth])
-		if depth > 0 && len(readers[depth].pairs) > 0 && hash {
+		if depth > 0 && len(readers[depth].pairs) > 0 && hash && r.count*256 <= float64(s.memoryBudget()/4) {
 			if err := s.loadJoinRelation(r); err != nil {
 				return err
 			}
@@ -685,6 +696,8 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 			profile.Operator = "NestedLoopJoin"
 			if depth == 0 {
 				profile.Operator = "JoinInput"
+			} else if reader.disk != nil {
+				profile.Operator = "SpillHashJoin"
 			} else if reader.buckets != nil {
 				profile.Operator = "HashJoin"
 			} else if len(reader.columns) > 0 {
@@ -692,7 +705,7 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 			}
 		}
 		matchedAny := false
-		for _, candidate := range candidates {
+		acceptCandidate := func(candidate map[string]Value) error {
 			if profile != nil {
 				s.profile.Operators[joinProfiles[depth]].RowsExamined++
 			}
@@ -719,6 +732,21 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 				}
 				matchedAny = true
 				if err := walk(depth + 1); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		if reader.disk != nil {
+			key, valid := joinRowKey(row, reader.pairs, false)
+			if valid {
+				if err := reader.disk.walk(key, acceptCandidate); err != nil {
+					return err
+				}
+			}
+		} else {
+			for _, candidate := range candidates {
+				if err := acceptCandidate(candidate); err != nil {
 					return err
 				}
 			}
