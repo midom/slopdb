@@ -68,6 +68,7 @@ var keywords = map[string]bool{
 	"DEFAULT": true, "CHECK": true, "FOREIGN": true, "REFERENCES": true, "CONSTRAINT": true,
 	"AUTOINCREMENT": true, "BEGIN": true, "COMMIT": true, "ROLLBACK": true,
 	"TRANSACTION": true, "START": true, "IF": true, "EXPLAIN": true, "VACUUM": true,
+	"CONFLICT": true, "DO": true, "NOTHING": true,
 	"REPLACE": true, "RETURNING": true, "PRAGMA": true, "ANALYZE": true,
 	"VIEW": true, "TRIGGER": true, "INSTEAD": true, "OF": true,
 	"FOR": true, "EACH": true, "ROW": true,

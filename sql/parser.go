@@ -855,6 +855,16 @@ func (p *Parser) parseInsert() (Statement, error) {
 	} else {
 		return nil, fmt.Errorf("expected VALUES, DEFAULT VALUES or SELECT")
 	}
+	if p.cur.Value == "ON" {
+		if stmt.Replace {
+			return nil, fmt.Errorf("REPLACE cannot have ON CONFLICT")
+		}
+		conflict, err := p.parseOnConflict()
+		if err != nil {
+			return nil, err
+		}
+		stmt.OnConflict = conflict
+	}
 	if p.cur.Value == "RETURNING" {
 		p.advance()
 		for {

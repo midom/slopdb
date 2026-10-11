@@ -81,6 +81,7 @@ type InsertStmt struct {
 	Select        *SelectStmt
 	DefaultValues bool
 	Replace       bool
+	OnConflict    *OnConflictClause
 	Returning     []SelectColumn
 }
 
