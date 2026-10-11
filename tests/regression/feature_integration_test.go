@@ -57,3 +57,28 @@ func TestRecursiveCTERejectsWindowStep(t *testing.T) {
 		t.Fatalf("expected recursive window rejection, got %v", err)
 	}
 }
+
+func TestWindowViewAlterRenameAndReopen(t *testing.T) {
+	env := newRegressionEnv(t)
+	dir := env.path("window-rename")
+	d, err := env.openDatabase(dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cteExec(t, d, "CREATE TABLE t(id INTEGER PRIMARY KEY,v INTEGER)")
+	cteExec(t, d, "INSERT INTO t VALUES(1,20),(2,10)")
+	cteExec(t, d, `CREATE VIEW named AS SELECT id,ROW_NUMBER() OVER w AS n FROM t WINDOW w AS(ORDER BY t.v)`)
+	cteExec(t, d, `CREATE VIEW inline AS SELECT id,ROW_NUMBER() OVER(ORDER BY t.v) AS n FROM t`)
+	cteExec(t, d, "ALTER TABLE t RENAME COLUMN v TO amount")
+	cteExec(t, d, "ALTER TABLE t RENAME TO renamed")
+	if err := d.Close(); err != nil {
+		t.Fatal(err)
+	}
+	d, err = env.openDatabase(dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"named", "inline"} {
+		cteInts(t, cteExec(t, d, "SELECT id FROM "+name+" ORDER BY n"), "id", []int64{2, 1})
+	}
+}

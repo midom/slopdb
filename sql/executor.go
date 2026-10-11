@@ -2572,6 +2572,9 @@ func renameViewSelect(sel *SelectStmt, table, newTable, oldCol, newCol, operatio
 			for i, arg := range c.Args {
 				c.Args[i] = rewrite(arg)
 			}
+			c.Window, _ = mapWindowSpec(e.Window, func(expr Expression) (Expression, error) {
+				return rewrite(expr), nil
+			})
 			return &c
 		}
 		return expr
@@ -2589,6 +2592,11 @@ func renameViewSelect(sel *SelectStmt, table, newTable, oldCol, newCol, operatio
 	}
 	for i := range sel.Joins {
 		sel.Joins[i].On = rewrite(sel.Joins[i].On)
+	}
+	for i := range sel.Windows {
+		sel.Windows[i].Spec, _ = mapWindowSpec(sel.Windows[i].Spec, func(expr Expression) (Expression, error) {
+			return rewrite(expr), nil
+		})
 	}
 	return true
 }
