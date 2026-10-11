@@ -84,6 +84,7 @@ type Schema struct {
 	likePatterns     map[likePatternKey]likePattern
 	subquerySets     map[*ResultSet]*subqueryMembership
 	selectDepth      int
+	profile          *QueryProfile
 	triggerDepth     int
 	viewDepth        int
 	savepoints       []savepoint
@@ -316,7 +317,11 @@ func (s *Schema) setAutoincMax(tableName string, id int64) {
 	s.autoincMax[tableName] = id
 }
 
-func (s *Schema) schemaGet(key []byte) ([]byte, bool, error) {
+func (s *Schema) schemaGet(key []byte) (value []byte, found bool, err error) {
+	if s.profile != nil {
+		started := time.Now()
+		defer func() { s.profilePoint(key, value, found, time.Since(started)) }()
+	}
 	if s.inTx {
 		return s.txGet(key)
 	}
@@ -968,6 +973,15 @@ func (s *Schema) findOrderIndex(stmt *SelectStmt, tableName string) *IndexInfo {
 }
 
 func (s *Schema) Explain(stmt *ExplainStmt) (*ResultSet, error) {
+	if stmt.Analyze {
+		if _, ok := stmt.Stmt.(*SelectStmt); !ok {
+			return nil, fmt.Errorf("EXPLAIN ANALYZE requires a SELECT statement")
+		}
+		if s.profile == nil {
+			s.StartQueryProfile()
+			defer s.StopQueryProfile()
+		}
+	}
 	rs := &ResultSet{
 		Columns: []ColumnDef{
 			{Name: "addr", ColType: ColInteger},
@@ -1122,8 +1136,9 @@ func (s *Schema) Explain(stmt *ExplainStmt) (*ResultSet, error) {
 				addRow("Rows", 0, int64(len(execRS.Rows)), 0, "", "", fmt.Sprintf("%d rows returned", len(execRS.Rows)))
 				addRow("Time", 0, 0, 0, "", "", fmt.Sprintf("real %.3f ms", float64(elapsed.Microseconds())/1000.0))
 			} else {
-				addRow("Error", 0, 0, 0, "", "", execErr.Error())
+				return nil, execErr
 			}
+			s.appendProfileResult(rs)
 		}
 
 	case *DeleteStmt:
@@ -1782,7 +1797,7 @@ func (s *Schema) newIterator() storage.Iterator {
 	if s.inTx {
 		return s.txNewIterator()
 	}
-	return s.committedIterator()
+	return s.profileReader(s.committedIterator(), "Scan")
 }
 
 func (s *Schema) txAppend(key, value []byte, deleted bool) {
@@ -1827,7 +1842,7 @@ func (s *Schema) txGet(key []byte) ([]byte, bool, error) {
 }
 
 func (s *Schema) txNewIterator() storage.Iterator {
-	return s.txIterator(s.committedIterator(), nil, nil)
+	return s.profileReader(s.txIterator(s.committedIterator(), nil, nil), "Scan")
 }
 
 func (s *Schema) txIterator(base storage.Iterator, lower, upper []byte) storage.Iterator {
@@ -3702,7 +3717,10 @@ func (s *Schema) validateQuery(stmt *SelectStmt, info *TableInfo) error {
 	return nil
 }
 
-func (s *Schema) Select(stmt *SelectStmt) (*ResultSet, error) {
+func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
+	if finish := s.profileSelect(stmt); finish != nil {
+		defer func() { finish(result, err) }()
+	}
 	if err := s.checkInterrupt(); err != nil {
 		return nil, err
 	}
@@ -4090,8 +4108,13 @@ func (s *Schema) Select(stmt *SelectStmt) (*ResultSet, error) {
 	hasGroupBy := len(stmt.GroupBy) > 0 || stmt.Having != nil
 
 	if (hasAgg || hasGroupBy) && !streamedGroups {
+		finish := s.ProfileOperator("Aggregate", tableName)
+		inputRows := int64(len(rows))
 		var err error
 		rows, rowKeys, err = s.processGroups(stmt, rows, info, exprCols, rowKeys)
+		if finish != nil {
+			finish(inputRows, int64(len(rows)), err)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -4122,9 +4145,13 @@ func (s *Schema) Select(stmt *SelectStmt) (*ResultSet, error) {
 	}
 
 	if len(stmt.OrderBy) > 0 && !orderedIndex {
+		finish := s.ProfileOperator("Sort", tableName)
 		sort.Sort(selectRowsWithKeys{rows: rows, keys: rowKeys, less: func(a, b map[string]Value) bool {
 			return s.compareRows(a, b, stmt.OrderBy)
 		}})
+		if finish != nil {
+			finish(int64(len(rows)), int64(len(rows)), nil)
+		}
 	}
 	if stmt.Lock != nil && !lockInputs {
 		var err error
@@ -6507,6 +6534,7 @@ func decodeValue(data []byte) (Value, int) {
 }
 
 type ResultSet struct {
+	Profile *QueryProfile
 	Columns []ColumnDef
 	Rows    []map[string]Value
 	rowKeys [][]string // physical row origins, used when locking through views

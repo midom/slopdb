@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 )
 
 type joinRelation struct {
@@ -572,6 +573,16 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 		}
 	}
 	var walk func(int) error
+	var joinProfiles []int
+	if s.profile != nil {
+		for depth, i := range p.order {
+			id := s.profile.operator("Join", p.relations[i].alias)
+			if depth > 0 {
+				s.profile.Operators[id].ParentID = joinProfiles[depth-1]
+			}
+			joinProfiles = append(joinProfiles, id)
+		}
+	}
 	walk = func(depth int) error {
 		if err := s.checkInterrupt(); err != nil {
 			return err
@@ -589,6 +600,17 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 			return visit(row)
 		}
 		i := p.order[depth]
+		var profile *OperatorProfile
+		if len(joinProfiles) > 0 {
+			id := joinProfiles[depth]
+			profile = &s.profile.Operators[id]
+			s.profile.stack = append(s.profile.stack, id)
+			started := time.Now()
+			defer func() {
+				s.profile.Operators[id].ElapsedMS += float64(time.Since(started)) / float64(time.Millisecond)
+				s.profile.stack = s.profile.stack[:len(s.profile.stack)-1]
+			}()
+		}
 		reader := readers[depth]
 		r := reader.relation
 		var candidates []map[string]Value
@@ -602,8 +624,23 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 		if err != nil {
 			return err
 		}
+		if profile != nil {
+			// readerRows can initialize a hash table on its first call.
+			profile = &s.profile.Operators[joinProfiles[depth]]
+			profile.Operator = "NestedLoopJoin"
+			if depth == 0 {
+				profile.Operator = "JoinInput"
+			} else if reader.buckets != nil {
+				profile.Operator = "HashJoin"
+			} else if len(reader.columns) > 0 {
+				profile.Operator = "IndexProbeJoin"
+			}
+		}
 		matchedAny := false
 		for _, candidate := range candidates {
+			if profile != nil {
+				s.profile.Operators[joinProfiles[depth]].RowsExamined++
+			}
 			for k, v := range candidate {
 				row[r.alias+"."+k] = v
 				if p.firstOwner[k] == i {
@@ -622,6 +659,9 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 				}
 			}
 			if matched {
+				if profile != nil {
+					s.profile.Operators[joinProfiles[depth]].RowsReturned++
+				}
 				matchedAny = true
 				if err := walk(depth + 1); err != nil {
 					return err
@@ -629,6 +669,9 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 			}
 		}
 		if r.left && !matchedAny {
+			if profile != nil {
+				s.profile.Operators[joinProfiles[depth]].RowsReturned++
+			}
 			for k := range r.needed {
 				row[r.alias+"."+k] = NewNullValue()
 				if p.firstOwner[k] == i {

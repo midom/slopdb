@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"math"
 	"strings"
+	"time"
 
 	"slopdb/storage"
 )
@@ -181,10 +182,23 @@ func needsQualifiedRows(stmt *SelectStmt) bool {
 
 // Reuse one immutable storage view for a SQL key batch, then apply the private
 // transaction overlay. Shadowed keys do not read committed data at all.
-func (s *Schema) schemaMultiGet(keys [][]byte) ([]storage.PointValue, error) {
+func (s *Schema) schemaMultiGet(keys [][]byte) (results []storage.PointValue, err error) {
 	if len(keys) == 1 {
 		v, ok, e := s.schemaGet(keys[0])
 		return []storage.PointValue{{Value: v, Found: ok}}, e
+	}
+	if s.profile != nil && len(keys) > 0 {
+		started := time.Now()
+		defer func() {
+			elapsed := time.Since(started) / time.Duration(len(keys))
+			for i, key := range keys {
+				var value storage.PointValue
+				if i < len(results) {
+					value = results[i]
+				}
+				s.profilePoint(key, value.Value, value.Found, elapsed)
+			}
+		}()
 	}
 	read := func(ks [][]byte) ([]storage.PointValue, error) {
 		if s.statementActive {
@@ -226,9 +240,9 @@ func (s *Schema) newIteratorSeek(key []byte) storage.Iterator {
 		return it
 	}
 	if s.statementActive {
-		return s.lsm.NewIteratorAtSeek(s.statementSnapshot, key)
+		return s.profileReader(s.lsm.NewIteratorAtSeek(s.statementSnapshot, key), "Scan")
 	}
-	return s.lsm.NewIteratorSeek(key)
+	return s.profileReader(s.lsm.NewIteratorSeek(key), "Scan")
 }
 
 func (s *Schema) newRangeIterator(lower, upper []byte, reverse bool) storage.Iterator {
@@ -242,14 +256,14 @@ func (s *Schema) newRangeIterator(lower, upper []byte, reverse bool) storage.Ite
 		base = s.lsm.NewIteratorRange(lower, upper, reverse && !overlay)
 	}
 	if !overlay {
-		return base
+		return s.profileReader(base, "RangeScan")
 	}
 	it := s.txIterator(base, lower, upper)
 	if reverse {
 		it.Seek(upper)
 		it.Prev()
 	}
-	return storage.BoundIterator(it, lower, upper)
+	return s.profileReader(storage.BoundIterator(it, lower, upper), "RangeScan")
 }
 
 func coveredRangePredicate(e Expression, column, table, alias string) bool {
