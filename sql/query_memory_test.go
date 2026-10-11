@@ -237,3 +237,33 @@ func TestIndexedSpillRejectsMalformedRows(t *testing.T) {
 		}
 	}
 }
+
+func TestQueryDiskCleanupDetachesOwnership(t *testing.T) {
+	s := &Schema{queryMemoryBytes: 512, queryTempDir: t.TempDir()}
+	var held []*diskHash
+	for i := 0; i < 3; i++ {
+		disk, err := newDiskHash(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		held = append(held, disk)
+		s.queryDisks = append(s.queryDisks, disk)
+		if err = disk.add("k", nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.clearSelectCaches()
+	if s.queryDisks != nil {
+		t.Fatal("statement retains ownership list")
+	}
+	for _, disk := range held {
+		if !disk.closed || disk.index != nil {
+			t.Fatal("statement cleanup skipped retained engine")
+		}
+		disk.close()
+	}
+	entries, err := os.ReadDir(s.queryTempDir)
+	if err != nil || len(entries) > 0 {
+		t.Fatalf("cleanup files: %v %v", entries, err)
+	}
+}

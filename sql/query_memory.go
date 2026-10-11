@@ -362,8 +362,24 @@ func (h *diskHash) close() {
 			h.s.profile.SpillRuns += stats.CompletedFlushes + stats.CompletedCompactions
 		}
 	}
+	h.index = nil
 	h.lastRows = nil
+	h.lastKey = ""
 	os.RemoveAll(h.dir)
+	// Statement cleanup owns only live aggregate-DISTINCT stores. Releasing a
+	// completed group must also remove its engine from that ownership list;
+	// keeping a closed LSM pointer retains its memtable/catalog/cache metadata.
+	if h.s != nil {
+		for i, disk := range h.s.queryDisks {
+			if disk == h {
+				last := len(h.s.queryDisks) - 1
+				h.s.queryDisks[i] = h.s.queryDisks[last]
+				h.s.queryDisks[last] = nil
+				h.s.queryDisks = h.s.queryDisks[:last]
+				break
+			}
+		}
+	}
 }
 func spillBucketPrefix(key string) []byte {
 	return appendClusteredValue(nil, NewBlobValue([]byte(key)))
