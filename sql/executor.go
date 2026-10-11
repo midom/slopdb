@@ -6004,16 +6004,22 @@ func (s *Schema) evalArithmetic(e *BinaryExpr, row map[string]Value, fn func(flo
 	if err != nil {
 		return NewNullValue(), err
 	}
+	return arithmeticValues(e.Op, lv, rv, fn)
+}
+
+// arithmeticValues is shared by interpreted and slot-bound execution so exact
+// integers, NULL propagation and numeric errors cannot diverge.
+func arithmeticValues(op string, lv, rv Value, fn func(float64, float64) float64) (Value, error) {
 	if lv.Null || rv.Null {
 		return NewNullValue(), nil
 	}
 	if (lv.Type != ColInteger && lv.Type != ColReal) || (rv.Type != ColInteger && rv.Type != ColReal) {
 		return NewNullValue(), fmt.Errorf("arithmetic requires numeric operands")
 	}
-	if (e.Op == "/" || e.Op == "%") && toFloat(rv) == 0 {
+	if (op == "/" || op == "%") && toFloat(rv) == 0 {
 		return NewNullValue(), fmt.Errorf("division by zero")
 	}
-	if e.Op == "%" {
+	if op == "%" {
 		if lv.Type != ColInteger || rv.Type != ColInteger {
 			return NewNullValue(), fmt.Errorf("modulo requires integer operands")
 		}
@@ -6025,7 +6031,7 @@ func (s *Schema) evalArithmetic(e *BinaryExpr, row map[string]Value, fn func(flo
 	}
 	if lv.Type == ColInteger && rv.Type == ColInteger {
 		a, b := lv.Int, rv.Int
-		switch e.Op {
+		switch op {
 		case "+":
 			r := a + b
 			if (b > 0 && r < a) || (b < 0 && r > a) {
@@ -6086,6 +6092,10 @@ func (s *Schema) evalBitwise(e *BinaryExpr, row map[string]Value, fn func(int64,
 }
 
 func (s *Schema) compareValues(lv, rv Value, op string) Value {
+	return compareSQLValues(lv, rv, op)
+}
+
+func compareSQLValues(lv, rv Value, op string) Value {
 	if lv.Null || rv.Null {
 		return NewNullValue()
 	}
@@ -6147,11 +6157,13 @@ func applyAffinity(v Value, typ ColumnType) Value {
 	}
 	return v
 }
-func valueIdentity(v Value) []byte {
+func valueIdentity(v Value) []byte { return appendValueIdentity(nil, v) }
+
+func appendValueIdentity(buf []byte, v Value) []byte {
 	if !v.Null && v.Type == ColReal && v.Real >= math.MinInt64 && v.Real < 9223372036854775808.0 && v.Real == math.Trunc(v.Real) {
 		v = NewIntValue(int64(v.Real))
 	}
-	return encodeValue(v)
+	return appendValue(buf, v)
 }
 
 func toFloat(v Value) float64 {

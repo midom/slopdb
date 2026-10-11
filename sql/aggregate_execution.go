@@ -20,9 +20,7 @@ type aggregateState struct {
 }
 
 func (s *Schema) addAggregate(a *aggregateState, f *FuncCallExpr, row map[string]Value) error {
-	name := strings.ToUpper(f.Name)
-
-	if name == "COUNT" {
+	if strings.EqualFold(f.Name, "COUNT") {
 		if c, ok := f.Args[0].(*ColumnRefExpr); ok && c.Name == "*" {
 			a.count++
 			return nil
@@ -32,6 +30,12 @@ func (s *Schema) addAggregate(a *aggregateState, f *FuncCallExpr, row map[string
 	if err != nil {
 		return err
 	}
+	return addAggregateValue(a, f, v)
+}
+
+// Typed scans bind/evaluate arguments before this common state transition.
+func addAggregateValue(a *aggregateState, f *FuncCallExpr, v Value) error {
+	name := strings.ToUpper(f.Name)
 	if v.Null {
 		return nil
 	}
@@ -377,7 +381,14 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 				paths = nil
 			}
 		}
-		readErr = s.walkAccess(info, bareNeeded, paths, accept)
+		typed, ok := compileTypedAggregate(info, stmt.From, alias, stmt.Where, groupExprs, functions, representative)
+		if ok {
+			baseNames = typed.baseNames
+			namesReady = true
+			readErr = s.walkTypedAggregate(typed, info, bareNeeded, paths, groups, newGroup)
+		} else {
+			readErr = s.walkAccess(info, bareNeeded, paths, accept)
+		}
 	}
 	if readErr != nil {
 		return nil, true, readErr
