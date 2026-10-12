@@ -52,7 +52,7 @@ var keywords = map[string]bool{
 	"AND": true, "OR": true, "NOT": true, "TRUE": true, "FALSE": true,
 	"NULL":    true,
 	"INTEGER": true, "INT": true, "TEXT": true, "REAL": true,
-	"BLOB": true, "PRIMARY": true, "KEY": true, "ORDER": true,
+	"BLOB": true, "VARCHAR": true, "VARBINARY": true, "PRIMARY": true, "KEY": true, "ORDER": true,
 	"BY": true, "ASC": true, "DESC": true, "LIMIT": true,
 	"OFFSET": true, "AS": true, "ON": true, "JOIN": true,
 	"LEFT": true, "RIGHT": true, "INNER": true, "OUTER": true,

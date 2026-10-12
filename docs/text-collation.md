@@ -26,7 +26,9 @@ equal under `NFC_CI`. These modes are not locale-aware language collations.
 
 Invalid UTF-8 in a `TEXT` value is compared bytewise. SlopDB leaves its bytes
 unchanged instead of replacing invalid sequences during normalization. `BLOB`
-values are unaffected by text collation.
+values are unaffected by text collation. `VARCHAR(n)` is bounded `TEXT` and uses
+the same collation and `BINARY` override rules; its length counts stored UTF-8
+runes before normalization. `VARBINARY(n)` is bounded `BLOB` and counts bytes.
 
 ## Read and change the setting
 

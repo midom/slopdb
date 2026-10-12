@@ -46,12 +46,15 @@ ALTER TABLE customers ALTER COLUMN score SET NOT NULL;
 ALTER TABLE customers ALTER COLUMN score DROP NOT NULL;
 ALTER TABLE customers ALTER COLUMN score TYPE REAL USING CAST(score AS REAL);
 ALTER TABLE customers ALTER COLUMN score SET DATA TYPE DOUBLE PRECISION;
+ALTER TABLE customers ALTER COLUMN label TYPE VARCHAR(200);
+ALTER TABLE customers ALTER COLUMN label TYPE VARCHAR(80) ALLOW EXISTING;
 ALTER TABLE customers MODIFY COLUMN score REAL NOT NULL DEFAULT 0 FIRST;
 ALTER TABLE customers CHANGE COLUMN score rating REAL AFTER name;
 ```
 
 ADD's COLUMN keyword is optional. Supported type targets are INTEGER/INT/BIGINT,
-REAL/FLOAT/DOUBLE/DOUBLE PRECISION, TEXT and BLOB. USING expressions read the old
+REAL/FLOAT/DOUBLE/DOUBLE PRECISION, TEXT, VARCHAR(n), BLOB and VARBINARY(n).
+USING expressions read the old
 row. Invalid conversions, unknown expressions, overflow, duplicate keys and
 constraint violations reject the statement. Defaults affect future inserts;
 changing a default does not replace existing values. Adding a column evaluates
@@ -66,10 +69,20 @@ RESTRICT is the default when a column has dependent constraints, indexes, views,
 triggers or foreign keys; CASCADE removes those dependencies explicitly.
 Dependent view chains and their attached triggers are removed together.
 
-Column alterations use existing SQL capabilities: BINARY remains the only
-collation, and generated columns and additional character types are not added
-by this change. `ALTER COLUMN c COLLATE BINARY` and type declarations with
-`COLLATE BINARY` are accepted; unsupported collations fail.
+Column alterations use the database-wide Unicode collation, with BINARY as a
+column-level override. `ALTER COLUMN c COLLATE BINARY` and type declarations
+with `COLLATE BINARY` are accepted; unsupported column collations fail.
+
+`ALTER COLUMN ... TYPE VARCHAR(n)` or `VARBINARY(n)` updates only the catalog
+when the type and collation stay the same and the bounded length increases.
+Rows and indexes retain their physical encodings, so the change does not scan
+or rewrite them. A shorter length normally validates and rewrites existing rows;
+it fails if any value exceeds the new limit. Add `ALLOW EXISTING` to a shorter
+length to update only the catalog. Existing oversized values remain readable and
+indexed. Inserts and assignments to that column must meet the new limit, even
+when an assignment repeats an old value. Updates to other columns preserve old
+oversized values. This setting persists across reopen. Catalog locking still
+waits for active transactions and briefly coordinates with other sessions.
 
 ## Constraints and indexes
 
@@ -106,7 +119,8 @@ ALTER TABLE IF EXISTS old_table DROP COLUMN IF EXISTS obsolete;
 
 Changes requiring data conversion, reordering, validation or key rebuilding can
 scan the table and materialize rows. They are not online, constant-time data
-migrations. Table/index/column renames and default changes avoid that work.
+migrations. Table/index/column renames, default changes and the length-only
+ALTER forms above avoid that work.
 
 ## Views
 

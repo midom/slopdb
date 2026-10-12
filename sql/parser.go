@@ -310,6 +310,14 @@ func (p *Parser) parseColumnDef(col *ColumnDef, alteration ...bool) error {
 		case "TEXT":
 			col.ColType = ColText
 			p.advance()
+		case "VARCHAR":
+			col.ColType = ColText
+			p.advance()
+			length, err := p.parseStringLength()
+			if err != nil {
+				return err
+			}
+			col.Length = length
 		case "REAL", "DOUBLE":
 			double := strings.EqualFold(p.cur.Value, "DOUBLE")
 			col.ColType = ColReal
@@ -320,6 +328,14 @@ func (p *Parser) parseColumnDef(col *ColumnDef, alteration ...bool) error {
 		case "BLOB":
 			col.ColType = ColBlob
 			p.advance()
+		case "VARBINARY":
+			col.ColType = ColBlob
+			p.advance()
+			length, err := p.parseStringLength()
+			if err != nil {
+				return err
+			}
+			col.Length = length
 		default:
 			col.ColType = ColText
 		}
@@ -513,6 +529,24 @@ func (p *Parser) parseColumnDef(col *ColumnDef, alteration ...bool) error {
 		return fmt.Errorf("constraint name without a supported definition")
 	}
 	return nil
+}
+
+func (p *Parser) parseStringLength() (int64, error) {
+	if err := p.expect(TokLParen); err != nil {
+		return 0, err
+	}
+	if p.cur.Type != TokInt {
+		return 0, fmt.Errorf("expected positive VARCHAR/VARBINARY length")
+	}
+	length, err := strconv.ParseInt(p.cur.Value, 10, 64)
+	if err != nil || length <= 0 {
+		return 0, fmt.Errorf("invalid VARCHAR/VARBINARY length %q", p.cur.Value)
+	}
+	p.advance()
+	if err := p.expect(TokRParen); err != nil {
+		return 0, err
+	}
+	return length, nil
 }
 
 func (p *Parser) parseTableConstraint(stmt *CreateTableStmt) error {
@@ -1910,6 +1944,12 @@ func (p *Parser) parsePrimary() (Expression, error) {
 		if typeName == "DOUBLE" && strings.EqualFold(p.cur.Value, "PRECISION") {
 			typeName = "DOUBLE PRECISION"
 			p.advance()
+		} else if typeName == "VARCHAR" || typeName == "VARBINARY" {
+			length, err := p.parseStringLength()
+			if err != nil {
+				return nil, err
+			}
+			typeName = fmt.Sprintf("%s(%d)", typeName, length)
 		}
 		if err := p.expect(TokRParen); err != nil {
 			return nil, err

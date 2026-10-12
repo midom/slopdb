@@ -40,20 +40,36 @@ type ForeignKeyDef struct {
 }
 
 type ColumnDef struct {
-	ConstraintNames map[string]string `json:"constraint_names,omitempty"`
-	Name            string
-	ColType         ColumnType
-	Binary          bool `json:"binary,omitempty"`
-	NotNull         bool
-	Default         Expression `json:"-"`
-	DefaultSQL      string     `json:"default_sql,omitempty"`
-	PrimaryKey      bool
-	Unique          bool
-	Check           Expression `json:"-"`
-	CheckSQL        string     `json:"check_sql,omitempty"`
-	AutoIncrement   bool
-	RefTable        string
-	RefColumns      []string
+	ConstraintNames     map[string]string `json:"constraint_names,omitempty"`
+	Name                string
+	ColType             ColumnType
+	Length              int64 `json:"length,omitempty"`                // positive VARCHAR/VARBINARY character/byte limit
+	AllowExistingLength bool  `json:"allow_existing_length,omitempty"` // preserve preexisting overlength values on unrelated updates
+	Binary              bool  `json:"binary,omitempty"`
+	NotNull             bool
+	Default             Expression `json:"-"`
+	DefaultSQL          string     `json:"default_sql,omitempty"`
+	PrimaryKey          bool
+	Unique              bool
+	Check               Expression `json:"-"`
+	CheckSQL            string     `json:"check_sql,omitempty"`
+	AutoIncrement       bool
+	RefTable            string
+	RefColumns          []string
+}
+
+// DeclaredType preserves bounded string declarations for schema introspection.
+// The underlying SQL value remains TEXT or BLOB.
+func (col ColumnDef) DeclaredType() string {
+	if col.Length > 0 {
+		switch col.ColType {
+		case ColText:
+			return fmt.Sprintf("VARCHAR(%d)", col.Length)
+		case ColBlob:
+			return fmt.Sprintf("VARBINARY(%d)", col.Length)
+		}
+	}
+	return col.ColType.String()
 }
 
 type CreateTableStmt struct {
@@ -280,6 +296,7 @@ type AlterTableStmt struct {
 	Constraint    *ConstraintDef
 	Default       Expression
 	Using         Expression
+	AllowExisting bool
 	Position      string
 	After         string
 	ViewSQL       string

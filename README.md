@@ -16,7 +16,10 @@ are optional benchmark comparisons.
   primary keys, secondary indexes, constraints, views and triggers. Text
   collation supports canonical Unicode equivalence (NFC/NFD), compatibility
   equivalence (NFKC/NFKD), and optional Unicode case folding. SQL `BINARY`
-  overrides the database-wide collation for expressions or columns.
+  overrides the database-wide collation for expressions or columns. `VARCHAR(n)`
+  limits text by Unicode code points; `VARBINARY(n)` limits binary values by bytes.
+  Length increases are catalog-only ALTER changes; `ALLOW EXISTING` permits a
+  shorter limit for new values while retaining older oversized values.
 - **Transactions:** independent sessions, READ COMMITTED statement snapshots,
   atomic commits, row and unique-key locks, savepoints, cancellation and optional
   deadlock detection.

@@ -3,6 +3,7 @@ package sql
 import (
 	"bytes"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -153,6 +154,27 @@ func (s *Schema) AlterTable(a *AlterTableStmt) error {
 		}
 		return s.DropIndex(&DropIndexStmt{Index: a.NewName})
 	}
+	if a.Operation == "ALTER_TYPE" {
+		col, err := column(a.OldColName)
+		if err != nil {
+			return err
+		}
+		lengthOnly := a.Column != nil && a.Column.ColType == col.ColType &&
+			(col.ColType == ColText || col.ColType == ColBlob) &&
+			a.Column.Length > 0 && a.Using == nil &&
+			!(a.Column.Binary && !col.Binary)
+		if a.AllowExisting && (!lengthOnly || (col.Length > 0 && a.Column.Length >= col.Length)) {
+			return fmt.Errorf("ALLOW EXISTING requires a shorter VARCHAR or VARBINARY length without conversion")
+		}
+		if lengthOnly && ((col.Length > 0 && a.Column.Length >= col.Length) || a.AllowExisting) {
+			col.Length = a.Column.Length
+			if a.AllowExisting {
+				col.AllowExistingLength = true
+			}
+			delete(s.distributions, a.Table)
+			return s.saveSchema()
+		}
+	}
 	oldInfo := *info
 	oldInfo.Columns = slices.Clone(info.Columns)
 	oldInfo.PKColumns = slices.Clone(info.PKColumns)
@@ -166,8 +188,16 @@ func (s *Schema) AlterTable(a *AlterTableStmt) error {
 		return err
 	}
 	rows := make([]map[string]Value, len(entries))
+	preserveExisting := slices.ContainsFunc(info.Columns, func(c ColumnDef) bool { return c.AllowExistingLength })
+	var originalRows []map[string]Value
+	if preserveExisting {
+		originalRows = make([]map[string]Value, len(entries))
+	}
 	for i, e := range entries {
 		rows[i] = decodeRow(e.Value, &oldInfo)
+		if preserveExisting {
+			originalRows[i] = maps.Clone(rows[i])
+		}
 	}
 	// Remove every old entry in the private overlay before validating/rekeying.
 	for i, e := range entries {
@@ -290,6 +320,13 @@ func (s *Schema) AlterTable(a *AlterTableStmt) error {
 			}
 		} else {
 			col.ColType = target
+			col.Length = a.Column.Length
+			col.AllowExistingLength = false
+			if target != ColText {
+				col.Binary = false
+			} else if a.Column.Binary {
+				col.Binary = true
+			}
 			if col.Default != nil {
 				col.Default = &FuncCallExpr{Name: "CAST", Args: []Expression{col.Default, &LiteralExpr{Value: NewTextValue(target.String())}}}
 				col.DefaultSQL = formatExpr(col.Default)
@@ -355,7 +392,15 @@ func (s *Schema) AlterTable(a *AlterTableStmt) error {
 	keys := make([][]byte, len(rows))
 	pkChanged := !slices.Equal(oldInfo.PKColumns, info.PKColumns) || a.Operation == "ALTER_TYPE" || a.Operation == "MODIFY_COLUMN"
 	for i, row := range rows {
-		if err = s.checkNonUniqueConstraints(info.Name, info, row); err != nil {
+		var assigned map[string]bool
+		var original map[string]Value
+		if a.Operation == "ALTER_TYPE" || a.Operation == "MODIFY_COLUMN" {
+			assigned = map[string]bool{a.OldColName: true}
+		}
+		if preserveExisting {
+			original = originalRows[i]
+		}
+		if err = s.checkNonUniqueConstraintsPreserving(info.Name, info, row, original, assigned); err != nil {
 			return err
 		}
 		for n, g := range groups {

@@ -14,11 +14,25 @@ unless its DEFAULT supplies a non-NULL value. Duplicate primary-key declarations
 and invalid AUTOINCREMENT declarations are rejected.
 
 All columns enforce their declared INTEGER, REAL, TEXT, or BLOB type after the
-existing affinity conversions. For example, numeric text can become INTEGER,
+existing affinity conversions. `VARCHAR(n)` uses TEXT storage and collation,
+but limits the stored value to `n` Unicode code points. `VARBINARY(n)` uses BLOB
+storage and limits the value to `n` bytes. Both require a positive integer length,
+reject overlength INSERT/UPDATE/ALTER results without truncation, and retain
+their declarations in schema introspection. Length is checked on the stored
+text before Unicode collation normalization; each invalid UTF-8 byte counts as
+one decoded replacement rune for this limit. BLOB values remain unaffected by
+text collation. `CAST(... AS VARCHAR(n))` and `CAST(... AS VARBINARY(n))` use the
+same limits. For example, numeric text can become INTEGER,
 and an INTEGER can become REAL, but arbitrary text cannot be stored in an
 INTEGER column. Point updates and general DML follow the same rules. UNIQUE
 continues to permit multiple NULL values, and CHECK accepts UNKNOWN as well as
 TRUE.
+
+Increasing a VARCHAR or VARBINARY length with `ALTER COLUMN ... TYPE` updates
+catalog metadata without rewriting rows or indexes. A shorter length checks
+existing rows by default. `ALLOW EXISTING` makes a shorter length apply to new
+values while preserving older oversized values on unrelated updates; explicit
+assignments must meet the new length. See [ALTER table](alter-table.md).
 
 On opening an older database, valid primary-key metadata is upgraded to NOT
 NULL. A bounded probe detects the legacy NULL-key storage band. Opening a table

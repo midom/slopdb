@@ -222,7 +222,7 @@ func (s *Schema) showColumns(stmt *ShowStmt) (*ResultSet, error) {
 			extra = "auto_increment"
 		}
 		row := map[string]Value{
-			"Field": NewTextValue(col.Name), "Type": NewTextValue(col.ColType.String()),
+			"Field": NewTextValue(col.Name), "Type": NewTextValue(col.DeclaredType()),
 			"Null": NewTextValue(nullable), "Key": NewTextValue(key),
 			"Default": dflt, "Extra": NewTextValue(extra),
 		}

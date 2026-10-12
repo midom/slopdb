@@ -302,8 +302,22 @@ func (p *Parser) parseAlterType(a *AlterTableStmt) error {
 		}
 	case "TEXT":
 		c.ColType = ColText
+	case "VARCHAR":
+		c.ColType = ColText
+		length, err := p.parseStringLength()
+		if err != nil {
+			return err
+		}
+		c.Length = length
 	case "BLOB":
 		c.ColType = ColBlob
+	case "VARBINARY":
+		c.ColType = ColBlob
+		length, err := p.parseStringLength()
+		if err != nil {
+			return err
+		}
+		c.Length = length
 	default:
 		return fmt.Errorf("unsupported column type: %s", name)
 	}
@@ -316,6 +330,16 @@ func (p *Parser) parseAlterType(a *AlterTableStmt) error {
 		if collation != "binary" {
 			return fmt.Errorf("unsupported collation: %s", collation)
 		}
+		if c.ColType != ColText {
+			return fmt.Errorf("BINARY collation requires a TEXT column")
+		}
+		c.Binary = true
+	}
+	if p.optionalAlterWord("ALLOW") {
+		if !p.optionalAlterWord("EXISTING") {
+			return fmt.Errorf("expected EXISTING after ALLOW")
+		}
+		a.AllowExisting = true
 	}
 	if p.optionalAlterWord("USING") {
 		var err error

@@ -6,6 +6,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"slopdb/storage"
 )
@@ -52,13 +53,35 @@ func validateColumnValue(table string, col ColumnDef, v Value) error {
 	if !v.Null && v.Type != col.ColType {
 		return fmt.Errorf("datatype mismatch for column %s.%s: expected %s, got %s", table, col.Name, col.ColType, v.Type)
 	}
+	if !v.Null && col.Length > 0 {
+		switch col.ColType {
+		case ColText:
+			if int64(utf8.RuneCountInString(v.Text)) > col.Length {
+				return fmt.Errorf("value too long for %s.%s: %s allows %d characters", table, col.Name, col.DeclaredType(), col.Length)
+			}
+		case ColBlob:
+			if int64(len(v.Blob)) > col.Length {
+				return fmt.Errorf("value too long for %s.%s: %s allows %d bytes", table, col.Name, col.DeclaredType(), col.Length)
+			}
+		}
+	}
 	if !v.Null && v.Type == ColReal && (math.IsNaN(v.Real) || math.IsInf(v.Real, 0)) {
 		return fmt.Errorf("numeric value out of range: %s.%s", table, col.Name)
 	}
 	return nil
 }
 func validateRowTypes(info *TableInfo, row map[string]Value) error {
+	return validateRowTypesPreserving(info, row, nil, nil)
+}
+
+func validateRowTypesPreserving(info *TableInfo, row, original map[string]Value, assigned map[string]bool) error {
 	for _, col := range info.Columns {
+		if col.AllowExistingLength && original != nil && !assigned[col.Name] &&
+			bytes.Equal(encodeValue(row[col.Name]), encodeValue(original[col.Name])) {
+			// The stored value predates an ALLOW EXISTING shrink. Every newly
+			// supplied value still passes the current length check.
+			col.Length = 0
+		}
 		if err := validateColumnValue(info.Name, col, row[col.Name]); err != nil {
 			return err
 		}
@@ -133,7 +156,9 @@ func validateScalarFunction(f *FuncCallExpr) error {
 				switch strings.ToUpper(literal.Value.Text) {
 				case "INT", "INTEGER", "BIGINT", "REAL", "FLOAT", "DOUBLE", "DOUBLE PRECISION", "TEXT", "BLOB":
 				default:
-					return fmt.Errorf("unsupported cast type: %s", literal.Value.Text)
+					if _, _, ok := varyingCastType(literal.Value.Text); !ok {
+						return fmt.Errorf("unsupported cast type: %s", literal.Value.Text)
+					}
 				}
 			}
 		}
@@ -160,8 +185,42 @@ func validateScalarFunction(f *FuncCallExpr) error {
 	return nil
 }
 
+func varyingCastType(name string) (ColumnType, int64, bool) {
+	name = strings.ToUpper(name)
+	for _, spec := range []struct {
+		prefix string
+		typ    ColumnType
+	}{{"VARCHAR(", ColText}, {"VARBINARY(", ColBlob}} {
+		if !strings.HasPrefix(name, spec.prefix) || !strings.HasSuffix(name, ")") {
+			continue
+		}
+		length, err := strconv.ParseInt(name[len(spec.prefix):len(name)-1], 10, 64)
+		if err == nil && length > 0 {
+			return spec.typ, length, true
+		}
+	}
+	return 0, 0, false
+}
+
 func castSQLValue(value Value, target string) (Value, error) {
+	if value.Null {
+		return NewNullValue(), nil
+	}
 	name := strings.ToUpper(target)
+	if columnType, length, ok := varyingCastType(name); ok {
+		underlying := "TEXT"
+		if columnType == ColBlob {
+			underlying = "BLOB"
+		}
+		converted, err := castSQLValue(value, underlying)
+		if err != nil {
+			return NewNullValue(), err
+		}
+		if err := validateColumnValue("CAST", ColumnDef{Name: underlying, ColType: columnType, Length: length}, converted); err != nil {
+			return NewNullValue(), err
+		}
+		return converted, nil
+	}
 	switch name {
 	case "INT", "INTEGER", "BIGINT", "REAL", "FLOAT", "DOUBLE", "DOUBLE PRECISION":
 		v := value

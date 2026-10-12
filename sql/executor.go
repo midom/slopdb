@@ -772,7 +772,7 @@ func (s *Schema) getCreateTableSQL(tableName string, inlineIndexes bool) string 
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		fmt.Fprintf(&b, "%s %s", quoteIdent(col.Name), col.ColType.String())
+		fmt.Fprintf(&b, "%s %s", quoteIdent(col.Name), col.DeclaredType())
 		if col.Binary {
 			b.WriteString(" COLLATE BINARY")
 		}
@@ -961,7 +961,7 @@ func (s *Schema) pragmaTableInfo(tableName string) (*ResultSet, error) {
 		row := map[string]Value{
 			"cid":        NewIntValue(int64(i)),
 			"name":       NewTextValue(col.Name),
-			"type":       NewTextValue(col.ColType.String()),
+			"type":       NewTextValue(col.DeclaredType()),
 			"notnull":    NewIntValue(notNullVal),
 			"dflt_value": dflt,
 			"pk":         NewIntValue(pkVal),
@@ -3178,7 +3178,11 @@ func (s *Schema) checkConstraints(tableName string, info *TableInfo, row map[str
 }
 
 func (s *Schema) checkConstraintsOriginal(tableName string, info *TableInfo, row map[string]Value, rowKey []byte, original map[string]Value) error {
-	if err := s.checkNonUniqueConstraints(tableName, info, row); err != nil {
+	return s.checkConstraintsOriginalPreserving(tableName, info, row, rowKey, original, nil, nil)
+}
+
+func (s *Schema) checkConstraintsOriginalPreserving(tableName string, info *TableInfo, row map[string]Value, rowKey []byte, original, preUpdate map[string]Value, assigned map[string]bool) error {
+	if err := s.checkNonUniqueConstraintsPreserving(tableName, info, row, preUpdate, assigned); err != nil {
 		return err
 	}
 	return s.checkUniqueConstraintsOriginal(tableName, info, row, rowKey, original)
@@ -3247,10 +3251,14 @@ func (s *Schema) checkUniqueConstraintsOriginal(tableName string, info *TableInf
 }
 
 func (s *Schema) checkNonUniqueConstraints(tableName string, info *TableInfo, row map[string]Value) error {
+	return s.checkNonUniqueConstraintsPreserving(tableName, info, row, nil, nil)
+}
+
+func (s *Schema) checkNonUniqueConstraintsPreserving(tableName string, info *TableInfo, row, original map[string]Value, assigned map[string]bool) error {
 	if err := validatePrimaryKey(info, row); err != nil {
 		return err
 	}
-	if err := validateRowTypes(info, row); err != nil {
+	if err := validateRowTypesPreserving(info, row, original, assigned); err != nil {
 		return err
 	}
 	if err := s.validateIndexedRow(tableName, row); err != nil {
@@ -5410,10 +5418,12 @@ func (s *Schema) applyRowUpdate(table string, info *TableInfo, oldKey []byte, or
 		return nil, err
 	}
 	row := make(map[string]Value)
+	assigned := make(map[string]bool, len(sets))
 	for k, v := range original {
 		row[k] = v
 	}
 	for _, set := range sets {
+		assigned[strings.ToLower(set.Column)] = true
 		v, err := s.evalExpr(set.Value, evaluationRow)
 		if err != nil {
 			return nil, err
@@ -5454,7 +5464,7 @@ func (s *Schema) applyRowUpdate(table string, info *TableInfo, oldKey []byte, or
 			indexedRow = decodeRow(data, info)
 		}
 	}
-	if err := s.checkConstraintsOriginal(table, info, row, oldKey, indexedRow); err != nil {
+	if err := s.checkConstraintsOriginalPreserving(table, info, row, oldKey, indexedRow, original, assigned); err != nil {
 		return nil, err
 	}
 	if err := s.updateChangedIndexes(table, indexedRow, row, oldKey, key); err != nil {
