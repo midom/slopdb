@@ -31,13 +31,14 @@ func main() {
 	}
 }
 func run() (err error) {
-	var mode, dir, file, report string
+	var mode, dir, file, report, verifyReport string
 	var copies int
 	var pageSize int64
 	flag.StringVar(&mode, "mode", "load", "load, verify, maintenance (TPC-C), or compact (any database)")
 	flag.StringVar(&dir, "dir", "", "database directory")
 	flag.StringVar(&file, "snapshot", "", "portable TPC-C snapshot JSON")
 	flag.StringVar(&report, "json", "", "output JSON report (default stdout)")
+	flag.StringVar(&verifyReport, "verify-report", "", "TPC-H report whose complete answers must match after compact/reopen")
 	flag.IntVar(&copies, "replicas", 128, "source replicas; item table is shared")
 	flag.Int64Var(&pageSize, "page-size", 0, "SSTable data-block target in bytes")
 	flag.Parse()
@@ -57,7 +58,10 @@ func run() (err error) {
 		}
 	}
 	if mode == "compact" {
-		return compact(dir, pageSize, report)
+		return compact(dir, pageSize, report, verifyReport)
+	}
+	if verifyReport != "" {
+		return fmt.Errorf("-verify-report requires -mode compact")
 	}
 	started := time.Now()
 	var loadSeconds, maintenanceSeconds float64
@@ -267,7 +271,7 @@ func run() (err error) {
 	return json.NewEncoder(os.Stdout).Encode(result)
 }
 
-func compact(dir string, pageSize int64, report string) (err error) {
+func compact(dir string, pageSize int64, report, verificationReport string) (err error) {
 	opt := storage.DefaultOptions()
 	opt.PageSize = pageSize
 	opt.DisableWALSync = true
@@ -327,7 +331,15 @@ func compact(dir string, pageSize int64, report string) (err error) {
 			return fmt.Errorf("%s count changed after compaction", n)
 		}
 	}
-	result := map[string]any{"page_size_bytes": database.PageSize(), "rows": after, "counts_verified_after_reopen": true, "maintenance_seconds": elapsed, "levels": database.Stats().Levels}
+	verificationStart := time.Now()
+	answersChecked := 0
+	if verificationReport != "" {
+		answersChecked, err = verifyQueryReport(database, verificationReport, after, 180*time.Second)
+		if err != nil {
+			return err
+		}
+	}
+	result := map[string]any{"page_size_bytes": database.PageSize(), "rows": after, "counts_verified_after_reopen": true, "query_answers_verified_after_maintenance": answersChecked, "query_verification_seconds": time.Since(verificationStart).Seconds(), "maintenance_seconds": elapsed, "levels": database.Stats().Levels}
 	if err = database.Close(); err != nil {
 		return err
 	}
