@@ -5,50 +5,40 @@ dialect, concurrent transactions, a Go API and an interactive command-line
 interface. Each database lives in a directory and runs without an external
 database server.
 
-## Features
+## Goals and capabilities
 
-### SQL, data and schema
+### Work with structured data
 
-- Joins, subqueries, grouping, compound queries, UPSERT, common table expressions,
-  supported recursive queries and window functions.
-- Tables with primary keys, secondary indexes, constraints, views and triggers.
-- Text and binary data, including `VARCHAR` and `VARBINARY` with custom lengths.
-- Unicode-aware text comparison with normalization, case-insensitive comparison
-  and binary overrides.
-- Schema changes and atomic renames, including online index creation and removal.
-  Planning tools show expected work and locking before changes.
+Use familiar SQL to explore, combine and summarize data. Define rules that keep
+data consistent, handle international text, and evolve database structures as
+application needs change.
 
-### Concurrency and transactions
+### Support concurrent applications
 
-- Concurrent SQL sessions and transactions with atomic commits.
-- Savepoints, locking reads, configurable lock waits and optional deadlock
-  detection.
-- Context deadlines and cancellation, plus an optional index publication policy
-  that rolls back blocking transactions after a configurable wait.
+Run independent application sessions concurrently and group related changes
+into transactions. Control how long operations wait, cancel work when needed,
+and inspect blockers. Supported online changes let applications keep working
+while the database is being updated.
 
-### Performance
+### Understand and improve performance
 
-- Indexed queries, optimized joins, aggregation and sorting.
-- Statistics that guide query planning, with `EXPLAIN` and `EXPLAIN ANALYZE` for
-  understanding plans and actual execution.
-- Memory controls, compression and caching for query and storage performance.
-- Prepared statements, streaming results and bulk loading.
+Reuse application queries, process large results incrementally and load datasets
+efficiently. Planning and profiling tools explain query work and resource use,
+with controls for memory and storage as data grows.
 
-### Durability and operations
+### Protect and maintain data
 
-- Durable writes and crash recovery enabled by default.
-- Online backups, integrity checks and storage maintenance.
-- Schema inspection, database status, live lock diagnostics and actionable
-  syntax errors.
+Durable writes and crash recovery are enabled by default. Create backups while
+the database is in use, check its integrity and maintain storage. Status and
+diagnostic tools help explain problems and guide the next action.
 
-### Go API and CLI
+### Integrate and explore
 
-- Go APIs for SQL execution, typed parameters, sessions and transactions.
-- An interactive SQL prompt, SQL file execution and commands for inspecting
-  databases and troubleshooting queries.
+Embed SlopDB in a Go application, explore data from an interactive command-line
+prompt, or automate work with scripts. Detailed guides describe supported
+behavior and practical workflows.
 
-Supported behavior and restrictions are documented in
-[SQL semantics](docs/sql-semantics.md). See the guides below for feature details.
+See the [documentation](#documentation) for feature details and restrictions.
 
 ## Quick start
 
@@ -59,57 +49,28 @@ go build -o slopdb .
 ./slopdb ./example-db
 ```
 
-In the SQL prompt:
-
-```sql
-CREATE TABLE accounts (
-    id INTEGER PRIMARY KEY,
-    name TEXT NOT NULL,
-    balance INTEGER NOT NULL CHECK (balance >= 0)
-);
-
-INSERT INTO accounts VALUES (1, 'Ada', 100), (2, 'Lin', 250);
-SELECT name, balance FROM accounts ORDER BY balance DESC;
-```
-
-Use `.help` to see CLI commands, `.tables` and `.schema` to inspect tables, and
-`.quit` to close the database. Run a SQL file with:
-
-```sh
-./slopdb ./example-db < queries.sql
-```
-
-Pipes and redirected files accept SQL only by default. For scripts containing
-CLI dot commands, enable them explicitly:
-
-```sh
-./slopdb --allow-dot-commands ./example-db < cli-script.sql
-```
-
-Interactive terminal sessions enable dot commands automatically. See
-[application operations](docs/application-operations.md) for settings, shutdown,
-backups and routine maintenance.
+The [getting started guide](docs/getting-started.md) walks through creating a
+table, querying data and running scripts.
 
 ## Using SlopDB from Go
 
-The `db` package provides `Open`, `Exec`, `Query`, `Prepare`, independent
-`Session` handles and `Tx` transactions. Context-aware methods support deadlines
-and cancellation. Options configure durability, compression, caches and query
-budgets.
+The Go API supports querying, concurrent application sessions and transactions,
+with deadlines and cancellation. Options let applications choose resource and
+durability settings.
 
 See [prepared statements](docs/prepared-statements.md) for parameter binding and
 transaction examples, and [application operations](docs/application-operations.md)
-for row iteration, bulk loading, backup and integrity checks. Close streaming
-results when finished and check database close errors.
+for working with results, loading data, backups and integrity checks.
 
 ## Documentation
 
 | Area | Guides |
 | --- | --- |
-| SQL and data | [Semantics](docs/sql-semantics.md), [Unicode text comparison](docs/text-collation.md), [Common SQL surprises](docs/sql-surprises.md), [UPSERT](docs/upsert.md), [CTEs](docs/common-table-expressions.md), [Window functions](docs/window-functions.md) |
-| Schema changes | [ALTER TABLE](docs/alter-table.md), [Online indexes](docs/online-indexes.md), [Planning changes](docs/schema-change-planning.md) |
-| Applications and operations | [Prepared statements](docs/prepared-statements.md), [Application operations](docs/application-operations.md), [Diagnostics](docs/diagnostics.md) |
-| Query performance | [Statistics](docs/query-statistics.md), [Profiling](docs/query-profiling.md), [Query memory](docs/query-memory.md), [Catalog performance](docs/catalog-performance.md) |
+| Getting started | [First database and scripts](docs/getting-started.md) |
+| Working with data | [Supported behavior](docs/sql-semantics.md), [International text](docs/text-collation.md), [Unexpected query results](docs/sql-surprises.md) |
+| Changing a database | [Schema changes](docs/alter-table.md), [Online changes](docs/online-indexes.md), [Planning changes](docs/schema-change-planning.md) |
+| Applications and operations | [Application queries](docs/prepared-statements.md), [Operations](docs/application-operations.md), [Troubleshooting](docs/diagnostics.md) |
+| Performance | [Profiling](docs/query-profiling.md), [Resource use](docs/query-memory.md), [Measurements](docs/catalog-performance.md) |
 
 ## Tests and benchmarks
 
