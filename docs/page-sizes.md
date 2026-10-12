@@ -78,3 +78,30 @@ sequential reads, while point reads may decompress more unrelated rows. Writer
 buffers and cached decoded blocks also become larger. Compare identical data,
 compression, cache budgets and durability, and measure both point and scan work;
 a 1 MiB target does not imply a 1 MiB minimum allocation for every stored row.
+
+Zstd writers explicitly use an **8 MiB maximum match window**, normal-memory
+match tables and one encoder worker per SSTable writer. This applies to explicit
+`zstd` compression and to the default `auto` policy's compressed L1–L6 files;
+default L0 files remain uncompressed. `storage.SSTableZstdWindowSize` reports the
+configured maximum. Each SSTable data block is an independent zstd frame, so
+history spans zstd's internal 128 KiB chunks within that block, but never spans
+separate SSTable blocks. For a 1 MiB block the whole input is available as history.
+Small frames advertise a correspondingly smaller effective window; a
+single-segment frame records this through its content size.
+
+The pinned codec already selected 8 MiB for `SpeedDefault`; making it explicit
+prevents a later compression-level/default change from silently reducing the
+window. We retain its existing search tables rather than doubling history to
+16 MiB unnecessarily. With the pinned implementation, inputs larger than its
+128 KiB internal chunk can allocate about 16 MiB of encoder history per active
+writer, plus search tables and working buffers. This is independent of the
+decoded-block cache budget. Gzip's format has a 32 KiB history limit, so increasing
+the SSTable target cannot give gzip the same distant-match behavior.
+
+The permanent compression-window test uses a 1 MiB value consisting of four
+identical random 256 KiB quarters: nearby matches cannot explain compression.
+It checks distant-match savings against a 64 KiB-window encoder, actual frame
+headers, successful readback, CRC failure on corruption and readability of old
+small-window frames. These are correctness checks, not throughput benchmarks.
+See the pinned codec's [window and memory options](https://github.com/klauspost/compress/blob/v1.18.0/zstd/encoder_options.go)
+and [independent-frame encoding](https://github.com/klauspost/compress/blob/v1.18.0/zstd/encoder.go).

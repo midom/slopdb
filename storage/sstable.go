@@ -26,6 +26,10 @@ const (
 	kZstdCompression   = 2
 	kSnappyCompression = 3
 	kLZ4Compression    = 4
+	// SSTableZstdWindowSize is the maximum back-reference distance within an
+	// independent zstd-compressed SSTable block. Keep it explicit instead of
+	// depending on codec-level defaults. Small blocks advertise smaller windows.
+	SSTableZstdWindowSize = 8 << 20
 )
 
 type FileMetaData struct {
@@ -94,7 +98,12 @@ func NewSSTableWriter(path string, opt *Options) (*SSTableWriter, error) {
 	}
 	var encoder *zstd.Encoder
 	if compression == ZstdCompression {
-		encoder, err = zstd.NewWriter(nil, zstd.WithEncoderConcurrency(1), zstd.WithEncoderLevel(zstd.SpeedDefault))
+		encoder, err = zstd.NewWriter(nil,
+			zstd.WithEncoderConcurrency(1),
+			zstd.WithEncoderLevel(zstd.SpeedDefault),
+			zstd.WithWindowSize(SSTableZstdWindowSize),
+			zstd.WithLowerEncoderMem(false),
+		)
 		if err != nil {
 			return nil, fmt.Errorf("zstd encoder: %w", err)
 		}
