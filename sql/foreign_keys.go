@@ -258,6 +258,17 @@ func (s *Schema) checkDropReferencedTable(table string) error {
 
 func (s *Schema) renameForeignKeys(table, newTable, oldColumn, newColumn string) {
 	for _, info := range s.tables {
+		for i := range info.Constraints {
+			c := &info.Constraints[i]
+			if c.Kind == "FOREIGN" && c.RefTable == table {
+				c.RefTable = newTable
+				for n, col := range c.RefColumns {
+					if oldColumn != "" && col == oldColumn {
+						c.RefColumns[n] = newColumn
+					}
+				}
+			}
+		}
 		for i := range info.ForeignKeys {
 			fk := &info.ForeignKeys[i]
 			if info.Name == newTable && oldColumn != "" {

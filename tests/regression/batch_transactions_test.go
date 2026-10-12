@@ -3,6 +3,7 @@ package regression
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"os"
@@ -141,20 +142,29 @@ func TestBatchTransactions(testT *testing.T) {
 		batchTransactionsMust(testState, d.Close())
 		l, e := testState.openStorage(path, o)
 		batchTransactionsMust(testState, e)
+		objectID := func(catalog, name string) uint64 {
+			b, found, e := l.Get([]byte(catalog))
+			batchTransactionsMust(testState, e)
+			batchTransactionsCheck(testState, found, "missing ID catalog")
+			var objects map[string]struct{ ID uint64 }
+			batchTransactionsMust(testState, json.Unmarshal(b, &objects))
+			return objects[name].ID
+		}
+		tableID, indexID := objectID("\x00__schema__", "t"), objectID("\x00__schema_indexes__", "iv")
 		it := l.NewIterator()
 		rows, secondary := 0, 0
 		seen := make([]bool, 1001)
 		for it.Valid() {
 			k, v := it.Key().UserKey, it.Value()
-			if strings.HasPrefix(string(k), "\x01t:") {
+			if len(k) >= 11 && k[0] == 1 && k[1] == 0xff && binary.BigEndian.Uint64(k[2:10]) == tableID {
 				id := int64(binary.LittleEndian.Uint64(v[1:9]))
 				batchTransactionsCheck(testState, id >= 1 && id <= 1000 && len(v) == 18, "persisted identity")
 				batchTransactionsCheck(testState, int64(binary.LittleEndian.Uint64(v[10:18])) == expected[id], "persisted values")
 				rows++
-			} else if strings.HasPrefix(string(k), "\x02iv:") {
-				batchTransactionsCheck(testState, len(k) == 26, "index key format")
-				id := int64((binary.BigEndian.Uint64(k[18:]) ^ (uint64(1) << 63)))
-				value := int64(binary.BigEndian.Uint64(k[5:13]) ^ (uint64(1) << 63))
+			} else if len(k) >= 11 && k[0] == 2 && k[1] == 0xff && binary.BigEndian.Uint64(k[2:10]) == indexID {
+				batchTransactionsCheck(testState, len(k) == 41, "index key format")
+				id := int64((binary.BigEndian.Uint64(k[33:41]) ^ (uint64(1) << 63)))
+				value := int64(binary.BigEndian.Uint64(k[12:20]) ^ (uint64(1) << 63))
 				batchTransactionsCheck(testState, id >= 1 && id <= 1000 && !seen[id] && expected[id] == value, "stale/duplicate secondary")
 				seen[id] = true
 				secondary++

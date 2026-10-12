@@ -21,18 +21,21 @@ func (s *Schema) NewSession() *Schema {
 	if s.parent != nil {
 		s = s.parent
 	}
-	s.commitMu.Lock()
-	defer s.commitMu.Unlock()
-	if s.rowIDReservations == nil {
-		s.rowIDReservations = maps.Clone(s.rowIDCount)
-	}
-	for table, next := range s.rowIDCount {
-		if next > s.rowIDReservations[table] {
-			s.rowIDReservations[table] = next
+	s.commitMu.RLock()
+	if s.rowIDReservations == nil || !s.catalogShared {
+		s.commitMu.RUnlock()
+		s.commitMu.Lock()
+		if s.rowIDReservations == nil {
+			s.rowIDReservations = maps.Clone(s.rowIDCount)
 		}
+		s.catalogShared = true
+		s.commitMu.Unlock()
+		s.commitMu.RLock()
 	}
-	s.nextSnapshotReader++
-	child := &Schema{maxCTEIterations: s.maxCTEIterations, maxCTERows: s.maxCTERows, snapshotReader: s.nextSnapshotReader, lsm: s.lsm, parent: s, readVersion: s.commitVersion.Load(), readStateVersion: s.stateVersion, readCatalogVersion: s.catalogVersion}
+	defer s.commitMu.RUnlock()
+	// Catalog snapshots are immutable; only reader-ID assignment mutates
+	// shared state. Row allocation publishes its reservations separately.
+	child := &Schema{maxCTEIterations: s.maxCTEIterations, maxCTERows: s.maxCTERows, snapshotReader: s.nextSnapshotReader.Add(1), lsm: s.lsm, parent: s, readVersion: s.commitVersion.Load(), readStateVersion: s.stateVersion, readCatalogVersion: s.catalogVersion}
 	child.queryMemoryBytes, child.queryTempDir = s.queryMemoryBytes, s.queryTempDir
 	child.restoreState(s.captureState())
 	child.rowIDCount = make(map[string]int64)
@@ -190,6 +193,7 @@ func mergeState(base, local, latest *schemaState) *schemaState {
 		autoinc:       mergeCounter(base.autoinc, local.autoinc, latest.autoinc),
 		rowIDs:        mergeCounter(base.rowIDs, local.rowIDs, latest.rowIDs),
 		userVersion:   version,
+		nextObjectID:  max(local.nextObjectID, latest.nextObjectID),
 	}
 	if reflect.DeepEqual(merged.tables, latest.tables) && reflect.DeepEqual(merged.indexes, latest.indexes) {
 		merged.lookups = latest.lookups
@@ -201,7 +205,7 @@ func (s *Schema) catalogChanged() bool {
 	if s.txState == nil {
 		return false
 	}
-	return !reflect.DeepEqual(s.tables, s.txState.tables) ||
+	return s.nextObjectID != s.txState.nextObjectID || !reflect.DeepEqual(s.tables, s.txState.tables) ||
 		!reflect.DeepEqual(s.indexes, s.txState.indexes) ||
 		!reflect.DeepEqual(s.views, s.txState.views) ||
 		!reflect.DeepEqual(s.triggers, s.txState.triggers)

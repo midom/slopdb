@@ -9,7 +9,7 @@ import (
 // Variable-size components are escaped and terminated so composite tuples
 // preserve order without collisions from embedded separators, NULs or type bytes.
 func (info *TableInfo) encodePK(table string, row map[string]Value) []byte {
-	key := []byte(tableDataPrefix(table))
+	key := []byte(info.storagePrefix(table))
 	for _, name := range info.PKColumns {
 		key = appendClusteredValue(key, row[name])
 	}

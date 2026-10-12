@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	"slopdb/sql"
 )
@@ -11,10 +12,12 @@ import (
 // outside execution. Writer preference bounds shutdown waits; acquisition
 // respects query cancellation.
 type executionGate struct {
-	mu               sync.Mutex
-	readers, writers int
-	activeWriter     bool
-	changed          chan struct{}
+	mu           sync.Mutex
+	readers      atomic.Int64
+	pending      atomic.Bool
+	writers      int
+	activeWriter bool
+	changed      chan struct{}
 }
 
 func (g *executionGate) init() {
@@ -28,7 +31,8 @@ func (g *executionGate) LockContext(ctx context.Context) error {
 	g.mu.Lock()
 	g.init()
 	g.writers++
-	for g.activeWriter || g.readers > 0 {
+	g.pending.Store(true)
+	for g.activeWriter || g.readers.Load() > 0 {
 		wait := g.changed
 		g.mu.Unlock()
 		select {
@@ -36,6 +40,7 @@ func (g *executionGate) LockContext(ctx context.Context) error {
 		case <-ctx.Done():
 			g.mu.Lock()
 			g.writers--
+			g.pending.Store(g.activeWriter || g.writers > 0)
 			g.notify()
 			g.mu.Unlock()
 			return ctx.Err()
@@ -44,6 +49,7 @@ func (g *executionGate) LockContext(ctx context.Context) error {
 	}
 	g.writers--
 	if err := ctx.Err(); err != nil {
+		g.pending.Store(g.activeWriter || g.writers > 0)
 		g.notify()
 		g.mu.Unlock()
 		return err
@@ -52,8 +58,31 @@ func (g *executionGate) LockContext(ctx context.Context) error {
 	g.mu.Unlock()
 	return nil
 }
-func (g *executionGate) Unlock() { g.mu.Lock(); g.activeWriter = false; g.notify(); g.mu.Unlock() }
+func (g *executionGate) Unlock() {
+	g.mu.Lock()
+	g.activeWriter = false
+	g.pending.Store(g.writers > 0)
+	g.notify()
+	g.mu.Unlock()
+}
 func (g *executionGate) RLockContext(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	// Register before rechecking writer intent. A racing writer either sees
+	// this reader and waits, or intent is visible and this reader backs out
+	// before touching the database. Slow waiters retain writer preference.
+	if !g.pending.Load() {
+		g.readers.Add(1)
+		if !g.pending.Load() {
+			if err := ctx.Err(); err != nil {
+				g.RUnlock()
+				return err
+			}
+			return nil
+		}
+		g.RUnlock()
+	}
 	g.mu.Lock()
 	g.init()
 	for g.activeWriter || g.writers > 0 {
@@ -70,17 +99,18 @@ func (g *executionGate) RLockContext(ctx context.Context) error {
 		g.mu.Unlock()
 		return err
 	}
-	g.readers++
+	g.readers.Add(1)
 	g.mu.Unlock()
 	return nil
 }
 func (g *executionGate) RUnlock() {
-	g.mu.Lock()
-	g.readers--
-	if g.readers == 0 {
-		g.notify()
+	if g.readers.Add(-1) == 0 && g.pending.Load() {
+		g.mu.Lock()
+		if g.readers.Load() == 0 && g.writers > 0 {
+			g.notify()
+		}
+		g.mu.Unlock()
 	}
-	g.mu.Unlock()
 }
 
 // The session gate remains held across both paths. A failed lock acquisition

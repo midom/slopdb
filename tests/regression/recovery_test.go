@@ -2,10 +2,12 @@ package regression
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"slopdb/db"
@@ -79,6 +81,61 @@ func TestCrashHelper(t *testing.T) {
 			if err := d.Close(); err != nil {
 				t.Fatal(err)
 			}
+		}
+	case "rename-concurrent":
+		requireExec(t, d, "CREATE TABLE original(id INTEGER PRIMARY KEY,v INTEGER UNIQUE); CREATE VIEW live(id,v) AS SELECT id,v FROM original; CREATE TRIGGER ins INSTEAD OF INSERT ON live BEGIN INSERT INTO original VALUES(NEW.id,NEW.v); END")
+		var wg sync.WaitGroup
+		errs := make(chan error, 11)
+		for worker := 0; worker < 10; worker++ {
+			wg.Add(1)
+			go func(worker int) {
+				defer wg.Done()
+				session, e := d.NewSession()
+				if e != nil {
+					errs <- e
+					return
+				}
+				defer session.Close()
+				for n := 1; n <= 50; n++ {
+					id := worker*50 + n
+					if _, e = session.Exec(fmt.Sprintf("INSERT INTO live VALUES(%d,%d)", id, id*17)); e != nil {
+						errs <- e
+						return
+					}
+				}
+			}(worker)
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			session, e := d.NewSession()
+			if e != nil {
+				errs <- e
+				return
+			}
+			defer session.Close()
+			for n := 0; n < 20; n++ {
+				if _, e = session.Exec("ALTER TABLE original RENAME TO renamed; ALTER TABLE renamed RENAME TO original"); e != nil {
+					errs <- e
+					return
+				}
+			}
+		}()
+		wg.Wait()
+		close(errs)
+		for e := range errs {
+			if e != nil {
+				t.Fatal(e)
+			}
+		}
+		// Crash with another rename still private. Every earlier acknowledged
+		// insert and committed catalog update must survive together.
+		requireExec(t, d, "BEGIN; ALTER TABLE original RENAME TO uncommitted")
+	case "rename-committed", "rename-uncommitted":
+		requireExec(t, d, "CREATE TABLE original(id INTEGER PRIMARY KEY,v TEXT UNIQUE); CREATE INDEX lookup ON original(v); INSERT INTO original VALUES(1,'one'); CREATE VIEW visible(v) AS SELECT v FROM original")
+		requireExec(t, d, "BEGIN; ALTER TABLE original RENAME TO renamed; ALTER INDEX lookup RENAME TO renamed_lookup; ALTER TABLE renamed RENAME COLUMN v TO value")
+		if mode == "rename-committed" {
+			requireExec(t, d, "COMMIT")
 		}
 	case "recover-no-fsync":
 		if got := requireExec(t, d, "SELECT COUNT(*) AS n FROM t").Rows[0]["n"].Int; got != 2 {

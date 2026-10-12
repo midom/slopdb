@@ -220,7 +220,7 @@ func coveringIndexOrder(stmt *SelectStmt, idx *IndexInfo, info *TableInfo) (bool
 }
 
 func coveringBounds(stmt *SelectStmt, idx *IndexInfo, info *TableInfo) ([]coveringInterval, bool) {
-	prefix := []byte(indexDataPrefix(idx.Name))
+	prefix := []byte(idx.storagePrefix())
 	low, high := prefix, prefixSuccessor(prefix)
 	var typ ColumnType
 	for _, col := range info.Columns {

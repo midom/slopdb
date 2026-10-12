@@ -104,9 +104,7 @@ func (db *Database) Close() error {
 		db.defaultCancel()
 	}
 	for session := range db.sessions {
-		if session.activeCancel != nil {
-			session.activeCancel()
-		}
+		session.cancelActive()
 	}
 	db.mu.Unlock()
 	db.execution.Lock()

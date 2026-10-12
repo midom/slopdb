@@ -118,7 +118,11 @@ func (s *Schema) showKeys(info *TableInfo) []showKey {
 		if len(info.PKColumns) == 1 && s.isAutoIndex(idx) && len(idx.columnNames()) == 1 && idx.Column == info.PKColumns[0] {
 			continue // the auto-created primary-key index is represented above
 		}
-		keys = append(keys, showKey{idx.Name, idx.columnNames(), idx.IsUnique, "LSM"})
+		method := "LSM"
+		if idx.Auto {
+			method = "CONSTRAINT"
+		}
+		keys = append(keys, showKey{idx.Name, idx.columnNames(), idx.IsUnique, method})
 	}
 	for _, col := range info.Columns {
 		if !col.Unique {
@@ -139,7 +143,13 @@ func (s *Schema) showKeys(info *TableInfo) []showKey {
 		if colsEqual(cols, info.PKColumns) {
 			continue
 		}
-		keys = append(keys, showKey{fmt.Sprintf("%s_unique_%d", info.Name, i+1), cols, true, "CONSTRAINT"})
+		covered := false
+		for _, key := range keys {
+			covered = covered || key.unique && candidateColumns(key.columns, cols)
+		}
+		if !covered {
+			keys = append(keys, showKey{fmt.Sprintf("%s_unique_%d", info.Name, i+1), cols, true, "CONSTRAINT"})
+		}
 	}
 	sort.Slice(keys, func(i, j int) bool {
 		if keys[i].name == "PRIMARY" || keys[j].name == "PRIMARY" {

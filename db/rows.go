@@ -104,9 +104,7 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 		if !successful || !s.schema.InTransaction() {
 			s.db.locks.restore(s.schema, held)
 		}
-		s.db.mu.Lock()
-		s.activeCancel = nil
-		s.db.mu.Unlock()
+		s.clearActive()
 		s.db.execution.RUnlock()
 		s.gate.Unlock()
 		cancel()
@@ -114,22 +112,17 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 			_ = s.Close()
 		}
 	}
-	s.db.mu.Lock()
-	if s.closed || s.closing.Load() || s.db.closed.Load() {
-		s.db.mu.Unlock()
+	if err = s.registerActive(cancel); err != nil {
 		release()
 		if bound {
 			return nil, ErrTxDone
 		}
-		return nil, ErrSessionClosed
+		return nil, err
 	}
 	if bound && !s.schema.InTransaction() {
-		s.db.mu.Unlock()
 		release()
 		return nil, ErrTxDone
 	}
-	s.activeCancel = cancel
-	s.db.mu.Unlock()
 	var statements []sql.Statement
 	if prepared == nil {
 		statements, err = sql.Parse(query)

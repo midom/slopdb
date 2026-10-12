@@ -159,11 +159,11 @@ func encodeRowIndexKey(idx *IndexInfo, row map[string]Value, rowKey []byte) []by
 		if !ok {
 			value = NewNullValue()
 		}
-		return encodeIndexKey(idx.Name, value, rowKey)
+		return []byte(idx.storagePrefix() + valueToSortableKey(value) + ":" + string(rowKey))
 	}
 	values, _ := indexValues(columns, row)
 	var b strings.Builder
-	b.WriteString(indexDataPrefix(idx.Name))
+	b.WriteString(idx.storagePrefix())
 	for _, value := range values {
 		b.WriteString(hex.EncodeToString([]byte(valueToSortableKey(value))))
 		b.WriteByte(':')
@@ -177,7 +177,20 @@ func indexValuePrefix(idx *IndexInfo, value Value) string {
 	if len(idx.columnNames()) > 1 {
 		encoded = hex.EncodeToString([]byte(encoded))
 	}
-	return indexDataPrefix(idx.Name) + encoded + ":"
+	return idx.storagePrefix() + encoded + ":"
+}
+
+func indexTuplePrefix(idx *IndexInfo, values []Value) string {
+	if len(values) == 1 {
+		return indexValuePrefix(idx, values[0])
+	}
+	var b strings.Builder
+	b.WriteString(idx.storagePrefix())
+	for _, v := range values {
+		b.WriteString(hex.EncodeToString([]byte(valueToSortableKey(v))))
+		b.WriteByte(':')
+	}
+	return b.String()
 }
 
 // The equality scan has consumed the first component. Skip the remaining

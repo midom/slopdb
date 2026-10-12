@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -32,6 +33,7 @@ type Session struct {
 	closed       bool
 	closing      atomic.Bool
 	gate         contextMutex
+	activeMu     sync.Mutex
 	activeCancel context.CancelFunc
 }
 
@@ -50,6 +52,33 @@ func (db *Database) NewSession() (*Session, error) {
 	}
 	db.sessions[session] = struct{}{}
 	return session, nil
+}
+
+// Cancellation registration is private to this session. Publishing first and
+// then checking the closing flags ensures concurrent Close either sees this
+// callback or the registering operation cancels itself before execution.
+func (s *Session) registerActive(cancel context.CancelFunc) error {
+	s.activeMu.Lock()
+	defer s.activeMu.Unlock()
+	s.activeCancel = cancel
+	if s.closing.Load() || s.db.closed.Load() {
+		cancel()
+		s.activeCancel = nil
+		return ErrSessionClosed
+	}
+	return nil
+}
+func (s *Session) clearActive() {
+	s.activeMu.Lock()
+	s.activeCancel = nil
+	s.activeMu.Unlock()
+}
+func (s *Session) cancelActive() {
+	s.activeMu.Lock()
+	if s.activeCancel != nil {
+		s.activeCancel()
+	}
+	s.activeMu.Unlock()
 }
 
 func (s *Session) Exec(query string) (*ExecResult, error) {
@@ -86,26 +115,16 @@ func (s *Session) execParsed(ctx context.Context, statements []sql.Statement, ca
 		return nil, err
 	}
 	defer s.db.execution.RUnlock()
-	s.db.mu.Lock()
-	if s.closed || s.db.closed.Load() {
-		s.db.mu.Unlock()
+	if err := s.registerActive(cancel); err != nil {
 		if bound {
 			return nil, ErrTxDone
 		}
-		return nil, ErrSessionClosed
+		return nil, err
 	}
-	if s.closing.Load() {
-		s.db.mu.Unlock()
-		cancel()
-		return nil, ctx.Err()
-	}
+	defer s.clearActive()
 	if bound && !s.schema.InTransaction() {
-		s.db.mu.Unlock()
 		return nil, ErrTxDone
 	}
-	s.activeCancel = cancel
-	s.db.mu.Unlock()
-	defer func() { s.db.mu.Lock(); s.activeCancel = nil; s.db.mu.Unlock() }()
 	if !bound {
 		if result, handled, err := s.tryPointUpdate(ctx, statements); handled {
 			return result, err
@@ -123,11 +142,7 @@ func (s *Session) execParsed(ctx context.Context, statements []sql.Statement, ca
 // Close discards this session's uncommitted writes. It does not close the database.
 func (s *Session) Close() error {
 	s.closing.Store(true)
-	s.db.mu.Lock()
-	if s.activeCancel != nil {
-		s.activeCancel()
-	}
-	s.db.mu.Unlock()
+	s.cancelActive()
 	s.gate.Lock()
 	defer s.gate.Unlock()
 	_ = s.db.execution.RLockContext(context.Background())
@@ -141,9 +156,7 @@ func (s *Session) Close() error {
 func (s *Session) closeLocked() {
 	if !s.closed {
 		s.closing.Store(true)
-		if s.activeCancel != nil {
-			s.activeCancel()
-		}
+		s.cancelActive()
 		_ = s.schema.Rollback()
 		s.db.locks.release(s.schema)
 		s.db.locks.forget(s.schema)
@@ -227,11 +240,7 @@ func (tx *Tx) CommitContext(ctx context.Context) error {
 func (tx *Tx) Rollback() error {
 	s := tx.session
 	s.closing.Store(true)
-	s.db.mu.Lock()
-	if s.activeCancel != nil {
-		s.activeCancel()
-	}
-	s.db.mu.Unlock()
+	s.cancelActive()
 	s.gate.Lock()
 	defer s.gate.Unlock()
 	_ = s.db.execution.RLockContext(context.Background())

@@ -1,0 +1,368 @@
+{
+  "baseline": {
+    "BenchmarkSelectPoint/catalog=1/workers=1-4": [
+      {
+        "iterations": 140074,
+        "ns_op": 8252.0,
+        "bytes_op": 4745,
+        "allocs_op": 44
+      },
+      {
+        "iterations": 146587,
+        "ns_op": 8288.0,
+        "bytes_op": 4745,
+        "allocs_op": 44
+      },
+      {
+        "iterations": 143012,
+        "ns_op": 8351.0,
+        "bytes_op": 4745,
+        "allocs_op": 44
+      }
+    ],
+    "BenchmarkSelectPoint/catalog=1/workers=10-4": [
+      {
+        "iterations": 330858,
+        "ns_op": 3895.0,
+        "bytes_op": 4651,
+        "allocs_op": 43
+      },
+      {
+        "iterations": 312331,
+        "ns_op": 3914.0,
+        "bytes_op": 4650,
+        "allocs_op": 43
+      },
+      {
+        "iterations": 306103,
+        "ns_op": 3939.0,
+        "bytes_op": 4651,
+        "allocs_op": 43
+      }
+    ],
+    "BenchmarkSelectPoint/catalog=1/workers=32-4": [
+      {
+        "iterations": 299776,
+        "ns_op": 4133.0,
+        "bytes_op": 4651,
+        "allocs_op": 43
+      },
+      {
+        "iterations": 291628,
+        "ns_op": 4162.0,
+        "bytes_op": 4651,
+        "allocs_op": 43
+      },
+      {
+        "iterations": 277420,
+        "ns_op": 4129.0,
+        "bytes_op": 4651,
+        "allocs_op": 43
+      }
+    ],
+    "BenchmarkSelectPoint/catalog=128/workers=1-4": [
+      {
+        "iterations": 132339,
+        "ns_op": 8871.0,
+        "bytes_op": 4746,
+        "allocs_op": 44
+      },
+      {
+        "iterations": 131154,
+        "ns_op": 9155.0,
+        "bytes_op": 4746,
+        "allocs_op": 44
+      },
+      {
+        "iterations": 130450,
+        "ns_op": 9049.0,
+        "bytes_op": 4746,
+        "allocs_op": 44
+      }
+    ],
+    "BenchmarkSelectPoint/catalog=128/workers=10-4": [
+      {
+        "iterations": 323556,
+        "ns_op": 4038.0,
+        "bytes_op": 4650,
+        "allocs_op": 43
+      },
+      {
+        "iterations": 312760,
+        "ns_op": 4042.0,
+        "bytes_op": 4650,
+        "allocs_op": 43
+      },
+      {
+        "iterations": 302774,
+        "ns_op": 4014.0,
+        "bytes_op": 4651,
+        "allocs_op": 43
+      }
+    ],
+    "BenchmarkSelectPoint/catalog=128/workers=32-4": [
+      {
+        "iterations": 313070,
+        "ns_op": 4128.0,
+        "bytes_op": 4651,
+        "allocs_op": 43
+      },
+      {
+        "iterations": 290306,
+        "ns_op": 3908.0,
+        "bytes_op": 4650,
+        "allocs_op": 43
+      },
+      {
+        "iterations": 305395,
+        "ns_op": 4002.0,
+        "bytes_op": 4650,
+        "allocs_op": 43
+      }
+    ]
+  },
+  "catalog": {
+    "BenchmarkSelectPoint/catalog=1/workers=1-4": [
+      {
+        "iterations": 141008,
+        "ns_op": 8371.0,
+        "bytes_op": 4745,
+        "allocs_op": 44
+      },
+      {
+        "iterations": 143565,
+        "ns_op": 8341.0,
+        "bytes_op": 4745,
+        "allocs_op": 44
+      },
+      {
+        "iterations": 141202,
+        "ns_op": 8373.0,
+        "bytes_op": 4745,
+        "allocs_op": 44
+      }
+    ],
+    "BenchmarkSelectPoint/catalog=1/workers=10-4": [
+      {
+        "iterations": 303045,
+        "ns_op": 3964.0,
+        "bytes_op": 4651,
+        "allocs_op": 43
+      },
+      {
+        "iterations": 299095,
+        "ns_op": 3965.0,
+        "bytes_op": 4651,
+        "allocs_op": 43
+      },
+      {
+        "iterations": 314518,
+        "ns_op": 3940.0,
+        "bytes_op": 4651,
+        "allocs_op": 43
+      }
+    ],
+    "BenchmarkSelectPoint/catalog=1/workers=32-4": [
+      {
+        "iterations": 286065,
+        "ns_op": 4178.0,
+        "bytes_op": 4651,
+        "allocs_op": 43
+      },
+      {
+        "iterations": 299020,
+        "ns_op": 4188.0,
+        "bytes_op": 4651,
+        "allocs_op": 43
+      },
+      {
+        "iterations": 269742,
+        "ns_op": 4141.0,
+        "bytes_op": 4651,
+        "allocs_op": 43
+      }
+    ],
+    "BenchmarkSelectPoint/catalog=128/workers=1-4": [
+      {
+        "iterations": 136635,
+        "ns_op": 8586.0,
+        "bytes_op": 4745,
+        "allocs_op": 44
+      },
+      {
+        "iterations": 137226,
+        "ns_op": 8576.0,
+        "bytes_op": 4745,
+        "allocs_op": 44
+      },
+      {
+        "iterations": 136426,
+        "ns_op": 8613.0,
+        "bytes_op": 4745,
+        "allocs_op": 44
+      }
+    ],
+    "BenchmarkSelectPoint/catalog=128/workers=10-4": [
+      {
+        "iterations": 303750,
+        "ns_op": 3576.0,
+        "bytes_op": 4649,
+        "allocs_op": 43
+      },
+      {
+        "iterations": 331993,
+        "ns_op": 3686.0,
+        "bytes_op": 4650,
+        "allocs_op": 43
+      },
+      {
+        "iterations": 339675,
+        "ns_op": 3540.0,
+        "bytes_op": 4650,
+        "allocs_op": 43
+      }
+    ],
+    "BenchmarkSelectPoint/catalog=128/workers=32-4": [
+      {
+        "iterations": 317947,
+        "ns_op": 3643.0,
+        "bytes_op": 4650,
+        "allocs_op": 43
+      },
+      {
+        "iterations": 330813,
+        "ns_op": 3628.0,
+        "bytes_op": 4650,
+        "allocs_op": 43
+      },
+      {
+        "iterations": 345742,
+        "ns_op": 3641.0,
+        "bytes_op": 4650,
+        "allocs_op": 43
+      }
+    ]
+  },
+  "after": {
+    "BenchmarkSelectPoint/catalog=1/workers=1-4": [
+      {
+        "iterations": 209293,
+        "ns_op": 5812.0,
+        "bytes_op": 3593,
+        "allocs_op": 24
+      },
+      {
+        "iterations": 204716,
+        "ns_op": 5850.0,
+        "bytes_op": 3593,
+        "allocs_op": 24
+      },
+      {
+        "iterations": 203143,
+        "ns_op": 5838.0,
+        "bytes_op": 3593,
+        "allocs_op": 24
+      }
+    ],
+    "BenchmarkSelectPoint/catalog=1/workers=10-4": [
+      {
+        "iterations": 412203,
+        "ns_op": 3129.0,
+        "bytes_op": 3593,
+        "allocs_op": 24
+      },
+      {
+        "iterations": 358329,
+        "ns_op": 3201.0,
+        "bytes_op": 3593,
+        "allocs_op": 24
+      },
+      {
+        "iterations": 326544,
+        "ns_op": 3065.0,
+        "bytes_op": 3594,
+        "allocs_op": 24
+      }
+    ],
+    "BenchmarkSelectPoint/catalog=1/workers=32-4": [
+      {
+        "iterations": 395856,
+        "ns_op": 3225.0,
+        "bytes_op": 3594,
+        "allocs_op": 24
+      },
+      {
+        "iterations": 379272,
+        "ns_op": 3140.0,
+        "bytes_op": 3594,
+        "allocs_op": 24
+      },
+      {
+        "iterations": 329341,
+        "ns_op": 3254.0,
+        "bytes_op": 3594,
+        "allocs_op": 24
+      }
+    ],
+    "BenchmarkSelectPoint/catalog=128/workers=1-4": [
+      {
+        "iterations": 199111,
+        "ns_op": 6030.0,
+        "bytes_op": 3593,
+        "allocs_op": 24
+      },
+      {
+        "iterations": 200653,
+        "ns_op": 5827.0,
+        "bytes_op": 3593,
+        "allocs_op": 24
+      },
+      {
+        "iterations": 199470,
+        "ns_op": 5966.0,
+        "bytes_op": 3593,
+        "allocs_op": 24
+      }
+    ],
+    "BenchmarkSelectPoint/catalog=128/workers=10-4": [
+      {
+        "iterations": 424227,
+        "ns_op": 2846.0,
+        "bytes_op": 3593,
+        "allocs_op": 24
+      },
+      {
+        "iterations": 464920,
+        "ns_op": 2873.0,
+        "bytes_op": 3593,
+        "allocs_op": 24
+      },
+      {
+        "iterations": 425593,
+        "ns_op": 2769.0,
+        "bytes_op": 3593,
+        "allocs_op": 24
+      }
+    ],
+    "BenchmarkSelectPoint/catalog=128/workers=32-4": [
+      {
+        "iterations": 347410,
+        "ns_op": 2918.0,
+        "bytes_op": 3593,
+        "allocs_op": 24
+      },
+      {
+        "iterations": 455707,
+        "ns_op": 2936.0,
+        "bytes_op": 3593,
+        "allocs_op": 24
+      },
+      {
+        "iterations": 359215,
+        "ns_op": 2842.0,
+        "bytes_op": 3593,
+        "allocs_op": 24
+      }
+    ]
+  }
+}

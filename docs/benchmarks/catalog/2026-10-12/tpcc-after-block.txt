@@ -1,0 +1,40 @@
+File: tpcc-final
+Type: delay
+Time: Oct 12, 2026 at 3:15pm (UTC)
+Showing nodes accounting for 60859.92ms, 99.76% of 61007.34ms total
+Dropped 114 nodes (cum <= 305.04ms)
+      flat  flat%   sum%        cum   cum%
+51428.73ms 84.30% 84.30% 51428.73ms 84.30%  runtime.selectgo
+         0     0% 84.30% 45851.62ms 75.16%  slopdb/internal/tpcc.work
+         0     0% 84.30% 45845.33ms 75.15%  slopdb/internal/tpcc.Run.func3
+         0     0% 84.30% 45830.92ms 75.12%  slopdb/db.(*Session).execParsed
+         0     0% 84.30% 45632.77ms 74.80%  slopdb/db.(*Session).execPrepared
+         0     0% 84.30% 45632.77ms 74.80%  slopdb/db.(*Tx).ExecPreparedContext
+         0     0% 84.30% 45632.77ms 74.80%  slopdb/db.(*Tx).ExecPreparedContextWithOptions (inline)
+         0     0% 84.30% 45601.91ms 74.75%  slopdb/db.(*Database).execStatements
+         0     0% 84.30% 41283.47ms 67.67%  slopdb/internal/tpcc.(*queries).exec
+         0     0% 84.30% 41283.47ms 67.67%  slopdb/internal/tpcc.(*slopTransaction).ExecPreparedContext
+         0     0% 84.30% 41283.46ms 67.67%  slopdb/internal/tpcc.execute
+         0     0% 84.30% 34513.27ms 56.57%  slopdb/internal/tpcc.(*queries).change
+         0     0% 84.30% 34029.55ms 55.78%  slopdb/db.(*Database).waitForLock
+         0     0% 84.30% 15148.92ms 24.83%  main.main
+         0     0% 84.30% 15148.92ms 24.83%  runtime.main
+         0     0% 84.30% 15148.92ms 24.83%  slopdb/internal/tpcc.Run
+         0     0% 84.30% 10490.96ms 17.20%  slopdb/db.(*statementExecutor).execStatement
+ 9431.19ms 15.46% 99.76%  9431.19ms 15.46%  sync.(*Mutex).Lock (inline)
+         0     0% 99.76%  6969.01ms 11.42%  slopdb/db.(*Database).execStatements.func3
+         0     0% 99.76%  6969.01ms 11.42%  slopdb/sql.(*Schema).ExecuteStatement
+         0     0% 99.76%  6964.51ms 11.42%  slopdb/db.(*lockManager).acquire
+         0     0% 99.76%  6943.16ms 11.38%  slopdb/db.(*Database).NewSession.(*Database).installLocks.func1
+         0     0% 99.76%  6943.16ms 11.38%  slopdb/sql.(*Schema).RequestLock (inline)
+         0     0% 99.76%  6762.74ms 11.09%  slopdb/sql.(*Schema).lockRow
+         0     0% 99.76%  6730.65ms 11.03%  slopdb/internal/tpcc.(*queries).one
+         0     0% 99.76%  4349.29ms  7.13%  slopdb/db.(*Tx).ExecPrepared (inline)
+         0     0% 99.76%  4349.29ms  7.13%  slopdb/internal/tpcc.(*slopTransaction).ExecPrepared
+         0     0% 99.76%  4030.13ms  6.61%  slopdb/sql.(*Schema).Update
+         0     0% 99.76%  3834.27ms  6.28%  slopdb/sql.(*Schema).applyRowUpdate
+         0     0% 99.76%  3275.35ms  5.37%  slopdb/sql.(*Schema).Commit
+         0     0% 99.76%  3275.35ms  5.37%  slopdb/storage.(*LSMTree).WriteBatch
+         0     0% 99.76%  2898.73ms  4.75%  slopdb/sql.(*Schema).Insert
+         0     0% 99.76%   847.56ms  1.39%  slopdb/db.(*lockManager).restore
+         0     0% 99.76%   846.90ms  1.39%  slopdb/db.(*lockManager).release (inline)

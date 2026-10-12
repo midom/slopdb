@@ -123,6 +123,9 @@ func (p *Parser) parseWith() (Statement, error) {
 }
 
 func formatWithSQL(w *WithClause) string {
+	if w == nil {
+		return ""
+	}
 	var b strings.Builder
 	b.WriteString("WITH ")
 	if w.Recursive {

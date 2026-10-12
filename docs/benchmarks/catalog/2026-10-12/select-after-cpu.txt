@@ -1,0 +1,53 @@
+File: db.test
+Type: cpu
+Time: Oct 12, 2026 at 3:22pm (UTC)
+Duration: 9.86s, Total samples = 32.44s (328.99%)
+Showing nodes accounting for 8.70s, 26.82% of 32.44s total
+Dropped 356 nodes (cum <= 0.16s)
+Showing top 45 nodes out of 221
+      flat  flat%   sum%        cum   cum%
+     0.06s  0.18%  0.18%     29.09s 89.67%  slopdb/db.BenchmarkSelectPoint.func1.2
+         0     0%  0.18%        29s 89.40%  slopdb/db.(*Session).ExecPrepared (inline)
+     0.01s 0.031%  0.22%        29s 89.40%  slopdb/db.(*Session).ExecPreparedContext
+         0     0%  0.22%     28.99s 89.36%  slopdb/db.(*Session).ExecPreparedContextWithOptions (inline)
+     0.08s  0.25%  0.46%     28.99s 89.36%  slopdb/db.(*Session).execPrepared
+     0.18s  0.55%  1.02%     24.72s 76.20%  slopdb/db.(*Session).execParsed
+     0.17s  0.52%  1.54%     23.91s 73.71%  slopdb/db.(*Database).execStatements
+     0.05s  0.15%  1.70%     20.37s 62.79%  slopdb/db.(*statementExecutor).execStatement
+     0.94s  2.90%  4.59%     19.79s 61.00%  slopdb/sql.(*Schema).Select
+     1.84s  5.67% 10.27%     10.62s 32.74%  runtime.mallocgc
+     0.10s  0.31% 10.57%      8.49s 26.17%  runtime.newobject (partial-inline)
+     0.50s  1.54% 12.11%      4.77s 14.70%  runtime.mapassign_faststr
+     0.03s 0.092% 12.21%      4.12s 12.70%  runtime.systemstack
+     0.05s  0.15% 12.36%      3.37s 10.39%  runtime.(*mcache).nextFree
+     0.02s 0.062% 12.42%      3.28s 10.11%  runtime.(*mcache).refill
+     0.14s  0.43% 12.85%      2.51s  7.74%  slopdb/sql.(*Schema).schemaMultiGet
+     0.03s 0.092% 12.95%      2.49s  7.68%  runtime.(*mcentral).cacheSpan
+     0.10s  0.31% 13.26%      2.21s  6.81%  slopdb/sql.decodeRow
+     0.04s  0.12% 13.38%      2.16s  6.66%  slopdb/sql.(*Schema).schemaGet
+     0.02s 0.062% 13.44%      2.12s  6.54%  slopdb/sql.(*Schema).committedGet
+     0.27s  0.83% 14.27%      2.11s  6.50%  runtime.growslice
+         0     0% 14.27%      2.10s  6.47%  slopdb/storage.(*LSMTree).GetAt (inline)
+     0.01s 0.031% 14.30%      2.10s  6.47%  slopdb/storage.(*LSMTree).readPoint
+     0.03s 0.092% 14.40%      2.09s  6.44%  slopdb/storage.(*LSMTree).readPointSince
+         0     0% 14.40%      1.64s  5.06%  runtime.gcBgMarkWorker
+     0.03s 0.092% 14.49%      1.52s  4.69%  slopdb/db.(*contextMutex).LockContext
+     0.04s  0.12% 14.61%      1.51s  4.65%  runtime.sweepone
+     0.02s 0.062% 14.67%      1.44s  4.44%  runtime.deductSweepCredit
+         0     0% 14.67%      1.39s  4.28%  runtime.gcBgMarkWorker.func2
+     0.01s 0.031% 14.70%      1.39s  4.28%  runtime.gcDrain
+     0.28s  0.86% 15.57%      1.39s  4.28%  runtime.heapSetType
+         0     0% 15.57%      1.38s  4.25%  runtime.gcDrainMarkWorkerDedicated (inline)
+     0.44s  1.36% 16.92%      1.22s  3.76%  runtime.scanobject
+     0.03s 0.092% 17.02%      1.20s  3.70%  slopdb/db.(*Database).queryContext
+     0.19s  0.59% 17.60%      1.20s  3.70%  slopdb/sql.(*Schema).filterRowsWithKeys
+         0     0% 17.60%      1.19s  3.67%  slopdb/storage.readPointFromView
+     0.09s  0.28% 17.88%      1.19s  3.67%  slopdb/storage.readPointWithWorkspace
+     1.12s  3.45% 21.33%      1.14s  3.51%  sync/atomic.(*Int32).Add (inline)
+     0.10s  0.31% 21.64%      1.10s  3.39%  runtime.(*sweepLocked).sweep
+     0.09s  0.28% 21.92%      1.08s  3.33%  slopdb/sql.(*Schema).primaryKeyLookup
+     0.48s  1.48% 23.40%      1.05s  3.24%  runtime.(*mspan).writeHeapBitsSmall
+     0.01s 0.031% 23.43%      1.02s  3.14%  slopdb/sql.(*Schema).tuplePlan
+     0.03s 0.092% 23.52%         1s  3.08%  slopdb/sql.(*Schema).StartStatement
+     0.98s  3.02% 26.54%      0.98s  3.02%  runtime.memclrNoHeapPointers
+     0.09s  0.28% 26.82%      0.94s  2.90%  slopdb/sql.(*preparedExecutionPlan).primaryKey

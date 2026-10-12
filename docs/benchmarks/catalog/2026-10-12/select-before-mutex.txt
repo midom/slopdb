@@ -1,0 +1,17 @@
+File: db.test
+Type: delay
+Time: Oct 12, 2026 at 2:47pm (UTC)
+Showing nodes accounting for 4088.31ms, 100% of 4088.31ms total
+Dropped 18 nodes (cum <= 20.44ms)
+      flat  flat%   sum%        cum   cum%
+ 2077.30ms 50.81% 50.81%  2077.30ms 50.81%  sync.(*Mutex).Unlock (inline)
+         0     0% 50.81%  2076.30ms 50.79%  slopdb/db.(*Session).ExecPrepared (inline)
+         0     0% 50.81%  2076.30ms 50.79%  slopdb/db.(*Session).ExecPreparedContext
+         0     0% 50.81%  2076.30ms 50.79%  slopdb/db.(*Session).ExecPreparedContextWithOptions (inline)
+         0     0% 50.81%  2076.30ms 50.79%  slopdb/db.(*Session).execPrepared
+         0     0% 50.81%  2076.30ms 50.79%  slopdb/db.BenchmarkSelectPoint.func1.1
+         0     0% 50.81%  2073.77ms 50.72%  slopdb/db.(*Session).execParsed
+    2011ms 49.19%   100%     2011ms 49.19%  runtime._LostContendedRuntimeLock
+         0     0%   100%   646.01ms 15.80%  slopdb/db.(*executionGate).RUnlock
+         0     0%   100%   570.20ms 13.95%  slopdb/db.(*executionGate).RLockContext
+         0     0%   100%   533.54ms 13.05%  slopdb/db.(*Session).execParsed.func1

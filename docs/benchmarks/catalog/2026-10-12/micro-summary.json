@@ -1,0 +1,1688 @@
+{
+  "baseline": {
+    "BenchmarkCatalogWorkloads/tables=1/point-read": [
+      {
+        "iterations": 21804,
+        "ns_op": 11065.0,
+        "bytes_op": 4952,
+        "allocs_op": 50
+      },
+      {
+        "iterations": 21996,
+        "ns_op": 10829.0,
+        "bytes_op": 4952,
+        "allocs_op": 50
+      },
+      {
+        "iterations": 21048,
+        "ns_op": 11460.0,
+        "bytes_op": 4952,
+        "allocs_op": 50
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/point-read-4": [
+      {
+        "iterations": 58128,
+        "ns_op": 4108.0,
+        "bytes_op": 4858,
+        "allocs_op": 49
+      },
+      {
+        "iterations": 58846,
+        "ns_op": 4187.0,
+        "bytes_op": 4858,
+        "allocs_op": 49
+      },
+      {
+        "iterations": 59476,
+        "ns_op": 3925.0,
+        "bytes_op": 4858,
+        "allocs_op": 49
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/secondary-read": [
+      {
+        "iterations": 13896,
+        "ns_op": 16757.0,
+        "bytes_op": 6448,
+        "allocs_op": 77
+      },
+      {
+        "iterations": 13875,
+        "ns_op": 17514.0,
+        "bytes_op": 6448,
+        "allocs_op": 77
+      },
+      {
+        "iterations": 13525,
+        "ns_op": 18445.0,
+        "bytes_op": 6448,
+        "allocs_op": 77
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/secondary-read-4": [
+      {
+        "iterations": 39086,
+        "ns_op": 6571.0,
+        "bytes_op": 6355,
+        "allocs_op": 76
+      },
+      {
+        "iterations": 37189,
+        "ns_op": 6101.0,
+        "bytes_op": 6355,
+        "allocs_op": 76
+      },
+      {
+        "iterations": 36819,
+        "ns_op": 6496.0,
+        "bytes_op": 6355,
+        "allocs_op": 76
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/range-read": [
+      {
+        "iterations": 4285,
+        "ns_op": 51683.0,
+        "bytes_op": 30882,
+        "allocs_op": 185
+      },
+      {
+        "iterations": 3981,
+        "ns_op": 50505.0,
+        "bytes_op": 30882,
+        "allocs_op": 185
+      },
+      {
+        "iterations": 3800,
+        "ns_op": 53445.0,
+        "bytes_op": 30882,
+        "allocs_op": 185
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/range-read-4": [
+      {
+        "iterations": 9648,
+        "ns_op": 21742.0,
+        "bytes_op": 30795,
+        "allocs_op": 184
+      },
+      {
+        "iterations": 10000,
+        "ns_op": 21752.0,
+        "bytes_op": 30796,
+        "allocs_op": 184
+      },
+      {
+        "iterations": 9564,
+        "ns_op": 21903.0,
+        "bytes_op": 30796,
+        "allocs_op": 184
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/scan": [
+      {
+        "iterations": 262,
+        "ns_op": 970357.0,
+        "bytes_op": 14837,
+        "allocs_op": 62
+      },
+      {
+        "iterations": 246,
+        "ns_op": 946208.0,
+        "bytes_op": 14839,
+        "allocs_op": 62
+      },
+      {
+        "iterations": 254,
+        "ns_op": 919956.0,
+        "bytes_op": 14839,
+        "allocs_op": 62
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/scan-4": [
+      {
+        "iterations": 1036,
+        "ns_op": 252826.0,
+        "bytes_op": 14743,
+        "allocs_op": 61
+      },
+      {
+        "iterations": 970,
+        "ns_op": 260253.0,
+        "bytes_op": 14748,
+        "allocs_op": 61
+      },
+      {
+        "iterations": 928,
+        "ns_op": 237528.0,
+        "bytes_op": 14747,
+        "allocs_op": 61
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/join": [
+      {
+        "iterations": 5072,
+        "ns_op": 47151.0,
+        "bytes_op": 16928,
+        "allocs_op": 219
+      },
+      {
+        "iterations": 5064,
+        "ns_op": 47237.0,
+        "bytes_op": 16929,
+        "allocs_op": 219
+      },
+      {
+        "iterations": 5222,
+        "ns_op": 46442.0,
+        "bytes_op": 16928,
+        "allocs_op": 219
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/join-4": [
+      {
+        "iterations": 14510,
+        "ns_op": 17037.0,
+        "bytes_op": 16838,
+        "allocs_op": 218
+      },
+      {
+        "iterations": 13988,
+        "ns_op": 16638.0,
+        "bytes_op": 16838,
+        "allocs_op": 218
+      },
+      {
+        "iterations": 14054,
+        "ns_op": 15988.0,
+        "bytes_op": 16839,
+        "allocs_op": 218
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/point-update": [
+      {
+        "iterations": 22135,
+        "ns_op": 11399.0,
+        "bytes_op": 2731,
+        "allocs_op": 37
+      },
+      {
+        "iterations": 22003,
+        "ns_op": 11446.0,
+        "bytes_op": 2731,
+        "allocs_op": 37
+      },
+      {
+        "iterations": 20905,
+        "ns_op": 11744.0,
+        "bytes_op": 2731,
+        "allocs_op": 37
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/point-update-4": [
+      {
+        "iterations": 27315,
+        "ns_op": 8851.0,
+        "bytes_op": 2367,
+        "allocs_op": 30
+      },
+      {
+        "iterations": 28180,
+        "ns_op": 8526.0,
+        "bytes_op": 2365,
+        "allocs_op": 30
+      },
+      {
+        "iterations": 28538,
+        "ns_op": 8688.0,
+        "bytes_op": 2364,
+        "allocs_op": 30
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/transaction-update": [
+      {
+        "iterations": 9391,
+        "ns_op": 21500.0,
+        "bytes_op": 5035,
+        "allocs_op": 79
+      },
+      {
+        "iterations": 10000,
+        "ns_op": 22359.0,
+        "bytes_op": 5035,
+        "allocs_op": 79
+      },
+      {
+        "iterations": 10000,
+        "ns_op": 22537.0,
+        "bytes_op": 5035,
+        "allocs_op": 79
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/transaction-update-4": [
+      {
+        "iterations": 18290,
+        "ns_op": 13708.0,
+        "bytes_op": 4481,
+        "allocs_op": 70
+      },
+      {
+        "iterations": 18468,
+        "ns_op": 13408.0,
+        "bytes_op": 4481,
+        "allocs_op": 70
+      },
+      {
+        "iterations": 18100,
+        "ns_op": 13380.0,
+        "bytes_op": 4482,
+        "allocs_op": 70
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/point-read": [
+      {
+        "iterations": 20580,
+        "ns_op": 11274.0,
+        "bytes_op": 4952,
+        "allocs_op": 50
+      },
+      {
+        "iterations": 21336,
+        "ns_op": 10914.0,
+        "bytes_op": 4952,
+        "allocs_op": 50
+      },
+      {
+        "iterations": 21648,
+        "ns_op": 10968.0,
+        "bytes_op": 4952,
+        "allocs_op": 50
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/point-read-4": [
+      {
+        "iterations": 65652,
+        "ns_op": 3757.0,
+        "bytes_op": 4857,
+        "allocs_op": 49
+      },
+      {
+        "iterations": 62751,
+        "ns_op": 3818.0,
+        "bytes_op": 4858,
+        "allocs_op": 49
+      },
+      {
+        "iterations": 58581,
+        "ns_op": 3929.0,
+        "bytes_op": 4857,
+        "allocs_op": 49
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/secondary-read": [
+      {
+        "iterations": 13957,
+        "ns_op": 17538.0,
+        "bytes_op": 6472,
+        "allocs_op": 78
+      },
+      {
+        "iterations": 13147,
+        "ns_op": 17367.0,
+        "bytes_op": 6472,
+        "allocs_op": 78
+      },
+      {
+        "iterations": 14012,
+        "ns_op": 17432.0,
+        "bytes_op": 6472,
+        "allocs_op": 78
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/secondary-read-4": [
+      {
+        "iterations": 41744,
+        "ns_op": 5571.0,
+        "bytes_op": 6378,
+        "allocs_op": 77
+      },
+      {
+        "iterations": 42658,
+        "ns_op": 5615.0,
+        "bytes_op": 6378,
+        "allocs_op": 77
+      },
+      {
+        "iterations": 43353,
+        "ns_op": 5416.0,
+        "bytes_op": 6378,
+        "allocs_op": 77
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/range-read": [
+      {
+        "iterations": 4756,
+        "ns_op": 51310.0,
+        "bytes_op": 30905,
+        "allocs_op": 186
+      },
+      {
+        "iterations": 5266,
+        "ns_op": 52021.0,
+        "bytes_op": 30905,
+        "allocs_op": 186
+      },
+      {
+        "iterations": 4041,
+        "ns_op": 50881.0,
+        "bytes_op": 30906,
+        "allocs_op": 186
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/range-read-4": [
+      {
+        "iterations": 12075,
+        "ns_op": 19127.0,
+        "bytes_op": 30816,
+        "allocs_op": 185
+      },
+      {
+        "iterations": 12268,
+        "ns_op": 19417.0,
+        "bytes_op": 30816,
+        "allocs_op": 185
+      },
+      {
+        "iterations": 12628,
+        "ns_op": 19569.0,
+        "bytes_op": 30816,
+        "allocs_op": 185
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/scan": [
+      {
+        "iterations": 242,
+        "ns_op": 896666.0,
+        "bytes_op": 15271,
+        "allocs_op": 68
+      },
+      {
+        "iterations": 262,
+        "ns_op": 930880.0,
+        "bytes_op": 15269,
+        "allocs_op": 68
+      },
+      {
+        "iterations": 262,
+        "ns_op": 891556.0,
+        "bytes_op": 15269,
+        "allocs_op": 68
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/scan-4": [
+      {
+        "iterations": 1006,
+        "ns_op": 239587.0,
+        "bytes_op": 15174,
+        "allocs_op": 67
+      },
+      {
+        "iterations": 990,
+        "ns_op": 242934.0,
+        "bytes_op": 15175,
+        "allocs_op": 67
+      },
+      {
+        "iterations": 1028,
+        "ns_op": 227193.0,
+        "bytes_op": 15174,
+        "allocs_op": 67
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/join": [
+      {
+        "iterations": 5713,
+        "ns_op": 46296.0,
+        "bytes_op": 16951,
+        "allocs_op": 220
+      },
+      {
+        "iterations": 5588,
+        "ns_op": 47015.0,
+        "bytes_op": 16951,
+        "allocs_op": 220
+      },
+      {
+        "iterations": 5412,
+        "ns_op": 46204.0,
+        "bytes_op": 16953,
+        "allocs_op": 220
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/join-4": [
+      {
+        "iterations": 16076,
+        "ns_op": 15745.0,
+        "bytes_op": 16859,
+        "allocs_op": 219
+      },
+      {
+        "iterations": 16135,
+        "ns_op": 15312.0,
+        "bytes_op": 16860,
+        "allocs_op": 219
+      },
+      {
+        "iterations": 16330,
+        "ns_op": 14998.0,
+        "bytes_op": 16861,
+        "allocs_op": 219
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/point-update": [
+      {
+        "iterations": 22017,
+        "ns_op": 11538.0,
+        "bytes_op": 2731,
+        "allocs_op": 37
+      },
+      {
+        "iterations": 20000,
+        "ns_op": 11388.0,
+        "bytes_op": 2731,
+        "allocs_op": 37
+      },
+      {
+        "iterations": 21632,
+        "ns_op": 11644.0,
+        "bytes_op": 2731,
+        "allocs_op": 37
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/point-update-4": [
+      {
+        "iterations": 29390,
+        "ns_op": 8759.0,
+        "bytes_op": 2367,
+        "allocs_op": 30
+      },
+      {
+        "iterations": 28604,
+        "ns_op": 8581.0,
+        "bytes_op": 2365,
+        "allocs_op": 30
+      },
+      {
+        "iterations": 28599,
+        "ns_op": 8962.0,
+        "bytes_op": 2365,
+        "allocs_op": 30
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/transaction-update": [
+      {
+        "iterations": 10000,
+        "ns_op": 22046.0,
+        "bytes_op": 5035,
+        "allocs_op": 79
+      },
+      {
+        "iterations": 10675,
+        "ns_op": 21180.0,
+        "bytes_op": 5035,
+        "allocs_op": 79
+      },
+      {
+        "iterations": 10000,
+        "ns_op": 22981.0,
+        "bytes_op": 5035,
+        "allocs_op": 79
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/transaction-update-4": [
+      {
+        "iterations": 18768,
+        "ns_op": 13129.0,
+        "bytes_op": 4479,
+        "allocs_op": 70
+      },
+      {
+        "iterations": 18847,
+        "ns_op": 12943.0,
+        "bytes_op": 4478,
+        "allocs_op": 70
+      },
+      {
+        "iterations": 19122,
+        "ns_op": 12760.0,
+        "bytes_op": 4480,
+        "allocs_op": 70
+      }
+    ]
+  },
+  "catalog": {
+    "BenchmarkCatalogWorkloads/tables=1/point-read": [
+      {
+        "iterations": 22843,
+        "ns_op": 10572.0,
+        "bytes_op": 4952,
+        "allocs_op": 50
+      },
+      {
+        "iterations": 22070,
+        "ns_op": 10510.0,
+        "bytes_op": 4952,
+        "allocs_op": 50
+      },
+      {
+        "iterations": 22866,
+        "ns_op": 10590.0,
+        "bytes_op": 4952,
+        "allocs_op": 50
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/point-read-4": [
+      {
+        "iterations": 59474,
+        "ns_op": 4048.0,
+        "bytes_op": 4858,
+        "allocs_op": 49
+      },
+      {
+        "iterations": 60529,
+        "ns_op": 4052.0,
+        "bytes_op": 4859,
+        "allocs_op": 49
+      },
+      {
+        "iterations": 60178,
+        "ns_op": 4256.0,
+        "bytes_op": 4858,
+        "allocs_op": 49
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/secondary-read": [
+      {
+        "iterations": 14769,
+        "ns_op": 16492.0,
+        "bytes_op": 6448,
+        "allocs_op": 77
+      },
+      {
+        "iterations": 14262,
+        "ns_op": 17371.0,
+        "bytes_op": 6448,
+        "allocs_op": 77
+      },
+      {
+        "iterations": 13240,
+        "ns_op": 17385.0,
+        "bytes_op": 6448,
+        "allocs_op": 77
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/secondary-read-4": [
+      {
+        "iterations": 38121,
+        "ns_op": 6316.0,
+        "bytes_op": 6355,
+        "allocs_op": 76
+      },
+      {
+        "iterations": 38374,
+        "ns_op": 6083.0,
+        "bytes_op": 6355,
+        "allocs_op": 76
+      },
+      {
+        "iterations": 35715,
+        "ns_op": 7348.0,
+        "bytes_op": 6354,
+        "allocs_op": 76
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/range-read": [
+      {
+        "iterations": 3984,
+        "ns_op": 51998.0,
+        "bytes_op": 30882,
+        "allocs_op": 185
+      },
+      {
+        "iterations": 4347,
+        "ns_op": 50484.0,
+        "bytes_op": 30882,
+        "allocs_op": 185
+      },
+      {
+        "iterations": 4197,
+        "ns_op": 52140.0,
+        "bytes_op": 30882,
+        "allocs_op": 185
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/range-read-4": [
+      {
+        "iterations": 9560,
+        "ns_op": 21366.0,
+        "bytes_op": 30796,
+        "allocs_op": 184
+      },
+      {
+        "iterations": 9926,
+        "ns_op": 21457.0,
+        "bytes_op": 30795,
+        "allocs_op": 184
+      },
+      {
+        "iterations": 10000,
+        "ns_op": 22764.0,
+        "bytes_op": 30794,
+        "allocs_op": 184
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/scan": [
+      {
+        "iterations": 253,
+        "ns_op": 927692.0,
+        "bytes_op": 14839,
+        "allocs_op": 62
+      },
+      {
+        "iterations": 250,
+        "ns_op": 1003761.0,
+        "bytes_op": 14839,
+        "allocs_op": 62
+      },
+      {
+        "iterations": 244,
+        "ns_op": 923087.0,
+        "bytes_op": 14840,
+        "allocs_op": 62
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/scan-4": [
+      {
+        "iterations": 993,
+        "ns_op": 243570.0,
+        "bytes_op": 14749,
+        "allocs_op": 61
+      },
+      {
+        "iterations": 1064,
+        "ns_op": 239447.0,
+        "bytes_op": 14743,
+        "allocs_op": 61
+      },
+      {
+        "iterations": 927,
+        "ns_op": 250543.0,
+        "bytes_op": 14746,
+        "allocs_op": 61
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/join": [
+      {
+        "iterations": 5403,
+        "ns_op": 43994.0,
+        "bytes_op": 16929,
+        "allocs_op": 219
+      },
+      {
+        "iterations": 4758,
+        "ns_op": 46715.0,
+        "bytes_op": 16928,
+        "allocs_op": 219
+      },
+      {
+        "iterations": 4598,
+        "ns_op": 45628.0,
+        "bytes_op": 16928,
+        "allocs_op": 219
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/join-4": [
+      {
+        "iterations": 14589,
+        "ns_op": 16722.0,
+        "bytes_op": 16839,
+        "allocs_op": 218
+      },
+      {
+        "iterations": 14454,
+        "ns_op": 17468.0,
+        "bytes_op": 16838,
+        "allocs_op": 218
+      },
+      {
+        "iterations": 14763,
+        "ns_op": 16651.0,
+        "bytes_op": 16838,
+        "allocs_op": 218
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/point-update": [
+      {
+        "iterations": 22617,
+        "ns_op": 11496.0,
+        "bytes_op": 2731,
+        "allocs_op": 37
+      },
+      {
+        "iterations": 22114,
+        "ns_op": 11169.0,
+        "bytes_op": 2731,
+        "allocs_op": 37
+      },
+      {
+        "iterations": 21346,
+        "ns_op": 11242.0,
+        "bytes_op": 2731,
+        "allocs_op": 37
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/point-update-4": [
+      {
+        "iterations": 27285,
+        "ns_op": 8868.0,
+        "bytes_op": 2366,
+        "allocs_op": 30
+      },
+      {
+        "iterations": 28154,
+        "ns_op": 8942.0,
+        "bytes_op": 2366,
+        "allocs_op": 30
+      },
+      {
+        "iterations": 28116,
+        "ns_op": 9055.0,
+        "bytes_op": 2366,
+        "allocs_op": 30
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/transaction-update": [
+      {
+        "iterations": 11364,
+        "ns_op": 21555.0,
+        "bytes_op": 5067,
+        "allocs_op": 79
+      },
+      {
+        "iterations": 10000,
+        "ns_op": 21492.0,
+        "bytes_op": 5067,
+        "allocs_op": 79
+      },
+      {
+        "iterations": 11004,
+        "ns_op": 22076.0,
+        "bytes_op": 5067,
+        "allocs_op": 79
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/transaction-update-4": [
+      {
+        "iterations": 17697,
+        "ns_op": 13585.0,
+        "bytes_op": 4515,
+        "allocs_op": 70
+      },
+      {
+        "iterations": 18342,
+        "ns_op": 13300.0,
+        "bytes_op": 4514,
+        "allocs_op": 70
+      },
+      {
+        "iterations": 17691,
+        "ns_op": 13849.0,
+        "bytes_op": 4514,
+        "allocs_op": 70
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/point-read": [
+      {
+        "iterations": 21592,
+        "ns_op": 11491.0,
+        "bytes_op": 4952,
+        "allocs_op": 50
+      },
+      {
+        "iterations": 21128,
+        "ns_op": 11384.0,
+        "bytes_op": 4952,
+        "allocs_op": 50
+      },
+      {
+        "iterations": 21888,
+        "ns_op": 11134.0,
+        "bytes_op": 4952,
+        "allocs_op": 50
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/point-read-4": [
+      {
+        "iterations": 67849,
+        "ns_op": 3483.0,
+        "bytes_op": 4857,
+        "allocs_op": 49
+      },
+      {
+        "iterations": 65306,
+        "ns_op": 3532.0,
+        "bytes_op": 4857,
+        "allocs_op": 49
+      },
+      {
+        "iterations": 66692,
+        "ns_op": 3516.0,
+        "bytes_op": 4857,
+        "allocs_op": 49
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/secondary-read": [
+      {
+        "iterations": 13419,
+        "ns_op": 17773.0,
+        "bytes_op": 6472,
+        "allocs_op": 78
+      },
+      {
+        "iterations": 13399,
+        "ns_op": 17408.0,
+        "bytes_op": 6472,
+        "allocs_op": 78
+      },
+      {
+        "iterations": 13713,
+        "ns_op": 17012.0,
+        "bytes_op": 6472,
+        "allocs_op": 78
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/secondary-read-4": [
+      {
+        "iterations": 47125,
+        "ns_op": 5138.0,
+        "bytes_op": 6377,
+        "allocs_op": 77
+      },
+      {
+        "iterations": 45631,
+        "ns_op": 5304.0,
+        "bytes_op": 6377,
+        "allocs_op": 77
+      },
+      {
+        "iterations": 44212,
+        "ns_op": 5329.0,
+        "bytes_op": 6378,
+        "allocs_op": 77
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/range-read": [
+      {
+        "iterations": 4521,
+        "ns_op": 54321.0,
+        "bytes_op": 30905,
+        "allocs_op": 186
+      },
+      {
+        "iterations": 4551,
+        "ns_op": 53487.0,
+        "bytes_op": 30905,
+        "allocs_op": 186
+      },
+      {
+        "iterations": 3846,
+        "ns_op": 53729.0,
+        "bytes_op": 30905,
+        "allocs_op": 186
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/range-read-4": [
+      {
+        "iterations": 12738,
+        "ns_op": 18751.0,
+        "bytes_op": 30815,
+        "allocs_op": 185
+      },
+      {
+        "iterations": 12670,
+        "ns_op": 19065.0,
+        "bytes_op": 30815,
+        "allocs_op": 185
+      },
+      {
+        "iterations": 12722,
+        "ns_op": 18805.0,
+        "bytes_op": 30815,
+        "allocs_op": 185
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/scan": [
+      {
+        "iterations": 268,
+        "ns_op": 925217.0,
+        "bytes_op": 15268,
+        "allocs_op": 68
+      },
+      {
+        "iterations": 265,
+        "ns_op": 888719.0,
+        "bytes_op": 15268,
+        "allocs_op": 68
+      },
+      {
+        "iterations": 250,
+        "ns_op": 938434.0,
+        "bytes_op": 15270,
+        "allocs_op": 68
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/scan-4": [
+      {
+        "iterations": 1003,
+        "ns_op": 240963.0,
+        "bytes_op": 15174,
+        "allocs_op": 67
+      },
+      {
+        "iterations": 979,
+        "ns_op": 232193.0,
+        "bytes_op": 15174,
+        "allocs_op": 67
+      },
+      {
+        "iterations": 998,
+        "ns_op": 237032.0,
+        "bytes_op": 15174,
+        "allocs_op": 67
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/join": [
+      {
+        "iterations": 5215,
+        "ns_op": 46481.0,
+        "bytes_op": 16952,
+        "allocs_op": 220
+      },
+      {
+        "iterations": 5182,
+        "ns_op": 45978.0,
+        "bytes_op": 16952,
+        "allocs_op": 220
+      },
+      {
+        "iterations": 5346,
+        "ns_op": 45039.0,
+        "bytes_op": 16952,
+        "allocs_op": 220
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/join-4": [
+      {
+        "iterations": 17120,
+        "ns_op": 14603.0,
+        "bytes_op": 16859,
+        "allocs_op": 219
+      },
+      {
+        "iterations": 16722,
+        "ns_op": 13953.0,
+        "bytes_op": 16860,
+        "allocs_op": 219
+      },
+      {
+        "iterations": 16293,
+        "ns_op": 14472.0,
+        "bytes_op": 16860,
+        "allocs_op": 219
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/point-update": [
+      {
+        "iterations": 21901,
+        "ns_op": 12048.0,
+        "bytes_op": 3151,
+        "allocs_op": 37
+      },
+      {
+        "iterations": 22562,
+        "ns_op": 12048.0,
+        "bytes_op": 3139,
+        "allocs_op": 37
+      },
+      {
+        "iterations": 21757,
+        "ns_op": 12002.0,
+        "bytes_op": 3154,
+        "allocs_op": 37
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/point-update-4": [
+      {
+        "iterations": 28590,
+        "ns_op": 9149.0,
+        "bytes_op": 2689,
+        "allocs_op": 30
+      },
+      {
+        "iterations": 28287,
+        "ns_op": 9400.0,
+        "bytes_op": 2692,
+        "allocs_op": 30
+      },
+      {
+        "iterations": 28188,
+        "ns_op": 8850.0,
+        "bytes_op": 2693,
+        "allocs_op": 30
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/transaction-update": [
+      {
+        "iterations": 10000,
+        "ns_op": 22310.0,
+        "bytes_op": 5067,
+        "allocs_op": 79
+      },
+      {
+        "iterations": 10000,
+        "ns_op": 22337.0,
+        "bytes_op": 5067,
+        "allocs_op": 79
+      },
+      {
+        "iterations": 10000,
+        "ns_op": 22184.0,
+        "bytes_op": 5067,
+        "allocs_op": 79
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/transaction-update-4": [
+      {
+        "iterations": 18136,
+        "ns_op": 13456.0,
+        "bytes_op": 4970,
+        "allocs_op": 70
+      },
+      {
+        "iterations": 19096,
+        "ns_op": 13050.0,
+        "bytes_op": 4994,
+        "allocs_op": 70
+      },
+      {
+        "iterations": 18800,
+        "ns_op": 13446.0,
+        "bytes_op": 5000,
+        "allocs_op": 70
+      }
+    ]
+  },
+  "after": {
+    "BenchmarkCatalogWorkloads/tables=1/point-read": [
+      {
+        "iterations": 34183,
+        "ns_op": 6773.0,
+        "bytes_op": 3600,
+        "allocs_op": 24
+      },
+      {
+        "iterations": 34808,
+        "ns_op": 6907.0,
+        "bytes_op": 3600,
+        "allocs_op": 24
+      },
+      {
+        "iterations": 33872,
+        "ns_op": 6901.0,
+        "bytes_op": 3600,
+        "allocs_op": 24
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/point-read-4": [
+      {
+        "iterations": 70909,
+        "ns_op": 2976.0,
+        "bytes_op": 3601,
+        "allocs_op": 24
+      },
+      {
+        "iterations": 83203,
+        "ns_op": 3168.0,
+        "bytes_op": 3601,
+        "allocs_op": 24
+      },
+      {
+        "iterations": 65732,
+        "ns_op": 3055.0,
+        "bytes_op": 3601,
+        "allocs_op": 24
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/secondary-read": [
+      {
+        "iterations": 13455,
+        "ns_op": 17583.0,
+        "bytes_op": 6352,
+        "allocs_op": 76
+      },
+      {
+        "iterations": 13959,
+        "ns_op": 17910.0,
+        "bytes_op": 6352,
+        "allocs_op": 76
+      },
+      {
+        "iterations": 14090,
+        "ns_op": 17493.0,
+        "bytes_op": 6352,
+        "allocs_op": 76
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/secondary-read-4": [
+      {
+        "iterations": 36987,
+        "ns_op": 6716.0,
+        "bytes_op": 6354,
+        "allocs_op": 76
+      },
+      {
+        "iterations": 31621,
+        "ns_op": 6924.0,
+        "bytes_op": 6354,
+        "allocs_op": 76
+      },
+      {
+        "iterations": 39883,
+        "ns_op": 7195.0,
+        "bytes_op": 6354,
+        "allocs_op": 76
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/range-read": [
+      {
+        "iterations": 4161,
+        "ns_op": 49616.0,
+        "bytes_op": 30786,
+        "allocs_op": 184
+      },
+      {
+        "iterations": 4326,
+        "ns_op": 50401.0,
+        "bytes_op": 30786,
+        "allocs_op": 184
+      },
+      {
+        "iterations": 4599,
+        "ns_op": 52876.0,
+        "bytes_op": 30786,
+        "allocs_op": 184
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/range-read-4": [
+      {
+        "iterations": 8588,
+        "ns_op": 24270.0,
+        "bytes_op": 30792,
+        "allocs_op": 184
+      },
+      {
+        "iterations": 9346,
+        "ns_op": 23706.0,
+        "bytes_op": 30793,
+        "allocs_op": 184
+      },
+      {
+        "iterations": 10018,
+        "ns_op": 26142.0,
+        "bytes_op": 30792,
+        "allocs_op": 184
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/scan": [
+      {
+        "iterations": 254,
+        "ns_op": 951107.0,
+        "bytes_op": 14742,
+        "allocs_op": 61
+      },
+      {
+        "iterations": 256,
+        "ns_op": 946556.0,
+        "bytes_op": 14742,
+        "allocs_op": 61
+      },
+      {
+        "iterations": 274,
+        "ns_op": 906286.0,
+        "bytes_op": 14740,
+        "allocs_op": 61
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/scan-4": [
+      {
+        "iterations": 1023,
+        "ns_op": 278976.0,
+        "bytes_op": 14744,
+        "allocs_op": 61
+      },
+      {
+        "iterations": 847,
+        "ns_op": 267432.0,
+        "bytes_op": 14748,
+        "allocs_op": 61
+      },
+      {
+        "iterations": 997,
+        "ns_op": 259116.0,
+        "bytes_op": 14744,
+        "allocs_op": 61
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/join": [
+      {
+        "iterations": 5331,
+        "ns_op": 45030.0,
+        "bytes_op": 16831,
+        "allocs_op": 218
+      },
+      {
+        "iterations": 4800,
+        "ns_op": 45597.0,
+        "bytes_op": 16833,
+        "allocs_op": 218
+      },
+      {
+        "iterations": 4678,
+        "ns_op": 45829.0,
+        "bytes_op": 16832,
+        "allocs_op": 218
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/join-4": [
+      {
+        "iterations": 12496,
+        "ns_op": 18528.0,
+        "bytes_op": 16837,
+        "allocs_op": 218
+      },
+      {
+        "iterations": 13720,
+        "ns_op": 19151.0,
+        "bytes_op": 16839,
+        "allocs_op": 218
+      },
+      {
+        "iterations": 12742,
+        "ns_op": 18579.0,
+        "bytes_op": 16837,
+        "allocs_op": 218
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/point-update": [
+      {
+        "iterations": 21842,
+        "ns_op": 11263.0,
+        "bytes_op": 2635,
+        "allocs_op": 36
+      },
+      {
+        "iterations": 22387,
+        "ns_op": 11282.0,
+        "bytes_op": 2635,
+        "allocs_op": 36
+      },
+      {
+        "iterations": 22321,
+        "ns_op": 11569.0,
+        "bytes_op": 2635,
+        "allocs_op": 36
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/point-update-4": [
+      {
+        "iterations": 27620,
+        "ns_op": 9260.0,
+        "bytes_op": 2360,
+        "allocs_op": 30
+      },
+      {
+        "iterations": 27244,
+        "ns_op": 9486.0,
+        "bytes_op": 2361,
+        "allocs_op": 30
+      },
+      {
+        "iterations": 27093,
+        "ns_op": 9076.0,
+        "bytes_op": 2361,
+        "allocs_op": 30
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/transaction-update": [
+      {
+        "iterations": 10000,
+        "ns_op": 22012.0,
+        "bytes_op": 4779,
+        "allocs_op": 76
+      },
+      {
+        "iterations": 10000,
+        "ns_op": 21398.0,
+        "bytes_op": 4779,
+        "allocs_op": 76
+      },
+      {
+        "iterations": 10000,
+        "ns_op": 22364.0,
+        "bytes_op": 4779,
+        "allocs_op": 76
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=1/transaction-update-4": [
+      {
+        "iterations": 16099,
+        "ns_op": 13592.0,
+        "bytes_op": 4510,
+        "allocs_op": 70
+      },
+      {
+        "iterations": 17312,
+        "ns_op": 14721.0,
+        "bytes_op": 4510,
+        "allocs_op": 70
+      },
+      {
+        "iterations": 17934,
+        "ns_op": 13481.0,
+        "bytes_op": 4512,
+        "allocs_op": 70
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/point-read": [
+      {
+        "iterations": 31506,
+        "ns_op": 7498.0,
+        "bytes_op": 3600,
+        "allocs_op": 24
+      },
+      {
+        "iterations": 32666,
+        "ns_op": 7230.0,
+        "bytes_op": 3600,
+        "allocs_op": 24
+      },
+      {
+        "iterations": 30954,
+        "ns_op": 7376.0,
+        "bytes_op": 3600,
+        "allocs_op": 24
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/point-read-4": [
+      {
+        "iterations": 91431,
+        "ns_op": 2848.0,
+        "bytes_op": 3601,
+        "allocs_op": 24
+      },
+      {
+        "iterations": 96750,
+        "ns_op": 2672.0,
+        "bytes_op": 3601,
+        "allocs_op": 24
+      },
+      {
+        "iterations": 87187,
+        "ns_op": 2676.0,
+        "bytes_op": 3601,
+        "allocs_op": 24
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/secondary-read": [
+      {
+        "iterations": 13215,
+        "ns_op": 17929.0,
+        "bytes_op": 6376,
+        "allocs_op": 77
+      },
+      {
+        "iterations": 13335,
+        "ns_op": 17321.0,
+        "bytes_op": 6376,
+        "allocs_op": 77
+      },
+      {
+        "iterations": 12146,
+        "ns_op": 17636.0,
+        "bytes_op": 6376,
+        "allocs_op": 77
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/secondary-read-4": [
+      {
+        "iterations": 41314,
+        "ns_op": 6151.0,
+        "bytes_op": 6377,
+        "allocs_op": 77
+      },
+      {
+        "iterations": 33361,
+        "ns_op": 6490.0,
+        "bytes_op": 6377,
+        "allocs_op": 77
+      },
+      {
+        "iterations": 36148,
+        "ns_op": 5888.0,
+        "bytes_op": 6377,
+        "allocs_op": 77
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/range-read": [
+      {
+        "iterations": 4996,
+        "ns_op": 52265.0,
+        "bytes_op": 30809,
+        "allocs_op": 185
+      },
+      {
+        "iterations": 4710,
+        "ns_op": 55611.0,
+        "bytes_op": 30809,
+        "allocs_op": 185
+      },
+      {
+        "iterations": 4016,
+        "ns_op": 55573.0,
+        "bytes_op": 30809,
+        "allocs_op": 185
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/range-read-4": [
+      {
+        "iterations": 10000,
+        "ns_op": 21781.0,
+        "bytes_op": 30814,
+        "allocs_op": 185
+      },
+      {
+        "iterations": 10000,
+        "ns_op": 21890.0,
+        "bytes_op": 30814,
+        "allocs_op": 185
+      },
+      {
+        "iterations": 10437,
+        "ns_op": 20365.0,
+        "bytes_op": 30814,
+        "allocs_op": 185
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/scan": [
+      {
+        "iterations": 254,
+        "ns_op": 899347.0,
+        "bytes_op": 15174,
+        "allocs_op": 67
+      },
+      {
+        "iterations": 255,
+        "ns_op": 976091.0,
+        "bytes_op": 15174,
+        "allocs_op": 67
+      },
+      {
+        "iterations": 230,
+        "ns_op": 909973.0,
+        "bytes_op": 15176,
+        "allocs_op": 67
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/scan-4": [
+      {
+        "iterations": 909,
+        "ns_op": 257693.0,
+        "bytes_op": 15176,
+        "allocs_op": 67
+      },
+      {
+        "iterations": 858,
+        "ns_op": 263001.0,
+        "bytes_op": 15177,
+        "allocs_op": 67
+      },
+      {
+        "iterations": 1000,
+        "ns_op": 247972.0,
+        "bytes_op": 15174,
+        "allocs_op": 67
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/join": [
+      {
+        "iterations": 5780,
+        "ns_op": 45570.0,
+        "bytes_op": 16856,
+        "allocs_op": 219
+      },
+      {
+        "iterations": 5163,
+        "ns_op": 46075.0,
+        "bytes_op": 16857,
+        "allocs_op": 219
+      },
+      {
+        "iterations": 5998,
+        "ns_op": 46627.0,
+        "bytes_op": 16856,
+        "allocs_op": 219
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/join-4": [
+      {
+        "iterations": 16404,
+        "ns_op": 15224.0,
+        "bytes_op": 16859,
+        "allocs_op": 219
+      },
+      {
+        "iterations": 14726,
+        "ns_op": 15089.0,
+        "bytes_op": 16859,
+        "allocs_op": 219
+      },
+      {
+        "iterations": 13292,
+        "ns_op": 17141.0,
+        "bytes_op": 16860,
+        "allocs_op": 219
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/point-update": [
+      {
+        "iterations": 22437,
+        "ns_op": 12356.0,
+        "bytes_op": 3045,
+        "allocs_op": 36
+      },
+      {
+        "iterations": 21865,
+        "ns_op": 11923.0,
+        "bytes_op": 3056,
+        "allocs_op": 36
+      },
+      {
+        "iterations": 21220,
+        "ns_op": 12596.0,
+        "bytes_op": 3069,
+        "allocs_op": 36
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/point-update-4": [
+      {
+        "iterations": 28375,
+        "ns_op": 9218.0,
+        "bytes_op": 2686,
+        "allocs_op": 30
+      },
+      {
+        "iterations": 28110,
+        "ns_op": 9206.0,
+        "bytes_op": 2693,
+        "allocs_op": 30
+      },
+      {
+        "iterations": 26110,
+        "ns_op": 9293.0,
+        "bytes_op": 2713,
+        "allocs_op": 30
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/transaction-update": [
+      {
+        "iterations": 10000,
+        "ns_op": 21901.0,
+        "bytes_op": 4779,
+        "allocs_op": 76
+      },
+      {
+        "iterations": 10000,
+        "ns_op": 22266.0,
+        "bytes_op": 4779,
+        "allocs_op": 76
+      },
+      {
+        "iterations": 10000,
+        "ns_op": 21658.0,
+        "bytes_op": 4779,
+        "allocs_op": 76
+      }
+    ],
+    "BenchmarkCatalogWorkloads/tables=128/transaction-update-4": [
+      {
+        "iterations": 17820,
+        "ns_op": 13536.0,
+        "bytes_op": 4661,
+        "allocs_op": 70
+      },
+      {
+        "iterations": 17671,
+        "ns_op": 14099.0,
+        "bytes_op": 4622,
+        "allocs_op": 70
+      },
+      {
+        "iterations": 18313,
+        "ns_op": 13598.0,
+        "bytes_op": 5012,
+        "allocs_op": 70
+      }
+    ]
+  }
+}

@@ -142,3 +142,13 @@ tail latency, failures, retry counts and durability settings for all three engin
 `-page-size 16384`, `65536` or `1048576` selects SlopDB's uncompressed
 SSTable data-block target. The requested and actual sizes appear in JSON.
 Keep the byte-budgeted block cache and memtable constant when comparing sizes.
+
+## Workload profiles
+
+Use `-profile-dir /tmp/slopdb-bench/tpcc-profiles` for a diagnostic run. It saves
+`cpu.pprof`, `mutex.pprof`, `block.pprof` and `allocs.pprof`; inspect them with
+`go tool pprof`. CPU, mutex and block sampling cover the measured workload plus
+drain, excluding loading, preparation, validation and close. The allocation
+profile is cumulative from process start through drain, including setup.
+Collect throughput separately without profiling, since sampling adds overhead.
+See [catalog profiling and rename checks](../../docs/catalog-performance.md).

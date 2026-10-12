@@ -24,12 +24,17 @@ are optional benchmark comparisons.
   spilling. ANALYZE statistics guide access and join choices; EXPLAIN ANALYZE
   reports actual execution work. LIMIT and OFFSET use 64-bit fields.
 - **Storage:** MVCC versions, checksummed WAL and SSTables, bloom filters,
-  background compaction, configurable compression and bounded block caches.
+  background compaction, configurable compression, bounded block caches and
+  persistent object IDs for atomic catalog-only renames.
 
 Supported SQL behavior and restrictions are described in
 [SQL semantics](docs/sql-semantics.md). Feature-specific guides cover
 [UPSERT](docs/upsert.md), [CTEs](docs/common-table-expressions.md) and
 [window functions](docs/window-functions.md).
+[ALTER operations](docs/alter-table.md) covers schema changes, constraints,
+atomic renames and legacy storage upgrades.
+[Catalog performance](docs/catalog-performance.md) records point SELECT and
+transaction measurements, profiling and concurrent-rename consistency checks.
 
 ## Quick start
 

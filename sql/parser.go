@@ -110,6 +110,9 @@ func (p *Parser) parseLimit(limit, offset *int64, limitParam, offsetParam *int) 
 }
 
 func (p *Parser) parseStatement() (Statement, error) {
+	if p.showWord("RENAME") {
+		return p.parseRenameTables()
+	}
 	if p.cur.Type == TokKeyword {
 		switch strings.ToUpper(p.cur.Value) {
 		case "SHOW":
@@ -146,6 +149,8 @@ func (p *Parser) parseStatement() (Statement, error) {
 			return p.parseSavepoint()
 		case "RELEASE":
 			return p.parseRelease()
+		case "RENAME":
+			return p.parseRenameTables()
 		case "ALTER":
 			return p.parseAlterTable()
 		case "VACUUM":
@@ -228,24 +233,24 @@ func (p *Parser) parseCreateTable() (Statement, error) {
 			continue
 		}
 		if p.cur.Type == TokKeyword && kw == "CONSTRAINT" {
-			p.advance()
-			name := ""
-			if p.cur.Type == TokIdent && !p.showWord("UNIQUE") {
-				name = strings.ToLower(p.cur.Value)
-				p.advance()
-			}
-			if !p.showWord("UNIQUE") {
-				if err := p.parseTableConstraint(stmt); err != nil {
-					return nil, err
-				}
-				continue
-			}
-			p.advance()
-			def, err := p.parseInlineIndex(true, name)
+			c, err := p.parseAlterConstraint()
 			if err != nil {
 				return nil, err
 			}
-			stmt.Indexes = append(stmt.Indexes, def)
+			stmt.Constraints = append(stmt.Constraints, *c)
+			switch c.Kind {
+			case "PRIMARY":
+				if len(stmt.PKColumns) > 0 {
+					return nil, fmt.Errorf("multiple PRIMARY KEY declarations")
+				}
+				stmt.PKColumns = c.Columns
+			case "UNIQUE":
+				stmt.TableUnique = append(stmt.TableUnique, c.Columns)
+			case "CHECK":
+				stmt.TableCheck = append(stmt.TableCheck, c.Check)
+			case "FOREIGN":
+				stmt.ForeignKeys = append(stmt.ForeignKeys, ForeignKeyDef{Columns: c.Columns, RefTable: c.RefTable, RefColumns: c.RefColumns})
+			}
 			continue
 		}
 		if p.cur.Type == TokKeyword && kw == "PRIMARY" {
@@ -296,7 +301,7 @@ func (p *Parser) parseCreateTable() (Statement, error) {
 	return stmt, nil
 }
 
-func (p *Parser) parseColumnDef(col *ColumnDef) error {
+func (p *Parser) parseColumnDef(col *ColumnDef, alteration ...bool) error {
 	if p.cur.Type == TokKeyword || (p.cur.Type == TokIdent && (strings.EqualFold(p.cur.Value, "BIGINT") || strings.EqualFold(p.cur.Value, "DOUBLE"))) {
 		switch strings.ToUpper(p.cur.Value) {
 		case "INTEGER", "INT", "BIGINT":
@@ -322,8 +327,33 @@ func (p *Parser) parseColumnDef(col *ColumnDef) error {
 		col.ColType = ColText
 	}
 
+	pending := ""
+	nameConstraint := func(kind string) {
+		if pending != "" {
+			if col.ConstraintNames == nil {
+				col.ConstraintNames = make(map[string]string)
+			}
+			col.ConstraintNames[kind] = pending
+			pending = ""
+		}
+	}
 	for p.cur.Type != TokComma && p.cur.Type != TokRParen && p.cur.Type != TokSemicolon && p.cur.Type != TokEOF {
 		kw := strings.ToUpper(p.cur.Value)
+		if kw == "CONSTRAINT" {
+			if pending != "" {
+				return fmt.Errorf("constraint name without a definition")
+			}
+			p.advance()
+			var err error
+			pending, err = p.alterName()
+			if err != nil {
+				return err
+			}
+			continue
+		}
+		if len(alteration) > 0 && alteration[0] && (kw == "FIRST" || kw == "AFTER") {
+			return nil
+		}
 
 		if p.cur.Type == TokKeyword && kw == "PRIMARY" {
 			p.advance()
@@ -334,6 +364,7 @@ func (p *Parser) parseColumnDef(col *ColumnDef) error {
 				return fmt.Errorf("multiple PRIMARY KEY declarations")
 			}
 			col.PrimaryKey = true
+			nameConstraint("PRIMARY")
 			if p.cur.Type == TokKeyword {
 				if strings.ToUpper(p.cur.Value) == "ASC" || strings.ToUpper(p.cur.Value) == "DESC" {
 					p.advance()
@@ -352,6 +383,7 @@ func (p *Parser) parseColumnDef(col *ColumnDef) error {
 				return err
 			}
 			col.NotNull = true
+			nameConstraint("NOT_NULL")
 			if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "ON" {
 				if err := p.parseConflictClause(); err != nil {
 					return err
@@ -389,6 +421,7 @@ func (p *Parser) parseColumnDef(col *ColumnDef) error {
 			}
 			var err error
 			col.Check, err = p.parseExpression()
+			nameConstraint("CHECK")
 			if err != nil {
 				return err
 			}
@@ -401,6 +434,7 @@ func (p *Parser) parseColumnDef(col *ColumnDef) error {
 		if p.cur.Type == TokKeyword && kw == "UNIQUE" {
 			p.advance()
 			col.Unique = true
+			nameConstraint("UNIQUE")
 			if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "ON" {
 				if err := p.parseConflictClause(); err != nil {
 					return err
@@ -411,6 +445,7 @@ func (p *Parser) parseColumnDef(col *ColumnDef) error {
 
 		if p.cur.Type == TokKeyword && kw == "REFERENCES" {
 			p.advance()
+			nameConstraint("FOREIGN")
 			col.RefTable = strings.ToLower(p.cur.Value)
 			if err := p.expect(TokIdent); err != nil {
 				return err
@@ -462,6 +497,9 @@ func (p *Parser) parseColumnDef(col *ColumnDef) error {
 		return fmt.Errorf("unsupported column constraint: %s", p.cur.Value)
 	}
 
+	if pending != "" {
+		return fmt.Errorf("constraint name without a supported definition")
+	}
 	return nil
 }
 
@@ -2089,68 +2127,7 @@ func (p *Parser) parseSubqueryParens() (*SelectStmt, error) {
 	return sub, nil
 }
 
-func (p *Parser) parseAlterTable() (Statement, error) {
-	p.advance()
-	if err := p.expectKeyword("TABLE"); err != nil {
-		return nil, err
-	}
-
-	tableName := strings.ToLower(p.cur.Value)
-	if err := p.expect(TokIdent); err != nil {
-		return nil, err
-	}
-
-	stmt := &AlterTableStmt{Table: tableName}
-
-	kw := strings.ToUpper(p.cur.Value)
-	switch kw {
-	case "ADD":
-		p.advance()
-		if err := p.expectKeyword("COLUMN"); err != nil {
-			return nil, err
-		}
-		col := ColumnDef{}
-		col.Name = strings.ToLower(p.cur.Value)
-		if err := p.expect(TokIdent); err != nil {
-			return nil, err
-		}
-		if err := p.parseColumnDef(&col); err != nil {
-			return nil, err
-		}
-		stmt.Operation = "ADD_COLUMN"
-		stmt.Column = &col
-	case "RENAME":
-		p.advance()
-		if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "COLUMN" {
-			p.advance()
-			stmt.Operation = "RENAME_COLUMN"
-			stmt.OldColName = strings.ToLower(p.cur.Value)
-			if err := p.expect(TokIdent); err != nil {
-				return nil, err
-			}
-			if err := p.expectKeyword("TO"); err != nil {
-				return nil, err
-			}
-			stmt.NewColName = strings.ToLower(p.cur.Value)
-			if err := p.expect(TokIdent); err != nil {
-				return nil, err
-			}
-		} else if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "TO" {
-			stmt.Operation = "RENAME_TO"
-			p.advance()
-			stmt.NewName = strings.ToLower(p.cur.Value)
-			if err := p.expect(TokIdent); err != nil {
-				return nil, err
-			}
-		} else {
-			return nil, fmt.Errorf("expected COLUMN or TO after RENAME, got %q", p.cur.Value)
-		}
-	default:
-		return nil, fmt.Errorf("expected ADD or RENAME after table name, got %q", p.cur.Value)
-	}
-
-	return stmt, nil
-}
+func (p *Parser) parseAlterTable() (Statement, error) { return p.parseAlter() }
 
 func (p *Parser) parseExplain() (Statement, error) {
 	p.advance()
@@ -2443,10 +2420,19 @@ func formatExpr(e Expression) string {
 	case *ColumnRefExpr:
 		return formatRef(x.Name)
 	case *BinaryExpr:
-		return "(" + formatExpr(x.Left) + " " + x.Op + " " + formatExpr(x.Right) + ")"
+		escape := ""
+		if x.Escape != 0 {
+			escape = " ESCAPE " + formatExpr(&LiteralExpr{Value: NewTextValue(string([]byte{x.Escape}))})
+		}
+		return "(" + formatExpr(x.Left) + " " + x.Op + " " + formatExpr(x.Right) + escape + ")"
 	case *UnaryExpr:
 		return "(" + x.Op + " " + formatExpr(x.Right) + ")"
 	case *FuncCallExpr:
+		if strings.EqualFold(x.Name, "CAST") && len(x.Args) == 2 {
+			if typ, ok := x.Args[1].(*LiteralExpr); ok {
+				return "CAST(" + formatExpr(x.Args[0]) + " AS " + typ.Value.Text + ")"
+			}
+		}
 		parts := make([]string, len(x.Args))
 		for i, a := range x.Args {
 			parts[i] = formatExpr(a)
@@ -2458,6 +2444,12 @@ func formatExpr(e Expression) string {
 		return x.Name + "(" + modifier + strings.Join(parts, ", ") + ")" + formatWindowCall(x.Window)
 	case *SubqueryExpr:
 		return "(" + formatSelectSQL(x.Stmt) + ")"
+	case *ExistsExpr:
+		prefix := "EXISTS "
+		if x.Not {
+			prefix = "NOT EXISTS "
+		}
+		return prefix + "(" + formatSelectSQL(x.Stmt) + ")"
 	case *InListExpr:
 		parts := make([]string, len(x.List))
 		for i, v := range x.List {

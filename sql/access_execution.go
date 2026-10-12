@@ -135,10 +135,10 @@ func appendAccessValue(prefix []byte, v Value, idx *IndexInfo) []byte {
 
 func buildAccessPath(info *TableInfo, idx *IndexInfo, constraints map[string]*tupleConstraint) *accessPath {
 	columns := info.PKColumns
-	prefix := []byte(tableDataPrefix(info.Name))
+	prefix := []byte(info.storagePrefix(info.Name))
 	if idx != nil {
 		columns = idx.columnNames()
-		prefix = []byte(indexDataPrefix(idx.Name))
+		prefix = []byte(idx.storagePrefix())
 	}
 	if len(columns) == 0 {
 		return nil
@@ -358,7 +358,7 @@ func (s *Schema) walkAccessRaw(info *TableInfo, needed map[string]bool, paths []
 		return visit(data, cols)
 	}
 	if paths == nil {
-		prefix := []byte(tableDataPrefix(info.Name))
+		prefix := []byte(info.storagePrefix(info.Name))
 		it := s.newIteratorSeek(prefix)
 		defer it.Close()
 		for it.Valid() {
@@ -551,7 +551,7 @@ func (s *Schema) accessIndexRowKey(p *accessPath, interval coveringInterval, key
 	}
 	// Binary integer/REAL encodings can themselves contain ':'. Text and blob
 	// encodings use hex and therefore have an unambiguous delimiter.
-	prefix := len(indexDataPrefix(idx.Name))
+	prefix := len(idx.storagePrefix())
 	rest := key[prefix:]
 	if len(rest) == 0 {
 		return nil, fmt.Errorf("invalid index key")
@@ -566,7 +566,7 @@ func (s *Schema) accessIndexRowKey(p *accessPath, interval coveringInterval, key
 		// Legacy single-column variable values are raw and can contain ':'.
 		// Auto indexes have no payload; recover the authoritative row suffix,
 		// rather than interpreting a separator inside the indexed value.
-		rowPrefix := []byte(tableDataPrefix(p.info.Name))
+		rowPrefix := []byte(p.info.storagePrefix(p.info.Name))
 		size := len(rowPrefix)
 		fixed := true
 		if len(p.info.PKColumns) == 0 {
@@ -648,6 +648,12 @@ func (s *Schema) streamSelectScan(stmt *SelectStmt, info *TableInfo) ([]map[stri
 	}
 
 	if info == nil || stmt.FromExpr != nil || len(stmt.Joins) > 0 || stmt.Virtual != nil || stmt.Lock != nil || stmt.trackRows || hasAggregates(stmt) || len(stmt.GroupBy) > 0 || stmt.Having != nil || stmt.Distinct {
+		return nil, false, nil
+	}
+	// A complete prepared PK predicate already has a minimal point-read path
+	// below. Avoid rebuilding scan/OR candidates only to discard them here.
+	// The normal point reader still checks types and evaluates residual terms.
+	if s.selectDepth <= 1 && s.preparedPlan != nil && s.preparedPlan.info == info && s.preparedPlan.pointComplete() {
 		return nil, false, nil
 	}
 	if _, safe := s.expressionDependencies(stmt.Where); !safe {

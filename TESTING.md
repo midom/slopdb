@@ -32,12 +32,15 @@ go test ./sql -run '^$' -fuzz FuzzParse -fuzztime 30s
 | Statement caches, prepared joins, transactions, savepoints and changing index keys | `tests/regression/execution_state_test.go`, `join_state_test.go` | `performance_state_review.go`, `join_state_review.go` |
 | Read plans, projection, views and indexed/scan equivalence | `tests/regression/read_executor_test.go`, `indexed_read_plans_test.go`, `tuple_read_plans_test.go` | `standard_read_executor_review.go`, `standard_read_plan_strict_review.go`, `tuple_plan_review.go` |
 | Inline/composite indexes, uniqueness, ALTER, dump/restore and diagnostic repair | `tests/regression/inline_indexes_test.go` | `standard_inline_indexes_review.go` |
+| Stable object IDs, catalog-only renames, rollback/name reuse and interrupted legacy migration | `db/object_ids_test.go`, `sql/object_ids_test.go` | Compares physical keys, values and sequence numbers; verifies reopen and migration phases |
+| Concurrent renames, prepared-plan name reuse, pinned point readers, gate exclusion and narrow deadlock detection | `db/catalog_concurrency_test.go`, `db/execution_gate_test.go` | Exact update totals, explicit waiter barriers and unrelated-shard isolation |
+| Extended ALTER, named constraints, type conversion, dependency cascade and crash atomicity | `tests/regression/alter_extended_test.go` | Column/index/view actions, failed multi-action rollback, SQL dump roundtrip and committed/uncommitted WAL recovery |
 | SHOW/DESCRIBE, catalog metadata and persistence | `tests/regression/show_and_describe_test.go` | `show_test_runner.go` |
 | API concurrency, context cancellation and read corruption | `tests/regression/database_api_test.go` | `api_cache_diagnostics_review.go` |
 | Transactions, locking, snapshot isolation, atomic publication and foreign-key races | `tests/regression/batch_transactions_test.go`, `concurrent_execution_test.go`, `indexed_mvcc_test.go`, `primary_key_locking_test.go`, `foreign_concurrency_test.go` | `standard_batch_transactions_review.go`, `standard_concurrent_execution_review.go`, `standard_indexed_mvcc_review.go`, `performance_lock_review.go`, `foreign_concurrency_review.go` |
 | Randomized storage model, snapshots, tombstones, compaction and reopen | `tests/regression/storage_model_test.go` | `standard_current_storage_review.go` |
 | Bounded/reverse iterators, long keys, batch reads and snapshot lifetime | `tests/regression/bounded_iterator_test.go`, `reverse_and_multiget_test.go`, `point_readers_test.go`, `snapshot_readers_test.go`, `snapshot_release_test.go` | Corresponding `bounded_iterator`, `reverse_multi`, `point_reader`, `snapshot_reader`, `snapshot_release` review programs |
-| Concurrent memtables, atomic bulk/group commits, flush and shutdown | `tests/regression/atomic_memtable_test.go`, `bulk_memtable_test.go`, `group_commit_test.go`, `flush_test.go`, `shutdown_concurrency_test.go` | Corresponding review programs |
+| Concurrent memtables, atomic bulk/group commits, flush and shutdown | `tests/regression/atomic_memtable_test.go`, `bulk_memtable_test.go`, `group_commit_test.go`, `flush_test.go`, `db/shutdown_concurrency_test.go` | Corresponding review programs |
 | SSTable metadata, filters, checksums, compressed blocks, corruption and compression policy | `tests/regression/sstable_metadata_test.go`, `compression_codecs_test.go`, `level_compression_test.go`, `bloom_quality_test.go`, `storage/bloom_test.go` | `current_metadata_review.go`, `current_codecs_review.go`, `current_level_compression_review.go`, `bloom_quality_review.go`; conservative unknown-filter checks from `bloom_compatibility_review.go` |
 | WAL/no-fsync/no-WAL modes, abrupt-exit recovery, rollback, damaged files, write/Close errors | `tests/regression/recovery_test.go`, `durability_test.go` | `recovery_review.go`, `no_wal_review.go`, `no_wal_fsync_review.go` |
 | CLI EOF/exit/bail/SIGTERM persistence, `.open` and flush errors | `tests/regression/cli_linux_test.go`, compression CLI tests | `no_wal_cli_review.go` and the current compression review programs |
@@ -106,3 +109,7 @@ from the ordinary test suite. The existing [TPC-H runner](cmd/tpch/README.md),
 document their inputs and commands. The native comparison runners live in nested
 Go modules and have their own Go/CGO requirements; `go test ./...` covers the root
 module without installing those drivers.
+
+Catalog performance benchmarks are in `db/catalog_benchmark_test.go`. See
+[catalog measurements](docs/catalog-performance.md) for isolated point SELECTs,
+profile findings, concurrency settings and saved source fingerprints.

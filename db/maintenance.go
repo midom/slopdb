@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"fmt"
 
 	"slopdb/sql"
 	"slopdb/storage"
@@ -32,14 +31,10 @@ func (db *Database) BackupContext(ctx context.Context, destination string) error
 		return err
 	}
 	defer db.execution.RUnlock()
-	db.mu.Lock()
-	if db.closed.Load() {
-		db.mu.Unlock()
-		return fmt.Errorf("database closed")
+	if err = session.registerActive(cancel); err != nil {
+		return err
 	}
-	session.activeCancel = cancel
-	db.mu.Unlock()
-	defer func() { db.mu.Lock(); session.activeCancel = nil; db.mu.Unlock() }()
+	defer session.clearActive()
 	return db.lsm.Backup(ctx, destination)
 }
 func (db *Database) Backup(destination string) error {
@@ -72,14 +67,10 @@ func (db *Database) CheckIntegrityContext(ctx context.Context) (report Integrity
 		return report, err
 	}
 	defer db.execution.RUnlock()
-	db.mu.Lock()
-	if db.closed.Load() {
-		db.mu.Unlock()
-		return report, fmt.Errorf("database closed")
+	if err = session.registerActive(cancel); err != nil {
+		return report, err
 	}
-	session.activeCancel = cancel
-	db.mu.Unlock()
-	defer func() { db.mu.Lock(); session.activeCancel = nil; db.mu.Unlock() }()
+	defer session.clearActive()
 	session.schema.SetContext(ctx)
 	// This private diagnostic session uses MVCC, never transactional row locks.
 	session.schema.SetLockHandler(nil)

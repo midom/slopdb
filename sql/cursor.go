@@ -94,7 +94,7 @@ func (s *Schema) OpenRowCursor(stmt *SelectStmt) (*RowCursor, bool, error) {
 			c.expressions = append(c.expressions, selectExprCol{name: name, expr: col.Expr})
 		}
 	}
-	prefix := []byte(tableDataPrefix(info.Name))
+	prefix := []byte(info.storagePrefix(info.Name))
 	// Merge clustered intervals so OR/IN reads remain bounded, ordered and
 	// duplicate-free. Any branch that cannot constrain the key keeps the scan.
 	branches, expanded := accessBranches(stmt.Where)

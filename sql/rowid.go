@@ -11,6 +11,7 @@ import (
 )
 
 func (s *Schema) nextRowID(table string) (id int64, err error) {
+	counter := s.rowCounterKey(table)
 	root := s
 	if s.parent != nil {
 		root = s.parent
@@ -24,15 +25,15 @@ func (s *Schema) nextRowID(table string) (id int64, err error) {
 		if root.rowIDReservations == nil {
 			root.rowIDReservations = make(map[string]int64)
 		}
-		if id+1 > root.rowIDReservations[table] {
-			root.rowIDReservations[table] = id + 1
+		if id+1 > root.rowIDReservations[counter] {
+			root.rowIDReservations[counter] = id + 1
 		}
 	}()
-	if next := root.rowIDReservations[table]; next > s.rowIDCount[table] {
-		s.rowIDCount[table] = next
+	if next := root.rowIDReservations[counter]; next > s.rowIDCount[counter] {
+		s.rowIDCount[counter] = next
 	}
-	if next, ok := s.rowIDCount[table]; ok {
-		s.rowIDCount[table] = next + 1
+	if next, ok := s.rowIDCount[counter]; ok {
+		s.rowIDCount[counter] = next + 1
 		return next, nil
 	}
 	maxID, err := s.lastRowID(table, s.tables[table])
@@ -40,7 +41,7 @@ func (s *Schema) nextRowID(table string) (id int64, err error) {
 		return 0, err
 	}
 	id = maxID + 1
-	s.rowIDCount[table] = id + 1
+	s.rowIDCount[counter] = id + 1
 	return id, nil
 }
 
@@ -50,7 +51,7 @@ func (s *Schema) lastRowID(table string, info *TableInfo) (int64, error) {
 	if err := s.checkInterrupt(); err != nil {
 		return 0, err
 	}
-	prefix := []byte(tableDataPrefix(table))
+	prefix := []byte(s.tableDataPrefix(table))
 	var maxID int64
 	if info == nil || len(info.PKColumns) == 0 {
 		iter := s.newRangeIterator(prefix, prefixSuccessor(prefix), true)

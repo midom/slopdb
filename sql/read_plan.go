@@ -58,7 +58,7 @@ func (s *Schema) primaryKeyList(where Expression, table string, info *TableInfo)
 		}
 		var key []byte
 		if typ == ColInteger {
-			key = append([]byte(tableDataPrefix(table)), 1)
+			key = append([]byte(s.tableDataPrefix(table)), 1)
 			key = binary.BigEndian.AppendUint64(key, uint64(lit.Value.Int)^(1<<63))
 		} else {
 			if typ == ColReal && math.IsNaN(lit.Value.Real) {

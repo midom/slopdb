@@ -31,6 +31,7 @@ var names = [...]string{"new_order", "payment", "order_status", "delivery", "sto
 var invalidItem = errors.New("expected invalid-item rollback")
 
 type Config struct {
+	ProfileDir  string        `json:"profile_dir,omitempty"`
 	PageSize    int64         `json:"requested_page_size_bytes"`
 	Engine      string        `json:"engine"`
 	Workers     int           `json:"workers"`
@@ -118,6 +119,7 @@ type report struct {
 
 func Run(open func(Config) (Database, error)) (retErr error) {
 	var c Config
+	flag.StringVar(&c.ProfileDir, "profile-dir", "", "CPU, mutex, block and allocation profiles (diagnostic workload run)")
 	flag.StringVar(&c.Engine, "engine", "slopdb", "slopdb, sqlite, or duckdb (native engines require compare runner)")
 	flag.IntVar(&c.Workers, "workers", 10, "concurrent transaction workers")
 	flag.DurationVar(&c.Duration, "duration", time.Minute, "measurement time, excluding loading and validation")
@@ -194,6 +196,11 @@ func Run(open func(Config) (Database, error)) (retErr error) {
 			return fmt.Errorf("preflight %s: %w", names[kind], errors.Join(checkErr, rollbackErr))
 		}
 	}
+	stopProfiles, err := startWorkloadProfiles(c.ProfileDir)
+	if err != nil {
+		return err
+	}
+	defer func() { retErr = errors.Join(retErr, stopProfiles()) }()
 	parent, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	var committed, failed, retried atomic.Int64
@@ -251,6 +258,9 @@ func Run(open func(Config) (Database, error)) (retErr error) {
 	r.RunAllocations = heapAfter.Mallocs - heapBefore.Mallocs
 	if metricSource != nil {
 		r.StorageAfter = metricSource.BenchmarkMetrics()
+	}
+	if err = stopProfiles(); err != nil {
+		return err
 	}
 	effects := summarize(&r, stats)
 	fmt.Println("Checking committed data...")

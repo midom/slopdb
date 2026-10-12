@@ -40,21 +40,23 @@ type ForeignKeyDef struct {
 }
 
 type ColumnDef struct {
-	Name          string
-	ColType       ColumnType
-	NotNull       bool
-	Default       Expression `json:"-"`
-	DefaultSQL    string     `json:"default_sql,omitempty"`
-	PrimaryKey    bool
-	Unique        bool
-	Check         Expression `json:"-"`
-	CheckSQL      string     `json:"check_sql,omitempty"`
-	AutoIncrement bool
-	RefTable      string
-	RefColumns    []string
+	ConstraintNames map[string]string `json:"constraint_names,omitempty"`
+	Name            string
+	ColType         ColumnType
+	NotNull         bool
+	Default         Expression `json:"-"`
+	DefaultSQL      string     `json:"default_sql,omitempty"`
+	PrimaryKey      bool
+	Unique          bool
+	Check           Expression `json:"-"`
+	CheckSQL        string     `json:"check_sql,omitempty"`
+	AutoIncrement   bool
+	RefTable        string
+	RefColumns      []string
 }
 
 type CreateTableStmt struct {
+	Constraints   []ConstraintDef
 	Table         string
 	Columns       []ColumnDef
 	TableCheck    []Expression `json:"-"`
@@ -255,13 +257,38 @@ type DropIndexStmt struct {
 	Index string
 }
 
+type ConstraintDef struct {
+	Name       string     `json:"name"`
+	Kind       string     `json:"kind"`
+	Columns    []string   `json:"columns,omitempty"`
+	Check      Expression `json:"-"`
+	CheckSQL   string     `json:"check_sql,omitempty"`
+	RefTable   string     `json:"ref_table,omitempty"`
+	RefColumns []string   `json:"ref_columns,omitempty"`
+	IndexID    uint64     `json:"index_id,omitempty"`
+	Inline     bool       `json:"inline,omitempty"`
+}
+
 type AlterTableStmt struct {
-	Table      string
-	Operation  string
-	NewName    string
-	OldColName string
-	NewColName string
-	Column     *ColumnDef
+	ObjectKind    string
+	TableIfExists bool
+	IfExists      bool
+	IfNotExists   bool
+	Cascade       bool
+	Actions       []*AlterTableStmt
+	Constraint    *ConstraintDef
+	Default       Expression
+	Using         Expression
+	Position      string
+	After         string
+	ViewSQL       string
+	ViewColumns   []string
+	Table         string
+	Operation     string
+	NewName       string
+	OldColName    string
+	NewColName    string
+	Column        *ColumnDef
 }
 
 type VacuumStmt struct{}

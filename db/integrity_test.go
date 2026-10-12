@@ -31,7 +31,7 @@ func TestIntegrityDetectsLogicalCorruption(t *testing.T) {
 			}
 		}, "stale payload"},
 		{"orphan index", "CREATE TABLE t(id INTEGER PRIMARY KEY,v TEXT);CREATE INDEX iv ON t(v);INSERT INTO t VALUES(1,'x')", func(t *testing.T, d *Database) {
-			if e := d.lsm.Put([]byte("\x02iv:extra:\x01t:missing"), nil); e != nil {
+			if e := d.lsm.Put(append(append([]byte(nil), integrityObjectPrefix(t, d, 2, "iv")...), []byte("extra:missing")...), nil); e != nil {
 				t.Fatal(e)
 			}
 		}, "extra or orphan"},
@@ -74,6 +74,9 @@ func TestIntegrityDetectsLogicalCorruption(t *testing.T) {
 }
 func integrityEntry(t *testing.T, d *Database, prefix []byte) ([]byte, []byte) {
 	t.Helper()
+	if len(prefix) > 2 && prefix[len(prefix)-1] == ':' {
+		prefix = integrityObjectPrefix(t, d, prefix[0], string(prefix[1:len(prefix)-1]))
+	}
 	it := d.lsm.NewIteratorSeek(prefix)
 	defer it.Close()
 	if !it.Valid() || !bytes.HasPrefix(it.Key().UserKey, prefix) {
@@ -189,4 +192,17 @@ func TestBackupPersistsSourceWithWALDisabled(t *testing.T) {
 	if e = restored.Close(); e != nil {
 		t.Fatal(e)
 	}
+}
+
+func integrityObjectPrefix(t *testing.T, d *Database, kind byte, name string) []byte {
+	t.Helper()
+	var id uint64
+	if kind == 1 {
+		id = d.schema.GetTableInfo(name).ID
+	} else {
+		id = objectIndexID(t, d, name)
+	}
+	p := []byte{kind, 0xff}
+	p = binary.BigEndian.AppendUint64(p, id)
+	return append(p, ':')
 }

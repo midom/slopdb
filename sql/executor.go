@@ -24,6 +24,8 @@ import (
 )
 
 type TableInfo struct {
+	ID            uint64          `json:"id,omitempty"`
+	Constraints   []ConstraintDef `json:"constraints,omitempty"`
 	Name          string          `json:"name"`
 	Columns       []ColumnDef     `json:"columns"`
 	TableCheck    []Expression    `json:"-"`
@@ -34,6 +36,7 @@ type TableInfo struct {
 }
 
 type IndexInfo struct {
+	ID       uint64   `json:"id,omitempty"`
 	Name     string   `json:"name"`
 	Table    string   `json:"table"`
 	Column   string   `json:"column"`
@@ -59,7 +62,7 @@ type Schema struct {
 	commitMu           sync.RWMutex // protects the committed root catalog and reservations
 	statementSnapshot  uint64
 	snapshotReader     uint64
-	nextSnapshotReader uint64
+	nextSnapshotReader atomic.Uint64
 	statementActive    bool
 	validatedRowKey    string
 	lsm                *storage.LSMTree
@@ -68,6 +71,7 @@ type Schema struct {
 	outerRow           map[string]Value
 	stats              map[string]int64
 	distributions      map[string]*tableStatistics
+	nextObjectID       uint64
 	userVersion        int64
 	views              map[string]*ViewInfo
 	triggers           map[string]*TriggerInfo
@@ -226,6 +230,12 @@ func NewSchemaWithOptions(lsm *storage.LSMTree, pageSize int, opt *storage.Optio
 	s.loadStats()
 	s.loadDistributions()
 	s.loadUserVersion()
+	if err := s.initializeObjectIDs(); err != nil {
+		return nil, err
+	}
+	if err := s.normalizeConstraintCatalog(); err != nil {
+		return nil, err
+	}
 	if opt != nil && opt.VerifyIndexesOnOpen {
 		if err := s.repairIndexes(); err != nil {
 			return nil, err
@@ -246,6 +256,14 @@ func (s *Schema) loadSchema() error {
 		return err
 	}
 	for _, info := range s.tables {
+		if info.ID == 0 && len(info.PKColumns) > 1 {
+			for i, g := range info.TableUnique {
+				if slices.Equal(g, info.PKColumns) {
+					info.TableUnique = append(info.TableUnique[:i], info.TableUnique[i+1:]...)
+					break
+				}
+			}
+		}
 		for i := range info.Columns {
 			col := &info.Columns[i]
 			if col.DefaultSQL != "" && col.Default == nil {
@@ -404,9 +422,7 @@ func (s *Schema) CreateTable(stmt *CreateTableStmt) error {
 	}
 
 	tableUnique := stmt.TableUnique
-	if len(stmt.PKColumns) > 1 {
-		tableUnique = append(tableUnique, stmt.PKColumns)
-	}
+
 	if len(stmt.PKColumns) == 0 {
 		for _, col := range stmt.Columns {
 			if col.PrimaryKey {
@@ -419,7 +435,13 @@ func (s *Schema) CreateTable(stmt *CreateTableStmt) error {
 		return err
 	}
 
+	id, err := s.allocateObjectID()
+	if err != nil {
+		return err
+	}
 	info := &TableInfo{
+		ID:            id,
+		Constraints:   stmt.Constraints,
 		Name:          name,
 		Columns:       stmt.Columns,
 		TableCheck:    tcexpr,
@@ -444,17 +466,31 @@ func (s *Schema) CreateTable(stmt *CreateTableStmt) error {
 		if (col.PrimaryKey || col.Unique) && len(stmt.PKColumns) <= 1 {
 			idxName := name + "_" + col.Name + "_idx"
 			if _, ok := s.indexes[idxName]; !ok {
-				s.indexes[idxName] = &IndexInfo{Name: idxName, Table: name, Column: col.Name, IsUnique: true, Auto: true}
+				indexID, err := s.allocateObjectID()
+				if err != nil {
+					return err
+				}
+				s.indexes[idxName] = &IndexInfo{ID: indexID, Name: idxName, Table: name, Column: col.Name, IsUnique: true, Auto: true}
 			}
 		}
 	}
 	for _, idx := range inlineIndexes {
+		idx.ID, err = s.allocateObjectID()
+		if err != nil {
+			return err
+		}
 		s.indexes[idx.Name] = idx
 	}
 	if err := s.foreignDefinitions(info); err != nil {
 		return err
 	}
 	s.catalogLookup = nil
+	if err := s.initializeConstraintNames(info); err != nil {
+		return err
+	}
+	if err := s.saveSchema(); err != nil {
+		return err
+	}
 	return s.saveIndexes()
 }
 
@@ -470,14 +506,14 @@ func (s *Schema) DropTable(stmt *DropTableStmt) error {
 
 	for idxName, idx := range s.indexes {
 		if idx.Table == name {
-			idxPrefix := []byte(indexDataPrefix(idxName))
+			idxPrefix := []byte(s.indexDataPrefix(idxName))
 			s.removeRange(idxPrefix, append(idxPrefix, 0xFF))
 			delete(s.indexes, idxName)
 		}
 	}
 	s.saveIndexes()
 
-	prefix := tableDataPrefix(name)
+	prefix := s.tableDataPrefix(name)
 	if s.inTx {
 		iter := s.txNewIterator()
 		for ; iter.Valid(); iter.Next() {
@@ -495,9 +531,9 @@ func (s *Schema) DropTable(stmt *DropTableStmt) error {
 		s.removeRange([]byte(prefix), []byte(prefix+"\xff"))
 	}
 
+	delete(s.rowIDCount, s.rowCounterKey(name))
 	delete(s.tables, name)
 	delete(s.autoincMax, name)
-	delete(s.rowIDCount, name)
 	for k, tr := range s.triggers {
 		if tr.Table == name || tr.View == name {
 			delete(s.triggers, k)
@@ -560,7 +596,7 @@ func (s *Schema) UpdateStats() error {
 }
 
 func (s *Schema) countRows(tableName string) int64 {
-	prefix := tableDataPrefix(tableName)
+	prefix := s.tableDataPrefix(tableName)
 	var count int64
 	var iter storage.Iterator
 	if s.inTx {
@@ -704,6 +740,20 @@ func (s *Schema) getCreateTableSQL(tableName string, inlineIndexes bool) string 
 		}
 		return strings.Join(quoted, ", ")
 	}
+	inlineName := func(kind, col string) string {
+		for _, c := range info.Constraints {
+			if c.Kind == kind && c.Inline && len(c.Columns) == 1 && c.Columns[0] == col {
+				return " CONSTRAINT " + quoteIdent(c.Name)
+			}
+		}
+		return ""
+	}
+	primaryInline := true
+	for _, c := range info.Constraints {
+		if c.Kind == "PRIMARY" {
+			primaryInline = c.Inline
+		}
+	}
 	fmt.Fprintf(&b, "CREATE TABLE %s(", quoteIdent(info.Name))
 	for i, col := range info.Columns {
 		if i > 0 {
@@ -711,64 +761,47 @@ func (s *Schema) getCreateTableSQL(tableName string, inlineIndexes bool) string 
 		}
 		fmt.Fprintf(&b, "%s %s", quoteIdent(col.Name), col.ColType.String())
 		if col.NotNull {
-			b.WriteString(" NOT NULL")
+			b.WriteString(inlineName("NOT_NULL", col.Name) + " NOT NULL")
 		}
 		if col.Default != nil {
 			fmt.Fprintf(&b, " DEFAULT %s", formatExpr(col.Default))
 		}
-		if (col.PrimaryKey || (len(info.PKColumns) == 1 && info.PKColumns[0] == col.Name)) && len(info.PKColumns) <= 1 {
-			b.WriteString(" PRIMARY KEY")
+		if (col.PrimaryKey || (len(info.PKColumns) == 1 && info.PKColumns[0] == col.Name)) && len(info.PKColumns) <= 1 && primaryInline {
+			b.WriteString(inlineName("PRIMARY", col.Name) + " PRIMARY KEY")
 			if col.AutoIncrement {
 				b.WriteString(" AUTOINCREMENT")
 			}
 		}
 		if col.Unique {
-			b.WriteString(" UNIQUE")
+			b.WriteString(inlineName("UNIQUE", col.Name) + " UNIQUE")
 		}
 		if col.Check != nil {
-			fmt.Fprintf(&b, " CHECK(%s)", formatExpr(col.Check))
+			fmt.Fprintf(&b, "%s CHECK(%s)", inlineName("CHECK", col.Name), formatExpr(col.Check))
 		}
 		if col.RefTable != "" {
-			fmt.Fprintf(&b, " REFERENCES %s", quoteIdent(col.RefTable))
+			fmt.Fprintf(&b, "%s REFERENCES %s", inlineName("FOREIGN", col.Name), quoteIdent(col.RefTable))
 			if len(col.RefColumns) > 0 {
 				fmt.Fprintf(&b, "(%s)", quotedNames(col.RefColumns))
 			}
 		}
 	}
-	if len(info.PKColumns) > 1 {
-		b.WriteString(", PRIMARY KEY (")
-		for i, pk := range info.PKColumns {
-			if i > 0 {
-				b.WriteString(", ")
-			}
-			b.WriteString(quoteIdent(pk))
-		}
-		b.WriteString(")")
-	}
-	for _, cols := range info.TableUnique {
-		if colsEqual(cols, info.PKColumns) {
+	for _, c := range info.Constraints {
+		if c.Inline {
 			continue
 		}
-		b.WriteString(", UNIQUE(")
-		for i, c := range cols {
-			if i > 0 {
-				b.WriteString(", ")
+		b.WriteString(", CONSTRAINT " + quoteIdent(c.Name) + " ")
+		switch c.Kind {
+		case "PRIMARY":
+			b.WriteString("PRIMARY KEY (" + quotedNames(c.Columns) + ")")
+		case "UNIQUE":
+			b.WriteString("UNIQUE (" + quotedNames(c.Columns) + ")")
+		case "CHECK":
+			b.WriteString("CHECK (" + c.CheckSQL + ")")
+		case "FOREIGN":
+			b.WriteString("FOREIGN KEY (" + quotedNames(c.Columns) + ") REFERENCES " + quoteIdent(c.RefTable))
+			if len(c.RefColumns) > 0 {
+				b.WriteString(" (" + quotedNames(c.RefColumns) + ")")
 			}
-			b.WriteString(quoteIdent(c))
-		}
-		b.WriteString(")")
-	}
-	for _, chk := range info.TableCheckSQL {
-		if chk != "" {
-			b.WriteString(", CHECK(")
-			b.WriteString(chk)
-			b.WriteString(")")
-		}
-	}
-	for _, fk := range info.ForeignKeys {
-		fmt.Fprintf(&b, ", FOREIGN KEY (%s) REFERENCES %s", quotedNames(fk.Columns), quoteIdent(fk.RefTable))
-		if len(fk.RefColumns) > 0 {
-			fmt.Fprintf(&b, "(%s)", quotedNames(fk.RefColumns))
 		}
 	}
 	if inlineIndexes {
@@ -1544,6 +1577,7 @@ type schemaState struct {
 	distributions   map[string]*tableStatistics
 	autoinc, rowIDs map[string]int64
 	userVersion     int64
+	nextObjectID    uint64
 	lookups         *catalogLookups
 }
 
@@ -1554,7 +1588,7 @@ func (s *Schema) captureState() *schemaState {
 		s.catalogShared = true
 	}
 	return &schemaState{tables: s.tables, indexes: s.indexes, views: s.views, triggers: s.triggers,
-		stats: maps.Clone(s.stats), distributions: maps.Clone(s.distributions), autoinc: maps.Clone(s.autoincMax), rowIDs: maps.Clone(s.rowIDCount), userVersion: s.userVersion, lookups: s.catalogLookup}
+		stats: maps.Clone(s.stats), distributions: maps.Clone(s.distributions), autoinc: maps.Clone(s.autoincMax), rowIDs: maps.Clone(s.rowIDCount), userVersion: s.userVersion, nextObjectID: s.nextObjectID, lookups: s.catalogLookup}
 }
 
 func (s *Schema) ensureCatalogWritable() {
@@ -1570,9 +1604,15 @@ func (s *Schema) ensureCatalogWritable() {
 		c := *v
 		// Preserve nil versus empty slices so a snapshot compares equal to its
 		// source and does not turn an ordinary row update into a catalog change.
+		c.Constraints = slices.Clone(v.Constraints)
+		for i := range c.Constraints {
+			c.Constraints[i].Columns = slices.Clone(v.Constraints[i].Columns)
+			c.Constraints[i].RefColumns = slices.Clone(v.Constraints[i].RefColumns)
+		}
 		c.Columns = slices.Clone(v.Columns)
 		for i := range c.Columns {
 			c.Columns[i].RefColumns = slices.Clone(v.Columns[i].RefColumns)
+			c.Columns[i].ConstraintNames = maps.Clone(v.Columns[i].ConstraintNames)
 		}
 		c.ForeignKeys = slices.Clone(v.ForeignKeys)
 		for i := range c.ForeignKeys {
@@ -1619,6 +1659,7 @@ func (s *Schema) restoreState(st *schemaState) {
 	s.autoincMax = st.autoinc
 	s.rowIDCount = st.rowIDs
 	s.userVersion = st.userVersion
+	s.nextObjectID = st.nextObjectID
 }
 func (s *Schema) Begin() error {
 	if s.inTx {
@@ -1707,6 +1748,9 @@ func (s *Schema) Commit() error {
 		}
 		batch = append(batch, storage.Mutation{Key: []byte(meta.key), Value: data})
 	}
+	if s.nextObjectID != s.txState.nextObjectID {
+		batch = append(batch, storage.Mutation{Key: []byte(objectIDPrefix), Value: binary.BigEndian.AppendUint64(nil, s.nextObjectID)})
+	}
 	if s.userVersion != s.txState.userVersion {
 		version := make([]byte, 8)
 		binary.LittleEndian.PutUint64(version, uint64(s.userVersion))
@@ -1723,9 +1767,14 @@ func (s *Schema) Commit() error {
 			state.rowIDs = s.parent.rowIDCount
 			s.parent.restoreState(state)
 			if changed {
-				for table := range s.parent.rowIDReservations {
-					if _, exists := s.tables[table]; !exists {
-						delete(s.parent.rowIDReservations, table)
+				present := make(map[string]bool)
+				for name := range s.tables {
+					present[s.rowCounterKey(name)] = true
+				}
+				for counter := range s.parent.rowIDReservations {
+					if !present[counter] {
+						delete(s.parent.rowIDReservations, counter)
+						delete(s.parent.rowIDCount, counter)
 					}
 				}
 			}
@@ -2192,9 +2241,14 @@ func (s *Schema) CreateIndex(stmt *CreateIndexStmt) error {
 	}
 
 	idx := newIndexInfo(idxName, tableName, columns, stmt.Unique)
+	var err error
+	idx.ID, err = s.allocateObjectID()
+	if err != nil {
+		return err
+	}
 	var indexEntries []storage.Mutation
-	var values [][]Value
-	prefix := []byte(tableDataPrefix(tableName))
+	values := make(map[string]bool)
+	prefix := []byte(s.tableDataPrefix(tableName))
 	iter := s.newIteratorSeek(prefix)
 	for iter.Valid() && bytes.HasPrefix(iter.Key().UserKey, prefix) {
 		if err := s.checkInterrupt(); err != nil {
@@ -2209,19 +2263,21 @@ func (s *Schema) CreateIndex(stmt *CreateIndexStmt) error {
 		if stmt.Unique {
 			v, hasNull := indexValues(columns, row)
 			if !hasNull {
-				for _, old := range values {
-					if equalIndexValues(v, old) {
-						iter.Close()
-						return fmt.Errorf("UNIQUE constraint failed: %s.%s", tableName, strings.Join(columns, ", "))
-					}
+				var signature []byte
+				for _, value := range v {
+					signature = appendValueIdentity(signature, value)
 				}
-				values = append(values, v)
+				if values[string(signature)] {
+					iter.Close()
+					return fmt.Errorf("UNIQUE constraint failed: %s.%s", tableName, strings.Join(columns, ", "))
+				}
+				values[string(signature)] = true
 			}
 		}
 		indexEntries = append(indexEntries, storage.Mutation{Key: encodeRowIndexKey(idx, row, iter.Key().UserKey), Value: s.encodeIndexValue(idx, row)})
 		iter.Next()
 	}
-	err := storage.IteratorError(iter)
+	err = storage.IteratorError(iter)
 	iter.Close()
 	if err != nil {
 		return err
@@ -2258,7 +2314,7 @@ func (s *Schema) DropIndex(stmt *DropIndexStmt) error {
 	if err := s.checkDropForeignIndex(idx); err != nil {
 		return err
 	}
-	prefix := indexDataPrefix(idxName)
+	prefix := s.indexDataPrefix(idxName)
 	iter := s.newIterator()
 
 	var keysToDelete [][]byte
@@ -2284,208 +2340,6 @@ func (s *Schema) DropIndex(stmt *DropIndexStmt) error {
 	return s.saveIndexes()
 }
 
-func (s *Schema) AlterTable(stmt *AlterTableStmt) error {
-	s.ensureCatalogWritable()
-	table := strings.ToLower(stmt.Table)
-	info, ok := s.tables[table]
-	if !ok {
-		return fmt.Errorf("table %q does not exist", table)
-	}
-	// Only this table's column bindings can change. Index/view/trigger DDL
-	// preserves independent, immutable column distributions.
-	delete(s.distributions, table)
-	entries, err := s.matchingDMLRows(table, info, nil, -1, 0)
-	if err != nil {
-		return err
-	}
-	var rows []map[string]Value
-	for _, entry := range entries {
-		rows = append(rows, decodeRow(entry.Value, info))
-	}
-	// Remove the old index entries while their column and table names are intact.
-	for i, entry := range entries {
-		if err := s.updateIndexes(table, info, rows[i], entry.Key.UserKey, false); err != nil {
-			return err
-		}
-	}
-	newTable := table
-	switch stmt.Operation {
-	case "ADD_COLUMN":
-		col := *stmt.Column
-		for _, old := range info.Columns {
-			if old.Name == col.Name {
-				return fmt.Errorf("duplicate column: %s", col.Name)
-			}
-		}
-		if col.PrimaryKey || col.Unique {
-			return fmt.Errorf("cannot add a PRIMARY KEY or UNIQUE column")
-		}
-		value := NewNullValue()
-		if col.Default != nil {
-			value, err = s.evalExpr(col.Default, nil)
-			if err != nil {
-				return err
-			}
-			col.DefaultSQL = formatExpr(col.Default)
-		}
-		if col.NotNull && value.Null && len(rows) > 0 {
-			return fmt.Errorf("cannot add a NOT NULL column with NULL default")
-		}
-		if col.Check != nil {
-			col.CheckSQL = formatExpr(col.Check)
-		}
-		info.Columns = append(info.Columns, col)
-		for _, row := range rows {
-			row[col.Name] = applyAffinity(value, col.ColType)
-		}
-		if err := validateConstraintExpressions(info); err != nil {
-			return err
-		}
-		if err := s.foreignDefinitions(info); err != nil {
-			return err
-		}
-	case "RENAME_TO":
-		newTable = strings.ToLower(stmt.NewName)
-		if _, exists := s.tables[newTable]; exists {
-			return fmt.Errorf("table %q already exists", newTable)
-		}
-		if _, exists := s.views[newTable]; exists {
-			return fmt.Errorf("view %q already exists", newTable)
-		}
-		info.Name = newTable
-		s.tables[newTable] = info
-		delete(s.tables, table)
-		for _, idx := range s.indexes {
-			if idx.Table == table {
-				idx.Table = newTable
-			}
-		}
-		if v, ok := s.stats[table]; ok {
-			s.stats[newTable] = v
-			delete(s.stats, table)
-		}
-		if v, ok := s.autoincMax[table]; ok {
-			s.autoincMax[newTable] = v
-			delete(s.autoincMax, table)
-		}
-		if v, ok := s.rowIDCount[table]; ok {
-			s.rowIDCount[newTable] = v
-			delete(s.rowIDCount, table)
-		}
-	case "RENAME_COLUMN":
-		old, new := strings.ToLower(stmt.OldColName), strings.ToLower(stmt.NewColName)
-		found := false
-		for _, col := range info.Columns {
-			if col.Name == new {
-				return fmt.Errorf("duplicate column: %s", new)
-			}
-		}
-		for i := range info.Columns {
-			if info.Columns[i].Name == old {
-				info.Columns[i].Name = new
-				found = true
-			}
-		}
-		if !found {
-			return fmt.Errorf("column %q not found", old)
-		}
-		for _, row := range rows {
-			row[new] = row[old]
-			delete(row, old)
-		}
-		for i, name := range info.PKColumns {
-			if name == old {
-				info.PKColumns[i] = new
-			}
-		}
-		// Copy nested constraint slices before editing the rollback snapshot.
-		groups := make([][]string, len(info.TableUnique))
-		for i, g := range info.TableUnique {
-			groups[i] = append([]string(nil), g...)
-			for j, name := range groups[i] {
-				if name == old {
-					groups[i][j] = new
-				}
-			}
-		}
-		info.TableUnique = groups
-		for i := range info.Columns {
-			col := &info.Columns[i]
-			col.Check = renameExpr(col.Check, old, new)
-			if col.Check != nil {
-				col.CheckSQL = formatExpr(col.Check)
-			}
-		}
-		for i, e := range info.TableCheck {
-			info.TableCheck[i] = renameExpr(e, old, new)
-			info.TableCheckSQL[i] = formatExpr(info.TableCheck[i])
-		}
-		for _, idx := range s.indexes {
-			if idx.Table == table {
-				if idx.Column == old {
-					idx.Column = new
-				}
-				for i, col := range idx.Columns {
-					if col == old {
-						idx.Columns[i] = new
-					}
-				}
-			}
-		}
-	default:
-		return fmt.Errorf("unknown alter table operation: %s", stmt.Operation)
-	}
-	if stmt.Operation == "RENAME_TO" || stmt.Operation == "RENAME_COLUMN" {
-		s.renameForeignKeys(table, newTable, strings.ToLower(stmt.OldColName), strings.ToLower(stmt.NewColName))
-		for _, view := range s.views {
-			parsed, err := Parse(view.SQL)
-			if err != nil {
-				return err
-			}
-			if len(parsed) != 1 {
-				return fmt.Errorf("invalid view definition")
-			}
-			var sel *SelectStmt
-			switch parsed[0].(type) {
-			case *SelectStmt, *UnionStmt:
-				sel = selectQuery(parsed[0])
-			default:
-				return fmt.Errorf("invalid view definition")
-			}
-			s.preserveCTEViewOutputs(sel, table, newTable, strings.ToLower(stmt.OldColName), strings.ToLower(stmt.NewColName), stmt.Operation)
-			if renameViewSelect(sel, table, newTable, strings.ToLower(stmt.OldColName), strings.ToLower(stmt.NewColName), stmt.Operation) {
-				view.Parsed = sel
-				view.SQL = formatSelectSQL(sel)
-			}
-		}
-	}
-
-	s.catalogLookup = nil
-
-	for i, entry := range entries {
-		row := rows[i]
-		key := entry.Key.UserKey
-		if stmt.Operation == "RENAME_TO" {
-			key = append([]byte(tableDataPrefix(newTable)), entry.Key.UserKey[len(tableDataPrefix(table)):]...)
-			if err := s.remove(entry.Key.UserKey); err != nil {
-				return err
-			}
-		}
-		if err := s.checkConstraints(newTable, info, row, key); err != nil {
-			return err
-		}
-		if err := s.write(key, encodeRow(row, info)); err != nil {
-			return err
-		}
-		if err := s.updateIndexes(newTable, info, row, key, true); err != nil {
-			return err
-		}
-	}
-	if err := s.saveIndexes(); err != nil {
-		return err
-	}
-	return s.saveSchema()
-}
 func renameViewSelect(sel *SelectStmt, table, newTable, oldCol, newCol, operation string) bool {
 	if sel.With != nil {
 		// Lexical CTE names shadow catalog table names in the entire query.
@@ -2510,6 +2364,10 @@ func renameViewSelect(sel *SelectStmt, table, newTable, oldCol, newCol, operatio
 		return renameCTEQuery(sel.Compound, table, newTable, oldCol, newCol, operation)
 	}
 	changed := false
+	shadowed := sel.From != table && sel.FromAlias == table
+	for _, j := range sel.Joins {
+		shadowed = shadowed || j.Table != table && j.Alias == table
+	}
 	qualifiers := make(map[string]bool)
 	if sel.From == table {
 		qualifiers[sel.FromAlias] = true
@@ -2542,46 +2400,40 @@ func renameViewSelect(sel *SelectStmt, table, newTable, oldCol, newCol, operatio
 	if sub, ok := sel.FromExpr.(*SubqueryExpr); ok && renameViewSelect(sub.Stmt, table, newTable, oldCol, newCol, operation) {
 		changed = true
 	}
-	if !changed {
-		return false
-	}
+	direct := len(qualifiers) > 0
 	var rewrite func(Expression) Expression
 	rewrite = func(expr Expression) Expression {
-		switch e := expr.(type) {
-		case *ColumnRefExpr:
-			c := *e
-			parts := strings.Split(c.Name, ".")
-			if operation == "RENAME_TO" {
-				if len(parts) == 2 && parts[0] == table {
-					c.Name = newTable + "." + parts[1]
+		result, _ := mapExpression(expr, func(e Expression) (Expression, bool, error) {
+			switch x := e.(type) {
+			case *ColumnRefExpr:
+				c := *x
+				parts := strings.Split(c.Name, ".")
+				if operation == "RENAME_TO" {
+					if len(parts) == 2 && parts[0] == table && !shadowed {
+						c.Name = newTable + "." + parts[1]
+						changed = changed || c.Name != x.Name
+					}
 				}
-			} else if len(parts) == 1 && parts[0] == oldCol {
-				c.Name = newCol
-			} else if len(parts) == 2 && qualifiers[parts[0]] && parts[1] == oldCol {
-				c.Name = parts[0] + "." + newCol
+				if operation == "RENAME_COLUMN" {
+					if len(parts) == 1 && direct && parts[0] == oldCol {
+						c.Name = newCol
+						changed = true
+					} else if len(parts) == 2 && parts[1] == oldCol && (qualifiers[parts[0]] || parts[0] == table && !shadowed) {
+						c.Name = parts[0] + "." + newCol
+						changed = true
+					}
+				}
+				return &c, true, nil
+			case *SubqueryExpr:
+				changed = renameViewSelect(x.Stmt, table, newTable, oldCol, newCol, operation) || changed
+				return x, true, nil
+			case *ExistsExpr:
+				changed = renameViewSelect(x.Stmt, table, newTable, oldCol, newCol, operation) || changed
+				return x, true, nil
 			}
-			return &c
-		case *BinaryExpr:
-			c := *e
-			c.Left = rewrite(e.Left)
-			c.Right = rewrite(e.Right)
-			return &c
-		case *UnaryExpr:
-			c := *e
-			c.Right = rewrite(e.Right)
-			return &c
-		case *FuncCallExpr:
-			c := *e
-			c.Args = append([]Expression(nil), e.Args...)
-			for i, arg := range c.Args {
-				c.Args[i] = rewrite(arg)
-			}
-			c.Window, _ = mapWindowSpec(e.Window, func(expr Expression) (Expression, error) {
-				return rewrite(expr), nil
-			})
-			return &c
-		}
-		return expr
+			return e, false, nil
+		})
+		return result
 	}
 	for i := range sel.Columns {
 		sel.Columns[i].Expr = rewrite(sel.Columns[i].Expr)
@@ -2602,7 +2454,7 @@ func renameViewSelect(sel *SelectStmt, table, newTable, oldCol, newCol, operatio
 			return rewrite(expr), nil
 		})
 	}
-	return true
+	return changed
 }
 
 func renameExpr(expr Expression, old, new string) Expression {
@@ -2798,7 +2650,10 @@ func valueToSortableKey(v Value) string {
 		buf := make([]byte, 1+8)
 		buf[0] = '\x02'
 		bits := math.Float64bits(v.Real)
-		if v.Real >= 0 {
+		if v.Real == 0 {
+			bits = 0
+		}
+		if bits&(1<<63) == 0 {
 			bits ^= 1 << 63
 		} else {
 			bits = ^bits
@@ -2978,7 +2833,7 @@ func (s *Schema) makeRowKey(tableName string, info *TableInfo, row map[string]Va
 	if len(info.PKColumns) > 0 {
 		return info.encodePK(tableName, row)
 	}
-	return encodeRowKey(tableName, fallbackID)
+	return []byte(fmt.Sprintf("%s%020d", info.storagePrefix(tableName), fallbackID))
 }
 
 func encodeRowKey(tableName string, rowID int64) []byte {
@@ -3107,9 +2962,13 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 		}
 
 		pkCol := s.getPKColumn(info)
-		nextID, err := s.nextRowID(tableName)
-		if err != nil {
-			return 0, nil, err
+		var nextID int64
+		if len(info.PKColumns) == 0 || pkCol != nil && pkCol.AutoIncrement && row[pkCol.Name].Null && !suppliedColumn(stmt.ColumnNames, pkCol.Name, stmt.DefaultValues) {
+			var err error
+			nextID, err = s.nextRowID(tableName)
+			if err != nil {
+				return 0, nil, err
+			}
 		}
 
 		if pkCol != nil && pkCol.AutoIncrement {
@@ -3139,8 +2998,8 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 
 		if pkCol != nil && pkCol.ColType == ColInteger && len(info.PKColumns) == 1 {
 			nextID = row[pkCol.Name].Int
-			if nextID >= s.rowIDCount[tableName] {
-				s.rowIDCount[tableName] = nextID + 1
+			if pkCol.AutoIncrement && nextID >= s.rowIDCount[s.rowCounterKey(tableName)] {
+				s.rowIDCount[s.rowCounterKey(tableName)] = nextID + 1
 			}
 		}
 		if err := validatePrimaryKey(info, row); err != nil {
@@ -3345,6 +3204,11 @@ func (s *Schema) checkUniqueConstraintsOriginal(tableName string, info *TableInf
 		}
 	}
 
+	if len(info.PKColumns) > 1 {
+		if err := checkUnique(info.PKColumns); err != nil {
+			return err
+		}
+	}
 	for _, cols := range info.TableUnique {
 		if err := checkUnique(cols); err != nil {
 			return err
@@ -3453,6 +3317,27 @@ func (s *Schema) checkUnique(tableName string, colNames []string, row map[string
 		}
 	}
 
+	if len(colNames) > 1 {
+		values, hasNull := indexValues(colNames, row)
+		if hasNull {
+			return nil
+		}
+		for _, idx := range s.tableIndexes(tableName) {
+			if idx.IsUnique && slices.Equal(idx.columnNames(), colNames) {
+				prefix := []byte(indexTuplePrefix(idx, values))
+				it := s.newRangeIterator(prefix, prefixSuccessor(prefix), false)
+				defer it.Close()
+				for it.Valid() {
+					key := it.Key().UserKey
+					if !bytes.Equal(key[len(prefix):], excludeKey) {
+						return fmt.Errorf("UNIQUE constraint failed: %s.%s", tableName, strings.Join(colNames, ","))
+					}
+					it.Next()
+				}
+				return storage.IteratorError(it)
+			}
+		}
+	}
 	if len(colNames) == 1 {
 		if idx := s.findIndexOnColumn(tableName, colNames[0]); idx != nil {
 			return s.checkUniqueViaIndex(tableName, colNames[0], row[colNames[0]], excludeKey, idx)
@@ -3474,7 +3359,7 @@ func (s *Schema) checkUniqueViaIndex(tableName, colName string, val Value, exclu
 	if val.Null {
 		return nil
 	}
-	seekPrefix := []byte(fmt.Sprintf("%s%s:%s:", indexPrefix, idx.Name, valueToSortableKey(val)))
+	seekPrefix := []byte(indexValuePrefix(idx, val))
 	iter := s.newIterator()
 	defer iter.Close()
 
@@ -3495,7 +3380,7 @@ func (s *Schema) checkUniqueViaIndex(tableName, colName string, val Value, exclu
 }
 
 func (s *Schema) checkUniqueScan(tableName string, colNames []string, row map[string]Value, excludeKey []byte, info *TableInfo) error {
-	prefix := tableDataPrefix(tableName)
+	prefix := s.tableDataPrefix(tableName)
 	var iter storage.Iterator
 	if s.inTx {
 		iter = s.txNewIterator()
@@ -3606,10 +3491,7 @@ func (s *Schema) insertFromSelect(stmt *InsertStmt, info *TableInfo) (int64, *Re
 	pkCol := s.getPKColumn(info)
 
 	for _, srcRow := range rs.Rows {
-		nextID, err := s.nextRowID(tableName)
-		if err != nil {
-			return 0, nil, err
-		}
+		var nextID int64
 		if pkCol != nil && pkCol.AutoIncrement {
 			autoMax := s.getAutoincMax(tableName)
 			if autoMax >= nextID {
@@ -3648,6 +3530,16 @@ func (s *Schema) insertFromSelect(stmt *InsertStmt, info *TableInfo) (int64, *Re
 			row[col.Name] = applyAffinity(val, col.ColType)
 		}
 
+		if len(info.PKColumns) == 0 || pkCol != nil && pkCol.AutoIncrement && row[pkCol.Name].Null && !suppliedColumn(stmt.ColumnNames, pkCol.Name, false) {
+			var err error
+			nextID, err = s.nextRowID(tableName)
+			if err != nil {
+				return 0, nil, err
+			}
+			if pkCol != nil && pkCol.AutoIncrement && s.getAutoincMax(tableName) >= nextID {
+				nextID = s.getAutoincMax(tableName) + 1
+			}
+		}
 		if pkCol != nil && pkCol.ColType == ColInteger && len(info.PKColumns) == 1 {
 			pkVal := row[pkCol.Name]
 			if pkVal.Null && pkCol.AutoIncrement && !suppliedColumn(stmt.ColumnNames, pkCol.Name, false) {
@@ -3660,8 +3552,8 @@ func (s *Schema) insertFromSelect(stmt *InsertStmt, info *TableInfo) (int64, *Re
 
 		if pkCol != nil && pkCol.ColType == ColInteger && len(info.PKColumns) == 1 {
 			nextID = row[pkCol.Name].Int
-			if nextID >= s.rowIDCount[tableName] {
-				s.rowIDCount[tableName] = nextID + 1
+			if pkCol.AutoIncrement && nextID >= s.rowIDCount[s.rowCounterKey(tableName)] {
+				s.rowIDCount[s.rowCounterKey(tableName)] = nextID + 1
 			}
 		}
 		if err := validatePrimaryKey(info, row); err != nil {
@@ -4104,7 +3996,7 @@ func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
 	// Aliases are legal in ORDER BY, GROUP BY and HAVING. Expression evaluation
 	// below validates references and preserves any error instead of hiding it.
 
-	prefix := tableDataPrefix(tableName)
+	prefix := s.tableDataPrefix(tableName)
 	rows := make([]map[string]Value, 0)
 	var rowKeys [][]string
 
@@ -5135,11 +5027,11 @@ func (s *Schema) getJoinRows(jc JoinClause, locking bool, needed map[string]bool
 		var rows []map[string]Value
 		var err error
 		if locking {
-			rows, err = s.scanTableLimit(name, info, tableDataPrefix(name), -1, false, &keys)
+			rows, err = s.scanTableLimit(name, info, s.tableDataPrefix(name), -1, false, &keys)
 		} else if needed != nil {
 			rows, err = s.scanJoinTable(name, jc.Alias, info, needed)
 		} else {
-			rows, err = s.scanTable(name, info, nil, tableDataPrefix(name))
+			rows, err = s.scanTable(name, info, nil, s.tableDataPrefix(name))
 		}
 		return rows, info.Columns, keys, err
 	}
@@ -5277,7 +5169,7 @@ func (s *Schema) matchingDMLRows(tableName string, info *TableInfo, where Expres
 		intervals = plan.intervals
 		residual = plan.residual
 	} else {
-		prefix := []byte(tableDataPrefix(tableName))
+		prefix := []byte(s.tableDataPrefix(tableName))
 		intervals = []coveringInterval{{prefix, prefixSuccessor(prefix)}}
 	}
 	var rows []storage.KeyValue
@@ -5547,8 +5439,8 @@ func (s *Schema) applyRowUpdate(table string, info *TableInfo, oldKey []byte, or
 	}
 	if len(info.PKColumns) == 1 && !bytes.Equal(key, oldKey) {
 		v := row[info.PKColumns[0]]
-		if v.Type == ColInteger && v.Int >= s.rowIDCount[table] {
-			s.rowIDCount[table] = v.Int + 1
+		if col := s.getPKColumn(info); col != nil && col.AutoIncrement && v.Type == ColInteger && v.Int >= s.rowIDCount[s.rowCounterKey(table)] {
+			s.rowIDCount[s.rowCounterKey(table)] = v.Int + 1
 		}
 	}
 	if err := s.fireTriggers(table, "UPDATE", "AFTER", original, row); err != nil {

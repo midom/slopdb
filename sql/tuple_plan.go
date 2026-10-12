@@ -265,10 +265,10 @@ func tupleOrdered(stmt *SelectStmt, columns []string, constraints map[string]*tu
 
 func buildTuplePlan(stmt *SelectStmt, info *TableInfo, idx *IndexInfo, constraints map[string]*tupleConstraint) *tupleReadPlan {
 	columns := info.PKColumns
-	prefix := []byte(tableDataPrefix(info.Name))
+	prefix := []byte(info.storagePrefix(info.Name))
 	if idx != nil {
 		columns = idx.columnNames()
-		prefix = []byte(indexDataPrefix(idx.Name))
+		prefix = []byte(idx.storagePrefix())
 	}
 	if len(columns) == 0 {
 		return nil
@@ -469,7 +469,7 @@ func tupleSafePredicate(expr Expression) bool {
 }
 
 func compositeIndexRowKey(idx *IndexInfo, key []byte) ([]byte, error) {
-	remaining := key[len(indexDataPrefix(idx.Name)):]
+	remaining := key[len(idx.storagePrefix()):]
 	for range idx.columnNames() {
 		n := bytes.IndexByte(remaining, ':')
 		if n < 0 {

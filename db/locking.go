@@ -289,12 +289,23 @@ func (m *lockManager) removeWaiting(owner *sql.Schema) {
 func (m *lockManager) deadlocked(owner *sql.Schema) bool {
 	m.graphMu.Lock()
 	defer m.graphMu.Unlock()
-	for _, shard := range m.shards {
-		shard.mu.Lock()
+	// The graph mutex freezes waiter registration. Only resources mentioned
+	// by that graph can contribute an edge; lock those shards in order to
+	// capture coherent ownership without stopping unrelated resource shards.
+	var mask uint64
+	for _, q := range m.waiting {
+		mask |= uint64(1) << m.shardIndex(q.request.Resource)
+	}
+	for i, shard := range m.shards {
+		if mask&(uint64(1)<<i) != 0 {
+			shard.mu.Lock()
+		}
 	}
 	defer func() {
 		for i := len(m.shards) - 1; i >= 0; i-- {
-			m.shards[i].mu.Unlock()
+			if mask&(uint64(1)<<i) != 0 {
+				m.shards[i].mu.Unlock()
+			}
 		}
 	}()
 	seen := make(map[*sql.Schema]bool)

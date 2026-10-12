@@ -1,0 +1,23 @@
+goos: linux
+goarch: arm64
+pkg: slopdb/db
+BenchmarkSelectPoint/catalog=1/workers=1-4         	  140074	      8252 ns/op	    4745 B/op	      44 allocs/op
+BenchmarkSelectPoint/catalog=1/workers=1-4         	  146587	      8288 ns/op	    4745 B/op	      44 allocs/op
+BenchmarkSelectPoint/catalog=1/workers=1-4         	  143012	      8351 ns/op	    4745 B/op	      44 allocs/op
+BenchmarkSelectPoint/catalog=1/workers=10-4        	  330858	      3895 ns/op	    4651 B/op	      43 allocs/op
+BenchmarkSelectPoint/catalog=1/workers=10-4        	  312331	      3914 ns/op	    4650 B/op	      43 allocs/op
+BenchmarkSelectPoint/catalog=1/workers=10-4        	  306103	      3939 ns/op	    4651 B/op	      43 allocs/op
+BenchmarkSelectPoint/catalog=1/workers=32-4        	  299776	      4133 ns/op	    4651 B/op	      43 allocs/op
+BenchmarkSelectPoint/catalog=1/workers=32-4        	  291628	      4162 ns/op	    4651 B/op	      43 allocs/op
+BenchmarkSelectPoint/catalog=1/workers=32-4        	  277420	      4129 ns/op	    4651 B/op	      43 allocs/op
+BenchmarkSelectPoint/catalog=128/workers=1-4       	  132339	      8871 ns/op	    4746 B/op	      44 allocs/op
+BenchmarkSelectPoint/catalog=128/workers=1-4       	  131154	      9155 ns/op	    4746 B/op	      44 allocs/op
+BenchmarkSelectPoint/catalog=128/workers=1-4       	  130450	      9049 ns/op	    4746 B/op	      44 allocs/op
+BenchmarkSelectPoint/catalog=128/workers=10-4      	  323556	      4038 ns/op	    4650 B/op	      43 allocs/op
+BenchmarkSelectPoint/catalog=128/workers=10-4      	  312760	      4042 ns/op	    4650 B/op	      43 allocs/op
+BenchmarkSelectPoint/catalog=128/workers=10-4      	  302774	      4014 ns/op	    4651 B/op	      43 allocs/op
+BenchmarkSelectPoint/catalog=128/workers=32-4      	  313070	      4128 ns/op	    4651 B/op	      43 allocs/op
+BenchmarkSelectPoint/catalog=128/workers=32-4      	  290306	      3908 ns/op	    4650 B/op	      43 allocs/op
+BenchmarkSelectPoint/catalog=128/workers=32-4      	  305395	      4002 ns/op	    4650 B/op	      43 allocs/op
+PASS
+ok  	slopdb/db	26.036s

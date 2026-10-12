@@ -81,7 +81,7 @@ func (s *Schema) upgradePrimaryKeys() error {
 			}
 		}
 		if legacy {
-			prefix := []byte(tableDataPrefix(info.Name) + "\xffnull:")
+			prefix := []byte(info.storagePrefix(info.Name) + "\xffnull:")
 			it := s.newRangeIterator(prefix, prefixSuccessor(prefix), false)
 			invalid := it.Valid() && bytes.HasPrefix(it.Key().UserKey, prefix)
 			err := storage.IteratorError(it)

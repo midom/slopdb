@@ -544,7 +544,7 @@ func (s *Schema) scanJoinTable(table, alias string, info *TableInfo, needed map[
 		iter = s.newIterator()
 	}
 	defer iter.Close()
-	prefix := []byte(tableDataPrefix(table))
+	prefix := []byte(s.tableDataPrefix(table))
 	iter.Seek(prefix)
 	var rows []map[string]Value
 	for n := 0; iter.Valid() && bytes.HasPrefix(iter.Key().UserKey, prefix); iter.Next() {

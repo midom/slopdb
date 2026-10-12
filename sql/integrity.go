@@ -40,11 +40,14 @@ func (s *Schema) CheckIntegrity() (report IntegrityReport, err error) {
 		}
 		switch key[0] {
 		case 0:
-			if string(key) != versionPrefix && !json.Valid(data) {
+			if string(key) != versionPrefix && string(key) != objectIDPrefix && !json.Valid(data) {
 				return report, fmt.Errorf("catalog %q: malformed JSON", key)
 			}
 			if string(key) == versionPrefix && len(data) != 8 {
 				return report, fmt.Errorf("catalog user_version: expected 8 bytes")
+			}
+			if string(key) == objectIDPrefix && (len(data) != 8 || binary.BigEndian.Uint64(data) != s.nextObjectID) {
+				return report, fmt.Errorf("catalog object IDs: invalid counter")
 			}
 			var expected any
 			switch string(key) {
@@ -63,10 +66,14 @@ func (s *Schema) CheckIntegrity() (report IntegrityReport, err error) {
 					return report, marshalErr
 				}
 				var actual, desired any
-				if err = json.Unmarshal(data, &actual); err != nil {
+				decoder := json.NewDecoder(bytes.NewReader(data))
+				decoder.UseNumber()
+				if err = decoder.Decode(&actual); err != nil {
 					return report, err
 				}
-				if err = json.Unmarshal(canonical, &desired); err != nil {
+				decoder = json.NewDecoder(bytes.NewReader(canonical))
+				decoder.UseNumber()
+				if err = decoder.Decode(&desired); err != nil {
 					return report, err
 				}
 				if !reflect.DeepEqual(actual, desired) {
@@ -98,7 +105,7 @@ func (s *Schema) CheckIntegrity() (report IntegrityReport, err error) {
 					if !hasNull {
 						encoded := []byte{}
 						for _, value := range values {
-							encoded = appendValue(encoded, value)
+							encoded = appendValueIdentity(encoded, value)
 						}
 						seen := unique[idx.Name]
 						if seen == nil {
@@ -129,16 +136,20 @@ func (s *Schema) CheckIntegrity() (report IntegrityReport, err error) {
 			}
 			report.Rows++
 		case 2:
-			suffix := key[1:]
-			colon := bytes.IndexByte(suffix, ':')
-			if colon < 0 {
-				return report, fmt.Errorf("malformed index key %q", key)
+			var idx *IndexInfo
+			if len(key) >= 11 && key[1] == 0xff && key[10] == ':' {
+				idx = s.lookups().indexesByID[binary.BigEndian.Uint64(key[2:10])]
+			} else {
+				suffix := key[1:]
+				colon := bytes.IndexByte(suffix, ':')
+				if colon >= 0 {
+					idx = s.indexes[string(suffix[:colon])]
+				}
 			}
-			name := string(suffix[:colon])
-			idx := s.indexes[name]
 			if idx == nil || s.isClusteredIndex(idx) {
 				return report, fmt.Errorf("index key %q: unknown secondary index", key)
 			}
+			name := idx.Name
 			actualCounts[name]++
 			report.IndexEntries++
 		default:

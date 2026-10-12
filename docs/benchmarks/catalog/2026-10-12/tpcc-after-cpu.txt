@@ -1,0 +1,53 @@
+File: tpcc-final
+Type: cpu
+Time: Oct 12, 2026 at 3:15pm (UTC)
+Duration: 15.13s, Total samples = 50.06s (330.90%)
+Showing nodes accounting for 6.22s, 12.43% of 50.06s total
+Dropped 811 nodes (cum <= 0.25s)
+Showing top 45 nodes out of 287
+      flat  flat%   sum%        cum   cum%
+         0     0%     0%     41.77s 83.44%  slopdb/internal/tpcc.Run.func3
+         0     0%     0%     41.77s 83.44%  slopdb/internal/tpcc.work
+     0.01s  0.02%  0.02%     40.52s 80.94%  slopdb/db.(*Tx).ExecPreparedContext
+     0.04s  0.08%   0.1%     40.51s 80.92%  slopdb/db.(*Session).execPrepared
+         0     0%   0.1%     40.51s 80.92%  slopdb/db.(*Tx).ExecPreparedContextWithOptions (inline)
+     0.01s  0.02%  0.12%     38.13s 76.17%  slopdb/db.(*Session).execParsed
+     0.11s  0.22%  0.34%     37.67s 75.25%  slopdb/db.(*Database).execStatements
+     0.11s  0.22%  0.56%     37.44s 74.79%  slopdb/internal/tpcc.execute
+     0.05s   0.1%  0.66%     37.02s 73.95%  slopdb/internal/tpcc.(*queries).exec
+         0     0%  0.66%     36.86s 73.63%  slopdb/internal/tpcc.(*slopTransaction).ExecPreparedContext
+     0.07s  0.14%   0.8%     33.35s 66.62%  slopdb/db.(*statementExecutor).execStatement
+     0.35s   0.7%  1.50%     17.67s 35.30%  slopdb/sql.(*Schema).Select
+     0.01s  0.02%  1.52%     17.15s 34.26%  slopdb/internal/tpcc.(*queries).change
+     0.01s  0.02%  1.54%     14.09s 28.15%  slopdb/sql.(*Schema).ExecuteStatement
+         0     0%  1.54%     12.99s 25.95%  slopdb/db.(*Database).execStatements.func3
+     0.03s  0.06%  1.60%     11.02s 22.01%  slopdb/internal/tpcc.(*queries).one
+     1.97s  3.94%  5.53%      8.68s 17.34%  runtime.mallocgc
+         0     0%  5.53%      7.64s 15.26%  runtime.systemstack
+     0.06s  0.12%  5.65%      7.23s 14.44%  slopdb/sql.(*Schema).Update
+         0     0%  5.65%      6.99s 13.96%  slopdb/sql.(*Schema).tupleRows
+     0.01s  0.02%  5.67%      6.88s 13.74%  slopdb/sql.(*Schema).newRangeIterator
+         0     0%  5.67%      6.61s 13.20%  slopdb/storage.(*LSMTree).NewIteratorAtRange (inline)
+         0     0%  5.67%      6.61s 13.20%  slopdb/storage.(*LSMTree).iteratorViewRange
+         0     0%  5.67%      6.44s 12.86%  slopdb/storage.newMergeIteratorDirectional
+         0     0%  5.67%      6.28s 12.54%  slopdb/storage.(*mergeIterator).Seek
+     0.60s  1.20%  6.87%      6.10s 12.19%  slopdb/storage.(*mergeIterator).Next
+     0.17s  0.34%  7.21%      5.23s 10.45%  slopdb/sql.(*Schema).Insert
+     0.13s  0.26%  7.47%      4.78s  9.55%  slopdb/storage.readPointWithWorkspace
+         0     0%  7.47%      4.43s  8.85%  slopdb/storage.(*LSMTree).readPointSince
+     0.10s   0.2%  7.67%      4.39s  8.77%  runtime.newobject (partial-inline)
+     0.04s  0.08%  7.75%      4.21s  8.41%  slopdb/sql.(*Schema).lockRow
+         0     0%  7.75%      4.15s  8.29%  slopdb/storage.readPointFromView
+         0     0%  7.75%      4.06s  8.11%  runtime.gcBgMarkWorker
+     1.31s  2.62% 10.37%      3.99s  7.97%  runtime.scanobject
+         0     0% 10.37%      3.93s  7.85%  runtime.gcBgMarkWorker.func2
+     0.07s  0.14% 10.51%      3.93s  7.85%  runtime.gcDrain
+     0.01s  0.02% 10.53%      3.67s  7.33%  slopdb/db.(*Tx).ExecPrepared (inline)
+         0     0% 10.53%      3.67s  7.33%  slopdb/internal/tpcc.(*slopTransaction).ExecPrepared
+         0     0% 10.53%      3.51s  7.01%  runtime.gcDrainMarkWorkerDedicated (inline)
+     0.04s  0.08% 10.61%      3.36s  6.71%  slopdb/sql.(*Schema).schemaGet
+         0     0% 10.61%      3.32s  6.63%  slopdb/sql.(*Schema).txGet
+     0.07s  0.14% 10.75%      3.28s  6.55%  slopdb/sql.(*Schema).applyRowUpdate
+     0.79s  1.58% 12.33%      3.24s  6.47%  runtime.mapassign_faststr
+     0.03s  0.06% 12.39%      3.22s  6.43%  slopdb/sql.(*Schema).committedGet
+     0.02s  0.04% 12.43%      3.19s  6.37%  slopdb/storage.(*LSMTree).readPoint

@@ -1,0 +1,7 @@
+File: db.test
+Type: delay
+Time: Oct 12, 2026 at 3:22pm (UTC)
+Showing nodes accounting for 1.86s, 100% of 1.86s total
+Dropped 10 nodes (cum <= 0.01s)
+      flat  flat%   sum%        cum   cum%
+     1.86s   100%   100%      1.86s   100%  runtime._LostContendedRuntimeLock

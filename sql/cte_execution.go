@@ -543,6 +543,16 @@ func (s *Schema) preserveCTEViewOutputs(query Statement, table, newTable, oldCol
 			if q.Compound != nil {
 				visit(q.Compound, scope)
 			}
+			if operation == "RENAME_COLUMN" {
+				if sub, ok := q.FromExpr.(*SubqueryExpr); ok {
+					original.preserveDerivedOutputNames(sub.Stmt, scope)
+				}
+				for _, j := range q.Joins {
+					if j.Subquery != nil {
+						original.preserveDerivedOutputNames(j.Subquery, scope)
+					}
+				}
+			}
 			expr(q.FromExpr)
 			expr(q.Where)
 			expr(q.Having)
@@ -574,4 +584,67 @@ func cteScopeColumns(scope map[string]*ResultSet) map[string][]ColumnDef {
 		}
 	}
 	return cols
+}
+
+// Derived-table outputs are lexical bindings just like named CTE columns. Keep
+// these names stable while rewriting the underlying catalog column references.
+func (s *Schema) preserveDerivedOutputNames(q *SelectStmt, scope map[string][]ColumnDef) {
+	if q == nil {
+		return
+	}
+	if q.Compound != nil {
+		s.preserveDerivedOutputNames(q.Compound.Left, scope)
+		return
+	}
+	defs := s.cteQueryColumnDefs(q, scope)
+	var columns []SelectColumn
+	position := 0
+	seenNames := make(map[string]bool)
+	appendSource := func(name, alias string, sub *SelectStmt, using []string, natural bool) {
+		var source []ColumnDef
+		if sub != nil {
+			source = s.cteQueryColumnDefs(sub, scope)
+		} else if cols, ok := scope[name]; ok {
+			source = cols
+		} else if info := s.tables[name]; info != nil {
+			source = info.Columns
+		} else if view := s.views[name]; view != nil {
+			source = s.viewColumnDefs(view)
+		}
+		if alias == "" {
+			alias = name
+		}
+		for _, col := range source {
+			if containsColumn(using, col.Name) || natural && seenNames[col.Name] {
+				continue
+			}
+			seenNames[col.Name] = true
+			ref := col.Name
+			if alias != "" {
+				ref = alias + "." + col.Name
+			}
+			columns = append(columns, SelectColumn{Expr: &ColumnRefExpr{Name: ref}, Alias: col.Name})
+			position++
+		}
+	}
+	for _, col := range q.Columns {
+		if col.Star {
+			var sub *SelectStmt
+			if e, ok := q.FromExpr.(*SubqueryExpr); ok {
+				sub = e.Stmt
+			}
+			appendSource(q.From, q.FromAlias, sub, nil, false)
+			for _, j := range q.Joins {
+				appendSource(j.Table, j.Alias, j.Subquery, j.Using, j.Type == "NATURAL")
+			}
+			continue
+		}
+		if col.Alias == "" && position < len(defs) {
+			col.Alias = defs[position].Name
+		}
+		position++
+		columns = append(columns, col)
+	}
+	q.Columns = columns
+	q.SelectAll = false
 }

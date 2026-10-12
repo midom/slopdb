@@ -172,14 +172,14 @@ func (s *Schema) profileRelation(key []byte) (string, bool) {
 	}
 	if key[0] == 1 {
 		for name := range s.tables {
-			if bytes.HasPrefix(key, []byte(tableDataPrefix(name))) {
+			if bytes.HasPrefix(key, []byte(s.tableDataPrefix(name))) {
 				return name, false
 			}
 		}
 	}
 	if key[0] == 2 {
 		for name, index := range s.indexes {
-			if bytes.HasPrefix(key, []byte(indexDataPrefix(name))) {
+			if bytes.HasPrefix(key, []byte(s.indexDataPrefix(name))) {
 				return index.Table + "." + name, true
 			}
 		}

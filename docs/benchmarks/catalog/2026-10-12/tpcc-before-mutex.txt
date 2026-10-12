@@ -1,0 +1,40 @@
+File: tpcc-catalog
+Type: delay
+Time: Oct 12, 2026 at 2:43pm (UTC)
+Showing nodes accounting for 51.43s, 100% of 51.43s total
+Dropped 101 nodes (cum <= 0.26s)
+      flat  flat%   sum%        cum   cum%
+         0     0%     0%     50.94s 99.04%  slopdb/internal/tpcc.work
+         0     0%     0%     50.94s 99.04%  slopdb/internal/tpcc.Run.func3
+     3.27s  6.35%  6.35%     48.40s 94.10%  sync.(*RWMutex).Unlock
+         0     0%  6.35%     47.10s 91.59%  slopdb/db.(*Session).execParsed
+         0     0%  6.35%     47.06s 91.49%  slopdb/db.(*Session).execPrepared
+         0     0%  6.35%     47.06s 91.49%  slopdb/db.(*Tx).ExecPreparedContext
+         0     0%  6.35%     47.06s 91.49%  slopdb/db.(*Tx).ExecPreparedContextWithOptions (inline)
+         0     0%  6.35%     47.02s 91.42%  slopdb/db.(*Database).execStatements
+         0     0%  6.35%     46.92s 91.24%  slopdb/internal/tpcc.(*queries).exec
+         0     0%  6.35%     46.92s 91.24%  slopdb/internal/tpcc.(*slopTransaction).ExecPreparedContext
+         0     0%  6.35%     46.92s 91.24%  slopdb/internal/tpcc.execute
+    46.72s 90.85% 97.20%     46.72s 90.85%  sync.(*Mutex).Unlock (partial-inline)
+         0     0% 97.20%     46.38s 90.18%  slopdb/internal/tpcc.(*queries).change
+         0     0% 97.20%     44.92s 87.35%  slopdb/sql.(*Schema).ExecuteStatement
+         0     0% 97.20%     28.58s 55.57%  slopdb/sql.(*Schema).recordWrites
+         0     0% 97.20%     16.43s 31.95%  slopdb/db.(*statementExecutor).execStatement
+         0     0% 97.20%     16.34s 31.77%  slopdb/db.(*Database).execStatements.func3
+         0     0% 97.20%     16.13s 31.37%  slopdb/sql.(*Schema).Insert
+         0     0% 97.20%     15.89s 30.89%  slopdb/sql.(*Schema).nextRowID
+         0     0% 97.20%      3.87s  7.53%  slopdb/db.(*Database).BeginContext
+         0     0% 97.20%      3.87s  7.53%  slopdb/internal/tpcc.(*slopDatabase).BeginContext
+         0     0% 97.20%      3.82s  7.44%  slopdb/db.(*Database).NewSession
+         0     0% 97.20%      3.82s  7.42%  slopdb/sql.(*Schema).NewSession
+     1.05s  2.04% 99.25%      1.05s  2.04%  sync.(*RWMutex).RUnlock
+         0     0% 99.25%      1.03s  1.99%  slopdb/sql.(*Schema).StartStatement
+         0     0% 99.25%      0.86s  1.67%  slopdb/db.(*Database).waitForLock
+         0     0% 99.25%      0.72s  1.40%  slopdb/db.(*lockManager).deadlocked
+         0     0% 99.25%      0.51s  0.99%  slopdb/db.(*lockManager).acquire
+         0     0% 99.25%      0.49s  0.96%  slopdb/db.(*Database).NewSession.(*Database).installLocks.func1
+         0     0% 99.25%      0.49s  0.96%  slopdb/sql.(*Schema).RequestLock (inline)
+         0     0% 99.25%      0.49s  0.95%  slopdb/db.(*lockManager).deadlocked.func1
+         0     0% 99.25%      0.49s  0.95%  slopdb/internal/tpcc.(*queries).one
+         0     0% 99.25%      0.43s  0.84%  slopdb/sql.(*Schema).lockRow
+     0.39s  0.75%   100%      0.39s  0.75%  runtime._LostContendedRuntimeLock
