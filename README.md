@@ -5,38 +5,41 @@ dialect, concurrent transactions, a Go API and an interactive command-line
 interface. Each database lives in a directory and runs without an external
 database server.
 
-## Goals and capabilities
+## Features
 
-### Work with structured data
+### Queries and data
 
-Use familiar SQL to explore, combine and summarize data. Define rules that keep
-data consistent, handle international text, and evolve database structures as
-application needs change.
+- SQL querying for application lookups, reporting and analysis.
+- Data validation and relational integrity, with text and binary data support.
+- Unicode-aware text comparison and optional case-insensitive matching.
+- Schema evolution, atomic renames and online index creation and removal.
 
-### Support concurrent applications
+### Transactions and concurrency
 
-Run independent application sessions concurrently and group related changes
-into transactions. Control how long operations wait, cancel work when needed,
-and inspect blockers. Supported online changes let applications keep working
-while the database is being updated.
+- Independent concurrent sessions and atomic transactions.
+- Savepoints, locking reads and optional deadlock detection.
+- Configurable wait limits, deadlines and cancellation.
+- Optional rollback of blocking transactions during online index publication.
 
-### Understand and improve performance
+### Performance
 
-Reuse application queries, process large results incrementally and load datasets
-efficiently. Planning and profiling tools explain query work and resource use,
-with controls for memory and storage as data grows.
+- Indexed query execution and automatic query planning.
+- Reusable application queries, streaming results and bulk loading.
+- Query planning and profiling tools for investigating slow queries.
+- Configurable memory use, compression and caching.
 
-### Protect and maintain data
+### Durability and operations
 
-Durable writes and crash recovery are enabled by default. Create backups while
-the database is in use, check its integrity and maintain storage. Status and
-diagnostic tools help explain problems and guide the next action.
+- Durable writes and crash recovery enabled by default.
+- Online backups, integrity checks and storage maintenance.
+- Schema inspection, database status and live lock diagnostics.
+- Actionable errors and tools for planning database changes.
 
-### Integrate and explore
+### Integration and tools
 
-Embed SlopDB in a Go application, explore data from an interactive command-line
-prompt, or automate work with scripts. Detailed guides describe supported
-behavior and practical workflows.
+- An embedded Go API with no external database server.
+- An interactive command-line interface and script execution.
+- Guides for application development, troubleshooting and database operations.
 
 See the [documentation](#documentation) for feature details and restrictions.
 
