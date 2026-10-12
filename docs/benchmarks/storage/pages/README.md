@@ -1,4 +1,11 @@
-# Fresh page-size comparison evidence
+# Historical page-size evidence with fixed 8 MiB Zstd windows
+
+These reports used the previous fixed 8 MiB Zstd-window configuration. SlopDB
+storage sizes are superseded by the [matched-window, full bottom-level rewrite
+archive](../pages-matched-window/README.md). Query/TPS reports remain historical
+evidence and do not measure the new compression-window policy. Native storage
+rows are reused explicitly in the updated comparison. Raw reports and their
+existing hash manifest remain unchanged.
 
 See [the measured comparison](../../../page-size-comparison.md) for datasets,
 results, load boundaries, code-based diagnostics and limitations.
