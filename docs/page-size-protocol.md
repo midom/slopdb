@@ -1,11 +1,16 @@
 # Page-size measurement protocol
 
 Measure storage/loading at the requested 16 KiB, 64 KiB and 1 MiB settings with
-fresh databases. Run query and transaction benchmarks only at 16 KiB, 64 KiB and
-the engine’s default-size controls; SlopDB 1 MiB is explicitly load-only at the
-user’s request, with no TPC-H query-pack execution, including answer verification.
-Keep the source data, schema, indexes, compression, cache byte budgets,
-prepared execution and durability settings constant within each engine.
+fresh databases, plus a 4 KiB SlopDB control. The current matched-window refresh
+is storage-only at every SlopDB size: use `--storage-only --engines slopdb` so
+loading and persisted-data checks execute without the TPC-H query pack. Earlier
+TPC-H and TPC-C performance samples used an 8 MiB window policy and remain
+historical; they do not measure the new matched-window policy. SlopDB 1 MiB
+remains excluded from every performance test and query-answer check.
+Keep the source data, schema, indexes, compression codec/level, cache byte
+budgets, prepared execution and durability settings constant within each engine.
+Match each Zstd encoder window to the configured SSTable data-block target
+(minimum 1 KiB, the codec’s supported minimum).
 Page-size comparisons use the same executable revision; earlier storage reports
 remain historical evidence, not a controlled baseline for new code.
 
@@ -45,11 +50,12 @@ size or report a successful measurement for an ignored setting.
 The large TPC-H fixture uses the same hash-verified DBGEN SF=0.2 inputs as
 [the large storage comparison](storage-large-comparison.md): eight tables,
 1,731,999 rows, fourteen secondary indexes, ANALYZE and the Q15 view.
-Preserve all input hashes in the report. At benchmarked sizes, compare every
+Preserve all input hashes in the report. The current storage-only refresh verifies
+persisted row counts/schema and hash-verified source inputs at all sizes, before
+and after maintenance, without running the TPC-H query pack or checking every
+stored column. If performance is measured separately in future, compare every
 result from all 22 queries with independent SQLite/DuckDB or native qualification
-answers, including after reopening and maintenance. The 1 MiB load-only case
-verifies persisted row counts/schema and hash-verified source inputs without
-running the TPC-H query pack or checking every stored column.
+answers at benchmarked sizes; keep 1 MiB load-only.
 
 The large TPC-C storage fixture uses the pinned committed snapshot from the
 earlier comparison. Its nine tables contain 83,165 source rows. Replicate each
@@ -78,12 +84,13 @@ not equal-data space-efficiency comparisons.
 ## Memory, maintenance and timing controls
 
 SlopDB defaults to a 4 MiB memtable and a 128 MiB decoded-block cache. Keep
-these byte budgets, compression policy and explicitly selected codec window
-settings fixed across page sizes. Current SlopDB loads use 4,096-row transactions
+these byte budgets, compression codec/level and window-to-page policy fixed
+across page sizes. Current SlopDB loads use 4,096-row transactions
 and up to 256 rows per prepared INSERT; record these sizes. Use `-load-only`
-for the 1 MiB TPC-H runner so even answer verification does not execute its
-query pack. An explicit 8 MiB Zstd history window documents the pinned codec’s
-already-existing default; independent blocks do not share that history. The cache has
+for every TPC-H runner in the current storage refresh. Set the Zstd window
+to the configured data-block target: 4 KiB, 16 KiB, 64 KiB or 1 MiB, respectively.
+Independent blocks do not share compression history. Earlier explicit 8 MiB
+windows are a different configuration and must be labeled historical. The cache has
 sixteen shards, so each default shard retains at most 8 MiB of decoded data.
 Report its hits and misses together with allocations and throughput; larger
 pages reduce the number of retained blocks without increasing the cache budget.
@@ -102,8 +109,18 @@ or Python version used for each operation. WAL fsync bypass must apply only to
 the exact benchmark WAL path; checkpoint and database-file synchronization stay
 enabled. Do not substitute WAL disabling for WAL fsync disabling.
 
-Record sizes after clean close, and again after the stated maintenance operation:
-SlopDB VACUUM, SQLite VACUUM, and DuckDB VACUUM followed by CHECKPOINT. These
+Record pre-maintenance sizes after clean close as diagnostic inventories. Report
+SlopDB’s final comparison size only after VACUUM atomically merges and rewrites
+all SSTables, including files already in L6, directly into L6 using the current
+page/window settings. Verify every L0–L5 file count and byte count is zero after
+reopening, and retain all seven level inventories plus the explicit
+`full_bottom_level_rewrite` operation marker. Merely promoting old files to L6
+does not meet this requirement. Multiple output files are expected: L6 is the
+lowest level, not a requirement to create one enormous SSTable.
+
+Native maintenance remains SQLite VACUUM, and DuckDB VACUUM followed by
+CHECKPOINT. Reused native storage measurements must identify their original
+revision and method. These
 operations have different semantics. In particular, DuckDB VACUUM itself does
 not reclaim file space; see [its documentation](https://duckdb.org/docs/current/sql/statements/vacuum#reclaiming-space).
 Do not describe them as identical physical compactions.
@@ -111,8 +128,9 @@ Do not describe them as identical physical compactions.
 Sum every regular file in the dedicated database directory, including indexes,
 catalog metadata, locks and any remaining WAL. Keep inputs, logs, reports,
 binaries, profiles and query spill files outside that directory. Report apparent
-file bytes and filesystem-allocated bytes separately; verify the latter against
-`du -s -B1`, accounting for directory allocation. Preserve a per-file inventory,
+file bytes and filesystem-allocated bytes separately, including directory
+allocation. The matrix obtains allocated bytes from filesystem `st_blocks`;
+`du -s -B1` can independently check them. Preserve a per-file inventory,
 actual page/block metadata, row counts, validation status and exact operations.
 
 Run loads, maintenance, full tests and timed workloads serially on the same
