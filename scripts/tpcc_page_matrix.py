@@ -95,7 +95,7 @@ def run(args):
         "binaries": {key: {"path": str(path), "sha256": digest(path)} for key, path in binaries.items() if path},
         "duckdb_wal_shim": {"path": str(args.duckdb_wal_shim), "sha256": digest(args.duckdb_wal_shim)} if args.duckdb_wal_shim else None,
         "method": "Strictly serial subprocesses; fresh database for each cell; no cache resets. Load/preparation/validation/close/reopen excluded from transaction timing. All 15 consistency assertions checked after execution and reopening. Single runs are descriptive, not statistical proof.",
-        "durability": "WAL enabled, WAL fsync disabled; DuckDB exact-WAL-path LD_PRELOAD shim; checkpoints and SSTable/MANIFEST synchronization remain enabled.",
+        "durability": "WAL enabled, WAL fsync disabled; DuckDB exact-WAL-path LD_PRELOAD shim; SlopDB/DuckDB checkpoints and data-file synchronization remain enabled; SQLite synchronous=OFF also disables its checkpoint synchronization.",
         "configuration": {"seconds": args.seconds, "workers": args.workers, "warehouses": args.warehouses,
                           "districts": 10, "customers": 100, "items": 1000, "seed": 42,
                           "prepared": True, "page_sizes": args.page_sizes, "controls": args.controls,

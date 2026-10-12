@@ -372,7 +372,7 @@ def main():
     result = {"slopdb_revision": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
               "platform": platform.platform(), "python_version": platform.python_version(), "cpus": os.cpu_count(),
               "units": "bytes; MiB=1048576 bytes", "method": "serial fresh equal-data fixtures; file and allocated bytes after close and maintenance",
-              "durability": "WAL enabled; WAL fsync disabled; checkpoint/SSTable synchronization enabled",
+              "durability": "WAL enabled; WAL fsync disabled; SlopDB/DuckDB checkpoint and data-file synchronization enabled; SQLite synchronous=OFF also disables its checkpoint synchronization",
               "page_size_meaning": {"slopdb": "uncompressed SSTable data-block target", "sqlite": "fixed B-tree page", "duckdb": "storage block"},
               "run_settings": {"slopdb_block_cache_bytes": 128 << 20, "slopdb_memtable_bytes": 4 << 20, "slopdb_compression": "auto", "duckdb_threads": 1, "duckdb_memory_limit": "1GB", "sqlite_cache_size_kib": 131072, "sqlite_wal_checkpoint_target_bytes": 64 << 20, "warmups": args.warmups, "runs": args.runs},
               "tpcc_replicas": args.tpcc_replicas, "tpcc_snapshot_sha256": digest(args.tpcc_snapshot) if args.tpcc_snapshot else None,
