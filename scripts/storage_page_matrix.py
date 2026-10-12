@@ -276,13 +276,18 @@ def tpch(args, engine, size, cell, directory):
     timed = performance_enabled(size)
     if not timed and (report.get("queries") or report.get("successful_executions") or report.get("query_benchmarked") is not False):
         raise ValueError("load-only page size unexpectedly executed benchmark queries")
-    for query in report["queries"]:
+    queries = report.get("queries") or []
+    if timed and [query["number"] for query in queries] != list(range(1, 23)):
+        raise ValueError("timed TPC-H report must contain all 22 queries")
+    for query in queries:
+        if len(query["samples"]) != args.runs:
+            raise ValueError(f"query {query['number']} has incomplete measured samples")
         if any(sample["status"] != "ok" for sample in query["samples"]):
             raise ValueError(f"query {query['number']} failed or timed out; inspect {raw}")
     if args.reference_report and timed:
         reference = {q["number"]: q for q in json.loads(args.reference_report.read_text())["queries"]}
         check = verifier()
-        for query in report["queries"]:
+        for query in queries:
             error = check.compare(query.get("results", []), reference[query["number"]].get("results", [])) or check.order_error(query["number"], query.get("results", []))
             if error:
                 raise ValueError(f"Q{query['number']} answer mismatch: {error}")

@@ -68,7 +68,7 @@ class PageMatrixTests(unittest.TestCase):
                     self.assertIn("-load-only", command)
                     directory.mkdir()
                     (directory / "data.sst").write_bytes(b"data")
-                    value = {"queries": [], "query_benchmarked": False, "load_seconds": 1,
+                    value = {"queries": None, "query_benchmarked": False, "load_seconds": 1,
                              "load_mode": "bulk_insert", "config": {"load_batch_rows": 4096}}
                 else:
                     self.assertNotIn("-verify-report", command)
