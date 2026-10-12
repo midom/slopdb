@@ -39,6 +39,7 @@ Default SlopDB flags:
 | `-prepared` | `true` | Parse each query once before measuring |
 | `-indexes` | `true` | Create indexes from `indexes.sql` |
 | `-wal-fsync` | `false` | Enable WAL fsync during loading |
+| `-load-batch-rows` | `4096` | Maximum rows per atomic bulk-load transaction |
 | `-json` | database's `benchmark.json` | Full results and timings |
 | `-profile-dir` | disabled | Separate CPU profile for each query |
 
@@ -48,6 +49,14 @@ setup, preparation, and EXPLAIN happen outside individual query timings. Queries
 run on committed data after reopening. The JSON query-phase duration includes
 preparation, EXPLAIN, result reporting, and profiler start/stop overhead; use the
 individual samples to measure SQL execution.
+
+SlopDB loading uses `Database.BulkInsert` with bounded transactions and prepared
+multi-row INSERTs of up to 256 rows. `-load-batch-rows` bounds transaction rows;
+reports record the bulk mode, configured bound and committed transaction count.
+Constraints, indexes and WAL remain enabled. A malformed row or SQL error rolls
+back its current chunk and fails the load; earlier committed chunks can remain
+in the failed fresh directory. Such a directory is never reused as a successful
+benchmark fixture. The replicated TPC-C storage loader accepts the same flag.
 
 Samples include elapsed time, process CPU time, Go allocated bytes and allocation
 counts, output row count, status, and error. Allocation counters include
