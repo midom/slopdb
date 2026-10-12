@@ -1,0 +1,98 @@
+warehouse supplied 16/128 replicas to bulk loader
+warehouse supplied 32/128 replicas to bulk loader
+warehouse supplied 48/128 replicas to bulk loader
+warehouse supplied 64/128 replicas to bulk loader
+warehouse supplied 80/128 replicas to bulk loader
+warehouse supplied 96/128 replicas to bulk loader
+warehouse supplied 112/128 replicas to bulk loader
+warehouse supplied 128/128 replicas to bulk loader
+district supplied 16/128 replicas to bulk loader
+district supplied 32/128 replicas to bulk loader
+district supplied 48/128 replicas to bulk loader
+district supplied 64/128 replicas to bulk loader
+district supplied 80/128 replicas to bulk loader
+district supplied 96/128 replicas to bulk loader
+district supplied 112/128 replicas to bulk loader
+district supplied 128/128 replicas to bulk loader
+customer supplied 16/128 replicas to bulk loader
+customer supplied 32/128 replicas to bulk loader
+customer supplied 48/128 replicas to bulk loader
+customer supplied 64/128 replicas to bulk loader
+customer supplied 80/128 replicas to bulk loader
+customer supplied 96/128 replicas to bulk loader
+customer supplied 112/128 replicas to bulk loader
+customer supplied 128/128 replicas to bulk loader
+item supplied 1/1 replicas to bulk loader
+stock supplied 16/128 replicas to bulk loader
+stock supplied 32/128 replicas to bulk loader
+stock supplied 48/128 replicas to bulk loader
+stock supplied 64/128 replicas to bulk loader
+stock supplied 80/128 replicas to bulk loader
+stock supplied 96/128 replicas to bulk loader
+stock supplied 112/128 replicas to bulk loader
+stock supplied 128/128 replicas to bulk loader
+orders supplied 16/128 replicas to bulk loader
+orders supplied 32/128 replicas to bulk loader
+orders supplied 48/128 replicas to bulk loader
+orders supplied 64/128 replicas to bulk loader
+orders supplied 80/128 replicas to bulk loader
+orders supplied 96/128 replicas to bulk loader
+orders supplied 112/128 replicas to bulk loader
+orders supplied 128/128 replicas to bulk loader
+new_order supplied 16/128 replicas to bulk loader
+new_order supplied 32/128 replicas to bulk loader
+new_order supplied 48/128 replicas to bulk loader
+new_order supplied 64/128 replicas to bulk loader
+new_order supplied 80/128 replicas to bulk loader
+new_order supplied 96/128 replicas to bulk loader
+new_order supplied 112/128 replicas to bulk loader
+new_order supplied 128/128 replicas to bulk loader
+order_line supplied 16/128 replicas to bulk loader
+order_line supplied 32/128 replicas to bulk loader
+order_line supplied 48/128 replicas to bulk loader
+order_line supplied 64/128 replicas to bulk loader
+order_line supplied 80/128 replicas to bulk loader
+order_line supplied 96/128 replicas to bulk loader
+order_line supplied 112/128 replicas to bulk loader
+order_line supplied 128/128 replicas to bulk loader
+history supplied 16/128 replicas to bulk loader
+history supplied 32/128 replicas to bulk loader
+history supplied 48/128 replicas to bulk loader
+history supplied 64/128 replicas to bulk loader
+history supplied 80/128 replicas to bulk loader
+history supplied 96/128 replicas to bulk loader
+history supplied 112/128 replicas to bulk loader
+history supplied 128/128 replicas to bulk loader
+warehouse verified 32/128 replicas
+warehouse verified 64/128 replicas
+warehouse verified 96/128 replicas
+warehouse verified 128/128 replicas
+district verified 32/128 replicas
+district verified 64/128 replicas
+district verified 96/128 replicas
+district verified 128/128 replicas
+customer verified 32/128 replicas
+customer verified 64/128 replicas
+customer verified 96/128 replicas
+customer verified 128/128 replicas
+item verified 1/1 replicas
+stock verified 32/128 replicas
+stock verified 64/128 replicas
+stock verified 96/128 replicas
+stock verified 128/128 replicas
+orders verified 32/128 replicas
+orders verified 64/128 replicas
+orders verified 96/128 replicas
+orders verified 128/128 replicas
+new_order verified 32/128 replicas
+new_order verified 64/128 replicas
+new_order verified 96/128 replicas
+new_order verified 128/128 replicas
+order_line verified 32/128 replicas
+order_line verified 64/128 replicas
+order_line verified 96/128 replicas
+order_line verified 128/128 replicas
+history verified 32/128 replicas
+history verified 64/128 replicas
+history verified 96/128 replicas
+history verified 128/128 replicas

@@ -1,6 +1,9 @@
 # Page-size measurement protocol
 
-Measure the requested 16 KiB, 64 KiB and 1 MiB settings with fresh databases.
+Measure storage/loading at the requested 16 KiB, 64 KiB and 1 MiB settings with
+fresh databases. Run query and transaction benchmarks only at 16 KiB, 64 KiB and
+the engine’s default-size controls; SlopDB 1 MiB is explicitly load-only at the
+user’s request, with no TPC-H query-pack execution, including answer verification.
 Keep the source data, schema, indexes, compression, cache byte budgets,
 prepared execution and durability settings constant within each engine.
 Page-size comparisons use the same executable revision; earlier storage reports
@@ -42,9 +45,11 @@ size or report a successful measurement for an ignored setting.
 The large TPC-H fixture uses the same hash-verified DBGEN SF=0.2 inputs as
 [the large storage comparison](storage-large-comparison.md): eight tables,
 1,731,999 rows, fourteen secondary indexes, ANALYZE and the Q15 view.
-Preserve all input hashes in the report. Compare every result from all 22 queries
-with independent SQLite/DuckDB or native qualification answers, including after
-reopening and maintenance.
+Preserve all input hashes in the report. At benchmarked sizes, compare every
+result from all 22 queries with independent SQLite/DuckDB or native qualification
+answers, including after reopening and maintenance. The 1 MiB load-only case
+verifies persisted row counts/schema and hash-verified source inputs without
+running the TPC-H query pack or checking every stored column.
 
 The large TPC-C storage fixture uses the pinned committed snapshot from the
 earlier comparison. Its nine tables contain 83,165 source rows. Replicate each
@@ -59,7 +64,9 @@ fixture rather than a fresh transactional benchmark.
 TPC-C timed runs use a separate fresh seeded load. The existing consistency
 checks assume that initial state, so the previously mutated storage snapshot
 cannot be substituted without redefining the baseline. Use ten workers,
-one minute, seed 42, prepared statements and WAL fsync disabled. Hold warehouse,
+one minute, seed 42, prepared statements and WAL fsync disabled at benchmarked
+sizes. Record the 1 MiB timed case as skipped by request, not as a throughput
+result. Hold warehouse,
 district, customer and item counts constant and report them explicitly. Keep
 loading, preparation, validation, close and reopen outside the timed window.
 Require all fifteen consistency checks both immediately after execution and
@@ -71,7 +78,12 @@ not equal-data space-efficiency comparisons.
 ## Memory, maintenance and timing controls
 
 SlopDB defaults to a 4 MiB memtable and a 128 MiB decoded-block cache. Keep
-these byte budgets and auto compression fixed across page sizes. The cache has
+these byte budgets, compression policy and explicitly selected codec window
+settings fixed across page sizes. Current SlopDB loads use 4,096-row transactions
+and up to 256 rows per prepared INSERT; record these sizes. Use `-load-only`
+for the 1 MiB TPC-H runner so even answer verification does not execute its
+query pack. An explicit 8 MiB Zstd history window documents the pinned codec’s
+already-existing default; independent blocks do not share that history. The cache has
 sixteen shards, so each default shard retains at most 8 MiB of decoded data.
 Report its hits and misses together with allocations and throughput; larger
 pages reduce the number of retained blocks without increasing the cache budget.
@@ -105,9 +117,9 @@ actual page/block metadata, row counts, validation status and exact operations.
 
 Run loads, maintenance, full tests and timed workloads serially on the same
 machine. Use fresh cases in a recorded order; report OS-cache conditions rather
-than claiming cold reads without resetting them. For TPC-H, one warmup and
-multiple measured executions per query distinguish initialization from repeated
-execution. A timeout is an incomplete query, not a timing sample. A single
+than claiming cold reads without resetting them. For TPC-H, one warmup precedes each measured query. The current matrix uses
+one measured sample per query; its median does not establish repeatability.
+Additional repeated samples are needed for statistical conclusions. A timeout is an incomplete query, not a timing sample. A single
 TPC-C run per size is descriptive evidence, not statistical proof.
 
 With limited disk space, finish a case's validation, measurements and saved

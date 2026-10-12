@@ -1,0 +1,9 @@
+duckdb warehouse 256
+duckdb district 2560
+duckdb customer 256000
+duckdb item 1000
+duckdb stock 256000
+duckdb orders 859520
+duckdb new_order 113920
+duckdb order_line 8216320
+duckdb history 812544

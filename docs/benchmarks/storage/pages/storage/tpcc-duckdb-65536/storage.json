@@ -1,0 +1,89 @@
+{
+  "engine_version": "1.5.6",
+  "load_mode": "copy_and_insert_select",
+  "load_batch_rows": null,
+  "load_seconds": 20.697596766985953,
+  "maintenance_seconds": 0.0031822100281715393,
+  "closed": {
+    "rows": {
+      "warehouse": 256,
+      "district": 2560,
+      "customer": 256000,
+      "item": 1000,
+      "stock": 256000,
+      "orders": 859520,
+      "new_order": 113920,
+      "order_line": 8216320,
+      "history": 812544
+    },
+    "verified_rows": 10518120,
+    "all_values_verified_after_reopen": true,
+    "storage_info": {
+      "database_name": "benchmark",
+      "database_size": "265.9 MiB",
+      "block_size": 65536,
+      "total_blocks": 4255,
+      "used_blocks": 4255,
+      "free_blocks": 0,
+      "wal_size": "0 bytes",
+      "memory_usage": "52.6 MiB",
+      "memory_limit": "953.6 MiB"
+    },
+    "files": [
+      {
+        "name": "benchmark.duckdb",
+        "bytes": 278867968,
+        "allocated_bytes": 278872064
+      }
+    ],
+    "file_count": 1,
+    "file_bytes": 278867968,
+    "allocated_total_bytes": 278876160,
+    "wal_files": []
+  },
+  "after_maintenance": {
+    "rows": {
+      "warehouse": 256,
+      "district": 2560,
+      "customer": 256000,
+      "item": 1000,
+      "stock": 256000,
+      "orders": 859520,
+      "new_order": 113920,
+      "order_line": 8216320,
+      "history": 812544
+    },
+    "verified_rows": 10518120,
+    "all_values_verified_after_reopen": true,
+    "storage_info": {
+      "database_name": "benchmark",
+      "database_size": "265.9 MiB",
+      "block_size": 65536,
+      "total_blocks": 4255,
+      "used_blocks": 4255,
+      "free_blocks": 0,
+      "wal_size": "0 bytes",
+      "memory_usage": "52.6 MiB",
+      "memory_limit": "953.6 MiB"
+    },
+    "files": [
+      {
+        "name": "benchmark.duckdb",
+        "bytes": 278867968,
+        "allocated_bytes": 278872064
+      }
+    ],
+    "file_count": 1,
+    "file_bytes": 278867968,
+    "allocated_total_bytes": 278876160,
+    "wal_files": []
+  },
+  "warehouse_stride": 2,
+  "history_stride": 6353,
+  "status": "ok",
+  "workload": "tpcc",
+  "engine": "duckdb",
+  "requested_page_size_bytes": 65536,
+  "page_size_bytes": 65536,
+  "wal_fsync_calls_skipped": 20
+}
