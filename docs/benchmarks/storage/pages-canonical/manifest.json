@@ -1,0 +1,337 @@
+{
+  "format": "slopdb-canonical-storage-archive-v1",
+  "source_revision": "071907c90d551b7b1826002b1c3ddbf46a8d3782",
+  "datasets": {
+    "tpcc": {
+      "sql_sha256": "8772c9bfcb2672d1b18bfb6aa98059489d26962083c94568f089be211eccd543",
+      "sql_bytes": 321378587,
+      "total_rows": 10518120,
+      "total_logical_bytes": 713759360,
+      "sql_retained_at": "/tmp/slopdb-bench/canonical-sql-20261012/tpcc.sql"
+    },
+    "tpch": {
+      "sql_sha256": "921ac0b2c9114c3e309c1b14ba987e1657c5c8fa04b87aa84452056f629b1ed3",
+      "sql_bytes": 247091243,
+      "total_rows": 1731999,
+      "total_logical_bytes": 235929611,
+      "sql_retained_at": "/tmp/slopdb-bench/canonical-sql-20261012/tpch.sql"
+    }
+  },
+  "artifacts": [
+    {
+      "path": "README.md",
+      "bytes": 867,
+      "sha256": "f557a16df8bbe2b035474a0b80b2cddbcbebad571b40b02f0eca62f6e3708271"
+    },
+    {
+      "path": "duck-phase-cpu-samples.json",
+      "bytes": 1552,
+      "sha256": "9f252a1378bc8238e56660bb8c5229f7c55796435156339fc4ea1a5d898b7e8f"
+    },
+    {
+      "path": "tpcc/README.md",
+      "bytes": 1698,
+      "sha256": "63f255cb50b6e39c2eb590006cc1654f1cce536119d47a85ed3847278cb03cc0"
+    },
+    {
+      "path": "tpcc/canonical-sql.manifest.json",
+      "bytes": 6947,
+      "sha256": "9810ad19a4a4a0419cd4e8f35b71df2af16661d9b68693e0c89a1867c99f4bed"
+    },
+    {
+      "path": "tpcc/comparison.json",
+      "bytes": 1161523,
+      "sha256": "745f6dbace0ea05995252e8238af2c3863c5c32d238f02226ee725b66ce16cee"
+    },
+    {
+      "path": "tpcc/tpcc-duckdb-16384/cell.log",
+      "bytes": 516,
+      "sha256": "1452afd3697fd4db14f1f7adf9ec321afed79702145f9547d0c65bf67785f817"
+    },
+    {
+      "path": "tpcc/tpcc-duckdb-16384/storage.json",
+      "bytes": 5955,
+      "sha256": "3301b362ab2e1625c88905a84474ef41418cc7ad86ef220cc1cb594e7843b4d0"
+    },
+    {
+      "path": "tpcc/tpcc-duckdb-262144/cell.log",
+      "bytes": 516,
+      "sha256": "1452afd3697fd4db14f1f7adf9ec321afed79702145f9547d0c65bf67785f817"
+    },
+    {
+      "path": "tpcc/tpcc-duckdb-262144/storage.json",
+      "bytes": 5948,
+      "sha256": "6b4442c3897b085a868bce1c5b28ee6f7b2a61acc796fd7c64b5c1e9c51cc6af"
+    },
+    {
+      "path": "tpcc/tpcc-duckdb-65536/cell.log",
+      "bytes": 516,
+      "sha256": "1452afd3697fd4db14f1f7adf9ec321afed79702145f9547d0c65bf67785f817"
+    },
+    {
+      "path": "tpcc/tpcc-duckdb-65536/storage.json",
+      "bytes": 5943,
+      "sha256": "38442538775d3a2ca677ba90386246a9083bddb0295234ce5060895cbfe48c75"
+    },
+    {
+      "path": "tpcc/tpcc-slopdb-1048576/cell.log",
+      "bytes": 385,
+      "sha256": "5645728e9342247b67353e92af0b11ca2aa431ef831d6ddbf364bbde084c037b"
+    },
+    {
+      "path": "tpcc/tpcc-slopdb-1048576/loader.json",
+      "bytes": 258819,
+      "sha256": "fad4b09256e69ee451091419267ad3d0842370a85fbd328e6fb00f2a9a60995f"
+    },
+    {
+      "path": "tpcc/tpcc-slopdb-1048576/loader.log",
+      "bytes": 2142,
+      "sha256": "f45b2354937cf78e6a6f8e336d497076660a1797d02150439fe4328a4426cb99"
+    },
+    {
+      "path": "tpcc/tpcc-slopdb-1048576/storage.json",
+      "bytes": 258851,
+      "sha256": "879969f67f11437bede4a88bce98aeb1788aa15f1cb24ea285f6bb6c4f1beede"
+    },
+    {
+      "path": "tpcc/tpcc-slopdb-16384/cell.log",
+      "bytes": 379,
+      "sha256": "2131e994c8a99ae36f75167d1b3ff1d9e47f5bda61bb44f60295fa4aaffdb43e"
+    },
+    {
+      "path": "tpcc/tpcc-slopdb-16384/loader.json",
+      "bytes": 258853,
+      "sha256": "c82c1eb6be7048cc1852a51b83045db72d52600a38b73474600c60755a2d706a"
+    },
+    {
+      "path": "tpcc/tpcc-slopdb-16384/loader.log",
+      "bytes": 2142,
+      "sha256": "f45b2354937cf78e6a6f8e336d497076660a1797d02150439fe4328a4426cb99"
+    },
+    {
+      "path": "tpcc/tpcc-slopdb-16384/storage.json",
+      "bytes": 258883,
+      "sha256": "c80e339791ae63fa777c9ecd3e37b285fd8701dc2a42c6a82fbfdef7c20ecb91"
+    },
+    {
+      "path": "tpcc/tpcc-slopdb-4096/cell.log",
+      "bytes": 376,
+      "sha256": "4460b027d1610da03086db757b421ecde03efc2c6f77da48612c718aba886294"
+    },
+    {
+      "path": "tpcc/tpcc-slopdb-4096/loader.json",
+      "bytes": 259522,
+      "sha256": "1556cef1fac5b342dc9d2eaeb5d7c84cee02fc3afacb8705b3c85956911f55b4"
+    },
+    {
+      "path": "tpcc/tpcc-slopdb-4096/loader.log",
+      "bytes": 2142,
+      "sha256": "f45b2354937cf78e6a6f8e336d497076660a1797d02150439fe4328a4426cb99"
+    },
+    {
+      "path": "tpcc/tpcc-slopdb-4096/storage.json",
+      "bytes": 259551,
+      "sha256": "7276d4d7aa3363eb9d51f9119b9d59ae782d4fdb00c232a8dbc865d91a0bd0b8"
+    },
+    {
+      "path": "tpcc/tpcc-slopdb-65536/cell.log",
+      "bytes": 379,
+      "sha256": "5ebca77e56ea4dbcfe8bd0a22395c57500c4af8d9c97a50aab8593cf68590876"
+    },
+    {
+      "path": "tpcc/tpcc-slopdb-65536/loader.json",
+      "bytes": 258837,
+      "sha256": "6aa42553a20a75a46f31a8383d96cbb14441fec1545b1551bb7d847e0f08f087"
+    },
+    {
+      "path": "tpcc/tpcc-slopdb-65536/loader.log",
+      "bytes": 2142,
+      "sha256": "f45b2354937cf78e6a6f8e336d497076660a1797d02150439fe4328a4426cb99"
+    },
+    {
+      "path": "tpcc/tpcc-slopdb-65536/storage.json",
+      "bytes": 258867,
+      "sha256": "51dbe5f96e720783de6c22031da6850237978969af8239b7d7e384254147eeae"
+    },
+    {
+      "path": "tpcc/tpcc-sqlite-16384/cell.log",
+      "bytes": 516,
+      "sha256": "1452afd3697fd4db14f1f7adf9ec321afed79702145f9547d0c65bf67785f817"
+    },
+    {
+      "path": "tpcc/tpcc-sqlite-16384/storage.json",
+      "bytes": 5517,
+      "sha256": "f18ec7cc2ef9571bcb20c090e06aa9b3a5cc33075265b8651f5bb0bffef6f264"
+    },
+    {
+      "path": "tpcc/tpcc-sqlite-4096/cell.log",
+      "bytes": 516,
+      "sha256": "1452afd3697fd4db14f1f7adf9ec321afed79702145f9547d0c65bf67785f817"
+    },
+    {
+      "path": "tpcc/tpcc-sqlite-4096/storage.json",
+      "bytes": 5514,
+      "sha256": "caa0b8141f3201e61d8402f1338851fefb006bb7ca9fe35c071d52e3c8337bfb"
+    },
+    {
+      "path": "tpcc/tpcc-sqlite-65536/cell.log",
+      "bytes": 516,
+      "sha256": "1452afd3697fd4db14f1f7adf9ec321afed79702145f9547d0c65bf67785f817"
+    },
+    {
+      "path": "tpcc/tpcc-sqlite-65536/storage.json",
+      "bytes": 5514,
+      "sha256": "9f9ba79e8ba94a5718538939c2f3f0cd3bf4d6dec3fe6680edf784dad4307e1e"
+    },
+    {
+      "path": "tpch/canonical-sql.manifest.json",
+      "bytes": 9702,
+      "sha256": "7ce58b5b181ec918cb24b159e7b6ea8de2fdacc2d450d7ec03bc961099121815"
+    },
+    {
+      "path": "tpch/comparison.json",
+      "bytes": 619120,
+      "sha256": "701d52e7a6114fe4464255128f12f95984d375c676b59f81bb20584f65513b0b"
+    },
+    {
+      "path": "tpch/tpch-duckdb-16384/cell.log",
+      "bytes": 436,
+      "sha256": "d3934904aa289f952c0a13915cfd93d2ba39793999e2c99596e4e8ca60213518"
+    },
+    {
+      "path": "tpch/tpch-duckdb-16384/storage.json",
+      "bytes": 5470,
+      "sha256": "a73f3afcb767ff1d4914eb2f000f396425a955ab3bbd2bc67ba4f861272e60d8"
+    },
+    {
+      "path": "tpch/tpch-duckdb-262144/cell.log",
+      "bytes": 436,
+      "sha256": "d3934904aa289f952c0a13915cfd93d2ba39793999e2c99596e4e8ca60213518"
+    },
+    {
+      "path": "tpch/tpch-duckdb-262144/storage.json",
+      "bytes": 5464,
+      "sha256": "80bdd1f75366bfb676479bca381b44c8bc2bb83fc0e195862bf1be67e2c5fedd"
+    },
+    {
+      "path": "tpch/tpch-duckdb-65536/cell.log",
+      "bytes": 436,
+      "sha256": "d3934904aa289f952c0a13915cfd93d2ba39793999e2c99596e4e8ca60213518"
+    },
+    {
+      "path": "tpch/tpch-duckdb-65536/storage.json",
+      "bytes": 5464,
+      "sha256": "cd6afe2f2cf5302e3d6df2953dd3676429a7a5ca81f146b158c86205087f05f1"
+    },
+    {
+      "path": "tpch/tpch-slopdb-1048576/cell.log",
+      "bytes": 385,
+      "sha256": "07680103802303235cddefc7588af18f85780c0ef9091bae8069377465dd3c4d"
+    },
+    {
+      "path": "tpch/tpch-slopdb-1048576/loader.json",
+      "bytes": 130992,
+      "sha256": "85deaeaee230875556778ebef583b4fe4bd0580e0f409399ee43e70ad394630e"
+    },
+    {
+      "path": "tpch/tpch-slopdb-1048576/loader.log",
+      "bytes": 1531,
+      "sha256": "63664bfd179823775b8b6c773178d7c24ced4924b8d269da754cef7b0c1c1fd8"
+    },
+    {
+      "path": "tpch/tpch-slopdb-1048576/storage.json",
+      "bytes": 131110,
+      "sha256": "4bb40b198cdc4768f607589f16e3ddc18a635805ded2cba13b0f4d57c32c2dc3"
+    },
+    {
+      "path": "tpch/tpch-slopdb-16384/cell.log",
+      "bytes": 379,
+      "sha256": "4cb369ded281cb64e47b31195e770172f8576cd5ff59a72907041610f28f6934"
+    },
+    {
+      "path": "tpch/tpch-slopdb-16384/loader.json",
+      "bytes": 130350,
+      "sha256": "49487c61a2faaddc3c2fa555f03e3f16d204a1ef9fad7a4fbfe3c1070f1db9a2"
+    },
+    {
+      "path": "tpch/tpch-slopdb-16384/loader.log",
+      "bytes": 1531,
+      "sha256": "63664bfd179823775b8b6c773178d7c24ced4924b8d269da754cef7b0c1c1fd8"
+    },
+    {
+      "path": "tpch/tpch-slopdb-16384/storage.json",
+      "bytes": 130481,
+      "sha256": "1d5e852c717de8bac4203b9dea07eb2c6945b3151288803ad1adb090a76186e3"
+    },
+    {
+      "path": "tpch/tpch-slopdb-4096/cell.log",
+      "bytes": 376,
+      "sha256": "3aaf8e4cc668b0a98a9836b078fdb76af1ce542d304dddd39ad09b0cd2ea79d7"
+    },
+    {
+      "path": "tpch/tpch-slopdb-4096/loader.json",
+      "bytes": 129718,
+      "sha256": "feee1cc29bf90bff89189777b6f9a217efe73b1f74fdac57722db6a5c2391477"
+    },
+    {
+      "path": "tpch/tpch-slopdb-4096/loader.log",
+      "bytes": 1531,
+      "sha256": "63664bfd179823775b8b6c773178d7c24ced4924b8d269da754cef7b0c1c1fd8"
+    },
+    {
+      "path": "tpch/tpch-slopdb-4096/storage.json",
+      "bytes": 129839,
+      "sha256": "eb207ac2970d2fc53818c1ded869a2ae3cc5627118cee6822afba13288e1e222"
+    },
+    {
+      "path": "tpch/tpch-slopdb-65536/cell.log",
+      "bytes": 379,
+      "sha256": "5190104be97b582869f5e7d12ab5a6466369dc8787a1523c68ea70c2bf8e232e"
+    },
+    {
+      "path": "tpch/tpch-slopdb-65536/loader.json",
+      "bytes": 130305,
+      "sha256": "da5c8cef009359dcc8b6c6ce1a75061b089f43175047b84d19d193a0281b8390"
+    },
+    {
+      "path": "tpch/tpch-slopdb-65536/loader.log",
+      "bytes": 1531,
+      "sha256": "63664bfd179823775b8b6c773178d7c24ced4924b8d269da754cef7b0c1c1fd8"
+    },
+    {
+      "path": "tpch/tpch-slopdb-65536/storage.json",
+      "bytes": 130426,
+      "sha256": "957e158abc29d03df434b27f624a2046bcc91402177fc24dbfda847a5703f122"
+    },
+    {
+      "path": "tpch/tpch-sqlite-16384/cell.log",
+      "bytes": 436,
+      "sha256": "d3934904aa289f952c0a13915cfd93d2ba39793999e2c99596e4e8ca60213518"
+    },
+    {
+      "path": "tpch/tpch-sqlite-16384/storage.json",
+      "bytes": 5035,
+      "sha256": "f368376fa010e19b8297452be7a9cae5ff4c3f16f59a2642e8957e6976ccc5a9"
+    },
+    {
+      "path": "tpch/tpch-sqlite-4096/cell.log",
+      "bytes": 436,
+      "sha256": "d3934904aa289f952c0a13915cfd93d2ba39793999e2c99596e4e8ca60213518"
+    },
+    {
+      "path": "tpch/tpch-sqlite-4096/storage.json",
+      "bytes": 5030,
+      "sha256": "9d338dcb17d884fbf16326ddd54a74118a2552c3cd08623bdd7db08482536eae"
+    },
+    {
+      "path": "tpch/tpch-sqlite-65536/cell.log",
+      "bytes": 436,
+      "sha256": "d3934904aa289f952c0a13915cfd93d2ba39793999e2c99596e4e8ca60213518"
+    },
+    {
+      "path": "tpch/tpch-sqlite-65536/storage.json",
+      "bytes": 5034,
+      "sha256": "708a2d5bd0ae4fd027d5f6992f429ac7c8eea59e1c489eff89bb7220b1778a4c"
+    }
+  ]
+}

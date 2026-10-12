@@ -1,10 +1,56 @@
 # Storage comparisons above 100 MiB
 
-The latest [page-size comparison](page-size-comparison.md) refreshes SlopDB’s
-storage fixtures with page-matched compression windows and a full bottom-level
-rewrite. Previous query/transaction timings remain historical 8 MiB-window data.
+The latest [canonical SQL comparison](canonical-storage-comparison.md) reloads
+all three engines from exactly the same frozen SQL per dataset. Every supported
+cell passes full typed value fingerprints after reopen and after maintenance.
+Final SlopDB size requires matching compression windows and every SSTable in L6.
+These tables supersede prior loaders and reused native measurements.
 
-## Matched-window, fully rewritten storage measurements, 2026-10-12
+| Dataset | Rows | Logical payload MiB | Canonical SQL MiB | Verified per supported cell |
+| --- | ---: | ---: | ---: | --- |
+| TPC-C | 10,518,120 | 680.69 | 306.49 | Every column, twice |
+| TPC-H | 1,731,999 | 225.00 | 235.64 | Every column, twice |
+
+## Current canonical TPC-C final storage
+
+| Engine | Page/block | Final files MiB | Final allocated MiB | Load s (diagnostic) |
+| --- | --- | ---: | ---: | ---: |
+| SlopDB | 4 KiB (default) | 182.50 | 182.84 | 244.8 |
+| SlopDB | 16 KiB | 148.83 | 149.25 | 243.3 |
+| SlopDB | 64 KiB | 145.44 | 145.91 | 240.9 |
+| SlopDB | 1 MiB | 150.04 | 150.41 | 241.1 |
+| SQLite | 4 KiB (default) | 449.99 | 450.00 | 155.0 |
+| SQLite | 16 KiB | 447.91 | 447.92 | 150.3 |
+| SQLite | 64 KiB | 448.50 | 448.52 | 149.3 |
+| SQLite | 1 MiB | Unsupported | — | — |
+| DuckDB | 16 KiB | 574.11 | 574.12 | 719.3 |
+| DuckDB | 64 KiB | 268.01 | 268.02 | 782.2 |
+| DuckDB | 256 KiB (default) | 277.76 | 277.77 | 772.2 |
+| DuckDB | 1 MiB | Unsupported | — | — |
+
+## Current canonical TPC-H final storage
+
+| Engine | Page/block | Final files MiB | Final allocated MiB | Load s (diagnostic) |
+| --- | --- | ---: | ---: | ---: |
+| SlopDB | 4 KiB (default) | 214.51 | 214.78 | 107.4 |
+| SlopDB | 16 KiB | 181.95 | 182.23 | 103.6 |
+| SlopDB | 64 KiB | 170.12 | 170.39 | 102.5 |
+| SlopDB | 1 MiB | 163.71 | 163.98 | 101.6 |
+| SQLite | 4 KiB (default) | 324.05 | 324.05 | 81.4 |
+| SQLite | 16 KiB | 320.84 | 320.86 | 80.6 |
+| SQLite | 64 KiB | 321.75 | 321.76 | 79.9 |
+| SQLite | 1 MiB | Unsupported | — | — |
+| DuckDB | 16 KiB | 271.65 | 271.66 | 232.8 |
+| DuckDB | 64 KiB | 232.89 | 232.89 | 262.5 |
+| DuckDB | 256 KiB (default) | 200.26 | 200.27 | 235.8 |
+| DuckDB | 1 MiB | Unsupported | — | — |
+
+[Current methods and raw evidence](canonical-storage-comparison.md) describe the
+identical schema/SQL, exact equality gates and each engine's maintenance/durability.
+All following measurements are historical and do not establish the current
+canonical SQL comparison.
+
+## Historical matched-window storage measurements, 2026-10-12
 
 Fresh SlopDB fixtures match the Zstd encoder window to each configured block
 target: 4 KiB, 16 KiB, 64 KiB or 1 MiB. Final sizes are measured only after

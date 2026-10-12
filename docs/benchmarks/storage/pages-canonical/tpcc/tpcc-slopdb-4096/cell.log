@@ -1,0 +1,1 @@
+Running /tmp/slopdb-bench/canonical-sql-20261012/bin/storage-sql -sql /tmp/slopdb-bench/canonical-sql-20261012/tpcc.sql -manifest /tmp/slopdb-bench/canonical-sql-20261012/tpcc.sql.manifest.json -dir /tmp/slopdb-bench/canonical-storage-20261012/tpcc/tpcc-slopdb-4096/database -page-size 4096 -json /tmp/slopdb-bench/canonical-storage-20261012/tpcc/tpcc-slopdb-4096/loader.json

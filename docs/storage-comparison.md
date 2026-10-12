@@ -1,11 +1,11 @@
 # Database storage comparisons
 
-The [page-size comparison](page-size-comparison.md) adds fresh 16 KiB, 64 KiB
-and 1 MiB SlopDB measurements, supported native sizes and default-size controls.
-It includes large equal-data storage fixtures and separate TPC-C/TPC-H timings.
-At 64 KiB, maintained SlopDB footprints are 145.60 MiB for the 10.5-million-row
-TPC-C snapshot and 170.15 MiB for TPC-H SF=0.2. Larger pages reduced storage
-but slowed this TPC-H query workload; the new report preserves both outcomes.
+The latest [canonical SQL storage comparison](canonical-storage-comparison.md)
+reloads SlopDB, SQLite and DuckDB from identical frozen SQL files across supported
+page sizes and default controls. Every row/column and logical byte total is
+verified after reopen and again after maintenance. SlopDB compression windows
+match blocks and all SSTables are rewritten into L6 before final size is reported.
+No benchmark workload runs during these measurements.
 
 ## Historical small-dataset comparison, 2026-10-11
 

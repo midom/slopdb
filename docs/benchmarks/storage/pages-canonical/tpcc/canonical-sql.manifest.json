@@ -1,0 +1,267 @@
+{
+  "dataset": "tpcc",
+  "format": "slopdb-canonical-sql-v1",
+  "generation_config": {
+    "history_stride": 6353,
+    "insert_rows": 256,
+    "replicas": 128,
+    "transaction_rows": 4096,
+    "warehouse_stride": 2
+  },
+  "hash_protocol": "slopdb-canonical-rows-v1",
+  "schema_sql": [
+    "CREATE TABLE customer(w_id BIGINT NOT NULL, d_id BIGINT NOT NULL, c_id BIGINT NOT NULL, balance BIGINT NOT NULL, ytd_payment BIGINT NOT NULL, payment_count BIGINT NOT NULL, delivery_count BIGINT NOT NULL, PRIMARY KEY(w_id, d_id, c_id));",
+    "CREATE TABLE district(w_id BIGINT NOT NULL, d_id BIGINT NOT NULL, ytd BIGINT NOT NULL, next_o_id BIGINT NOT NULL, PRIMARY KEY(w_id, d_id));",
+    "CREATE TABLE history(h_id BIGINT NOT NULL PRIMARY KEY, w_id BIGINT NOT NULL, d_id BIGINT NOT NULL, c_w_id BIGINT NOT NULL, c_d_id BIGINT NOT NULL, c_id BIGINT NOT NULL, amount BIGINT NOT NULL);",
+    "CREATE TABLE item(i_id BIGINT NOT NULL PRIMARY KEY, price BIGINT NOT NULL);",
+    "CREATE TABLE new_order(w_id BIGINT NOT NULL, d_id BIGINT NOT NULL, o_id BIGINT NOT NULL, PRIMARY KEY(w_id, d_id, o_id));",
+    "CREATE TABLE order_line(w_id BIGINT NOT NULL, d_id BIGINT NOT NULL, o_id BIGINT NOT NULL, number BIGINT NOT NULL, i_id BIGINT NOT NULL, supply_w_id BIGINT NOT NULL, quantity BIGINT NOT NULL, amount BIGINT NOT NULL, delivered BIGINT NOT NULL, PRIMARY KEY(w_id, d_id, o_id, number));",
+    "CREATE TABLE orders(w_id BIGINT NOT NULL, d_id BIGINT NOT NULL, o_id BIGINT NOT NULL, c_id BIGINT NOT NULL, carrier_id BIGINT, line_count BIGINT NOT NULL, total BIGINT NOT NULL, PRIMARY KEY(w_id, d_id, o_id));",
+    "CREATE TABLE stock(w_id BIGINT NOT NULL, i_id BIGINT NOT NULL, quantity BIGINT NOT NULL, ytd BIGINT NOT NULL, order_count BIGINT NOT NULL, remote_count BIGINT NOT NULL, PRIMARY KEY(w_id, i_id));",
+    "CREATE TABLE warehouse(w_id BIGINT NOT NULL PRIMARY KEY, ytd BIGINT NOT NULL);",
+    "CREATE INDEX orders_customer ON orders(w_id, d_id, c_id, o_id);",
+    "ANALYZE;"
+  ],
+  "source_hashes": {
+    "snapshot_sha256": "cf3c5524f0fce10d70876e7dd71cb7df36b5c1df79842694d6b91862809a47ca"
+  },
+  "sql_bytes": 321378587,
+  "sql_sha256": "8772c9bfcb2672d1b18bfb6aa98059489d26962083c94568f089be211eccd543",
+  "tables": [
+    {
+      "columns": [
+        "w_id",
+        "d_id",
+        "c_id",
+        "balance",
+        "ytd_payment",
+        "payment_count",
+        "delivery_count"
+      ],
+      "encoded_bytes": 17408000,
+      "logical_bytes": 14336000,
+      "logical_types": [
+        "int64",
+        "int64",
+        "int64",
+        "int64",
+        "int64",
+        "int64",
+        "int64"
+      ],
+      "name": "customer",
+      "order_by": [
+        "w_id",
+        "d_id",
+        "c_id"
+      ],
+      "rows": 256000,
+      "sha256": "c25dbd92b2298003ea3693435f011810e17f7408ae31ebe524505b4ea797f87a"
+    },
+    {
+      "columns": [
+        "w_id",
+        "d_id",
+        "ytd",
+        "next_o_id"
+      ],
+      "encoded_bytes": 104960,
+      "logical_bytes": 81920,
+      "logical_types": [
+        "int64",
+        "int64",
+        "int64",
+        "int64"
+      ],
+      "name": "district",
+      "order_by": [
+        "w_id",
+        "d_id"
+      ],
+      "rows": 2560,
+      "sha256": "9cfb0e32f1628b690bc167f7a09a99ea90892ddeaf754803fed2712f7a6f8aed"
+    },
+    {
+      "columns": [
+        "h_id",
+        "w_id",
+        "d_id",
+        "c_w_id",
+        "c_d_id",
+        "c_id",
+        "amount"
+      ],
+      "encoded_bytes": 55252992,
+      "logical_bytes": 45502464,
+      "logical_types": [
+        "int64",
+        "int64",
+        "int64",
+        "int64",
+        "int64",
+        "int64",
+        "int64"
+      ],
+      "name": "history",
+      "order_by": [
+        "h_id"
+      ],
+      "rows": 812544,
+      "sha256": "9177f3cfb11de22f22171b71c3570d173e95e60df59a03006297e49d78398d64"
+    },
+    {
+      "columns": [
+        "i_id",
+        "price"
+      ],
+      "encoded_bytes": 23000,
+      "logical_bytes": 16000,
+      "logical_types": [
+        "int64",
+        "int64"
+      ],
+      "name": "item",
+      "order_by": [
+        "i_id"
+      ],
+      "rows": 1000,
+      "sha256": "377bcc1a779de8f8b8c6a0937887b49bd2c1c686212117d6ca50ed47b38fe749"
+    },
+    {
+      "columns": [
+        "w_id",
+        "d_id",
+        "o_id"
+      ],
+      "encoded_bytes": 3645440,
+      "logical_bytes": 2734080,
+      "logical_types": [
+        "int64",
+        "int64",
+        "int64"
+      ],
+      "name": "new_order",
+      "order_by": [
+        "w_id",
+        "d_id",
+        "o_id"
+      ],
+      "rows": 113920,
+      "sha256": "d0e4dbad43fb49a03f3a7d8e2f0dd9b33f821acfc9505c53099ec8f8e926f16e"
+    },
+    {
+      "columns": [
+        "w_id",
+        "d_id",
+        "o_id",
+        "number",
+        "i_id",
+        "supply_w_id",
+        "quantity",
+        "amount",
+        "delivered"
+      ],
+      "encoded_bytes": 706603520,
+      "logical_bytes": 591575040,
+      "logical_types": [
+        "int64",
+        "int64",
+        "int64",
+        "int64",
+        "int64",
+        "int64",
+        "int64",
+        "int64",
+        "int64"
+      ],
+      "name": "order_line",
+      "order_by": [
+        "w_id",
+        "d_id",
+        "o_id",
+        "number"
+      ],
+      "rows": 8216320,
+      "sha256": "b39c6cd4b7ec8831ee65b7966edd724194d52679ffb1107cf3924f363db7eaba"
+    },
+    {
+      "columns": [
+        "w_id",
+        "d_id",
+        "o_id",
+        "c_id",
+        "carrier_id",
+        "line_count",
+        "total"
+      ],
+      "encoded_bytes": 57536000,
+      "logical_bytes": 47221760,
+      "logical_types": [
+        "int64",
+        "int64",
+        "int64",
+        "int64",
+        "int64",
+        "int64",
+        "int64"
+      ],
+      "name": "orders",
+      "order_by": [
+        "w_id",
+        "d_id",
+        "o_id"
+      ],
+      "rows": 859520,
+      "sha256": "63873da94146cfc79f0e9bc7dc717f3d73ae4088087af175c3e4e997f607ac8e"
+    },
+    {
+      "columns": [
+        "w_id",
+        "i_id",
+        "quantity",
+        "ytd",
+        "order_count",
+        "remote_count"
+      ],
+      "encoded_bytes": 15104000,
+      "logical_bytes": 12288000,
+      "logical_types": [
+        "int64",
+        "int64",
+        "int64",
+        "int64",
+        "int64",
+        "int64"
+      ],
+      "name": "stock",
+      "order_by": [
+        "w_id",
+        "i_id"
+      ],
+      "rows": 256000,
+      "sha256": "50aa4483d5544b5c13226e5e1612dc92ce9ecd0f0e88c3c97e093f360df799c0"
+    },
+    {
+      "columns": [
+        "w_id",
+        "ytd"
+      ],
+      "encoded_bytes": 5888,
+      "logical_bytes": 4096,
+      "logical_types": [
+        "int64",
+        "int64"
+      ],
+      "name": "warehouse",
+      "order_by": [
+        "w_id"
+      ],
+      "rows": 256,
+      "sha256": "0d543b4665c0a444170fcc31774d0a8cce0399c6636e3ce3411899d666370686"
+    }
+  ],
+  "total_encoded_bytes": 855683800,
+  "total_logical_bytes": 713759360,
+  "total_rows": 10518120,
+  "version": 1
+}
