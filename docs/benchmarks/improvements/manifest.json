@@ -1,0 +1,114 @@
+{
+  "scope": "Historical paired SlopDB improvement measurements before configurable page-size work; development workloads, not certified TPC results.",
+  "baseline_revision": "50b6a0b1cb0208650853dfb0c839e64ca4eeb4a4",
+  "after_revisions": {
+    "tpch": "91ea37023b6e02cebf45b80ad25ecfb3ce2c2fd5",
+    "tpcc": "04a5ad91db6a959e979d32d675c57f7e633a0cd2"
+  },
+  "revision_provenance": {
+    "baseline": "Verified detached baseline worktree; built with VCS stamping disabled. Confirmed before paired runs.",
+    "tpch_after": "Clean vcs.revision from go version -m tpch-current; benchmark operator confirmed report used this executable.",
+    "tpcc_after": "Clean vcs.revision from go version -m tpcc-current; benchmark operator confirmed report used this executable."
+  },
+  "measurement_order": "Before and after runs were serial; no concurrent heavy jobs. OS caches were not reset.",
+  "samples": "TPC-H: one warmup then one measured execution per query. TPC-C: one 60-second run per revision.",
+  "page_size_bytes": 4096,
+  "storage_defaults": {
+    "write_buffer_bytes": 4194304,
+    "block_cache_bytes": 134217728,
+    "compression": "auto: uncompressed L0, zstd L1-L6",
+    "wal_enabled": true,
+    "wal_fsync": false
+  },
+  "report_provenance": "Reports copied byte-for-byte from external scratch artifacts. No metadata sanitization was needed.",
+  "artifact_sha256": {
+    "tpch-before.json": "2eed0091349ab83c2472f244a7982f32e798bca0edac84c2f481bf1bc02fbd7f",
+    "tpch-complete.json": "0e1e16629d59d6100427c860d9b89c64d0917a621d50457f75e61972f8851304",
+    "tpcc-before.json": "068bb97a305c5b3a6769104112e681460d5473d47c10672febf9eb25816815a1",
+    "tpcc-after.json": "de78d2277bccf7b11fd699903a3e36c134306db030e1cfae24ff134f5050b899",
+    "verification-before.json": "b294237ef080053abd1cce2e5560320f78c5cf24be3a09cba3007b13e834e05b",
+    "verification-after.json": "cc13c52610a596fb309e2e04b7e0c61d83d07c3edef20c7dea3ed5029277b379"
+  },
+  "tpch_input_sha256": {
+    "region": "2b12cdddbe69a491b2bf6bea9bc33d4781c56fa4c5cb7f9702860618221c85f2",
+    "nation": "7986406c8b57b41e274247d514dc2e837769073533e1f7fe3463767798367ec6",
+    "supplier": "c75a3528f0c67c1d1e2687254eb57a98bac8d18dd5e7667d1dd4bef26912c443",
+    "customer": "73804ad717db103e4b728ae5c1bdd77b96d19147ba1569c21957ec961be3f2aa",
+    "part": "9645367c16e4f05351e1789f01b9bffcd39ebfbb3acba100692e4fe506e27e00",
+    "partsupp": "a60496cd42bb30ce60c1036cfa9d0c269f6e3242d0c7637903fd433f2369c0e7",
+    "orders": "9df1319443eb7a4638c58028f39c49eed71a95409d3964e558a68b5fd9620c38",
+    "lineitem": "a4f15a2c2b189e3458c92376ec4a2179b58643ec028268f0f0da26ff43f33307"
+  },
+  "tpch_rows": {
+    "customer": 30000,
+    "lineitem": 1199969,
+    "nation": 25,
+    "orders": 300000,
+    "part": 40000,
+    "partsupp": 160000,
+    "region": 5,
+    "supplier": 2000
+  },
+  "tpch_configs": {
+    "before": {
+      "data_directory": "/tmp/slopdb-bench/storage-large-uxqRa0/tpch-inputs",
+      "database_directory": "/tmp/slopdb-bench/improvements/tpch-before",
+      "report_file": "/tmp/slopdb-bench/improvements/tpch-before.json",
+      "query_selection": "all",
+      "runs": 1,
+      "warmups": 1,
+      "query_timeout_ns": 180000000000,
+      "prepared_statements": true,
+      "secondary_indexes": true,
+      "wal_fsync": false
+    },
+    "after": {
+      "data_directory": "/tmp/slopdb-bench/storage-large-uxqRa0/tpch-inputs",
+      "database_directory": "/tmp/slopdb-bench/improvements/tpch-complete-db",
+      "report_file": "/tmp/slopdb-bench/improvements/tpch-complete.json",
+      "query_selection": "all",
+      "runs": 1,
+      "warmups": 1,
+      "query_timeout_ns": 180000000000,
+      "prepared_statements": true,
+      "secondary_indexes": true,
+      "wal_fsync": false
+    }
+  },
+  "tpcc_configs": {
+    "before": {
+      "engine": "slopdb",
+      "workers": 10,
+      "duration_ns": 60000000000,
+      "warehouses": 2,
+      "districts_per_warehouse": 10,
+      "customers_per_district": 100,
+      "items": 1000,
+      "seed": 42,
+      "max_retries": 5,
+      "lock_timeout_ns": 250000000,
+      "transaction_timeout_ns": 5000000000,
+      "prepared_statements": true,
+      "wal_fsync": false,
+      "database_dir": "/tmp/slopdb-bench/improvements/tpcc-before-db",
+      "report_file": "/tmp/slopdb-bench/improvements/tpcc-before.json"
+    },
+    "after": {
+      "engine": "slopdb",
+      "workers": 10,
+      "duration_ns": 60000000000,
+      "warehouses": 2,
+      "districts_per_warehouse": 10,
+      "customers_per_district": 100,
+      "items": 1000,
+      "seed": 42,
+      "max_retries": 5,
+      "lock_timeout_ns": 250000000,
+      "transaction_timeout_ns": 5000000000,
+      "prepared_statements": true,
+      "wal_fsync": false,
+      "database_dir": "/tmp/slopdb-bench/improvements/tpcc-after-db",
+      "report_file": "/tmp/slopdb-bench/improvements/tpcc-after.json"
+    }
+  }
+}
