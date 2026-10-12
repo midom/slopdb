@@ -43,6 +43,7 @@ go test ./sql -run '^$' -fuzz FuzzParse -fuzztime 30s
 | Concurrent memtables, atomic bulk/group commits, flush and shutdown | `tests/regression/atomic_memtable_test.go`, `bulk_memtable_test.go`, `group_commit_test.go`, `flush_test.go`, `db/shutdown_concurrency_test.go` | Corresponding review programs |
 | SSTable metadata, filters, checksums, compressed blocks, corruption and compression policy | `tests/regression/sstable_metadata_test.go`, `compression_codecs_test.go`, `level_compression_test.go`, `bloom_quality_test.go`, `storage/bloom_test.go` | `current_metadata_review.go`, `current_codecs_review.go`, `current_level_compression_review.go`, `bloom_quality_review.go`; conservative unknown-filter checks from `bloom_compatibility_review.go` |
 | WAL/no-fsync/no-WAL modes, abrupt-exit recovery, rollback, damaged files, write/Close errors | `tests/regression/recovery_test.go`, `durability_test.go` | `recovery_review.go`, `no_wal_review.go`, `no_wal_fsync_review.go` |
+| CLI formatting, schema planning, atomic CSV import, backup/integrity commands and page-size options | `internal/cli/*_test.go`, `tests/regression/cli_page_size_test.go` | CLI unit tests live with the implementation; process tests build the root entry point |
 | CLI EOF/exit/bail/SIGTERM persistence, `.open` and flush errors | `tests/regression/cli_linux_test.go`, compression CLI tests | `no_wal_cli_review.go` and the current compression review programs |
 | Malformed parser input and fuzz seeds | `sql/parser_test.go` | `parser_review.go`; also covers the ALTER-column semicolon regression found while migrating |
 
@@ -70,6 +71,10 @@ detector. Linux terminal/SIGTERM checks use a pseudo-terminal. Actual fsync sysc
 verification runs when Linux `strace` is installed; otherwise that additional test
 is skipped. WAL recording, replay, durability modes and error checks still run
 without `strace`.
+
+The command-line implementation and its unit tests live in `internal/cli/`.
+The root `main.go` delegates to that package, so plain `go build` from the
+repository root still produces the `slopdb` executable.
 
 ## Reference fixtures
 

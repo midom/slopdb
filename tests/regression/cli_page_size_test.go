@@ -1,4 +1,4 @@
-package main
+package regression
 
 import (
 	"os/exec"
@@ -11,10 +11,8 @@ import (
 )
 
 func TestCLIPageSizeFlagReopenAndOpen(t *testing.T) {
-	binary := filepath.Join(t.TempDir(), "slopdb")
-	if output, err := exec.Command("go", "build", "-buildvcs=false", "-o", binary, ".").CombinedOutput(); err != nil {
-		t.Fatal(err, string(output))
-	}
+	env := newRegressionEnv(t)
+	binary := env.cli()
 	first := filepath.Join(t.TempDir(), "first")
 	second := filepath.Join(t.TempDir(), "second")
 	run := func(args []string, input string) string {
