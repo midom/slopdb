@@ -33,10 +33,11 @@
 
 Only READ COMMITTED is supported. Each statement sees the latest committed data
 plus its transaction's writes; nonrepeatable reads and phantoms are allowed.
-Transaction lifetimes overlap, while SQL execution and atomic commits are
-serialized. Writers hold row and UNIQUE value locks until commit or rollback;
-blocked statements release the execution mutex, wait in queue order, then
-re-evaluate current committed rows. Ordinary SELECTs do not acquire row locks.
+Independent sessions execute statements concurrently using MVCC snapshots;
+commits publish atomic storage batches. Writers hold row and UNIQUE value locks
+until commit or rollback. Blocked statements release their shared execution
+view while waiting, then re-evaluate current committed rows. Ordinary SELECTs
+do not acquire row locks.
 Different rows in the same table can be written independently. DDL takes an
 exclusive catalog lock; writes take shared catalog locks. Failed statements
 release their new locks, while rollback to a savepoint retains transaction locks.
@@ -109,11 +110,11 @@ reverse seeks. `VACUUM` flushes writes and compacts SSTables.
 - [x] SQL comments (-- and /* */)
 - [x] NULLS FIRST / LAST in ORDER BY
 - [x] ESCAPE for LIKE
-- [x] COLLATE (no-op)
+- [x] COLLATE BINARY in column definitions (default collation; other collations are rejected)
 - [x] IF NOT EXISTS (CREATE TABLE/INDEX)
-- [ ] Table-valued functions
 - [x] Common Table Expressions, including dependent scopes and wrapped DML
 - [x] Window functions: ranking, navigation, aggregate windows and frames
 - [x] Recursive CTEs for supported single-SELECT UNION / UNION ALL shapes
-- [ ] Additional recursive query shapes and window functions/extensions
-- [ ] Table-valued functions and generate_series / virtual tables
+- [ ] General recursive query shapes beyond the supported single recursive SELECT
+- [ ] Additional window functions and FILTER/EXCLUDE/DISTINCT window extensions
+- [ ] Table-valued functions, including generate_series, and virtual tables
