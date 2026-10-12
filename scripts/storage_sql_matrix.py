@@ -13,6 +13,7 @@ import math
 import os
 from pathlib import Path
 import platform
+import re
 import shutil
 import sqlite3
 import struct
@@ -128,6 +129,8 @@ def load_manifest(path, sql):
         raise ValueError("unsupported canonical manifest format")
     if manifest.get("sql_sha256") != digest(sql) or manifest.get("sql_bytes") != sql.stat().st_size:
         raise ValueError("canonical SQL does not match manifest bytes/hash")
+    if not isinstance(manifest.get("dataset"), str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", manifest["dataset"]):
+        raise ValueError("canonical dataset name is not a safe path component")
     names = set()
     for table in manifest["tables"]:
         if not table["name"] or table["name"] in names:

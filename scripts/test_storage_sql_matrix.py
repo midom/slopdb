@@ -6,6 +6,7 @@ import sqlite3
 import struct
 import tempfile
 import unittest
+from types import SimpleNamespace
 
 import storage_sql_matrix as matrix
 
@@ -76,6 +77,22 @@ class CanonicalStorageTests(unittest.TestCase):
             sql.write_text(sql.read_text() + " -- changed")
             with self.assertRaisesRegex(ValueError, "hash"):
                 matrix.load_manifest(sidecar, sql)
+
+    def test_native_cell_measures_only_verified_reopened_values(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            cell = Path(temporary)
+            sql = cell / "canonical.sql"
+            manifest = self.fixture(sql)
+            directory = cell / "database"
+            directory.mkdir()
+            report = matrix.native_cell(SimpleNamespace(sql=sql), manifest, "sqlite", 65536, cell, directory)
+            self.assertEqual(report["sql_sha256"], manifest["sql_sha256"])
+            self.assertEqual(report["statements"], 4)
+            for phase in ("closed", "after_maintenance"):
+                self.assertEqual(report[phase]["storage_info"]["page_size"], 65536)
+                self.assertGreater(report[phase]["file_bytes"], 0)
+                self.assertEqual(report[phase]["wal_files"], [])
+                matrix.validate_phase(report[phase], manifest)
 
     def test_corruption_cannot_publish_size(self):
         with tempfile.TemporaryDirectory() as temporary:
