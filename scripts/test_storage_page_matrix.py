@@ -51,35 +51,69 @@ class PageMatrixTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "WAL remains"):
                 matrix.measure(directory)
 
-    def test_one_mib_only_loads_and_compacts_without_query_verification(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            cell = Path(temporary)
-            directory = cell / "database"
-            directory.mkdir()
-            args = types.SimpleNamespace(slop_tpch=Path("tpch"), slop_snapshot=Path("snapshot"),
-                                         tpch_data=cell / "inputs", runs=3, warmups=1,
-                                         timeout_seconds=180, load_batch_rows=4096,
-                                         reference_report=cell / "must-not-read.json")
-            calls = []
-            def execute(command, log):
-                calls.append(command)
-                report = Path(command[command.index("-json") + 1])
-                if "-mode" not in command:
-                    self.assertIn("-load-only", command)
-                    directory.mkdir()
-                    (directory / "data.sst").write_bytes(b"data")
-                    value = {"queries": None, "query_benchmarked": False, "load_seconds": 1,
-                             "load_mode": "bulk_insert", "config": {"load_batch_rows": 4096}}
-                else:
-                    self.assertNotIn("-verify-report", command)
-                    value = {"counts_verified_after_reopen": True}
-                report.write_text(json.dumps(value))
-            with patch.object(matrix, "run", side_effect=execute):
-                result = matrix.tpch(args, "slopdb", 1048576, cell, directory)
-            self.assertEqual(len(calls), 2)
-            self.assertFalse(result["query_benchmarked"])
-            self.assertFalse(result["query_answers_verified"])
-            self.assertEqual(result["load_mode"], "bulk_insert")
+    def test_storage_only_loads_and_compacts_without_query_verification(self):
+        for size, storage_only in ((1048576, False), (4096, True), (16384, True), (65536, True), (1048576, True)):
+            with self.subTest(size=size, storage_only=storage_only), tempfile.TemporaryDirectory() as temporary:
+                cell = Path(temporary)
+                directory = cell / "database"
+                directory.mkdir()
+                args = types.SimpleNamespace(slop_tpch=Path("tpch"), slop_snapshot=Path("snapshot"),
+                                             tpch_data=cell / "inputs", runs=3, warmups=1,
+                                             timeout_seconds=180, load_batch_rows=4096, storage_only=storage_only,
+                                             reference_report=cell / "must-not-read.json")
+                calls = []
+                def execute(command, log):
+                    calls.append(command)
+                    report = Path(command[command.index("-json") + 1])
+                    if "-mode" not in command:
+                        self.assertIn("-load-only", command)
+                        directory.mkdir()
+                        (directory / "data.sst").write_bytes(b"data")
+                        value = {"queries": None, "query_benchmarked": False, "load_seconds": 1,
+                                 "load_mode": "bulk_insert", "config": {"load_batch_rows": 4096},
+                                 "page_size_bytes": size, "zstd_window_bytes": size,
+                                 "table_rows": {"lineitem": 1}, "counts_verified_after_reopen": True}
+                    else:
+                        self.assertNotIn("-verify-report", command)
+                        value = self.maintained_report(size)
+                    report.write_text(json.dumps(value))
+                with patch.object(matrix, "run", side_effect=execute):
+                    result = matrix.tpch(args, "slopdb", size, cell, directory)
+                self.assertEqual(len(calls), 2)
+                self.assertFalse(result["query_benchmarked"])
+                self.assertFalse(result["query_answers_verified"])
+                self.assertEqual(result["load_mode"], "bulk_insert")
+
+    @staticmethod
+    def maintained_report(size):
+        return {"page_size_bytes": size, "zstd_window_bytes": max(1024, size),
+                "bottom_level": 6, "all_sstables_at_bottom": True,
+                "maintenance_operation": "full_bottom_level_rewrite",
+                "levels": [{"FileCount": 0, "TotalSize": 0, "Files": []} for _ in range(6)] +
+                          [{"FileCount": 1, "TotalSize": 4, "Files": [{"Number": 1, "Size": 4}]}]}
+
+    def test_maintenance_rejects_upper_level_files_and_old_windows(self):
+        for size in (4096, 16384, 65536, 1048576):
+            matrix.validate_slop_metadata(self.maintained_report(size), size, maintained=True)
+            for level in range(6):
+                value = self.maintained_report(size)
+                value["levels"][level] = {"FileCount": 1, "TotalSize": 4, "Files": [{"Number": 2, "Size": 4}]}
+                with self.assertRaisesRegex(ValueError, "above the bottom"):
+                    matrix.validate_slop_metadata(value, size, maintained=True)
+            value = self.maintained_report(size)
+            value["zstd_window_bytes"] = 8 << 20
+            with self.assertRaisesRegex(ValueError, "compression window"):
+                matrix.validate_slop_metadata(value, size, maintained=True)
+            value = self.maintained_report(size)
+            value["maintenance_operation"] = "promote_only"
+            with self.assertRaisesRegex(ValueError, "rewrite all files"):
+                matrix.validate_slop_metadata(value, size, maintained=True)
+
+    def test_storage_only_skips_queries_at_every_size(self):
+        for size in (4096, 16384, 65536, 1048576):
+            self.assertFalse(matrix.performance_enabled(size, storage_only=True))
+        self.assertTrue(matrix.performance_enabled(4096))
+        self.assertFalse(matrix.performance_enabled(1048576))
 
 
 if __name__ == "__main__":

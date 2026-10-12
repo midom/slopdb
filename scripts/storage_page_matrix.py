@@ -3,7 +3,8 @@
 
 The TPC-C fixture uses a portable committed-state JSON snapshot, replicated with
 warehouse/history keys shifted. It measures storage, not transaction throughput.
-TPC-H uses DBGEN inputs and executes all 22 queries. Native DuckDB needs its Python
+TPC-H uses DBGEN inputs and optionally executes all 22 queries.
+--storage-only skips query execution at every SlopDB page size. Native DuckDB needs its Python
 package plus the separate Go runner; SQLite uses Python's standard library.
 """
 import argparse
@@ -32,9 +33,33 @@ def supported(engine, size):
     return low <= size <= high and size & (size - 1) == 0
 
 
-def performance_enabled(size):
+def performance_enabled(size, storage_only=False):
     # Large pages are deliberately load/storage-only in this comparison.
-    return size < 1 << 20
+    return not storage_only and size < 1 << 20
+
+
+def validate_slop_metadata(report, size, maintained=False):
+    if report.get("page_size_bytes") != size:
+        raise ValueError("SlopDB report page size does not match requested target")
+    if report.get("zstd_window_bytes") != max(1024, size):
+        raise ValueError("SlopDB compression window does not match page target")
+    if not maintained:
+        return
+    if report.get("bottom_level") != 6 or report.get("all_sstables_at_bottom") is not True:
+        raise ValueError("SlopDB maintenance lacks verified L6-only compaction evidence")
+    if report.get("maintenance_operation") != "full_bottom_level_rewrite":
+        raise ValueError("SlopDB maintenance must rewrite all files at the bottom level")
+    levels = report.get("levels")
+    if not isinstance(levels, list) or len(levels) != 7:
+        raise ValueError("SlopDB maintenance must include all seven level inventories")
+    for level in levels[:-1]:
+        if level.get("FileCount") != 0 or level.get("TotalSize") != 0 or level.get("Files"):
+            raise ValueError("SlopDB SSTables remain above the bottom level")
+    for level in levels:
+        if not isinstance(level.get("FileCount"), int) or not isinstance(level.get("TotalSize"), int):
+            raise ValueError("SlopDB level inventory lacks exact counts and sizes")
+        if level["FileCount"] < 0 or level["TotalSize"] < 0 or level["FileCount"] != len(level.get("Files") or []):
+            raise ValueError("SlopDB level inventory is inconsistent")
 
 
 def measure(directory):
@@ -267,13 +292,13 @@ def tpch(args, engine, size, cell, directory):
             directory.rmdir()
             command += ["-dir", directory]
             command += ["-load-batch-rows", args.load_batch_rows]
-            if not performance_enabled(size):
+            if not performance_enabled(size, args.storage_only):
                 command += ["-load-only"]
         else:
             command += ["-database", directory / "benchmark.duckdb", "-query-root", ROOT / "cmd/tpch", "-threads", "1"]
         run(command, cell / "load-queries.log")
         report = json.loads(raw.read_text())
-    timed = performance_enabled(size)
+    timed = performance_enabled(size, args.storage_only)
     if not timed and (report.get("queries") or report.get("successful_executions") or report.get("query_benchmarked") is not False):
         raise ValueError("load-only page size unexpectedly executed benchmark queries")
     queries = report.get("queries") or []
@@ -291,14 +316,19 @@ def tpch(args, engine, size, cell, directory):
             error = check.compare(query.get("results", []), reference[query["number"]].get("results", [])) or check.order_error(query["number"], query.get("results", []))
             if error:
                 raise ValueError(f"Q{query['number']} answer mismatch: {error}")
+    if engine == "slopdb":
+        validate_slop_metadata(report, size)
     before = measure(directory)
     if engine == "slopdb":
+        before.update({"page_size_bytes": report["page_size_bytes"], "zstd_window_bytes": report["zstd_window_bytes"],
+                       "rows": report["table_rows"], "counts_verified_after_reopen": report["counts_verified_after_reopen"]})
         maintenance = cell / "maintenance.json"
         command = [args.slop_snapshot, "-mode", "compact", "-dir", directory, "-page-size", size, "-json", maintenance]
         if timed:
             command += ["-verify-report", raw]
         run(command, cell / "maintenance.log")
         maintenance = json.loads(maintenance.read_text())
+        validate_slop_metadata(maintenance, size, maintained=True)
     else:
         file = directory / ("benchmark.sqlite" if engine == "sqlite" else "benchmark.duckdb")
         con = native_open(engine, file, size)
@@ -324,7 +354,7 @@ def tpch(args, engine, size, cell, directory):
     maintenance.update(measure(directory))
     return {"load_seconds": report["load_seconds"], "query_report": str(raw), "closed": before,
             "after_maintenance": maintenance, "query_benchmarked": timed,
-            "query_benchmark_skip_reason": None if timed else "User requested loading/storage only for 1 MiB blocks",
+            "query_benchmark_skip_reason": None if timed else ("Storage-only measurement requested" if args.storage_only else "User requested loading/storage only for 1 MiB blocks"),
             "load_mode": report.get("load_mode", "appender"), "load_batch_rows": report.get("config", {}).get("load_batch_rows", report.get("load_batch_rows")),
             "query_answers_verified": bool(args.reference_report and timed)}
 
@@ -340,9 +370,11 @@ def cell_run(args, workload, engine, size):
                   "-replicas", args.tpcc_replicas, "-page-size", size, "-load-batch-rows", args.load_batch_rows]
         run(common + ["-mode", "load", "-json", before_json], cell / "load.log")
         before = json.loads(before_json.read_text())
+        validate_slop_metadata(before, size)
         before.update(measure(directory))
         run(common + ["-mode", "maintenance", "-json", after_json], cell / "maintenance.log")
         after = json.loads(after_json.read_text())
+        validate_slop_metadata(after, size, maintained=True)
         after.update(measure(directory))
         result = {"load_seconds": before["load_seconds"], "closed": before, "after_maintenance": after}
     elif workload == "tpcc":
@@ -378,6 +410,7 @@ def main():
     parser.add_argument("--duck-tpch", type=Path)
     parser.add_argument("--duckdb-wal-shim", type=Path, help="Linux WAL-only preload shim; required for DuckDB no-fsync loading")
     parser.add_argument("--controls", action="store_true", help="also run SlopDB/SQLite4KiB and DuckDB256KiB controls")
+    parser.add_argument("--storage-only", action="store_true", help="load and measure storage without TPC-H queries at any size (TPC-H currently requires --engines slopdb)")
     parser.add_argument("--discard-databases", action="store_true", help="remove only each successful cell's newly created database after validation and size inventory")
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--warmups", type=int, default=1)
@@ -388,6 +421,8 @@ def main():
         parser.error("replicas/runs/timeout/page sizes must be positive; warmups nonnegative")
     if not args.tpcc_snapshot and not args.tpch_data:
         parser.error("provide --tpcc-snapshot and/or --tpch-data")
+    if args.storage_only and args.tpch_data and any(engine != "slopdb" for engine in args.engines):
+        parser.error("--storage-only TPC-H currently supports only --engines slopdb")
     for key, value in vars(args).items():
         if isinstance(value, Path):
             setattr(args, key, value.resolve())
@@ -411,10 +446,10 @@ def main():
                            for name, path in (("slop_snapshot", args.slop_snapshot), ("slop_tpch", args.slop_tpch), ("duck_tpch", args.duck_tpch)) if path},
               "slopdb_revision": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
               "platform": platform.platform(), "python_version": platform.python_version(), "cpus": os.cpu_count(),
-              "units": "bytes; MiB=1048576 bytes", "method": "serial fresh equal-data fixtures; file and allocated bytes after close and maintenance",
+              "units": "bytes; MiB=1048576 bytes", "method": "serial fresh equal-data fixtures; final SlopDB size measured after atomic full bottom-level rewrite and verified L6-only inventory; pre-maintenance sizes are diagnostics",
               "durability": "WAL enabled; WAL fsync disabled; SlopDB/DuckDB checkpoint and data-file synchronization enabled; SQLite synchronous=OFF also disables its checkpoint synchronization",
               "page_size_meaning": {"slopdb": "uncompressed SSTable data-block target", "sqlite": "fixed B-tree page", "duckdb": "storage block"},
-              "run_settings": {"slopdb_block_cache_bytes": 128 << 20, "slopdb_memtable_bytes": 4 << 20, "slopdb_compression": "auto", "zstd_window_bytes": 8 << 20, "zstd_encoder_concurrency": 1, "zstd_level": "default", "zstd_match_memory": "normal", "load_batch_rows": args.load_batch_rows, "large_page_performance": "disabled; 1 MiB is loading/storage only", "duckdb_threads": 1, "duckdb_memory_limit": "1GB", "sqlite_cache_size_kib": 131072, "sqlite_wal_checkpoint_target_bytes": 64 << 20, "warmups": args.warmups, "runs": args.runs},
+              "run_settings": {"slopdb_block_cache_bytes": 128 << 20, "slopdb_memtable_bytes": 4 << 20, "slopdb_compression": "auto", "zstd_window_policy": "configured page target; minimum 1024 bytes", "storage_only": args.storage_only, "zstd_encoder_concurrency": 1, "zstd_level": "default", "zstd_match_memory": "normal", "load_batch_rows": args.load_batch_rows, "large_page_performance": "disabled; 1 MiB is loading/storage only", "duckdb_threads": 1, "duckdb_memory_limit": "1GB", "sqlite_cache_size_kib": 131072, "sqlite_wal_checkpoint_target_bytes": 64 << 20, "warmups": args.warmups, "runs": args.runs},
               "tpcc_replicas": args.tpcc_replicas, "tpcc_snapshot_sha256": digest(args.tpcc_snapshot) if args.tpcc_snapshot else None,
               "tpch_manifest": json.loads((args.tpch_data / "manifest.json").read_text()) if args.tpch_data else None,
               "cells": []}
