@@ -93,7 +93,7 @@ func (s *Schema) CheckIntegrity() (report IntegrityReport, err error) {
 			if len(info.PKColumns) > 0 && !bytes.Equal(key, info.encodePK(table, row)) {
 				return report, fmt.Errorf("row %q: clustered primary key mismatch", key)
 			}
-			if err = s.checkConstraintsOriginal(table, info, row, key, row); err != nil {
+			if err = s.checkConstraintsOriginalPreserving(table, info, row, key, row, row, nil); err != nil {
 				return report, fmt.Errorf("row %q: %w", key, err)
 			}
 			if err = s.checkForeignRow(table, row); err != nil {
@@ -104,8 +104,8 @@ func (s *Schema) CheckIntegrity() (report IntegrityReport, err error) {
 					values, hasNull := indexValues(idx.columnNames(), row)
 					if !hasNull {
 						encoded := []byte{}
-						for _, value := range values {
-							encoded = appendValueIdentity(encoded, value)
+						for i, value := range values {
+							encoded = appendValueIdentity(encoded, idx.keyValue(idx.columnNames()[i], value))
 						}
 						seen := unique[idx.Name]
 						if seen == nil {
@@ -144,6 +144,17 @@ func (s *Schema) CheckIntegrity() (report IntegrityReport, err error) {
 				colon := bytes.IndexByte(suffix, ':')
 				if colon >= 0 {
 					idx = s.indexes[string(suffix[:colon])]
+				}
+			}
+			if idx == nil && len(key) >= 11 && key[1] == 0xff && key[10] == ':' {
+				id := binary.BigEndian.Uint64(key[2:10])
+				_, pending, cleanupErr := s.committedGet(indexCleanupKey(id))
+				if cleanupErr != nil {
+					return report, cleanupErr
+				}
+				if pending {
+					iterator.Next()
+					continue
 				}
 			}
 			if idx == nil || s.isClusteredIndex(idx) {

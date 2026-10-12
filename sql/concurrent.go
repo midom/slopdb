@@ -326,7 +326,7 @@ func (p *PointUpdate) Run(ctx context.Context) (int64, error) {
 		}
 		return 1, nil
 	}
-	if err := p.schema.lsm.WriteBatch(batch); err != nil {
+	if err := p.schema.writeBatchWithOnlineIndexes(batch); err != nil {
 		return 0, err
 	}
 	p.schema.parent.commitVersion.Add(1)

@@ -117,3 +117,74 @@ Dot commands are available in interactive terminal sessions. Scripts redirected
 into the CLI must opt in with `--allow-dot-commands`; otherwise encountering a dot
 command reports an error and exits with status 1. The setting applies to all dot
 commands, including shell execution, file access and exit commands.
+
+## Quick storage status
+
+CLI `.status` prints the current database path, effective WAL and fsync mode,
+persisted SSTable page target, default query and lock timeouts, deadlock detection,
+compression for future L0 and L1-L6 blocks, active and immutable memtable bytes, and the
+number and total size of SSTables at each occupied level. It takes a cheap
+snapshot of live counters and file metadata, so it is useful during normal
+operation. For example, it distinguishes a database running without WAL from
+one writing WAL without fsync; both settings affect crash durability.
+
+`.status` does not scan data or verify checksums. Use `.integrity` for that
+explicit check. For per-file bounds, cache counters and compaction counters,
+use `.manifest`. A large L0 file count can indicate that flushes are arriving
+faster than background compaction; compare several status snapshots before
+drawing a conclusion from one moment.
+
+Compression describes future writes; existing SSTables can contain different
+codecs. Timeouts and deadlock detection describe this CLI instance. They are
+selected at open and are not persistent database settings. Use `PRAGMA collation`
+to read the persisted database-wide text mode.
+
+## Explaining a slow query
+
+CLI `.explain SELECT ...` shows access, filters, join order, sorting and LIMIT,
+with short explanations of their effect. It accepts exactly one SELECT-family
+statement and produces an estimated plan without evaluating the SELECT.
+
+```text
+.explain SELECT id, name FROM customers WHERE id=42
+.explain SELECT id, name FROM customers ORDER BY name LIMIT 20
+```
+
+`PointLookup` means a direct primary-key read. `SeekGE` / `SeekLT` seek to a
+starting key in forward / reverse order; the plan details describe any bounds.
+`MultiGet` batches point reads. `OpenIndex`
+identifies an index. `Rewind` indicates scan access, and `SorterSort` indicates
+a separate sort. A scan can be appropriate when most rows are needed. For a
+selective predicate, check whether an index starts with the filtering columns;
+for sorting, check whether its key order matches ORDER BY. Residual filters
+still validate rows obtained through an index.
+
+Run `EXPLAIN ANALYZE SELECT ...;` explicitly when you need actual row reads,
+join/probe counts, execution times, allocation or spill evidence. It executes
+the query and a `FOR UPDATE` / `FOR SHARE` clause can acquire locks. Compare
+actual work with the estimated plan and representative parameter values before
+changing an index. A large LIMIT/OFFSET, a broad join or a sort over many rows
+can account for work even when an index is present. After substantial data
+changes, `ANALYZE;` refreshes the persisted statistics used for access and join
+choices; ordinary writes do not refresh them automatically.
+
+For lock contention, `.locks` prints waiting sessions and blocking session IDs.
+Use independent sessions to investigate active transactions; calls on the same
+session serialize. See [SQL and lock diagnostics](diagnostics.md) for the Go API
+and lock timing, and [SQL surprises](sql-surprises.md) when the issue is the
+answer rather than execution cost.
+
+## Backup, restore and upgrades
+
+Create `.backup DIRECTORY` into a new directory before an upgrade or a schema
+change whose recovery cost matters. Reopen that directory and run `.integrity`
+to validate the copy. Restoring means opening the backup directory with the
+desired runtime options; it needs no SQL import. Keep the original directory
+until the restored data has been checked. WAL settings at runtime are visible
+through `.status`.
+
+Use `.plan` or SQL `EXPLAIN` on a supported schema change before executing it
+to inspect expected scans, rewrites and locking. See
+[schema change planning](schema-change-planning.md) for limitations and online
+index operations. These commands report work; they do not validate every
+existing row or guarantee that the later operation will succeed.

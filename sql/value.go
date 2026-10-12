@@ -8,6 +8,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type ColumnType int
@@ -223,12 +224,13 @@ type CreateTriggerStmt struct {
 }
 
 type CreateIndexStmt struct {
-	Index       string
-	Table       string
-	Column      string
-	Columns     []string
-	Unique      bool
-	IfNotExists bool
+	PublicationAbortAfter *time.Duration
+	Index                 string
+	Table                 string
+	Column                string
+	Columns               []string
+	Unique                bool
+	IfNotExists           bool
 }
 
 type ExplainStmt struct {
@@ -271,7 +273,8 @@ type ReleaseStmt struct {
 }
 
 type DropIndexStmt struct {
-	Index string
+	PublicationAbortAfter *time.Duration
+	Index                 string
 }
 
 type ConstraintDef struct {
@@ -287,26 +290,27 @@ type ConstraintDef struct {
 }
 
 type AlterTableStmt struct {
-	ObjectKind    string
-	TableIfExists bool
-	IfExists      bool
-	IfNotExists   bool
-	Cascade       bool
-	Actions       []*AlterTableStmt
-	Constraint    *ConstraintDef
-	Default       Expression
-	Using         Expression
-	AllowExisting bool
-	Position      string
-	After         string
-	ViewSQL       string
-	ViewColumns   []string
-	Table         string
-	Operation     string
-	NewName       string
-	OldColName    string
-	NewColName    string
-	Column        *ColumnDef
+	PublicationAbortAfter *time.Duration
+	ObjectKind            string
+	TableIfExists         bool
+	IfExists              bool
+	IfNotExists           bool
+	Cascade               bool
+	Actions               []*AlterTableStmt
+	Constraint            *ConstraintDef
+	Default               Expression
+	Using                 Expression
+	AllowExisting         bool
+	Position              string
+	After                 string
+	ViewSQL               string
+	ViewColumns           []string
+	Table                 string
+	Operation             string
+	NewName               string
+	OldColName            string
+	NewColName            string
+	Column                *ColumnDef
 }
 
 type VacuumStmt struct{}

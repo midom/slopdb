@@ -83,6 +83,13 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 	if err != nil {
 		return nil, err
 	}
+	if err := s.terminalTransactionError(); err != nil {
+		cancel()
+		return nil, err
+	}
+	ctx, abortCancel := context.WithCancelCause(ctx)
+	parentCancel := cancel
+	cancel = func() { abortCancel(nil); parentCancel() }
 	if err = s.gate.LockContext(ctx); err != nil {
 		cancel()
 		return nil, err
@@ -93,6 +100,8 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 		return nil, err
 	}
 	var binding *sql.BoundQuery
+	var rows *Rows
+	managedStarted := false
 	successful := false
 	held := s.db.locks.snapshot(s.schema)
 	release := func() {
@@ -103,6 +112,15 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 		}
 		if !successful || !s.schema.InTransaction() {
 			s.db.locks.restore(s.schema, held)
+		}
+		if managedStarted {
+			if rows != nil {
+				rows.err = s.db.finishManagedCall(s.schema, ctx, rows.err, true)
+				_ = s.finishTransactionAbort(rows.err)
+			} else {
+				err = s.db.finishManagedCall(s.schema, ctx, err, false)
+				_ = s.finishTransactionAbort(err)
+			}
 		}
 		s.clearActive()
 		s.db.execution.RUnlock()
@@ -115,8 +133,16 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 	if err = s.registerActive(cancel); err != nil {
 		release()
 		if bound {
+			if aborted := s.terminalTransactionError(); aborted != nil {
+				return nil, aborted
+			}
 			return nil, ErrTxDone
 		}
+		return nil, err
+	}
+	managedStarted = true
+	if err = s.db.beginManagedCall(s.schema, abortCancel); err != nil {
+		release()
 		return nil, err
 	}
 	if bound && !s.schema.InTransaction() {
@@ -160,7 +186,7 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 		}
 		if lockTimeout == 0 {
 			release()
-			return nil, fmt.Errorf("%w: %w", ErrLockTimeout, context.DeadlineExceeded)
+			return nil, s.db.lockDiagnosticError(s.schema, waiting.request, fmt.Errorf("%w: %w", ErrLockTimeout, context.DeadlineExceeded))
 		}
 		if err = s.db.waitForLock(ctx, s.schema, waiting.request, deadline); err != nil {
 			if errors.Is(err, ErrDeadlock) {
@@ -174,7 +200,7 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 		release()
 		return nil, err
 	}
-	rows := &Rows{ctx: ctx, finish: release}
+	rows = &Rows{ctx: ctx, finish: release}
 	if selectStmt, ok := statements[0].(*sql.SelectStmt); ok {
 		var handled bool
 		rows.cursor, handled, err = s.schema.OpenRowCursor(selectStmt)
@@ -203,7 +229,7 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 	rows.stopCancellation = context.AfterFunc(ctx, func() {
 		rows.mu.Lock()
 		if !rows.closed {
-			rows.err = ctx.Err()
+			rows.err = context.Cause(ctx)
 			rows.closeLocked()
 		}
 		rows.mu.Unlock()
@@ -233,7 +259,7 @@ func (r *Rows) Next() bool {
 		return false
 	}
 	if err := r.ctx.Err(); err != nil {
-		r.err = err
+		r.err = context.Cause(r.ctx)
 		r.closeLocked()
 		return false
 	}

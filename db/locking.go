@@ -57,6 +57,7 @@ type lockWait struct{ request sql.LockRequest }
 type queuedLock struct {
 	request sql.LockRequest
 	order   uint64
+	started time.Time
 }
 
 func (w *lockWait) Error() string { return "transaction lock is held by another transaction" }
@@ -70,6 +71,7 @@ type lockManager struct {
 	states        sync.Map
 	graphMu       sync.Mutex
 	order         atomic.Uint64
+	nextSessionID atomic.Uint64
 	resources     map[string]*lockBucket
 	owned         map[*sql.Schema]map[*lockEntry]bool
 	waiting       map[*sql.Schema]queuedLock
@@ -77,7 +79,9 @@ type lockManager struct {
 }
 
 type ownerLocks struct {
+	transaction transactionControl
 	mu          sync.Mutex
+	id          uint64
 	lastChange  [64]int // journal positions encoded as index + 1
 	changes     []lockChange
 	catalogMode int // 0 absent, 1 shared, 2 exclusive; protected by owner.mu
@@ -115,12 +119,13 @@ func (m *lockManager) state(owner *sql.Schema) *ownerLocks {
 	if s, ok := m.states.Load(owner); ok {
 		return s.(*ownerLocks)
 	}
-	s, _ := m.states.LoadOrStore(owner, &ownerLocks{})
+	s, _ := m.states.LoadOrStore(owner, &ownerLocks{id: m.nextSessionID.Add(1)})
 	return s.(*ownerLocks)
 }
 func (m *lockManager) forget(owner *sql.Schema) { m.states.Delete(owner) }
 
 func (db *Database) installLocks(schema *sql.Schema) {
+	db.locks.state(schema)
 	schema.SetLockHandler(func(request sql.LockRequest) error { return db.locks.acquire(schema, request) })
 	schema.SetLockGroupHandler(func(requests []sql.LockRequest) error { return db.locks.acquireAll(schema, requests) })
 }
@@ -144,6 +149,9 @@ func (db *Database) statementCatalogLock(schema *sql.Schema, statement sql.State
 	case *sql.InsertStmt, *sql.UpdateStmt, *sql.DeleteStmt, *sql.AnalyzeStmt:
 	default:
 		return nil
+	}
+	if onlineIndexStatement(schema, statement) {
+		exclusive = false
 	}
 	return db.locks.acquire(schema, sql.LockRequest{Resource: "catalog", Exclusive: exclusive})
 }
@@ -444,7 +452,12 @@ func (m *lockManager) release(owner *sql.Schema) { m.restore(owner, 0) }
 
 // Wait without an execution view so Close and the lock owner can proceed.
 // Reacquiring the shared view before returning also protects schema rollback.
-func (db *Database) waitForLock(ctx context.Context, owner *sql.Schema, request sql.LockRequest, deadline time.Time) error {
+func (db *Database) waitForLock(ctx context.Context, owner *sql.Schema, request sql.LockRequest, deadline time.Time) (result error) {
+	return db.waitForLockPolicy(ctx, owner, request, deadline, nil)
+}
+
+func (db *Database) waitForLockPolicy(ctx context.Context, owner *sql.Schema, request sql.LockRequest, deadline time.Time, abortAfter *time.Duration) (result error) {
+	defer func() { result = db.lockDiagnosticError(owner, request, result) }()
 	if owner.QueryProfile() != nil {
 		started := time.Now()
 		defer func() { owner.RecordLockWait(time.Since(started)) }()
@@ -457,7 +470,7 @@ func (db *Database) waitForLock(ctx context.Context, owner *sql.Schema, request 
 	// lock order, including fairness ordering while a waiter enters or leaves.
 	root.graphMu.Lock()
 	shard.mu.Lock()
-	queued := queuedLock{request: request, order: root.order.Add(1)}
+	queued := queuedLock{request: request, order: root.order.Add(1), started: time.Now()}
 	root.waiting[owner] = queued
 	shard.waiting[owner] = queued
 	shard.mu.Unlock()
@@ -470,6 +483,18 @@ func (db *Database) waitForLock(ctx context.Context, owner *sql.Schema, request 
 		shard.mu.Unlock()
 		root.graphMu.Unlock()
 	}()
+	var abortTimer *time.Timer
+	var abortTimeout <-chan time.Time
+	if abortAfter != nil {
+		abortTimer = time.NewTimer(*abortAfter)
+		abortTimeout = abortTimer.C
+		defer abortTimer.Stop()
+	}
+	abortDue := false
+	var processedVictims map[transactionVictimID]bool
+	if abortAfter != nil {
+		processedVictims = make(map[transactionVictimID]bool)
+	}
 	for {
 		if db.closed.Load() {
 			return errors.New("database closed")
@@ -502,6 +527,24 @@ func (db *Database) waitForLock(ctx context.Context, owner *sql.Schema, request 
 			state.mu.Unlock()
 			return err
 		}
+		if abortDue && db.hasPublicationVictimsLocked(shard, owner, request, processedVictims) {
+			shard.mu.Unlock()
+			state.mu.Unlock()
+			abortCtx := ctx
+			cancel := func() {}
+			if !deadline.IsZero() {
+				abortCtx, cancel = context.WithDeadline(ctx, deadline)
+			}
+			err := db.abortPublicationBlockers(abortCtx, owner, request, processedVictims)
+			cancel()
+			if err != nil {
+				if ctx.Err() == nil && !deadline.IsZero() && !time.Now().Before(deadline) {
+					return fmt.Errorf("%w: %w", ErrLockTimeout, context.DeadlineExceeded)
+				}
+				return err
+			}
+			continue
+		}
 		ch := make(chan struct{})
 		shard.notifications[owner] = ch
 		shard.mu.Unlock()
@@ -522,6 +565,9 @@ func (db *Database) waitForLock(ctx context.Context, owner *sql.Schema, request 
 			err = ctx.Err()
 		case <-timeout:
 			err = fmt.Errorf("%w: %w", ErrLockTimeout, context.DeadlineExceeded)
+		case <-abortTimeout:
+			abortDue = true
+			abortTimeout = nil
 		}
 		if timer != nil {
 			timer.Stop()

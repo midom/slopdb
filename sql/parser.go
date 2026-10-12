@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Parser struct {
@@ -19,6 +20,43 @@ func Parse(sql string) ([]Statement, error) {
 	return p.parse()
 }
 
+// ParseError locates a syntax error in the original SQL text. ByteOffset is
+// zero based; Line and Column are one based. Column counts Unicode code points.
+// Unwrap preserves the parser's specific error for callers inspecting it.
+type ParseError struct {
+	ByteOffset int
+	Line       int
+	Column     int
+	Err        error
+}
+
+func (e *ParseError) Error() string {
+	return fmt.Sprintf("line %d, column %d: %v", e.Line, e.Column, e.Err)
+}
+
+func (e *ParseError) Unwrap() error { return e.Err }
+
+func (p *Parser) parseError(err error) error {
+	if err == nil {
+		return nil
+	}
+	input := p.tok.Input()
+	offset := p.cur.Start
+	if offset > len(input) {
+		offset = len(input)
+	}
+	line, column := 1, 1
+	for _, r := range input[:offset] {
+		if r == '\n' {
+			line++
+			column = 1
+		} else {
+			column++
+		}
+	}
+	return &ParseError{ByteOffset: offset, Line: line, Column: column, Err: err}
+}
+
 func (p *Parser) parse() ([]Statement, error) {
 	p.advance()
 
@@ -30,13 +68,13 @@ func (p *Parser) parse() ([]Statement, error) {
 		}
 		stmt, err := p.parseStatement()
 		if err != nil {
-			return nil, err
+			return nil, p.parseError(err)
 		}
 		stmts = append(stmts, stmt)
 		if p.cur.Type == TokSemicolon {
 			p.advance()
 		} else if p.cur.Type != TokEOF {
-			return nil, fmt.Errorf("expected semicolon, got %q", p.cur.Value)
+			return nil, p.parseError(fmt.Errorf("expected semicolon, got %q", p.cur.Value))
 		}
 	}
 	return stmts, nil
@@ -48,15 +86,46 @@ func (p *Parser) advance() {
 
 func (p *Parser) expect(typ TokenType) error {
 	if p.cur.Type != typ {
-		return fmt.Errorf("expected token type %v, got %v (%q)", typ, p.cur.Type, p.cur.Value)
+		return fmt.Errorf("expected %s, got %s", tokenDescription(Token{Type: typ}), tokenDescription(p.cur))
 	}
 	p.advance()
 	return nil
 }
 
+func tokenDescription(token Token) string {
+	if token.Type == TokEOF {
+		return "end of SQL"
+	}
+	if token.Value != "" {
+		return strconv.Quote(token.Value)
+	}
+	switch token.Type {
+	case TokIdent:
+		return "an identifier"
+	case TokString:
+		return "a string literal"
+	case TokInt:
+		return "an integer"
+	case TokFloat:
+		return "a number"
+	case TokLParen:
+		return strconv.Quote("(")
+	case TokRParen:
+		return strconv.Quote(")")
+	case TokComma:
+		return strconv.Quote(",")
+	case TokSemicolon:
+		return strconv.Quote(";")
+	case TokEq:
+		return strconv.Quote("=")
+	default:
+		return fmt.Sprintf("token %d", token.Type)
+	}
+}
+
 func (p *Parser) expectKeyword(kw string) error {
 	if p.cur.Type != TokKeyword || !strings.EqualFold(p.cur.Value, kw) {
-		return fmt.Errorf("expected keyword %q, got %q", kw, p.cur.Value)
+		return fmt.Errorf("expected keyword %q, got %s", kw, tokenDescription(p.cur))
 	}
 	p.advance()
 	return nil
@@ -86,8 +155,11 @@ func (p *Parser) parseLimit(limit, offset *int64, limitParam, offsetParam *int) 
 			return 0, fmt.Errorf("expected integer LIMIT/OFFSET")
 		}
 		n, err := strconv.ParseInt(sign+p.cur.Value, 10, 64)
+		if err != nil {
+			return 0, err
+		}
 		p.advance()
-		return n, err
+		return n, nil
 	}
 	n, err := number(limitParam)
 	if err != nil {
@@ -744,7 +816,31 @@ func (p *Parser) parseCreateIndex() (Statement, error) {
 		return nil, err
 	}
 
-	return &CreateIndexStmt{Index: strings.ToLower(indexName), Table: strings.ToLower(tableName), Column: columns[0], Columns: columns, Unique: unique, IfNotExists: ifNotExists}, nil
+	abortAfter, err := p.parsePublicationPolicy()
+	if err != nil {
+		return nil, err
+	}
+	return &CreateIndexStmt{Index: strings.ToLower(indexName), Table: strings.ToLower(tableName), Column: columns[0], Columns: columns, Unique: unique, IfNotExists: ifNotExists, PublicationAbortAfter: abortAfter}, nil
+}
+
+// parsePublicationPolicy accepts only quoted Go duration syntax, including an
+// explicit zero for immediate cancellation. Absence preserves ordinary waits.
+func (p *Parser) parsePublicationPolicy() (*time.Duration, error) {
+	if !p.optionalAlterWord("KILL") {
+		return nil, nil
+	}
+	if err := p.alterWords("TRANSACTIONS", "AFTER"); err != nil {
+		return nil, err
+	}
+	if p.cur.Type != TokString {
+		return nil, fmt.Errorf("KILL TRANSACTIONS AFTER requires a quoted duration")
+	}
+	duration, err := time.ParseDuration(p.cur.Value)
+	if err != nil || duration < 0 {
+		return nil, fmt.Errorf("KILL TRANSACTIONS AFTER requires a nonnegative duration, got %q", p.cur.Value)
+	}
+	p.advance()
+	return &duration, nil
 }
 
 func (p *Parser) parseCreateView() (Statement, error) {
@@ -1433,7 +1529,11 @@ func (p *Parser) parseDrop() (Statement, error) {
 		if p.cur.Type == TokIdent || p.cur.Type == TokKeyword {
 			p.advance()
 		}
-		return &DropIndexStmt{Index: strings.ToLower(idxName)}, nil
+		abortAfter, err := p.parsePublicationPolicy()
+		if err != nil {
+			return nil, err
+		}
+		return &DropIndexStmt{Index: strings.ToLower(idxName), PublicationAbortAfter: abortAfter}, nil
 	}
 	return nil, fmt.Errorf("expected TABLE, VIEW, or INDEX after DROP, got %q", p.cur.Value)
 }
@@ -1892,34 +1992,35 @@ func (p *Parser) parsePrimary() (Expression, error) {
 
 	if p.cur.Type == TokBlob {
 		hexStr := p.cur.Value
-		p.advance()
 		blob, err := hex.DecodeString(hexStr)
 		if err != nil {
 			return nil, fmt.Errorf("invalid blob literal: %w", err)
 		}
+		p.advance()
 		return &LiteralExpr{Value: NewBlobValue(blob)}, nil
 	}
 
 	if p.cur.Type == TokInt {
 		text := p.cur.Value
 		n, err := strconv.ParseInt(text, 10, 64)
-		p.advance()
 		if err != nil {
 			f, err := strconv.ParseFloat(text, 64)
 			if err != nil {
 				return nil, err
 			}
+			p.advance()
 			return &LiteralExpr{Value: NewRealValue(f)}, nil
 		}
+		p.advance()
 		return &LiteralExpr{Value: NewIntValue(n)}, nil
 	}
 
 	if p.cur.Type == TokFloat {
 		f, err := strconv.ParseFloat(p.cur.Value, 64)
-		p.advance()
 		if err != nil {
 			return nil, err
 		}
+		p.advance()
 		return &LiteralExpr{Value: NewRealValue(f)}, nil
 	}
 

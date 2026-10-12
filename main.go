@@ -466,6 +466,18 @@ func handleDotCommand(cmd string) {
 	case cmd == ".manifest":
 		showManifest()
 
+	case cmd == ".status":
+		cliPrint(formatDatabaseStatus(currentDB.Stats(), currentDBOptions))
+
+	case cmd == ".locks":
+		printLockWaits()
+
+	case cmd == ".explain" || strings.HasPrefix(cmd, ".explain "):
+		printQueryExplanation(strings.TrimSpace(strings.TrimPrefix(cmd, ".explain")))
+
+	case strings.HasPrefix(cmd, ".plan "):
+		printSchemaChangePlan(strings.TrimSpace(strings.TrimPrefix(cmd, ".plan ")))
+
 	case cmd == ".version":
 		fmt.Printf("slopdb v0.1.0 [compiled with %s] DB: %s\n", runtime.Version(), currentDBPath)
 
@@ -503,6 +515,10 @@ func handleDotCommand(cmd string) {
 		fmt.Println("  .backup DIRECTORY Create a consistent online database backup")
 		fmt.Println("  .integrity        Check storage, rows, constraints and indexes")
 		fmt.Println("  .manifest         Show LSM tree diagnostics")
+		fmt.Println("  .status           Summarize durability and storage usage")
+		fmt.Println("  .locks            Show waiting sessions and their blockers")
+		fmt.Println("  .explain SELECT   Explain query access and sorting without running it")
+		fmt.Println("  .plan DDL          Explain ALTER or CREATE/DROP INDEX work and locks")
 		fmt.Println("  .help             Show this help")
 		fmt.Println("SQL metadata commands (end with a semicolon):")
 		fmt.Println("  SHOW DATABASES; SHOW [FULL] TABLES;")

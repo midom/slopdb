@@ -18,17 +18,18 @@ import (
 )
 
 type Database struct {
-	mu            sync.Mutex
-	execution     executionGate
-	closed        atomic.Bool
-	lsm           *storage.LSMTree
-	schema        *sql.Schema
-	dir           string
-	opt           *storage.Options
-	sessions      map[*Session]struct{}
-	defaultGate   contextMutex
-	defaultCancel context.CancelFunc
-	locks         *lockManager
+	onlineIndexHook func(string) // instance-local synchronization hook for index concurrency tests
+	mu              sync.Mutex
+	execution       executionGate
+	closed          atomic.Bool
+	lsm             *storage.LSMTree
+	schema          *sql.Schema
+	dir             string
+	opt             *storage.Options
+	sessions        map[*Session]struct{}
+	defaultGate     contextMutex
+	defaultCancel   context.CancelFunc
+	locks           *lockManager
 }
 
 func Open(dir string, opt *storage.Options) (*Database, error) {
@@ -144,7 +145,7 @@ func (db *Database) ExecWithOptions(sqlText string, options ExecOptions) (*ExecR
 	return db.ExecContextWithOptions(context.Background(), sqlText, options)
 }
 
-func (db *Database) ExecContextWithOptions(ctx context.Context, sqlText string, options ExecOptions) (*ExecResult, error) {
+func (db *Database) ExecContextWithOptions(ctx context.Context, sqlText string, options ExecOptions) (result *ExecResult, resultErr error) {
 	ctx, cancel, lockTimeout, err := db.queryContext(ctx, options)
 	if err != nil {
 		return nil, err
@@ -166,6 +167,12 @@ func (db *Database) ExecContextWithOptions(ctx context.Context, sqlText string, 
 	db.defaultCancel = cancel
 	db.mu.Unlock()
 	defer func() { db.mu.Lock(); db.defaultCancel = nil; db.mu.Unlock() }()
+	ctx, abortCancel := context.WithCancelCause(ctx)
+	defer abortCancel(nil)
+	defer func() { resultErr = db.finishManagedCall(db.schema, ctx, resultErr, false) }()
+	if err := db.beginManagedCall(db.schema, abortCancel); err != nil {
+		return nil, err
+	}
 	return db.execSQL(ctx, sqlText, db.schema, false, lockTimeout)
 }
 
@@ -207,12 +214,16 @@ func (db *Database) execStatements(ctx context.Context, stmts []sql.Statement, s
 		if stmt == nil {
 			continue
 		}
+		if _, err := indexPublicationPolicy(ctx, schema, stmt); err != nil {
+			return nil, err
+		}
 		if explain, ok := stmt.(*sql.ExplainStmt); ok && explain.Analyze {
 			schema.StartQueryProfile()
 		}
 		held := db.locks.snapshot(schema)
 		cleanup := func() {
 			schema.EndStatement()
+			db.syncManagedTransaction(schema, err)
 			if !schema.InTransaction() {
 				db.locks.release(schema)
 			} else {
@@ -241,7 +252,9 @@ func (db *Database) execStatements(ctx context.Context, stmts []sql.Statement, s
 					}
 				}
 			}
-			if err == nil {
+			if err == nil && onlineIndexStatement(schema, stmt) {
+				result, err = db.execOnlineIndex(ctx, schema, stmt, lockTimeout, &lockDeadline)
+			} else if err == nil {
 				switch stmt.(type) {
 				case *sql.BeginStmt, *sql.CommitStmt, *sql.RollbackStmt, *sql.SavepointStmt, *sql.ReleaseStmt, *sql.SelectStmt, *sql.UnionStmt, *sql.ExplainStmt, *sql.ShowStmt, *sql.VacuumStmt:
 					result, err = executor.execStatement(stmt)
@@ -256,6 +269,7 @@ func (db *Database) execStatements(ctx context.Context, stmts []sql.Statement, s
 				}
 			}
 			schema.EndStatement()
+			db.syncManagedTransaction(schema, err)
 			if !schema.InTransaction() {
 				db.locks.release(schema)
 			} else if err != nil {
@@ -265,12 +279,13 @@ func (db *Database) execStatements(ctx context.Context, stmts []sql.Statement, s
 			if errors.As(err, &waiting) {
 				if lockTimeout == 0 {
 					cleanup()
-					return nil, fmt.Errorf("%w: %w", ErrLockTimeout, context.DeadlineExceeded)
+					return nil, db.lockDiagnosticError(schema, waiting.request, fmt.Errorf("%w: %w", ErrLockTimeout, context.DeadlineExceeded))
 				}
 				if lockDeadline.IsZero() {
 					lockDeadline = time.Now().Add(lockTimeout)
 				}
-				if err := db.waitForLock(ctx, schema, waiting.request, lockDeadline); err != nil {
+				policy, _ := indexPublicationPolicy(ctx, schema, stmt)
+				if err := db.waitForLockPolicy(ctx, schema, waiting.request, lockDeadline, policy); err != nil {
 					if errors.Is(err, ErrDeadlock) {
 						_ = schema.Rollback()
 					}
@@ -285,9 +300,17 @@ func (db *Database) execStatements(ctx context.Context, stmts []sql.Statement, s
 			if err != nil {
 				return nil, err
 			}
+			if !schema.InTransaction() {
+				switch stmt.(type) {
+				case *sql.DropIndexStmt, *sql.AlterTableStmt, *sql.CommitStmt, *sql.ReleaseStmt:
+					if err := schema.CleanupIndexGarbage(); err != nil {
+						return nil, fmt.Errorf("schema change committed; index cleanup pending: %w", err)
+					}
+				}
+			}
 			break
 		}
-		if err := ctx.Err(); err != nil {
+		if err := ctx.Err(); err != nil && !db.publicationCommitWon(schema, ctx) {
 			return nil, err
 		}
 		if result != nil {

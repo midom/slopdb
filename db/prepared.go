@@ -79,8 +79,14 @@ func (tx *Tx) Prepare(query string) (*Stmt, error) {
 }
 
 func (tx *Tx) PrepareContext(ctx context.Context, query string) (*Stmt, error) {
+	if err := tx.session.terminalTransactionError(); err != nil {
+		return nil, err
+	}
 	p, err := tx.session.PrepareContext(ctx, query)
 	if errors.Is(err, ErrSessionClosed) {
+		if aborted := tx.session.terminalTransactionError(); aborted != nil {
+			return nil, aborted
+		}
 		return nil, ErrTxDone
 	}
 	if err == nil {
@@ -109,7 +115,7 @@ func (s *Stmt) ExecWithOptions(options ExecOptions, args ...any) (*ExecResult, e
 	return s.ExecContextWithOptions(context.Background(), options, args...)
 }
 
-func (s *Stmt) ExecContextWithOptions(ctx context.Context, options ExecOptions, args ...any) (*ExecResult, error) {
+func (s *Stmt) ExecContextWithOptions(ctx context.Context, options ExecOptions, args ...any) (result *ExecResult, resultErr error) {
 	if s.session != nil {
 		return s.session.execPrepared(ctx, s, options, s.bound, args)
 	}
@@ -134,6 +140,12 @@ func (s *Stmt) ExecContextWithOptions(ctx context.Context, options ExecOptions, 
 	s.db.defaultCancel = cancel
 	s.db.mu.Unlock()
 	defer func() { s.db.mu.Lock(); s.db.defaultCancel = nil; s.db.mu.Unlock() }()
+	ctx, abortCancel := context.WithCancelCause(ctx)
+	defer abortCancel(nil)
+	defer func() { resultErr = s.db.finishManagedCall(s.db.schema, ctx, resultErr, false) }()
+	if err := s.db.beginManagedCall(s.db.schema, abortCancel); err != nil {
+		return nil, err
+	}
 	b, err := s.bind(s.db, nil, false, args)
 	if err != nil {
 		return nil, err

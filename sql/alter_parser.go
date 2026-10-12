@@ -106,6 +106,16 @@ func (p *Parser) parseAlter() (Statement, error) {
 		}
 		p.advance()
 	}
+	abortAfter, err := p.parsePublicationPolicy()
+	if err != nil {
+		return nil, err
+	}
+	if abortAfter != nil {
+		if len(stmt.Actions) != 1 || (stmt.Actions[0].Operation != "ADD_INDEX" && stmt.Actions[0].Operation != "DROP_INDEX") {
+			return nil, fmt.Errorf("KILL TRANSACTIONS AFTER requires a single ALTER TABLE ADD INDEX or DROP INDEX action")
+		}
+		stmt.Actions[0].PublicationAbortAfter = abortAfter
+	}
 	if len(stmt.Actions) == 1 {
 		a := stmt.Actions[0]
 		a.ObjectKind = kind

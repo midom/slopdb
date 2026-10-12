@@ -56,6 +56,8 @@ type ViewInfo struct {
 }
 
 type Schema struct {
+	onlineIndexMu      sync.RWMutex
+	onlineIndexBuilds  map[*OnlineIndexBuild]struct{}
 	queryMemoryBytes   int64
 	queryTempDir       string
 	queryDisks         []*diskHash
@@ -240,6 +242,9 @@ func NewSchemaWithOptions(lsm *storage.LSMTree, pageSize int, opt *storage.Optio
 	s.loadDistributions()
 	s.loadUserVersion()
 	if err := s.initializeObjectIDs(); err != nil {
+		return nil, err
+	}
+	if err := s.CleanupIndexGarbage(); err != nil {
 		return nil, err
 	}
 	if err := s.normalizeConstraintCatalog(); err != nil {
@@ -1058,6 +1063,12 @@ func (s *Schema) findOrderIndex(stmt *SelectStmt, tableName string) *IndexInfo {
 }
 
 func (s *Schema) Explain(stmt *ExplainStmt) (*ResultSet, error) {
+	if !stmt.Analyze {
+		switch stmt.Stmt.(type) {
+		case *CreateIndexStmt, *DropIndexStmt, *AlterTableStmt:
+			return s.explainSchemaChange(stmt.Stmt)
+		}
+	}
 	if compound, ok := stmt.Stmt.(*UnionStmt); ok {
 		cp := *stmt
 		cp.Stmt = selectQuery(compound)
@@ -1713,7 +1724,7 @@ func (s *Schema) Commit() error {
 			batch = append(batch, storage.Mutation{Key: w.key, Value: w.value, Delete: w.del})
 		}
 		if len(batch) > 0 {
-			if err := s.lsm.WriteBatch(batch); err != nil {
+			if err := s.writeBatchWithOnlineIndexes(batch); err != nil {
 				return err
 			}
 			s.parent.commitVersion.Add(1)
@@ -1783,7 +1794,7 @@ func (s *Schema) Commit() error {
 		}
 		batch = append(batch, storage.Mutation{Key: []byte(collationPrefix), Value: encoded})
 	}
-	if err := s.lsm.WriteBatch(batch); err != nil {
+	if err := s.writeBatchWithOnlineIndexes(batch); err != nil {
 		return err
 	}
 	if s.parent != nil {
@@ -2183,7 +2194,7 @@ func (s *Schema) repairIndexes() error {
 		}
 	}
 	if len(batch) > 0 {
-		return s.lsm.WriteBatch(batch)
+		return s.writeBatchWithOnlineIndexes(batch)
 	}
 	return nil
 }
@@ -2292,8 +2303,8 @@ func (s *Schema) CreateIndex(stmt *CreateIndexStmt) error {
 			v, hasNull := indexValues(columns, row)
 			if !hasNull {
 				var signature []byte
-				for _, value := range v {
-					signature = s.appendValueIdentity(signature, value)
+				for i, value := range v {
+					signature = appendValueIdentity(signature, idx.keyValue(columns[i], value))
 				}
 				if values[string(signature)] {
 					iter.Close()
@@ -2342,28 +2353,9 @@ func (s *Schema) DropIndex(stmt *DropIndexStmt) error {
 	if err := s.checkDropForeignIndex(idx); err != nil {
 		return err
 	}
-	prefix := s.indexDataPrefix(idxName)
-	iter := s.newIterator()
-
-	var keysToDelete [][]byte
-	for iter.Valid() {
-		key := string(iter.Key().UserKey)
-		if !strings.HasPrefix(key, prefix) {
-			if key > prefix {
-				break
-			}
-			iter.Next()
-			continue
-		}
-		keysToDelete = append(keysToDelete, append([]byte{}, iter.Key().UserKey...))
-		iter.Next()
+	if err := s.markIndexCleanup(idx); err != nil {
+		return err
 	}
-	iter.Close()
-
-	for _, k := range keysToDelete {
-		s.remove(k)
-	}
-
 	delete(s.indexes, idxName)
 	return s.saveIndexes()
 }

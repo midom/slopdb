@@ -21,8 +21,18 @@
 
 ## Views & Triggers (5/5 done)
 ## Query Plan & Introspection (4/4 done)
+
+- [x] SQL syntax locations, live lock waits/session IDs, typed lock timeout/deadlock diagnostics
+- [x] EXPLAIN schema-change work and locking; CLI `.plan`, `.explain`, `.locks` and `.status`
 ## Constraints (8/8 done)
 ## Schema Operations (5/5 done)
+
+- [x] VARCHAR/VARBINARY limits and catalog-only length increases; `ALLOW EXISTING` shrinking
+- [x] Online standalone index additions and catalog-only index drops, with atomic publication and recovery cleanup
+- [x] Optional publication policy that rolls back blocking transactions after a configurable grace period
+
+See [online indexes](docs/online-indexes.md) and
+[schema-change planning](docs/schema-change-planning.md) for work and lock behavior.
 ## Transactions (9/9 done)
 
 - [x] BEGIN/COMMIT/ROLLBACK and savepoints, with statement rollback on errors
@@ -38,8 +48,13 @@ commits publish atomic storage batches. Writers hold row and UNIQUE value locks
 until commit or rollback. Blocked statements release their shared execution
 view while waiting, then re-evaluate current committed rows. Ordinary SELECTs
 do not acquire row locks.
-Different rows in the same table can be written independently. DDL takes an
-exclusive catalog lock; writes take shared catalog locks. Failed statements
+Different rows in the same table can be written independently. Most DDL takes an
+exclusive catalog lock; writes take shared catalog locks. Standalone index
+creation scans and catches up under a shared catalog lock, allowing writers to
+continue, then briefly takes the exclusive lock for publication. Index creation
+inside explicit transactions or multi-action ALTER keeps the transactional path.
+Index drops update metadata without scanning entries and reclaim physical keys
+with MVCC range tombstones. Failed statements
 release their new locks, while rollback to a savepoint retains transaction locks.
 Generated IDs are reserved across active transactions, so rollback may leave gaps.
 `Database.Exec` retains a default session; use independent handles for separate

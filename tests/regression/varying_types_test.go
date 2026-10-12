@@ -178,6 +178,9 @@ func TestVaryingTypesOnlineLengthChanges(t *testing.T) {
 		t.Fatal("reopened database accepted new overlength value")
 	}
 	requireExec(t, d, "UPDATE t SET note='reopened' WHERE id=1")
+	if _, err := d.CheckIntegrity(); err != nil {
+		t.Fatalf("integrity rejected preserved oversized values: %v", err)
+	}
 	if err := d.Close(); err != nil {
 		t.Fatal(err)
 	}

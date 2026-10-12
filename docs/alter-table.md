@@ -110,6 +110,15 @@ Unnamed constraints receive generated names, visible in SHOW CREATE TABLE.
 Named constraints survive reopening and SQL dump/reload. ADD UNIQUE INDEX/KEY
 creates an independently droppable unique index.
 
+Standalone CREATE INDEX and single-action ALTER ADD INDEX/KEY build online:
+independent sessions can commit DML during the scan and catch-up, followed by
+bounded final reconciliation and atomic publication under an exclusive catalog
+lock. Index drops change the catalog without scanning entries and reclaim the
+obsolete prefix with a range tombstone, preserving pinned readers. Explicit
+transactions and multi-action ALTER retain the ordinary atomic creation path.
+See [online indexes](online-indexes.md) for locking, memory, recovery and UNIQUE
+validation details.
+
 Multiple actions can be separated by commas and are atomic:
 
 ```sql
@@ -120,7 +129,8 @@ ALTER TABLE IF EXISTS old_table DROP COLUMN IF EXISTS obsolete;
 Changes requiring data conversion, reordering, validation or key rebuilding can
 scan the table and materialize rows. They are not online, constant-time data
 migrations. Table/index/column renames, default changes and the length-only
-ALTER forms above avoid that work.
+ALTER forms above avoid that work. Standalone index additions use the online
+build described above; publication still coordinates with active writers.
 
 ## Views
 

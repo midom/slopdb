@@ -28,13 +28,15 @@ var (
 // row and unique-value locks until commit or rollback; commits publish one atomic
 // storage batch. Catalog changes take an exclusive logical catalog lock.
 type Session struct {
-	db           *Database
-	schema       *sql.Schema
-	closed       bool
-	closing      atomic.Bool
-	gate         contextMutex
-	activeMu     sync.Mutex
-	activeCancel context.CancelFunc
+	db                *Database
+	schema            *sql.Schema
+	closed            bool
+	closing           atomic.Bool
+	gate              contextMutex
+	activeMu          sync.Mutex
+	activeCancel      context.CancelFunc
+	transactionHandle bool
+	abortError        atomic.Pointer[TransactionAbortedError]
 }
 
 func (db *Database) NewSession() (*Session, error) {
@@ -110,18 +112,38 @@ func (s *Session) ExecContextWithOptions(ctx context.Context, query string, opti
 	return s.execParsed(ctx, statements, cancel, false, lockTimeout)
 }
 
-func (s *Session) execParsed(ctx context.Context, statements []sql.Statement, cancel context.CancelFunc, bound bool, lockTimeout time.Duration) (*ExecResult, error) {
+func (s *Session) execParsed(ctx context.Context, statements []sql.Statement, cancel context.CancelFunc, bound bool, lockTimeout time.Duration) (result *ExecResult, resultErr error) {
+	if err := s.terminalTransactionError(); err != nil {
+		return nil, err
+	}
+	ctx, abortCancel := context.WithCancelCause(ctx)
+	defer abortCancel(nil)
 	if err := s.db.execution.RLockContext(ctx); err != nil {
 		return nil, err
 	}
 	defer s.db.execution.RUnlock()
 	if err := s.registerActive(cancel); err != nil {
 		if bound {
+			if aborted := s.terminalTransactionError(); aborted != nil {
+				return nil, aborted
+			}
 			return nil, ErrTxDone
 		}
 		return nil, err
 	}
 	defer s.clearActive()
+	defer func() {
+		resultErr = s.db.finishManagedCall(s.schema, ctx, resultErr, false)
+		resultErr = s.finishTransactionAbort(resultErr)
+		if bound && !s.schema.InTransaction() {
+			s.db.mu.Lock()
+			s.closeLocked()
+			s.db.mu.Unlock()
+		}
+	}()
+	if err := s.db.beginManagedCall(s.schema, abortCancel); err != nil {
+		return nil, err
+	}
 	if bound && !s.schema.InTransaction() {
 		return nil, ErrTxDone
 	}
@@ -131,11 +153,6 @@ func (s *Session) execParsed(ctx context.Context, statements []sql.Statement, ca
 		}
 	}
 	result, err := s.db.execStatements(ctx, statements, s.schema, bound, lockTimeout)
-	if bound && !s.schema.InTransaction() {
-		s.db.mu.Lock()
-		s.closeLocked()
-		s.db.mu.Unlock()
-	}
 	return result, err
 }
 
@@ -188,6 +205,7 @@ func (db *Database) BeginContext(ctx context.Context) (*Tx, error) {
 	if err != nil {
 		return nil, err
 	}
+	session.transactionHandle = true
 	session.gate.Lock()
 	_, err = session.execParsed(ctx, []sql.Statement{&sql.BeginStmt{}}, cancel, false, lockTimeout)
 	session.gate.Unlock()
@@ -239,6 +257,9 @@ func (tx *Tx) CommitContext(ctx context.Context) error {
 
 func (tx *Tx) Rollback() error {
 	s := tx.session
+	if err := s.terminalTransactionError(); err != nil {
+		return err
+	}
 	s.closing.Store(true)
 	s.cancelActive()
 	s.gate.Lock()
@@ -248,6 +269,9 @@ func (tx *Tx) Rollback() error {
 	s.db.mu.Lock()
 	defer s.db.mu.Unlock()
 	if s.closed || !s.schema.InTransaction() {
+		if err := s.terminalTransactionError(); err != nil {
+			return err
+		}
 		return ErrTxDone
 	}
 	err := s.schema.Rollback()
