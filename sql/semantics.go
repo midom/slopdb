@@ -131,7 +131,7 @@ func validateScalarFunction(f *FuncCallExpr) error {
 		if name == "CAST" {
 			if literal, ok := f.Args[1].(*LiteralExpr); ok {
 				switch strings.ToUpper(literal.Value.Text) {
-				case "INT", "INTEGER", "REAL", "FLOAT", "TEXT", "BLOB":
+				case "INT", "INTEGER", "BIGINT", "REAL", "FLOAT", "DOUBLE", "DOUBLE PRECISION", "TEXT", "BLOB":
 				default:
 					return fmt.Errorf("unsupported cast type: %s", literal.Value.Text)
 				}
@@ -163,7 +163,7 @@ func validateScalarFunction(f *FuncCallExpr) error {
 func castSQLValue(value Value, target string) (Value, error) {
 	name := strings.ToUpper(target)
 	switch name {
-	case "INT", "INTEGER", "REAL", "FLOAT":
+	case "INT", "INTEGER", "BIGINT", "REAL", "FLOAT", "DOUBLE", "DOUBLE PRECISION":
 		v := value
 		if v.Type == ColText {
 			text := strings.TrimSpace(v.Text)
@@ -181,7 +181,7 @@ func castSQLValue(value Value, target string) (Value, error) {
 		if v.Type == ColReal && (math.IsNaN(v.Real) || math.IsInf(v.Real, 0)) {
 			return NewNullValue(), fmt.Errorf("numeric value out of range")
 		}
-		if name == "INT" || name == "INTEGER" {
+		if name == "INT" || name == "INTEGER" || name == "BIGINT" {
 			if v.Type == ColInteger {
 				return v, nil
 			}

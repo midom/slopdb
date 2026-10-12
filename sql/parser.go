@@ -297,17 +297,21 @@ func (p *Parser) parseCreateTable() (Statement, error) {
 }
 
 func (p *Parser) parseColumnDef(col *ColumnDef) error {
-	if p.cur.Type == TokKeyword {
+	if p.cur.Type == TokKeyword || (p.cur.Type == TokIdent && (strings.EqualFold(p.cur.Value, "BIGINT") || strings.EqualFold(p.cur.Value, "DOUBLE"))) {
 		switch strings.ToUpper(p.cur.Value) {
-		case "INTEGER", "INT":
+		case "INTEGER", "INT", "BIGINT":
 			col.ColType = ColInteger
 			p.advance()
 		case "TEXT":
 			col.ColType = ColText
 			p.advance()
-		case "REAL":
+		case "REAL", "DOUBLE":
+			double := strings.EqualFold(p.cur.Value, "DOUBLE")
 			col.ColType = ColReal
 			p.advance()
+			if double && strings.EqualFold(p.cur.Value, "PRECISION") {
+				p.advance()
+			}
 		case "BLOB":
 			col.ColType = ColBlob
 			p.advance()
@@ -1786,6 +1790,10 @@ func (p *Parser) parsePrimary() (Expression, error) {
 		}
 		typeName := strings.ToUpper(p.cur.Value)
 		p.advance()
+		if typeName == "DOUBLE" && strings.EqualFold(p.cur.Value, "PRECISION") {
+			typeName = "DOUBLE PRECISION"
+			p.advance()
+		}
 		if err := p.expect(TokRParen); err != nil {
 			return nil, err
 		}
