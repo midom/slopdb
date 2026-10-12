@@ -256,7 +256,12 @@ func run() (err error) {
 		}
 	}
 	stats := database.Stats()
-	result := map[string]any{"zstd_window_bytes": storage.SSTableZstdWindowSize, "page_size_bytes": database.PageSize(), "requested_page_size_bytes": pageSize, "load_seconds": loadSeconds, "load_mode": "bulk_insert", "load_batch_rows": loadBatchRows, "load_transactions": loadTransactions, "maintenance_seconds": maintenanceSeconds, "verification_seconds": time.Since(verifyStart).Seconds(), "rows": counts, "verified_rows": checked, "all_values_verified": true, "replicas": copies, "warehouse_stride": maxWarehouse, "history_stride": historyStride, "levels": stats.Levels, "finished_at": time.Now().UTC()}
+	result := map[string]any{"zstd_window_bytes": storage.SSTableZstdWindowSizeForBlock(database.PageSize()), "page_size_bytes": database.PageSize(), "requested_page_size_bytes": pageSize, "load_seconds": loadSeconds, "load_mode": "bulk_insert", "load_batch_rows": loadBatchRows, "load_transactions": loadTransactions, "maintenance_seconds": maintenanceSeconds, "verification_seconds": time.Since(verifyStart).Seconds(), "rows": counts, "verified_rows": checked, "all_values_verified": true, "replicas": copies, "warehouse_stride": maxWarehouse, "history_stride": historyStride, "levels": stats.Levels, "finished_at": time.Now().UTC()}
+	if mode == "maintenance" {
+		if err = addBottomLevelEvidence(result, stats); err != nil {
+			return err
+		}
+	}
 	if err = database.Close(); err != nil {
 		return err
 	}
@@ -339,7 +344,11 @@ func compact(dir string, pageSize int64, report, verificationReport string) (err
 			return err
 		}
 	}
-	result := map[string]any{"zstd_window_bytes": storage.SSTableZstdWindowSize, "page_size_bytes": database.PageSize(), "rows": after, "counts_verified_after_reopen": true, "query_answers_verified_after_maintenance": answersChecked, "query_verification_seconds": time.Since(verificationStart).Seconds(), "maintenance_seconds": elapsed, "levels": database.Stats().Levels}
+	stats := database.Stats()
+	result := map[string]any{"zstd_window_bytes": storage.SSTableZstdWindowSizeForBlock(database.PageSize()), "page_size_bytes": database.PageSize(), "rows": after, "counts_verified_after_reopen": true, "query_answers_verified_after_maintenance": answersChecked, "query_verification_seconds": time.Since(verificationStart).Seconds(), "maintenance_seconds": elapsed, "levels": stats.Levels}
+	if err = addBottomLevelEvidence(result, stats); err != nil {
+		return err
+	}
 	if err = database.Close(); err != nil {
 		return err
 	}
@@ -352,4 +361,18 @@ func compact(dir string, pageSize int64, report, verificationReport string) (err
 		return os.WriteFile(report, append(raw, '\n'), 0644)
 	}
 	return json.NewEncoder(os.Stdout).Encode(result)
+}
+
+// Fail the measurement rather than reporting partially compacted storage.
+func addBottomLevelEvidence(result map[string]any, stats storage.LSMStats) error {
+	bottom := len(stats.Levels) - 1
+	for level, state := range stats.Levels[:bottom] {
+		if state.FileCount != 0 || state.TotalSize != 0 || len(state.Files) != 0 {
+			return fmt.Errorf("full compaction left SSTables in L%d", level)
+		}
+	}
+	result["bottom_level"] = bottom
+	result["all_sstables_at_bottom"] = true
+	result["maintenance_operation"] = "full_bottom_level_rewrite"
+	return nil
 }

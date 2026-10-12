@@ -141,21 +141,3 @@ func (l *LSMTree) SetPageSize(size int64) error {
 	l.pageSize.Store(size)
 	return nil
 }
-
-// Full manual compaction must rewrite bottom-level files which normal level
-// promotion left untouched; otherwise a VACUUM after changing the block target
-// would leave an already compacted database entirely in the old layout.
-func (l *LSMTree) rewriteBottomLevelLocked() error {
-	inputs := append([]*FileMetaData(nil), l.levels[maxLevels-1]...)
-	if len(inputs) == 0 {
-		return nil
-	}
-	oldest := l.oldestSnapshotLocked()
-	l.mu.Unlock()
-	output, err := l.buildCompaction(inputs, oldest, maxLevels-1)
-	l.mu.Lock()
-	if err != nil {
-		return err
-	}
-	return l.installCompactionLocked(maxLevels-2, inputs, output)
-}

@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"hash/crc32"
 	"math/rand"
 	"os"
@@ -103,55 +104,116 @@ func TestSSTableZstdLargeWindowDistantMatches(t *testing.T) {
 	t.Logf("1 MiB distant-repeat page: %d bytes with large window, %d with 64 KiB window", len(payload), smallWindowBytes)
 }
 
-func TestSSTableZstdExplicitMaximumWindow(t *testing.T) {
-	options := DefaultOptions()
-	options.CompressionType = ZstdCompression
-	writer, err := NewSSTableWriter(filepath.Join(t.TempDir(), "window.sst"), options)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer writer.Close()
-	// Above the configured maximum, the frame carries an explicit descriptor.
-	// This verifies the actual encoder used by SSTableWriter, not just a constant.
-	raw := bytes.Repeat([]byte("window validation"), (SSTableZstdWindowSize/(len("window validation")))+1)
-	payload := writer.zstdEncoder.EncodeAll(raw, nil)
-	var header zstd.Header
-	if err = header.Decode(payload); err != nil {
-		t.Fatal(err)
-	}
-	if header.SingleSegment || header.WindowSize != SSTableZstdWindowSize {
-		t.Fatalf("unexpected maximum window: single=%v window=%d", header.SingleSegment, header.WindowSize)
-	}
-	decoder, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer decoder.Close()
-	decoded, err := decoder.DecodeAll(payload, nil)
-	if err != nil || !bytes.Equal(decoded, raw) {
-		t.Fatalf("maximum-window frame did not round-trip: %v", err)
+func TestSSTableZstdWindowMatchesBlockTarget(t *testing.T) {
+	for _, tc := range []struct {
+		name                 string
+		page, legacy, window int64
+	}{
+		{"default", 0, 0, 4 << 10},
+		{"512-byte-page", 512, 0, 1 << 10},
+		{"16KiB", 16 << 10, 0, 16 << 10},
+		{"64KiB", 64 << 10, 0, 64 << 10},
+		{"1MiB", 1 << 20, 0, 1 << 20},
+		{"2MiB", 2 << 20, 0, 2 << 20},
+		{"legacy-tiny", 0, 23, 1 << 10},
+		{"legacy-odd", 0, 3000, 4 << 10},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			options := DefaultOptions()
+			options.CompressionType = ZstdCompression
+			options.PageSize, options.BlockSize = tc.page, int(tc.legacy)
+			path := filepath.Join(t.TempDir(), "window.sst")
+			writer, err := NewSSTableWriter(path, options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = writer.Close() })
+			// An oversized row forces an explicit frame descriptor, demonstrating
+			// that SSTable framing overhead cannot enlarge the configured window.
+			pattern := []byte("window validation")
+			value := bytes.Repeat(pattern, int(tc.window)/len(pattern)+2)
+			if err := writer.Add(InternalKey{UserKey: []byte("key"), SeqNum: 1, OpType: kTypeValue}, value); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := writer.Finish(); err != nil {
+				t.Fatal(err)
+			}
+			if err := writer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			reader, err := OpenSSTable(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer reader.Close()
+			index := reader.indexBlock.NewIterator()
+			if !index.Valid() {
+				t.Fatal("missing data block")
+			}
+			offset, n := binary.Uvarint(index.Value())
+			length, _ := binary.Uvarint(index.Value()[n:])
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			block := data[offset : offset+length]
+			if block[len(block)-1] != kZstdCompression {
+				t.Fatal("expected compressed page")
+			}
+			var header zstd.Header
+			if err := header.Decode(block[:len(block)-5]); err != nil {
+				t.Fatal(err)
+			}
+			if header.SingleSegment || header.WindowSize != uint64(tc.window) {
+				t.Fatalf("window does not match target: single=%v window=%d, want %d", header.SingleSegment, header.WindowSize, tc.window)
+			}
+			raw, err := reader.loadBlock(offset, length)
+			if err != nil {
+				t.Fatal(err)
+			}
+			it := NewBlockReader(raw).NewIterator()
+			if !it.Valid() || !bytes.Equal(it.Value(), value) {
+				t.Fatal("oversized page did not round-trip")
+			}
+		})
 	}
 }
 
-func TestSSTableZstdLegacySmallWindowReadable(t *testing.T) {
-	legacy, err := zstd.NewWriter(nil, zstd.WithEncoderConcurrency(1), zstd.WithWindowSize(64<<10))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer legacy.Close()
-	raw := distantCompressionFixture(t)
-	payload := legacy.EncodeAll(raw, nil)
-	block := append(payload, make([]byte, 5)...)
-	binary.LittleEndian.PutUint32(block[len(payload):], crc32.ChecksumIEEE(payload))
-	block[len(block)-1] = kZstdCompression
-	reader := new(SSTableReader)
-	defer func() {
-		if reader.zstdDecoder != nil {
-			reader.zstdDecoder.Close()
+func TestSSTableZstdWindowLimits(t *testing.T) {
+	for _, tc := range []struct{ target, window int64 }{
+		{0, DefaultPageSize}, {1, 1024}, {512, 1024}, {1024, 1024},
+		{1025, 2048}, {16 << 10, 16 << 10}, {1 << 20, 1 << 20},
+		{MaxPageSize - 1, MaxPageSize}, {MaxPageSize, MaxPageSize},
+	} {
+		if got := SSTableZstdWindowSizeForBlock(tc.target); got != tc.window {
+			t.Errorf("target %d: window %d, want %d", tc.target, got, tc.window)
 		}
-	}()
-	decoded, err := reader.readRawBlock(block)
-	if err != nil || !bytes.Equal(decoded, raw) {
-		t.Fatalf("old small-window frame did not round-trip: %v", err)
+	}
+}
+
+func TestSSTableZstdLegacyWindowsReadable(t *testing.T) {
+	for _, window := range []int{64 << 10, 8 << 20} {
+		t.Run(fmt.Sprint(window), func(t *testing.T) {
+			legacy, err := zstd.NewWriter(nil, zstd.WithEncoderConcurrency(1), zstd.WithWindowSize(window))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer legacy.Close()
+			raw := distantCompressionFixture(t)
+			payload := legacy.EncodeAll(raw, nil)
+			block := append(payload, make([]byte, 5)...)
+			binary.LittleEndian.PutUint32(block[len(payload):], crc32.ChecksumIEEE(payload))
+			block[len(block)-1] = kZstdCompression
+			reader := new(SSTableReader)
+			defer func() {
+				if reader.zstdDecoder != nil {
+					reader.zstdDecoder.Close()
+				}
+			}()
+			decoded, err := reader.readRawBlock(block)
+			if err != nil || !bytes.Equal(decoded, raw) {
+				t.Fatalf("legacy frame did not round-trip: %v", err)
+			}
+		})
 	}
 }

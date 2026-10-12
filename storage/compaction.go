@@ -145,3 +145,25 @@ func (l *LSMTree) buildCompaction(inputs []*FileMetaData, oldest uint64, level i
 	}
 	return output, nil
 }
+
+// Manual full compaction merges every level in one pass. This includes existing
+// bottom files and disjoint upper files, so output packing cannot depend on the
+// sequence of earlier incremental promotions. writerMu and the manual compaction
+// gate prevent new SSTables being installed while the full input is processed.
+func (l *LSMTree) compactAllFilesToBottomLocked() error {
+	var inputs []*FileMetaData
+	for _, files := range l.levels {
+		inputs = append(inputs, files...)
+	}
+	if len(inputs) == 0 {
+		return nil
+	}
+	oldest := l.oldestSnapshotLocked()
+	l.mu.Unlock()
+	output, err := l.buildCompaction(inputs, oldest, maxLevels-1)
+	l.mu.Lock()
+	if err != nil {
+		return err
+	}
+	return l.installCompactionToLevelLocked(inputs, output, maxLevels-1)
+}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slopdb/storage"
 	"testing"
 )
 
@@ -27,18 +28,28 @@ func TestSnapshotReplicationAndMaintenance(t *testing.T) {
 					t.Fatal(err)
 				}
 				var result struct {
-					PageSize         int64            `json:"page_size_bytes"`
-					Rows             map[string]int64 `json:"rows"`
-					Verified         int64            `json:"verified_rows"`
-					LoadMode         string           `json:"load_mode"`
-					LoadBatchRows    int64            `json:"load_batch_rows"`
-					LoadTransactions int64            `json:"load_transactions"`
+					PageSize             int64            `json:"page_size_bytes"`
+					Rows                 map[string]int64 `json:"rows"`
+					Verified             int64            `json:"verified_rows"`
+					LoadMode             string           `json:"load_mode"`
+					LoadBatchRows        int64            `json:"load_batch_rows"`
+					LoadTransactions     int64            `json:"load_transactions"`
+					ZstdWindow           int64            `json:"zstd_window_bytes"`
+					BottomLevel          int              `json:"bottom_level"`
+					AtBottom             bool             `json:"all_sstables_at_bottom"`
+					MaintenanceOperation string           `json:"maintenance_operation"`
 				}
 				if err = json.Unmarshal(raw, &result); err != nil {
 					t.Fatal(err)
 				}
 				if result.PageSize != size || result.Rows["warehouse"] != 6 || result.Rows["history"] != 6 || result.Rows["item"] != 1 {
 					t.Fatalf("%s incorrect report: %s", mode, raw)
+				}
+				if result.ZstdWindow != size {
+					t.Fatalf("window %d does not match page %d", result.ZstdWindow, size)
+				}
+				if mode != "load" && (!result.AtBottom || result.BottomLevel != 6 || result.MaintenanceOperation != "full_bottom_level_rewrite") {
+					t.Fatalf("missing full bottom-level evidence: %s", raw)
 				}
 				if mode == "load" && (result.LoadMode != "bulk_insert" || result.LoadBatchRows != 3 || result.LoadTransactions != 5) {
 					t.Fatalf("incorrect bulk load report: %s", raw)
@@ -48,6 +59,29 @@ func TestSnapshotReplicationAndMaintenance(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestBottomLevelEvidenceRejectsUpperLevelFiles(t *testing.T) {
+	for level := 0; level < 6; level++ {
+		stats := storage.LSMStats{}
+		stats.Levels[level].FileCount = 1
+		result := map[string]any{}
+		if err := addBottomLevelEvidence(result, stats); err == nil {
+			t.Fatalf("accepted SSTable at L%d", level)
+		}
+		if len(result) != 0 {
+			t.Fatal("published compaction evidence before validation")
+		}
+	}
+	stats := storage.LSMStats{}
+	stats.Levels[6].FileCount = 3
+	result := map[string]any{}
+	if err := addBottomLevelEvidence(result, stats); err != nil {
+		t.Fatal(err)
+	}
+	if result["all_sstables_at_bottom"] != true {
+		t.Fatal("bottom-only files did not produce verification evidence")
 	}
 }
 

@@ -15,7 +15,7 @@ const (
 	AutoCompression   CompressionType = "auto" // no compression in L0, zstd in L1 and higher
 	NoCompression     CompressionType = "none"
 	GzipCompression   CompressionType = "gzip"
-	ZstdCompression   CompressionType = "zstd" // independent frames with an explicit 8 MiB maximum match window
+	ZstdCompression   CompressionType = "zstd" // independent frames with a match window sized to the SSTable block target
 	SnappyCompression CompressionType = "snappy"
 	LZ4Compression    CompressionType = "lz4"
 )

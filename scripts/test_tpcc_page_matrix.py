@@ -10,7 +10,7 @@ from tpcc_page_matrix import cases, environment, run, validate
 
 
 def report(engine="slopdb", size=16384):
-    info = {"page_size_bytes": size, "wal_fsync": False, "wal": True,
+    info = {"page_size_bytes": size, "zstd_window_bytes": max(1024, size), "wal_fsync": False, "wal": True,
             "journal_mode": "wal", "synchronous": "OFF", "cache_size_kib": 131072,
             "wal_checkpoint_target_bytes": 64 << 20, "threads": 1, "memory_limit": "1GB",
             "wal_fsync_calls_skipped": 8}
@@ -37,7 +37,7 @@ class TimedPageMatrixTests(unittest.TestCase):
         changes = [("total", "failed", 1), ("total", "committed", 0),
                    ("config", "wal_fsync", True), ("config", "prepared_statements", False),
                    ("config", "duration_ns", 1), ("engine_info", "page_size_bytes", 4096),
-                   ("engine_info", "wal_fsync", True), ("reopen_consistency_checks", "1", "failed")]
+                   ("engine_info", "wal_fsync", True), ("engine_info", "zstd_window_bytes", 8 << 20), ("reopen_consistency_checks", "1", "failed")]
         for section, key, value in changes:
             broken = report()
             broken[section][key] = value

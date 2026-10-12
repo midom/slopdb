@@ -8,6 +8,12 @@ import "fmt"
 func (l *LSMTree) Flush() error {
 	l.writerMu.Lock()
 	defer l.writerMu.Unlock()
+	return l.flushWithWriterLocked()
+}
+
+// The caller holds writerMu, keeping writes and page-size changes outside the
+// flush/compaction boundary while ordinary reads retain their pinned views.
+func (l *LSMTree) flushWithWriterLocked() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	for l.imm != nil && !l.closed && l.bgErr == nil {
