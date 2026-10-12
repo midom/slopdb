@@ -184,7 +184,7 @@ func levelCompressionCli(testState *regressionEnv) {
 		if auto {
 			args = append(args, "--compression=auto")
 		}
-		args = append(args, dir)
+		args = append(args, "--allow-dot-commands", dir)
 		value := strings.Repeat("CLI level compression ", 100)
 		input := "CREATE TABLE t (v TEXT); INSERT INTO t VALUES ('" + value + "');\n.open " + other + "\nCREATE TABLE t (v TEXT); INSERT INTO t VALUES ('" + value + "');\n"
 		cmd := exec.Command(testState.cli(), args...)

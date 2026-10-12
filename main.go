@@ -35,6 +35,7 @@ var (
 func main() {
 	opt := storage.DefaultOptions()
 	flags := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
+	flags.BoolVar(&cliCfg.allowDotCommands, "allow-dot-commands", false, "allow CLI dot commands in non-interactive stdin (including shell and file commands)")
 	flags.BoolVar(&opt.DisableWAL, "no-wal", false, "disable WAL; persist writes on flush/clean exit, unflushed writes are lost on crash")
 	flags.BoolVar(&opt.DisableWALSync, "no-wal-fsync", false, "write WAL without fsync; power loss may lose recent writes, SSTables and MANIFEST stay synced")
 	flags.BoolVar(&opt.DisableWALSync, "no-fsync", false, "alias for --no-wal-fsync")
@@ -100,13 +101,11 @@ func main() {
 		}
 	}()
 
-	stat, _ := os.Stdin.Stat()
-	isPipe := (stat.Mode() & os.ModeCharDevice) == 0
-
-	if isPipe {
-		processPipe()
-	} else {
+	if readline.IsTerminal(int(os.Stdin.Fd())) {
+		cliCfg.allowDotCommands = true
 		processREPL()
+	} else {
+		processPipe()
 	}
 }
 
@@ -331,6 +330,13 @@ func executeSQL(sql string, showTiming bool) {
 }
 
 func handleDotCommand(cmd string) {
+	// All entry points, including .read content and the basic-mode fallback,
+	// share this gate. Input cannot enable its own dot-command permission.
+	if !cliCfg.allowDotCommands {
+		fmt.Fprintln(os.Stderr, "Error: dot commands are disabled in non-interactive input; use --allow-dot-commands to enable them")
+		exitCLI(1)
+		return
+	}
 	switch {
 	case cmd == ".exit" || cmd == ".quit":
 		fmt.Println("Bye!")
@@ -464,7 +470,7 @@ func handleDotCommand(cmd string) {
 		fmt.Printf("slopdb v0.1.0 [compiled with %s] DB: %s\n", runtime.Version(), currentDBPath)
 
 	case cmd == ".help":
-		fmt.Println("Commands:")
+		fmt.Println("Commands (interactive sessions, or --allow-dot-commands for redirected stdin):")
 		fmt.Println("  .exit, .quit      Exit")
 		fmt.Println("  .tables           List tables")
 		fmt.Println("  .views            List views")

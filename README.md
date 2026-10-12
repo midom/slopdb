@@ -65,6 +65,17 @@ and `.quit` to close the database. SQL files can also be piped into the CLI:
 ./slopdb ./example-db < queries.sql
 ```
 
+Redirected stdin (pipes and files) accepts SQL only by default. Dot commands,
+including `.system`, `.shell`, `.read` and `.output`, are rejected with exit
+status 1. To run a CLI script containing dot commands, explicitly enable them:
+
+```sh
+./slopdb --allow-dot-commands ./example-db < cli-script.sql
+```
+
+Interactive terminal sessions enable dot commands automatically. Text inside SQL
+strings or comments is SQL content, so strings containing `.system` are unaffected.
+
 WAL recording and fsync are enabled by default. For measurements that deliberately
 omit WAL fsync, use `./slopdb --no-wal-fsync ./example-db`; recent writes may be
 lost on power failure in that mode. Always check database close errors when using

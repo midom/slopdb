@@ -113,3 +113,7 @@ ADD COLUMN is interpreted as NULL, matching normal execution.
 
 CLI: `.integrity`, which prints `ok` and verification counts or an error.
 `.bail on` exits with a failure status when either backup or integrity fails.
+Dot commands are available in interactive terminal sessions. Scripts redirected
+into the CLI must opt in with `--allow-dot-commands`; otherwise encountering a dot
+command reports an error and exits with status 1. The setting applies to all dot
+commands, including shell execution, file access and exit commands.

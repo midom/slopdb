@@ -42,10 +42,10 @@ func TestCLIPageSizeFlagReopenAndOpen(t *testing.T) {
 	if err = database.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if output := run([]string{first}, ".open "+second+"\nPRAGMA page_size;\n"); !strings.Contains(output, "65536") {
+	if output := run([]string{"--allow-dot-commands", first}, ".open "+second+"\nPRAGMA page_size;\n"); !strings.Contains(output, "65536") {
 		t.Fatal(".open ignored destination target", output)
 	}
-	if output := run([]string{"--page-size=16384", first}, ".open "+second+"\nPRAGMA page_size;\n"); !strings.Contains(output, "16384") {
+	if output := run([]string{"--allow-dot-commands", "--page-size=16384", first}, ".open "+second+"\nPRAGMA page_size;\n"); !strings.Contains(output, "16384") {
 		t.Fatal(".open dropped explicit selection", output)
 	}
 	command := exec.Command(binary, "--page-size=4294967296", filepath.Join(t.TempDir(), "invalid"))

@@ -217,7 +217,7 @@ func TestNoFsyncCLI(t *testing.T) {
 			first, second := env.path("first"), env.path("second")
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
-			cmd := exec.CommandContext(ctx, env.cli(), flag, first)
+			cmd := exec.CommandContext(ctx, env.cli(), flag, "--allow-dot-commands", first)
 			cmd.Stdin = strings.NewReader("CREATE TABLE t(id INTEGER); INSERT INTO t VALUES(1);\n.manifest\n.open " + second + "\nCREATE TABLE t(id INTEGER); INSERT INTO t VALUES(2);\n.manifest\n")
 			output, err := cmd.CombinedOutput()
 			if err != nil {

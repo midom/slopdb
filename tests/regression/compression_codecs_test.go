@@ -345,7 +345,7 @@ func compressionCodecsCli(testState *regressionEnv) {
 		other := dir + "_other"
 		compressionCodecsMust(testState, os.RemoveAll(dir))
 		compressionCodecsMust(testState, os.RemoveAll(other))
-		cmd := exec.Command(testState.cli(), "--no-wal", "--compression="+codec, dir)
+		cmd := exec.Command(testState.cli(), "--no-wal", "--allow-dot-commands", "--compression="+codec, dir)
 		value := strings.Repeat("compressible text ", 100)
 		cmd.Stdin = strings.NewReader("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT); INSERT INTO t VALUES (1, '" + value + "');\n.open " + other + "\nCREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT); INSERT INTO t VALUES (1, '" + value + "');\n")
 		out, err := cmd.CombinedOutput()

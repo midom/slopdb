@@ -14,15 +14,16 @@ import (
 )
 
 type cliState struct {
-	mode     string
-	nullStr  string
-	output   io.Writer
-	onceFile io.WriteCloser
-	echo     bool
-	trace    bool
-	timer    bool
-	bail     bool
-	changes  bool
+	allowDotCommands bool
+	mode             string
+	nullStr          string
+	output           io.Writer
+	onceFile         io.WriteCloser
+	echo             bool
+	trace            bool
+	timer            bool
+	bail             bool
+	changes          bool
 }
 
 var cliCfg = &cliState{

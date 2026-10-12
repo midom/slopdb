@@ -138,14 +138,14 @@ func TestNoWALCLI(testT *testing.T) {
 			q += ".bail on\nSELECT * FROM absent;\n"
 			status = 1
 		}
-		noWALCLIRun(testState, dir, q, status, "--no-wal")
+		noWALCLIRun(testState, dir, q, status, "--no-wal", "--allow-dot-commands")
 		noWALCLIVerify(testState, dir, 1)
 	}
 	testState.t.Log(fmt.Sprint("PASS WAL-free CLI EOF, .quit, .exit and .bail persistence"))
 	a, b := testState.path("godb_no_wal_cli_open_a"), testState.path("godb_no_wal_cli_open_b")
 	os.RemoveAll(a)
 	os.RemoveAll(b)
-	out := noWALCLIRun(testState, a, "CREATE TABLE t(id INT); INSERT INTO t VALUES(1);\n.open "+b+"\nCREATE TABLE t(id INT); INSERT INTO t VALUES(2);\n.manifest\n", 0, "--no-wal")
+	out := noWALCLIRun(testState, a, "CREATE TABLE t(id INT); INSERT INTO t VALUES(1);\n.open "+b+"\nCREATE TABLE t(id INT); INSERT INTO t VALUES(2);\n.manifest\n", 0, "--no-wal", "--allow-dot-commands")
 	noWALCLIAssert(testState, strings.Contains(out, "WAL:       inactive"), "no-WAL option preserved by .open")
 	noWALCLIVerify(testState, a, 1)
 	noWALCLIVerify(testState, b, 1)
@@ -156,7 +156,7 @@ func TestNoWALCLI(testT *testing.T) {
 	testState.t.Log(fmt.Sprint("PASS SIGTERM flushes WAL-free CLI writes"))
 	dir = testState.path("godb_no_wal_cli_flush_error")
 	os.RemoveAll(dir)
-	out = noWALCLIRun(testState, dir, "CREATE TABLE t(id INT); INSERT INTO t VALUES(1);\n.shell mkdir "+filepath.Join(dir, "1.sst")+"\n", 1, "--no-wal")
+	out = noWALCLIRun(testState, dir, "CREATE TABLE t(id INT); INSERT INTO t VALUES(1);\n.shell mkdir "+filepath.Join(dir, "1.sst")+"\n", 1, "--no-wal", "--allow-dot-commands")
 	noWALCLIAssert(testState, strings.Contains(out, "Error closing database"), "CLI reports flush failure")
 	testState.t.Log(fmt.Sprint("PASS failed exit flush reports error and exits nonzero"))
 	cmd := exec.Command(testState.cli(), "--help")
