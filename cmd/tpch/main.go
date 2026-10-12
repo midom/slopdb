@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"slopdb/db"
+	"slopdb/internal/benchload"
 	"slopdb/sql"
 	"slopdb/storage"
 )
@@ -29,19 +30,20 @@ import (
 var assets embed.FS
 
 type config struct {
-	LoadOnly   bool          `json:"load_only"`
-	PageSize   int64         `json:"requested_page_size_bytes"`
-	Data       string        `json:"data_directory"`
-	Dir        string        `json:"database_directory"`
-	JSON       string        `json:"report_file,omitempty"`
-	ProfileDir string        `json:"profile_directory,omitempty"`
-	Queries    string        `json:"query_selection"`
-	Runs       int           `json:"runs"`
-	Warmups    int           `json:"warmups"`
-	Timeout    time.Duration `json:"query_timeout_ns"`
-	Prepared   bool          `json:"prepared_statements"`
-	Indexes    bool          `json:"secondary_indexes"`
-	WALFsync   bool          `json:"wal_fsync"`
+	LoadOnly      bool          `json:"load_only"`
+	LoadBatchRows int64         `json:"load_batch_rows"`
+	PageSize      int64         `json:"requested_page_size_bytes"`
+	Data          string        `json:"data_directory"`
+	Dir           string        `json:"database_directory"`
+	JSON          string        `json:"report_file,omitempty"`
+	ProfileDir    string        `json:"profile_directory,omitempty"`
+	Queries       string        `json:"query_selection"`
+	Runs          int           `json:"runs"`
+	Warmups       int           `json:"warmups"`
+	Timeout       time.Duration `json:"query_timeout_ns"`
+	Prepared      bool          `json:"prepared_statements"`
+	Indexes       bool          `json:"secondary_indexes"`
+	WALFsync      bool          `json:"wal_fsync"`
 }
 
 type sample struct {
@@ -71,26 +73,28 @@ type queryReport struct {
 }
 
 type report struct {
-	QueryBenchmarked bool          `json:"query_benchmarked"`
-	PageSize       int64            `json:"page_size_bytes"`
-	Config         config           `json:"config"`
-	Started        time.Time        `json:"started_at"`
-	GoVersion      string           `json:"go_version"`
-	Platform       string           `json:"platform"`
-	CPUs           int              `json:"cpus"`
-	DataManifest   json.RawMessage  `json:"data_manifest,omitempty"`
-	TableRows      map[string]int64 `json:"table_rows"`
-	LoadSeconds    float64          `json:"load_seconds"`
-	ReopenSeconds  float64          `json:"reopen_seconds"`
-	DatabaseBytes  int64            `json:"database_bytes_after_load"`
-	CountsVerified bool             `json:"counts_verified_after_reopen"`
-	SetupSQL       string           `json:"setup_sql,omitempty"`
-	RunSeconds     float64          `json:"run_seconds"`
-	Successful     int              `json:"successful_executions"`
-	TimedOut       int              `json:"timed_out_executions"`
-	Failed         int              `json:"failed_executions"`
-	PeakRSSKiB     int64            `json:"process_peak_rss_kib"`
-	Queries        []queryReport    `json:"queries"`
+	QueryBenchmarked bool             `json:"query_benchmarked"`
+	LoadMode         string           `json:"load_mode"`
+	LoadTransactions int64            `json:"load_transactions"`
+	PageSize         int64            `json:"page_size_bytes"`
+	Config           config           `json:"config"`
+	Started          time.Time        `json:"started_at"`
+	GoVersion        string           `json:"go_version"`
+	Platform         string           `json:"platform"`
+	CPUs             int              `json:"cpus"`
+	DataManifest     json.RawMessage  `json:"data_manifest,omitempty"`
+	TableRows        map[string]int64 `json:"table_rows"`
+	LoadSeconds      float64          `json:"load_seconds"`
+	ReopenSeconds    float64          `json:"reopen_seconds"`
+	DatabaseBytes    int64            `json:"database_bytes_after_load"`
+	CountsVerified   bool             `json:"counts_verified_after_reopen"`
+	SetupSQL         string           `json:"setup_sql,omitempty"`
+	RunSeconds       float64          `json:"run_seconds"`
+	Successful       int              `json:"successful_executions"`
+	TimedOut         int              `json:"timed_out_executions"`
+	Failed           int              `json:"failed_executions"`
+	PeakRSSKiB       int64            `json:"process_peak_rss_kib"`
+	Queries          []queryReport    `json:"queries"`
 }
 
 var names = []string{"Pricing summary", "Minimum cost supplier", "Shipping priority", "Order priority", "Local supplier volume", "Forecasting revenue", "Volume shipping", "National market share", "Product type profit", "Returned item reporting", "Important stock identification", "Shipping modes", "Customer distribution", "Promotion effect", "Top supplier", "Parts supplier relationship", "Small quantity order revenue", "Large volume customer", "Discounted revenue", "Potential part promotion", "Suppliers who kept orders waiting", "Global sales opportunity"}
@@ -117,8 +121,9 @@ func run() (retErr error) {
 	flag.BoolVar(&c.WALFsync, "wal-fsync", false, "enable WAL fsync during loading; WAL stays enabled")
 	flag.Int64Var(&c.PageSize, "page-size", 0, "uncompressed SSTable data-block target in bytes (0 uses persisted/default target)")
 	flag.BoolVar(&c.LoadOnly, "load-only", false, "bulk load, index and verify persisted counts without executing TPC-H queries")
+	flag.Int64Var(&c.LoadBatchRows, "load-batch-rows", benchload.DefaultBatchRows, "maximum rows per atomic bulk-load transaction")
 	flag.Parse()
-	if flag.NArg() != 0 || c.PageSize < 0 || c.Data == "" || c.Runs < 1 || c.Warmups < 0 || c.Timeout <= 0 {
+	if flag.NArg() != 0 || c.PageSize < 0 || c.LoadBatchRows <= 0 || c.Data == "" || c.Runs < 1 || c.Warmups < 0 || c.Timeout <= 0 {
 		return errors.New("-data is required; runs and timeout must be positive; warmups must be nonnegative")
 	}
 	selected, err := queryNumbers(c.Queries)
@@ -172,7 +177,7 @@ func run() (retErr error) {
 			retErr = errors.Join(retErr, database.Close())
 		}
 	}()
-	r := report{QueryBenchmarked: !c.LoadOnly, PageSize: database.PageSize(), Config: c, Started: time.Now().UTC(), GoVersion: runtime.Version(), Platform: runtime.GOOS + "/" + runtime.GOARCH, CPUs: runtime.NumCPU()}
+	r := report{QueryBenchmarked: !c.LoadOnly, LoadMode: "bulk_insert", PageSize: database.PageSize(), Config: c, Started: time.Now().UTC(), GoVersion: runtime.Version(), Platform: runtime.GOOS + "/" + runtime.GOARCH, CPUs: runtime.NumCPU()}
 	if manifest, e := os.ReadFile(filepath.Join(c.Data, "manifest.json")); e == nil {
 		if !json.Valid(manifest) {
 			return errors.New("invalid data manifest JSON")
@@ -182,7 +187,7 @@ func run() (retErr error) {
 	fmt.Printf("TPC-H query workload: %d queries, runs=%d warmups=%d timeout=%s prepared=%t indexes=%t\n", len(selected), c.Runs, c.Warmups, c.Timeout, c.Prepared, c.Indexes)
 	fmt.Printf("Data: %s\nDatabase: %s\nWAL enabled; WAL fsync=%t. Single query stream.\n", c.Data, c.Dir, c.WALFsync)
 	loadStart := time.Now()
-	r.TableRows, err = load(parent, database, c)
+	r.TableRows, r.LoadTransactions, err = load(parent, database, c)
 	if err != nil {
 		return fmt.Errorf("load: %w", err)
 	}
@@ -213,11 +218,11 @@ func run() (retErr error) {
 		needsView = needsView || n == 15
 	}
 	if needsView {
-			setup, _ := assets.ReadFile("queries/q15-setup.sql")
-			r.SetupSQL = string(setup)
-			if _, err = database.ExecContext(parent, string(setup)); err != nil {
-				return fmt.Errorf("Q15 view: %w", err)
-			}
+		setup, _ := assets.ReadFile("queries/q15-setup.sql")
+		r.SetupSQL = string(setup)
+		if _, err = database.ExecContext(parent, string(setup)); err != nil {
+			return fmt.Errorf("Q15 view: %w", err)
+		}
 	}
 	start := time.Now()
 	for _, n := range selected {

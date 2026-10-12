@@ -21,21 +21,27 @@ func TestSnapshotReplicationAndMaintenance(t *testing.T) {
 			}
 			for _, mode := range []string{"load", "maintenance", "compact"} {
 				report := filepath.Join(root, mode+".json")
-				executeForTest(t, "-mode", mode, "-dir", directory, "-snapshot", source, "-replicas", "3", "-page-size", fmt.Sprint(size), "-json", report)
+				executeForTest(t, "-mode", mode, "-dir", directory, "-snapshot", source, "-replicas", "3", "-page-size", fmt.Sprint(size), "-load-batch-rows", "3", "-json", report)
 				raw, err := os.ReadFile(report)
 				if err != nil {
 					t.Fatal(err)
 				}
 				var result struct {
-					PageSize int64            `json:"page_size_bytes"`
-					Rows     map[string]int64 `json:"rows"`
-					Verified int64            `json:"verified_rows"`
+					PageSize         int64            `json:"page_size_bytes"`
+					Rows             map[string]int64 `json:"rows"`
+					Verified         int64            `json:"verified_rows"`
+					LoadMode         string           `json:"load_mode"`
+					LoadBatchRows    int64            `json:"load_batch_rows"`
+					LoadTransactions int64            `json:"load_transactions"`
 				}
 				if err = json.Unmarshal(raw, &result); err != nil {
 					t.Fatal(err)
 				}
 				if result.PageSize != size || result.Rows["warehouse"] != 6 || result.Rows["history"] != 6 || result.Rows["item"] != 1 {
 					t.Fatalf("%s incorrect report: %s", mode, raw)
+				}
+				if mode == "load" && (result.LoadMode != "bulk_insert" || result.LoadBatchRows != 3 || result.LoadTransactions != 5) {
+					t.Fatalf("incorrect bulk load report: %s", raw)
 				}
 				if mode != "compact" && result.Verified != 13 {
 					t.Fatalf("%s unverified rows: %s", mode, raw)

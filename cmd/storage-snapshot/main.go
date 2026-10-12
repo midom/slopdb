@@ -2,13 +2,16 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
 	"slopdb/db"
+	"slopdb/internal/benchload"
 	"slopdb/storage"
 	"strings"
 	"time"
@@ -33,7 +36,7 @@ func main() {
 func run() (err error) {
 	var mode, dir, file, report, verifyReport string
 	var copies int
-	var pageSize int64
+	var pageSize, loadBatchRows int64
 	flag.StringVar(&mode, "mode", "load", "load, verify, maintenance (TPC-C), or compact (any database)")
 	flag.StringVar(&dir, "dir", "", "database directory")
 	flag.StringVar(&file, "snapshot", "", "portable TPC-C snapshot JSON")
@@ -41,8 +44,9 @@ func run() (err error) {
 	flag.StringVar(&verifyReport, "verify-report", "", "TPC-H report whose complete answers must match after compact/reopen")
 	flag.IntVar(&copies, "replicas", 128, "source replicas; item table is shared")
 	flag.Int64Var(&pageSize, "page-size", 0, "SSTable data-block target in bytes")
+	flag.Int64Var(&loadBatchRows, "load-batch-rows", benchload.DefaultBatchRows, "maximum rows per atomic bulk-load transaction")
 	flag.Parse()
-	if flag.NArg() != 0 || dir == "" || (file == "" && mode != "compact") || copies < 1 || pageSize < 0 {
+	if flag.NArg() != 0 || dir == "" || (file == "" && mode != "compact") || copies < 1 || pageSize < 0 || loadBatchRows <= 0 {
 		return fmt.Errorf("valid dir, snapshot, replicas and page size required")
 	}
 	if mode != "load" && mode != "verify" && mode != "maintenance" && mode != "compact" {
@@ -65,6 +69,7 @@ func run() (err error) {
 	}
 	started := time.Now()
 	var loadSeconds, maintenanceSeconds float64
+	var loadTransactions int64
 	source, err := os.Open(file)
 	if err != nil {
 		return err
@@ -147,34 +152,29 @@ func run() (err error) {
 			if t.Name == "item" {
 				n = 1
 			}
-			marks := strings.TrimSuffix(strings.Repeat("?,", len(t.Columns)), ",")
-			stmt, e := database.Prepare("INSERT INTO " + t.Name + " VALUES(" + marks + ")")
+			var replica, offset int
+			stats, e := benchload.Load(context.Background(), database, t.Name, t.Columns, func(ctx context.Context) ([]any, error) {
+				if err := ctx.Err(); err != nil {
+					return nil, err
+				}
+				if len(t.Rows) == 0 || replica == n {
+					return nil, io.EOF
+				}
+				row := shift(t, t.Rows[offset], replica)
+				offset++
+				if offset == len(t.Rows) {
+					offset = 0
+					replica++
+					if replica%16 == 0 || replica == n {
+						fmt.Fprintf(os.Stderr, "%s supplied %d/%d replicas to bulk loader\n", t.Name, replica, n)
+					}
+				}
+				return row, nil
+			}, loadBatchRows)
 			if e != nil {
-				return e
+				return fmt.Errorf("%s bulk load after %d committed rows: %w", t.Name, stats.Rows, e)
 			}
-			for rep := 0; rep < n; rep++ {
-				for offset := 0; offset < len(t.Rows); offset += 1000 {
-					tx, e := database.Begin()
-					if e != nil {
-						return e
-					}
-					for _, row := range t.Rows[offset:min(offset+1000, len(t.Rows))] {
-						if _, e = tx.ExecPrepared(stmt, shift(t, row, rep)...); e != nil {
-							tx.Rollback()
-							return e
-						}
-					}
-					if e = tx.Commit(); e != nil {
-						return e
-					}
-				}
-				if (rep+1)%16 == 0 || rep+1 == n {
-					fmt.Fprintf(os.Stderr, "%s loaded %d/%d replicas\n", t.Name, rep+1, n)
-				}
-			}
-			if e = stmt.Close(); e != nil {
-				return e
-			}
+			loadTransactions += stats.Transactions
 		}
 		if err = database.Close(); err != nil {
 			return err
@@ -256,7 +256,7 @@ func run() (err error) {
 		}
 	}
 	stats := database.Stats()
-	result := map[string]any{"page_size_bytes": database.PageSize(), "requested_page_size_bytes": pageSize, "load_seconds": loadSeconds, "maintenance_seconds": maintenanceSeconds, "verification_seconds": time.Since(verifyStart).Seconds(), "rows": counts, "verified_rows": checked, "all_values_verified": true, "replicas": copies, "warehouse_stride": maxWarehouse, "history_stride": historyStride, "levels": stats.Levels, "finished_at": time.Now().UTC()}
+	result := map[string]any{"page_size_bytes": database.PageSize(), "requested_page_size_bytes": pageSize, "load_seconds": loadSeconds, "load_mode": "bulk_insert", "load_batch_rows": loadBatchRows, "load_transactions": loadTransactions, "maintenance_seconds": maintenanceSeconds, "verification_seconds": time.Since(verifyStart).Seconds(), "rows": counts, "verified_rows": checked, "all_values_verified": true, "replicas": copies, "warehouse_stride": maxWarehouse, "history_stride": historyStride, "levels": stats.Levels, "finished_at": time.Now().UTC()}
 	if err = database.Close(); err != nil {
 		return err
 	}

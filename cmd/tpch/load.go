@@ -4,8 +4,8 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"slopdb/db"
+	"slopdb/internal/benchload"
 	"slopdb/sql"
 )
 
@@ -32,84 +33,83 @@ func checkData(dir string) error {
 	return nil
 }
 
-func load(ctx context.Context, database *db.Database, c config) (map[string]int64, error) {
+func load(ctx context.Context, database *db.Database, c config) (map[string]int64, int64, error) {
 	schema, _ := assets.ReadFile("schema.sql")
 	if _, err := database.ExecContext(ctx, string(schema)); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	statements, err := sql.Parse(string(schema))
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	counts := map[string]int64{}
+	var transactions int64
 	for _, statement := range statements {
 		table := statement.(*sql.CreateTableStmt)
-		n, err := loadTable(ctx, database, filepath.Join(c.Data, table.Table+".tbl"), table)
+		stats, err := loadTable(ctx, database, filepath.Join(c.Data, table.Table+".tbl"), table, c.LoadBatchRows)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
-		counts[table.Table] = n
-		fmt.Printf("  loaded %-8s %d rows\n", table.Table, n)
+		counts[table.Table] = stats.Rows
+		transactions += stats.Transactions
+		fmt.Printf("  loaded %-8s %d rows\n", table.Table, stats.Rows)
 	}
 	if raw, err := os.ReadFile(filepath.Join(c.Data, "manifest.json")); err == nil {
 		var manifest struct {
 			Rows map[string]int64 `json:"rows"`
 		}
 		if err = json.Unmarshal(raw, &manifest); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		for table, n := range manifest.Rows {
 			if got, ok := counts[table]; !ok || got != n {
-				return nil, fmt.Errorf("manifest row count %s: got %d want %d", table, got, n)
+				return nil, 0, fmt.Errorf("manifest row count %s: got %d want %d", table, got, n)
 			}
 		}
 	}
 	if c.Indexes {
 		indexes, _ := assets.ReadFile("indexes.sql")
 		if _, err := database.ExecContext(ctx, string(indexes)); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 	}
 	if _, err := database.ExecContext(ctx, "ANALYZE"); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return counts, nil
+	return counts, transactions, nil
 }
 
-func loadTable(ctx context.Context, database *db.Database, path string, table *sql.CreateTableStmt) (count int64, retErr error) {
+func loadTable(ctx context.Context, database *db.Database, path string, table *sql.CreateTableStmt, batchRows int64) (benchload.Stats, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return 0, err
+		return benchload.Stats{}, err
 	}
 	defer file.Close()
-	marks := make([]string, len(table.Columns))
-	for i := range marks {
-		marks[i] = "?"
+	columns := make([]string, len(table.Columns))
+	for i, column := range table.Columns {
+		columns[i] = column.Name
 	}
-	stmt, err := database.Prepare("INSERT INTO " + table.Table + " VALUES(" + strings.Join(marks, ",") + ")")
-	if err != nil {
-		return 0, err
-	}
-	defer stmt.Close()
-	var tx *db.Tx
-	defer func() {
-		if tx != nil {
-			retErr = errors.Join(retErr, tx.Rollback())
-		}
-	}()
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 4096), 1024*1024)
 	args := make([]any, len(table.Columns))
-	for scanner.Scan() {
-		if err = ctx.Err(); err != nil {
-			return count, err
+	var rowNumber int64
+	return benchload.Load(ctx, database, table.Table, columns, func(ctx context.Context) ([]any, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
 		}
+		if !scanner.Scan() {
+			if err := scanner.Err(); err != nil {
+				return nil, err
+			}
+			return nil, io.EOF
+		}
+		rowNumber++
 		fields := strings.Split(strings.TrimSuffix(scanner.Text(), "\r"), "|")
 		if len(fields) == len(args)+1 && fields[len(fields)-1] == "" {
 			fields = fields[:len(fields)-1]
 		}
 		if len(fields) != len(args) {
-			return count, fmt.Errorf("%s row %d: expected %d fields, got %d", path, count+1, len(args), len(fields))
+			return nil, fmt.Errorf("%s row %d: expected %d fields, got %d", path, rowNumber, len(args), len(fields))
 		}
 		for i, col := range table.Columns {
 			var e error
@@ -129,38 +129,11 @@ func loadTable(ctx context.Context, database *db.Database, path string, table *s
 				e = fmt.Errorf("unsupported loader column type")
 			}
 			if e != nil {
-				return count, fmt.Errorf("%s row %d column %s: %w", path, count+1, col.Name, e)
+				return nil, fmt.Errorf("%s row %d column %s: %w", path, rowNumber, col.Name, e)
 			}
 		}
-		if tx == nil {
-			tx, err = database.BeginContext(ctx)
-			if err != nil {
-				return count, err
-			}
-		}
-		if _, err = tx.ExecPreparedContext(ctx, stmt, args...); err != nil {
-			return count, fmt.Errorf("%s row %d: %w", path, count+1, err)
-		}
-		count++
-		if count%512 == 0 {
-			err = tx.CommitContext(ctx)
-			tx = nil
-			if err != nil {
-				return count, err
-			}
-		}
-	}
-	if err = scanner.Err(); err != nil {
-		return count, err
-	}
-	if tx != nil {
-		err = tx.CommitContext(ctx)
-		tx = nil
-		if err != nil {
-			return count, err
-		}
-	}
-	return count, nil
+		return args, nil
+	}, batchRows)
 }
 
 func verifyCounts(ctx context.Context, database *db.Database, counts map[string]int64) error {
