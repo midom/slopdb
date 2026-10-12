@@ -1,27 +1,42 @@
 # Storage comparisons above 100 MiB
 
-The [page-size comparison](page-size-comparison.md) extends these measurements
-with fresh equal-data fixtures at multiple page sizes, physical allocation and
-controlled TPC-C/TPC-H timings. The dated results below remain historical.
+The latest [page-size comparison](page-size-comparison.md) refreshes SlopDB’s
+storage fixtures with page-matched compression windows and a full bottom-level
+rewrite. Previous query/transaction timings remain historical 8 MiB-window data.
 
-## Page-size storage measurements, 2026-10-12
+## Matched-window, fully rewritten storage measurements, 2026-10-12
 
-These fresh fixtures preserve the same source hashes and row counts as the
-historical large comparison. Every TPC-C value and, at benchmarked sizes, all
-twenty-two TPC-H answers were checked after reopening and again after maintenance.
-SlopDB 1 MiB is bulk-load/storage-only: TPC-H checks persisted row counts/schema
-and hash-verified inputs, with no query-answer or full-column verification.
-TPC-C storage still checks every value at 1 MiB. Page targets have
-different meanings across engines; SQLite and DuckDB cannot use 1 MiB.
+Fresh SlopDB fixtures match the Zstd encoder window to each configured block
+target: 4 KiB, 16 KiB, 64 KiB or 1 MiB. Final sizes are measured only after
+VACUUM atomically merges and rewrites every SSTable, including existing L6 files,
+into L6. Every reopened report proves all L0–L5 file/byte counts are zero and
+records `full_bottom_level_rewrite`. L6 can contain several output files.
+Closed pre-maintenance sizes remain diagnostic inventories.
+
+The datasets retain the original source hashes: 10,518,120 TPC-C rows across
+256 warehouses (a replicated committed snapshot), and 1,731,999 TPC-H SF=0.2
+rows with eight tables, fourteen indexes, ANALYZE and the Q15 view. Loading uses
+4,096-row BulkInsert transactions and up to 256 rows per prepared INSERT.
+WAL remains enabled with WAL fsync disabled; SSTables and MANIFEST remain synced.
+
+All eight fresh SlopDB cases measure loading/storage only. No TPC-H query pack or
+TPC-C throughput benchmark runs in this refresh, including at 1 MiB. TPC-C checks
+every row and column before/after maintenance; TPC-H checks persisted table
+counts against hash-verified source inputs, without full-column verification.
+Earlier timing results below used an 8 MiB window and are historical evidence.
+
+SlopDB’s maintained 64 KiB footprints are 20.3% / 20.7% smaller than
+its fresh TPC-C / TPC-H 4 KiB controls. Native engine rows below are unchanged
+previous measurements, identified separately in the provenance paragraph.
 
 ### TPC-C replicated snapshot
 
-| Engine | Page/block target | Reported load s | Closed MiB | After maintenance MiB | Closed allocated MiB | After allocated MiB |
+| Engine | Page/block target | Reported load s | Closed diagnostic MiB | Final maintained MiB | Closed allocated MiB | Final allocated MiB |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| slopdb | 4 KiB (default) | 180.0 | 185.27 | 176.19 | 185.61 | 176.50 |
-| slopdb | 16 KiB | 182.8 | 156.89 | 147.66 | 157.38 | 148.11 |
-| slopdb | 64 KiB | 177.9 | 154.74 | 145.60 | 155.20 | 146.06 |
-| slopdb | 1 MiB | 170.3 | 159.44 | 150.14 | 159.82 | 150.53 |
+| slopdb | 4 KiB (default) | 182.9 | 191.79 | 182.74 | 192.11 | 183.05 |
+| slopdb | 16 KiB | 185.0 | 158.26 | 149.03 | 158.72 | 149.47 |
+| slopdb | 64 KiB | 179.2 | 154.80 | 145.66 | 155.32 | 146.13 |
+| slopdb | 1 MiB | 170.7 | 159.44 | 150.14 | 159.82 | 150.54 |
 | sqlite | 4 KiB (default) | 47.0 | 461.68 | 438.36 | 461.69 | 438.36 |
 | sqlite | 16 KiB | 45.1 | 460.02 | 436.30 | 460.02 | 436.30 |
 | sqlite | 64 KiB | 47.6 | 460.38 | 436.69 | 460.38 | 436.70 |
@@ -33,12 +48,12 @@ different meanings across engines; SQLite and DuckDB cannot use 1 MiB.
 
 ### TPC-H SF=0.2
 
-| Engine | Page/block target | Reported load s | Closed MiB | After maintenance MiB | Closed allocated MiB | After allocated MiB |
+| Engine | Page/block target | Reported load s | Closed diagnostic MiB | Final maintained MiB | Closed allocated MiB | Final allocated MiB |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| slopdb | 4 KiB (default) | 100.4 | 267.31 | 211.80 | 267.57 | 212.03 |
-| slopdb | 16 KiB | 107.3 | 237.93 | 181.34 | 238.18 | 181.61 |
-| slopdb | 64 KiB | 94.9 | 226.83 | 170.15 | 227.09 | 170.42 |
-| slopdb | 1 MiB | 91.4 | 220.70 | 163.77 | 220.94 | 163.99 |
+| slopdb | 4 KiB (default) | 100.6 | 269.67 | 214.54 | 269.92 | 214.80 |
+| slopdb | 16 KiB | 96.8 | 238.47 | 181.96 | 238.75 | 182.23 |
+| slopdb | 64 KiB | 94.0 | 226.83 | 170.14 | 227.07 | 170.38 |
+| slopdb | 1 MiB | 91.8 | 220.70 | 163.77 | 220.94 | 164.01 |
 | sqlite | 4 KiB (default) | 17.3 | 321.10 | 318.91 | 321.11 | 318.92 |
 | sqlite | 16 KiB | 16.9 | 317.86 | 315.66 | 317.87 | 315.66 |
 | sqlite | 64 KiB | 16.6 | 318.44 | 316.19 | 318.45 | 316.20 |
@@ -48,14 +63,18 @@ different meanings across engines; SQLite and DuckDB cannot use 1 MiB.
 | duckdb | 256 KiB (default) | 16.8 | 203.76 | 203.76 | 203.77 | 203.77 |
 | duckdb | 1 MiB | Unsupported | — | — | — | — |
 
-See the [complete page-size comparison](page-size-comparison.md) for TPC-H and
-TPC-C timings, exact revisions, engine versions, durability differences, input
-hashes and raw inventories. SQLite storage used Python SQLite 3.45.1; throughput
-used the Go driver’s SQLite 3.51.3. Native default controls use SQLite 4 KiB
-and DuckDB 256 KiB, while SlopDB defaults to 4 KiB. SlopDB’s maintained 64 KiB
-footprints are 17.4% / 19.7% smaller than its new TPC-C / TPC-H 4 KiB controls;
-its 1 MiB TPC-C footprint is larger than 64 KiB. Larger targets do not guarantee
-better packing or faster queries.
+The current storage harness is `c6003992f379e81f4ef07d7fa4c459a09ac75573`; exact compiled
+Go revisions, executable SHA256 hashes and `go version -m` output are retained in
+the [fresh manifest](benchmarks/storage/pages-matched-window/storage-comparison.json).
+SQLite/DuckDB storage rows are reused unchanged from the previous archive at
+harness revision `9a6e9de0b8c4d84a7652b1700d59e7e2054238d4` (Python SQLite 3.45.1 and
+DuckDB 1.5.6). They were loaded from identical source hashes. This refresh does
+not rerun those native engines or the historical query/transaction benchmarks.
+Their native VACUUM/CHECKPOINT operations differ from SlopDB’s full L6 rewrite.
+
+See the [complete page-size comparison](page-size-comparison.md) for loading
+boundaries, historical performance figures, durability differences and the
+[fresh report archive](benchmarks/storage/pages-matched-window/manifest.json).
 
 ## Historical default-size comparison, 2026-10-11
 

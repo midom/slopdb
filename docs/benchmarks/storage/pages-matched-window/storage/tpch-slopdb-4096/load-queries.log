@@ -1,0 +1,16 @@
+TPC-H query workload: 0 queries, runs=1 warmups=1 timeout=3m0s prepared=true indexes=true
+Data: /tmp/slopdb-bench/storage-large-uxqRa0/tpch-inputs
+Database: /tmp/slopdb-bench/page-matrix-matched-window-20261012/tpch-slopdb-4096/database
+WAL enabled; WAL fsync=false. Single query stream.
+  loaded region   5 rows
+  loaded nation   25 rows
+  loaded supplier 2000 rows
+  loaded customer 30000 rows
+  loaded part     40000 rows
+  loaded partsupp 160000 rows
+  loaded orders   300000 rows
+  loaded lineitem 1199969 rows
+Loaded and indexed in 100.626s, reopened in 0.022s; persisted row counts verified.
+Rows: map[customer:30000 lineitem:1199969 nation:25 orders:300000 part:40000 partsupp:160000 region:5 supplier:2000]; database bytes=282763874
+Executions: 0 completed, 0 timed out, 0 failed; query phase 0.000s
+Report: /tmp/slopdb-bench/page-matrix-matched-window-20261012/tpch-slopdb-4096/queries.json
