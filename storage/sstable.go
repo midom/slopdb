@@ -26,11 +26,24 @@ const (
 	kZstdCompression   = 2
 	kSnappyCompression = 3
 	kLZ4Compression    = 4
-	// SSTableZstdWindowSize is the maximum back-reference distance within an
-	// independent zstd-compressed SSTable block. Keep it explicit instead of
-	// depending on codec-level defaults. Small blocks advertise smaller windows.
-	SSTableZstdWindowSize = 8 << 20
 )
+
+// SSTableZstdWindowSizeForBlock returns the maximum back-reference distance for
+// an independently compressed SSTable page. Explicit page sizes match exactly,
+// except that the codec requires at least 1 KiB for 512-byte pages. Legacy odd
+// BlockSize targets round up to a power of two; zero selects the default target.
+// Callers must validate block targets separately. The codec window is bounded by
+// the largest supported SSTable page, including for out-of-range inputs.
+func SSTableZstdWindowSizeForBlock(blockSize int64) int64 {
+	if blockSize == 0 {
+		blockSize = DefaultPageSize
+	}
+	window := int64(zstd.MinWindowSize)
+	for window < blockSize && window < MaxPageSize {
+		window <<= 1
+	}
+	return window
+}
 
 type FileMetaData struct {
 	Number          uint64
@@ -101,7 +114,7 @@ func NewSSTableWriter(path string, opt *Options) (*SSTableWriter, error) {
 		encoder, err = zstd.NewWriter(nil,
 			zstd.WithEncoderConcurrency(1),
 			zstd.WithEncoderLevel(zstd.SpeedDefault),
-			zstd.WithWindowSize(SSTableZstdWindowSize),
+			zstd.WithWindowSize(int(SSTableZstdWindowSizeForBlock(int64(options.BlockSize)))),
 			zstd.WithLowerEncoderMem(false),
 		)
 		if err != nil {
