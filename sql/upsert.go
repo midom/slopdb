@@ -5,6 +5,91 @@ import (
 	"strings"
 )
 
+func rewriteInsertValues(e Expression) (Expression, error) {
+	switch x := e.(type) {
+	case *FuncCallExpr:
+		if strings.EqualFold(x.Name, "VALUES") {
+			if len(x.Args) != 1 {
+				return nil, fmt.Errorf("VALUES() in ON DUPLICATE KEY UPDATE requires one column")
+			}
+			col, ok := x.Args[0].(*ColumnRefExpr)
+			if !ok || strings.Contains(col.Name, ".") {
+				return nil, fmt.Errorf("VALUES() requires a column name")
+			}
+			return &ColumnRefExpr{Name: "excluded." + strings.ToLower(col.Name)}, nil
+		}
+		for i := range x.Args {
+			v, err := rewriteInsertValues(x.Args[i])
+			if err != nil {
+				return nil, err
+			}
+			x.Args[i] = v
+		}
+	case *BinaryExpr:
+		var err error
+		x.Left, err = rewriteInsertValues(x.Left)
+		if err != nil {
+			return nil, err
+		}
+		x.Right, err = rewriteInsertValues(x.Right)
+		if err != nil {
+			return nil, err
+		}
+	case *UnaryExpr:
+		v, err := rewriteInsertValues(x.Right)
+		if err != nil {
+			return nil, err
+		}
+		x.Right = v
+	case *BetweenExpr:
+		parts := []*Expression{&x.Expr, &x.Low, &x.High}
+		for _, p := range parts {
+			v, err := rewriteInsertValues(*p)
+			if err != nil {
+				return nil, err
+			}
+			*p = v
+		}
+	case *InListExpr:
+		v, err := rewriteInsertValues(x.Expr)
+		if err != nil {
+			return nil, err
+		}
+		x.Expr = v
+		for i := range x.List {
+			x.List[i], err = rewriteInsertValues(x.List[i])
+			if err != nil {
+				return nil, err
+			}
+		}
+	case *CaseExpr:
+		var err error
+		if x.Expr != nil {
+			x.Expr, err = rewriteInsertValues(x.Expr)
+			if err != nil {
+				return nil, err
+			}
+		}
+		for i := range x.Whens {
+			x.Whens[i].Cond, err = rewriteInsertValues(x.Whens[i].Cond)
+			if err != nil {
+				return nil, err
+			}
+			x.Whens[i].Then, err = rewriteInsertValues(x.Whens[i].Then)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if x.ElseExpr != nil {
+			x.ElseExpr, err = rewriteInsertValues(x.ElseExpr)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	return e, nil
+}
+
 // OnConflictClause applies only to a PRIMARY KEY or UNIQUE violation. Target
 // omission matches any unique constraint. Partial and expression targets are
 // deliberately unsupported rather than approximated by their column names.
@@ -17,6 +102,10 @@ type OnConflictClause struct {
 
 func (p *Parser) parseOnConflict() (*OnConflictClause, error) {
 	p.advance()
+	return p.parseOnConflictAfterOn()
+}
+
+func (p *Parser) parseOnConflictAfterOn() (*OnConflictClause, error) {
 	if err := p.expectKeyword("CONFLICT"); err != nil {
 		return nil, err
 	}

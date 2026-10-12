@@ -901,7 +901,14 @@ func (p *Parser) parseInsert() (Statement, error) {
 		if stmt.Replace {
 			return nil, fmt.Errorf("REPLACE cannot have ON CONFLICT")
 		}
-		conflict, err := p.parseOnConflict()
+		var conflict *OnConflictClause
+		var err error
+		p.advance() // ON
+		if p.cur.Value == "DUPLICATE" {
+			conflict, err = p.parseOnDuplicateKeyUpdate()
+		} else {
+			conflict, err = p.parseOnConflictAfterOn()
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -922,6 +929,46 @@ func (p *Parser) parseInsert() (Statement, error) {
 		}
 	}
 	return stmt, nil
+}
+
+// parseOnDuplicateKeyUpdate accepts MySQL's all-unique-keys UPSERT form.
+// VALUES(column) references the value from the attempted insert row.
+func (p *Parser) parseOnDuplicateKeyUpdate() (*OnConflictClause, error) {
+	if !strings.EqualFold(p.cur.Value, "DUPLICATE") {
+		return nil, fmt.Errorf("expected DUPLICATE, got %q", p.cur.Value)
+	}
+	p.advance()
+	if err := p.expectKeyword("KEY"); err != nil {
+		return nil, err
+	}
+	if err := p.expectKeyword("UPDATE"); err != nil {
+		return nil, err
+	}
+	c := &OnConflictClause{}
+	for {
+		if p.cur.Type != TokIdent && p.cur.Type != TokKeyword {
+			return nil, fmt.Errorf("expected duplicate-key update column")
+		}
+		name := strings.ToLower(p.cur.Value)
+		p.advance()
+		if err := p.expect(TokEq); err != nil {
+			return nil, err
+		}
+		e, err := p.parseExpression()
+		if err != nil {
+			return nil, err
+		}
+		e, err = rewriteInsertValues(e)
+		if err != nil {
+			return nil, err
+		}
+		c.Set = append(c.Set, UpdateSet{Column: name, Value: e})
+		if p.cur.Type != TokComma {
+			break
+		}
+		p.advance()
+	}
+	return c, nil
 }
 
 func (p *Parser) parseSelect() (Statement, error) {

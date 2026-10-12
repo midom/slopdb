@@ -96,6 +96,22 @@ func TestUpsertTargetsReturningAndReopen(t *testing.T) {
 	}
 }
 
+func TestMySQLDuplicateKeyUpdate(t *testing.T) {
+	e := newRegressionEnv(t)
+	d, err := e.openDatabase(e.path("mysql-upsert"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upsertExec(t, d, "CREATE TABLE t(id INTEGER PRIMARY KEY, code TEXT UNIQUE, n INTEGER)")
+	upsertExec(t, d, "INSERT INTO t VALUES(1,'a',4)")
+	r := upsertExec(t, d, "INSERT INTO t VALUES(9,'a',3) ON DUPLICATE KEY UPDATE n=n+VALUES(n), id=VALUES(id) RETURNING id,n")
+	if r.Changes != 1 || len(r.Rows) != 1 || r.Rows[0]["id"].Int != 9 || r.Rows[0]["n"].Int != 7 {
+		t.Fatalf("upsert result=%+v", r)
+	}
+	upsertExec(t, d, "INSERT INTO t VALUES(2,'b',5) ON DUPLICATE KEY UPDATE n=VALUES(n)")
+	upsertInt(t, d, "SELECT n FROM t WHERE code='b'", "n", 5)
+}
+
 func TestUpsertAtomicConstraintsAndTransactions(t *testing.T) {
 	e := newRegressionEnv(t)
 	d, err := e.openDatabase(e.path("upsert_atomic"), nil)
