@@ -78,3 +78,32 @@ and checks its actual value. SQLite accepts powers of two from 512 through
 65536 bytes; DuckDB accepts 16384 through 262144. Both reject 1 MiB explicitly.
 SQLite uses a 128 MiB cache budget and a byte-equivalent 64 MiB WAL checkpoint
 threshold across page sizes; DuckDB retains one execution thread and 1 GB memory.
+
+The serial page matrix runner preserves fresh databases, raw reports, logs,
+commands and binary hashes. It defaults to 10 workers for 60 seconds per case,
+2 warehouses, 10 districts, 100 customers per district, 1000 items and seed 42.
+Prepared execution and WAL recording stay enabled; WAL fsync is disabled.
+All 30 consistency assertions must pass. The default matrix includes 16 KiB,
+64 KiB and 1 MiB requests, plus SlopDB/SQLite 4 KiB and DuckDB 256 KiB controls.
+Unsupported native 1 MiB cases are recorded without running the engine.
+
+Build binaries and the Linux WAL-only shim before measurements:
+
+```bash
+mkdir -p /tmp/slopdb-bench/page-tpcc-binaries
+go build -o /tmp/slopdb-bench/page-tpcc-binaries/slop-tpcc ./cmd/tpcc
+(cd cmd/tpcc/compare && go build -o /tmp/slopdb-bench/page-tpcc-binaries/native-tpcc .)
+cc -shared -fPIC -O2 -Wall -Wextra -o /tmp/slopdb-bench/page-tpcc-binaries/wal-no-fsync.so cmd/tpcc/compare/nofsync/wal_sync.c -ldl
+python3 scripts/tpcc_page_matrix.py \
+  --output /tmp/slopdb-bench/page-tpcc-results \
+  --slop-tpcc /tmp/slopdb-bench/page-tpcc-binaries/slop-tpcc \
+  --native-tpcc /tmp/slopdb-bench/page-tpcc-binaries/native-tpcc \
+  --duckdb-wal-shim /tmp/slopdb-bench/page-tpcc-binaries/wal-no-fsync.so
+```
+
+The output directory must be new and outside the repository. Run without other
+benchmarks or heavy tests; cases execute strictly serially. `--seconds 1` is a
+functionality smoke test, and `--engines` / `--page-sizes` restrict selected cases.
+Single paired runs describe the observed performance and do not establish
+statistical significance. Transaction throughput uses a fresh generated fixture;
+the larger replicated TPC-C storage snapshot is measured separately.
