@@ -1,0 +1,89 @@
+{
+  "description": "Eight fresh SlopDB storage-only cases with page-matched windows and full bottom-level rewrite; no query or transaction performance samples.",
+  "source_directory": "/tmp/slopdb-bench/page-matrix-matched-window-20261012",
+  "compiled_binaries": {
+    "slop_snapshot": {
+      "path": "/tmp/slopdb-bench/page-matched-window/bin/storage-snapshot",
+      "sha256": "9c4484cd48db6f99c30e4bea66962f6a117b3996de6eb9e437f68b06054ef56f",
+      "build_metadata": "/tmp/slopdb-bench/page-matched-window/bin/storage-snapshot: go1.22.2\n\tpath\tslopdb/cmd/storage-snapshot\n\tmod\tslopdb\t(devel)\t\n\tdep\tgithub.com/klauspost/compress\tv1.18.0\th1:c/Cqfb0r+Yi+JtIEq73FWXVkRonBlf0CRNYc8Zttxdo=\n\tdep\tgithub.com/pierrec/lz4/v4\tv4.1.33\th1:GjG1TJ1V4IzKP8L96muuuDNpTwd7D+l2ccXrjAbe014=\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\tCGO_ENABLED=1\n\tbuild\tCGO_CFLAGS=\n\tbuild\tCGO_CPPFLAGS=\n\tbuild\tCGO_CXXFLAGS=\n\tbuild\tCGO_LDFLAGS=\n\tbuild\tGOARCH=arm64\n\tbuild\tGOOS=linux\n\tbuild\tvcs=git\n\tbuild\tvcs.revision=c6003992f379e81f4ef07d7fa4c459a09ac75573\n\tbuild\tvcs.time=2026-10-12T03:00:08Z\n\tbuild\tvcs.modified=true\n"
+    },
+    "slop_tpch": {
+      "path": "/tmp/slopdb-bench/page-matched-window/bin/tpch",
+      "sha256": "2cf0663127d6136d274e5c1a68dfda5de9909f4c817e684e5d40cb8f6337e29e",
+      "build_metadata": "/tmp/slopdb-bench/page-matched-window/bin/tpch: go1.22.2\n\tpath\tslopdb/cmd/tpch\n\tmod\tslopdb\t(devel)\t\n\tdep\tgithub.com/klauspost/compress\tv1.18.0\th1:c/Cqfb0r+Yi+JtIEq73FWXVkRonBlf0CRNYc8Zttxdo=\n\tdep\tgithub.com/pierrec/lz4/v4\tv4.1.33\th1:GjG1TJ1V4IzKP8L96muuuDNpTwd7D+l2ccXrjAbe014=\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\tCGO_ENABLED=1\n\tbuild\tCGO_CFLAGS=\n\tbuild\tCGO_CPPFLAGS=\n\tbuild\tCGO_CXXFLAGS=\n\tbuild\tCGO_LDFLAGS=\n\tbuild\tGOARCH=arm64\n\tbuild\tGOOS=linux\n\tbuild\tvcs=git\n\tbuild\tvcs.revision=c6003992f379e81f4ef07d7fa4c459a09ac75573\n\tbuild\tvcs.time=2026-10-12T03:00:08Z\n\tbuild\tvcs.modified=true\n"
+    }
+  },
+  "harness_revision": "c6003992f379e81f4ef07d7fa4c459a09ac75573",
+  "vcs_modified_note": "Go build metadata says vcs.modified=true because the user-owned untracked root README.md was preserved; compiled tracked sources were clean.",
+  "source_hashes": {
+    "tpcc": "cf3c5524f0fce10d70876e7dd71cb7df36b5c1df79842694d6b91862809a47ca",
+    "tpch": {
+      "region": "2b12cdddbe69a491b2bf6bea9bc33d4781c56fa4c5cb7f9702860618221c85f2",
+      "nation": "7986406c8b57b41e274247d514dc2e837769073533e1f7fe3463767798367ec6",
+      "supplier": "c75a3528f0c67c1d1e2687254eb57a98bac8d18dd5e7667d1dd4bef26912c443",
+      "customer": "73804ad717db103e4b728ae5c1bdd77b96d19147ba1569c21957ec961be3f2aa",
+      "part": "9645367c16e4f05351e1789f01b9bffcd39ebfbb3acba100692e4fe506e27e00",
+      "partsupp": "a60496cd42bb30ce60c1036cfa9d0c269f6e3242d0c7637903fd433f2369c0e7",
+      "orders": "9df1319443eb7a4638c58028f39c49eed71a95409d3964e558a68b5fd9620c38",
+      "lineitem": "a4f15a2c2b189e3458c92376ec4a2179b58643ec028268f0f0da26ff43f33307"
+    }
+  },
+  "reused_native_storage": {
+    "archive": "../pages/storage-comparison.json",
+    "sha256": "202f7568ab8d9b94958de7d551947eb15310d1cce7f97888e67699c914019b6e",
+    "harness_revision": "9a6e9de0b8c4d84a7652b1700d59e7e2054238d4",
+    "note": "Previous native engine fixtures are unchanged and not rerun; their storage maintenance has native-specific semantics."
+  },
+  "artifact_sha256": {
+    "storage/tpcc-slopdb-1048576/cell.log": "3734db034d4b8ef492fbc27ee5f5e66982b360c5e6e8f3707ed9245b19071bc6",
+    "storage/tpcc-slopdb-1048576/load.json": "0a5e58f35bcfcbc1a8815068ea8358f492d1eeb210f69cd0f33beaaa2eb4cda5",
+    "storage/tpcc-slopdb-1048576/load.log": "5883306dbae75c1823b2b0cdf4964ae1e1546bb813db5f262b4c37296723e47f",
+    "storage/tpcc-slopdb-1048576/maintenance.json": "d6654c8c2ab2204db45e976c547d2373ab567a245a54b39fcadb96c248c00de0",
+    "storage/tpcc-slopdb-1048576/maintenance.log": "191f722048f647db2fe9f15f309b0a8de5f2046727dcdef10f6c2e077f8045a6",
+    "storage/tpcc-slopdb-1048576/storage.json": "f99aefdbe48c11190cc82eba50ba1bd5b002fa739365475b4f311692ddbfcdc7",
+    "storage/tpcc-slopdb-16384/cell.log": "bd2192bfec5b8f7091c267865dd5271ddebbba6d4b0528cfc201101a15c34f5a",
+    "storage/tpcc-slopdb-16384/load.json": "c1b38e9f1a6b990d4480fec1fce5ddeebe5aef4a390b101a6cb8e40cfae2af55",
+    "storage/tpcc-slopdb-16384/load.log": "5883306dbae75c1823b2b0cdf4964ae1e1546bb813db5f262b4c37296723e47f",
+    "storage/tpcc-slopdb-16384/maintenance.json": "1d53e6c2c789e4d47464d08d1830a87db07540efa3abb83e716f77d20fb8fdc3",
+    "storage/tpcc-slopdb-16384/maintenance.log": "191f722048f647db2fe9f15f309b0a8de5f2046727dcdef10f6c2e077f8045a6",
+    "storage/tpcc-slopdb-16384/storage.json": "5e97882bc6be46647f021dc1afeaab728629bc3490e074d1cdafdbdb2fb79149",
+    "storage/tpcc-slopdb-4096/cell.log": "363dd80d9f8c2eb7dd1dc28e918cfd26ecf6d19cae1409eb26965947bacc33c3",
+    "storage/tpcc-slopdb-4096/load.json": "ffb82175e9a79ebfcaf95b2e28e91d32b7c078828d0e92f2eb8b86cfac5fab44",
+    "storage/tpcc-slopdb-4096/load.log": "5883306dbae75c1823b2b0cdf4964ae1e1546bb813db5f262b4c37296723e47f",
+    "storage/tpcc-slopdb-4096/maintenance.json": "e7a85980788c9c1e67381084f8165b880f8372db1087b664780266b244a1f0a1",
+    "storage/tpcc-slopdb-4096/maintenance.log": "191f722048f647db2fe9f15f309b0a8de5f2046727dcdef10f6c2e077f8045a6",
+    "storage/tpcc-slopdb-4096/storage.json": "2ccf3985886e4eda08b0b622578d3d3ef7015f17e18a7033f8b9da55617cda4f",
+    "storage/tpcc-slopdb-65536/cell.log": "41117c837ccd334069ddd9d37ccedd810d8e4d45740a92392a18736960d7577e",
+    "storage/tpcc-slopdb-65536/load.json": "361286884d8f5980fad58a16c87bafc7d11922e63433b4a0aad002d57a3acddc",
+    "storage/tpcc-slopdb-65536/load.log": "5883306dbae75c1823b2b0cdf4964ae1e1546bb813db5f262b4c37296723e47f",
+    "storage/tpcc-slopdb-65536/maintenance.json": "18b1a73b7a4643acf32d6c57201cda071aaad39a68c7ae7b9c47c4c38093eaf3",
+    "storage/tpcc-slopdb-65536/maintenance.log": "191f722048f647db2fe9f15f309b0a8de5f2046727dcdef10f6c2e077f8045a6",
+    "storage/tpcc-slopdb-65536/storage.json": "fd0da71c481e679a4e87764603e394b7f627469e9a2657ed047dd0d0edd74277",
+    "storage/tpch-slopdb-1048576/cell.log": "45b0054b48b6747d46fa0c61c40ba42dcc93ad5218e95ab0dbeb44a2963053d2",
+    "storage/tpch-slopdb-1048576/load-queries.log": "646e3455c1bd263a672c8b67af4383f89b1d14b048c4fcc6a8de004970d2b3c2",
+    "storage/tpch-slopdb-1048576/maintenance.json": "fb2fab80a46bb76f050ff918f2dc1af1ab227b159250a41747bde63d02a6a77e",
+    "storage/tpch-slopdb-1048576/maintenance.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "storage/tpch-slopdb-1048576/queries.json": "5e7a7cf32da4e6eb75d59708097022fcb6b77378100061bf50ec2f3c704bbb39",
+    "storage/tpch-slopdb-1048576/storage.json": "29b3759886851c14fb5c355b7e9adb8f4cd07841d3c83e2312920bc5204bfc16",
+    "storage/tpch-slopdb-16384/cell.log": "c8f5867d1eb4f75dcedc90c41e2443bd54594504f0380e6020c5fb9711c252ea",
+    "storage/tpch-slopdb-16384/load-queries.log": "c8e349d21a5c53c3c2c5f804458709dea9f2fbe151507fd37bebd4f9083ade2b",
+    "storage/tpch-slopdb-16384/maintenance.json": "72b0c6b7673de829147c32d9a324524f2e55339d10d72355202f82e934146559",
+    "storage/tpch-slopdb-16384/maintenance.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "storage/tpch-slopdb-16384/queries.json": "b6f26e9cc821c38a451d319ad1827601513884d029a2712fac26c505a6f36274",
+    "storage/tpch-slopdb-16384/storage.json": "7c29ff871b69ae1060c8bde77fadbe42620d486952c33c3dd859a524411a363e",
+    "storage/tpch-slopdb-4096/cell.log": "eba85a6a455b31ec0054f42c1c9f23f4bac2cfccbcaf972e6e727a25a2993ed2",
+    "storage/tpch-slopdb-4096/load-queries.log": "1f9654827ae09548d6d27d340c7d3247e5ea24ec062368d2587c37684a3a8084",
+    "storage/tpch-slopdb-4096/maintenance.json": "1cc058e79ca96af07d82db99a596ebf056e2a2e63ae2e4e19f18f03ea238bd78",
+    "storage/tpch-slopdb-4096/maintenance.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "storage/tpch-slopdb-4096/queries.json": "76d30903224ab342770125650d9674b2cb614052b56c3196f534f5dec7dfb9dd",
+    "storage/tpch-slopdb-4096/storage.json": "a9e354d420b5fe6c609352e03850abaa4a04dd02d2e6201aa5fb41b53181f83c",
+    "storage/tpch-slopdb-65536/cell.log": "d55ef156c6fd05d7adb6af51a4b9fad54e175c1a1fd615269b785eeba976d28d",
+    "storage/tpch-slopdb-65536/load-queries.log": "4be3ff28b6597f9cf0b470c8b00718e6370e6dfb833c9f4cccddd49113e04aed",
+    "storage/tpch-slopdb-65536/maintenance.json": "32f0a460ecc057e7797b2f7b3883a83afe70b9390a9f3e436a11784930ded2f7",
+    "storage/tpch-slopdb-65536/maintenance.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "storage/tpch-slopdb-65536/queries.json": "96fefcf368513065294106a6f4fdc7631537c33839f48e3af00d5b8aaf714278",
+    "storage/tpch-slopdb-65536/storage.json": "d3947957aa835555aeee7c7889ec2da7bb165ff6a42c7d043d699b0b74d4b4ab",
+    "storage-comparison.json": "7d6f5c51210bc72cba25fea40e4168275fc9e05cd4bc11f08a2a1b6a76363b84",
+    "README.md": "e46034c5fc6dcd6e2c8b1944fc3056ae097092ec91f928740cbb154fef7fa921"
+  }
+}

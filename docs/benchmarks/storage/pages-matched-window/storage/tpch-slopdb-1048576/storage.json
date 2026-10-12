@@ -1,0 +1,2106 @@
+{
+  "load_seconds": 91.822075489,
+  "query_report": "/tmp/slopdb-bench/page-matrix-matched-window-20261012/tpch-slopdb-1048576/queries.json",
+  "closed": {
+    "files": [
+      {
+        "name": "105.sst",
+        "bytes": 2385601,
+        "allocated_bytes": 2387968
+      },
+      {
+        "name": "108.sst",
+        "bytes": 2068434,
+        "allocated_bytes": 2068480
+      },
+      {
+        "name": "109.sst",
+        "bytes": 2386099,
+        "allocated_bytes": 2387968
+      },
+      {
+        "name": "110.sst",
+        "bytes": 2386269,
+        "allocated_bytes": 2387968
+      },
+      {
+        "name": "132.sst",
+        "bytes": 2263521,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "137.sst",
+        "bytes": 2265694,
+        "allocated_bytes": 2269184
+      },
+      {
+        "name": "148.sst",
+        "bytes": 2264343,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "150.sst",
+        "bytes": 1957509,
+        "allocated_bytes": 1957888
+      },
+      {
+        "name": "162.sst",
+        "bytes": 2258916,
+        "allocated_bytes": 2260992
+      },
+      {
+        "name": "166.sst",
+        "bytes": 2262909,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "176.sst",
+        "bytes": 2264082,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "180.sst",
+        "bytes": 2262037,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "190.sst",
+        "bytes": 2260820,
+        "allocated_bytes": 2260992
+      },
+      {
+        "name": "193.sst",
+        "bytes": 2263301,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "204.sst",
+        "bytes": 2261799,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "205.sst",
+        "bytes": 139618,
+        "allocated_bytes": 143360
+      },
+      {
+        "name": "208.sst",
+        "bytes": 2264591,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "209.sst",
+        "bytes": 420,
+        "allocated_bytes": 4096
+      },
+      {
+        "name": "219.sst",
+        "bytes": 2262684,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "223.sst",
+        "bytes": 2262930,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "237.sst",
+        "bytes": 2263237,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "246.sst",
+        "bytes": 2262697,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "249.sst",
+        "bytes": 2260141,
+        "allocated_bytes": 2260992
+      },
+      {
+        "name": "252.sst",
+        "bytes": 405,
+        "allocated_bytes": 4096
+      },
+      {
+        "name": "261.sst",
+        "bytes": 2261238,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "262.sst",
+        "bytes": 2261620,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "266.sst",
+        "bytes": 2260722,
+        "allocated_bytes": 2260992
+      },
+      {
+        "name": "267.sst",
+        "bytes": 396,
+        "allocated_bytes": 4096
+      },
+      {
+        "name": "276.sst",
+        "bytes": 2260300,
+        "allocated_bytes": 2260992
+      },
+      {
+        "name": "277.sst",
+        "bytes": 2262496,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "278.sst",
+        "bytes": 743287,
+        "allocated_bytes": 745472
+      },
+      {
+        "name": "281.sst",
+        "bytes": 2264529,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "282.sst",
+        "bytes": 407,
+        "allocated_bytes": 4096
+      },
+      {
+        "name": "300.sst",
+        "bytes": 86293,
+        "allocated_bytes": 90112
+      },
+      {
+        "name": "301.sst",
+        "bytes": 708904,
+        "allocated_bytes": 712704
+      },
+      {
+        "name": "302.sst",
+        "bytes": 710237,
+        "allocated_bytes": 712704
+      },
+      {
+        "name": "305.sst",
+        "bytes": 1306237,
+        "allocated_bytes": 1306624
+      },
+      {
+        "name": "306.sst",
+        "bytes": 1307179,
+        "allocated_bytes": 1310720
+      },
+      {
+        "name": "315.sst",
+        "bytes": 2260268,
+        "allocated_bytes": 2260992
+      },
+      {
+        "name": "316.sst",
+        "bytes": 2262120,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "317.sst",
+        "bytes": 2264146,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "318.sst",
+        "bytes": 2024898,
+        "allocated_bytes": 2027520
+      },
+      {
+        "name": "320.sst",
+        "bytes": 1147296,
+        "allocated_bytes": 1150976
+      },
+      {
+        "name": "321.sst",
+        "bytes": 1149241,
+        "allocated_bytes": 1150976
+      },
+      {
+        "name": "322.sst",
+        "bytes": 1147553,
+        "allocated_bytes": 1150976
+      },
+      {
+        "name": "325.sst",
+        "bytes": 1147011,
+        "allocated_bytes": 1150976
+      },
+      {
+        "name": "338.sst",
+        "bytes": 69096401,
+        "allocated_bytes": 69103616
+      },
+      {
+        "name": "349.sst",
+        "bytes": 4878250,
+        "allocated_bytes": 4882432
+      },
+      {
+        "name": "374.sst",
+        "bytes": 1133859,
+        "allocated_bytes": 1134592
+      },
+      {
+        "name": "380.sst",
+        "bytes": 177179,
+        "allocated_bytes": 180224
+      },
+      {
+        "name": "382.sst",
+        "bytes": 1250322,
+        "allocated_bytes": 1253376
+      },
+      {
+        "name": "392.sst",
+        "bytes": 1036207,
+        "allocated_bytes": 1036288
+      },
+      {
+        "name": "393.sst",
+        "bytes": 1037960,
+        "allocated_bytes": 1040384
+      },
+      {
+        "name": "397.sst",
+        "bytes": 1036685,
+        "allocated_bytes": 1040384
+      },
+      {
+        "name": "402.sst",
+        "bytes": 1037673,
+        "allocated_bytes": 1040384
+      },
+      {
+        "name": "403.sst",
+        "bytes": 1035825,
+        "allocated_bytes": 1036288
+      },
+      {
+        "name": "404.sst",
+        "bytes": 1035146,
+        "allocated_bytes": 1036288
+      },
+      {
+        "name": "405.sst",
+        "bytes": 1035183,
+        "allocated_bytes": 1036288
+      },
+      {
+        "name": "406.sst",
+        "bytes": 1037073,
+        "allocated_bytes": 1040384
+      },
+      {
+        "name": "407.sst",
+        "bytes": 1035606,
+        "allocated_bytes": 1036288
+      },
+      {
+        "name": "409.sst",
+        "bytes": 1038230,
+        "allocated_bytes": 1040384
+      },
+      {
+        "name": "41.sst",
+        "bytes": 1469638,
+        "allocated_bytes": 1470464
+      },
+      {
+        "name": "410.sst",
+        "bytes": 1037660,
+        "allocated_bytes": 1040384
+      },
+      {
+        "name": "413.sst",
+        "bytes": 1038375,
+        "allocated_bytes": 1040384
+      },
+      {
+        "name": "414.sst",
+        "bytes": 1037394,
+        "allocated_bytes": 1040384
+      },
+      {
+        "name": "416.sst",
+        "bytes": 1037654,
+        "allocated_bytes": 1040384
+      },
+      {
+        "name": "418.sst",
+        "bytes": 1034574,
+        "allocated_bytes": 1036288
+      },
+      {
+        "name": "42.sst",
+        "bytes": 2299801,
+        "allocated_bytes": 2301952
+      },
+      {
+        "name": "420.sst",
+        "bytes": 1147347,
+        "allocated_bytes": 1150976
+      },
+      {
+        "name": "422.sst",
+        "bytes": 1134472,
+        "allocated_bytes": 1134592
+      },
+      {
+        "name": "423.sst",
+        "bytes": 935208,
+        "allocated_bytes": 937984
+      },
+      {
+        "name": "424.sst",
+        "bytes": 1097281,
+        "allocated_bytes": 1097728
+      },
+      {
+        "name": "425.sst",
+        "bytes": 1146144,
+        "allocated_bytes": 1146880
+      },
+      {
+        "name": "426.sst",
+        "bytes": 1145601,
+        "allocated_bytes": 1146880
+      },
+      {
+        "name": "427.sst",
+        "bytes": 1067824,
+        "allocated_bytes": 1069056
+      },
+      {
+        "name": "43.sst",
+        "bytes": 2304858,
+        "allocated_bytes": 2306048
+      },
+      {
+        "name": "434.sst",
+        "bytes": 1148126,
+        "allocated_bytes": 1150976
+      },
+      {
+        "name": "438.sst",
+        "bytes": 1148319,
+        "allocated_bytes": 1150976
+      },
+      {
+        "name": "439.sst",
+        "bytes": 1074969,
+        "allocated_bytes": 1077248
+      },
+      {
+        "name": "441.sst",
+        "bytes": 1075118,
+        "allocated_bytes": 1077248
+      },
+      {
+        "name": "443.sst",
+        "bytes": 1148371,
+        "allocated_bytes": 1150976
+      },
+      {
+        "name": "444.sst",
+        "bytes": 1075797,
+        "allocated_bytes": 1077248
+      },
+      {
+        "name": "445.sst",
+        "bytes": 1094863,
+        "allocated_bytes": 1097728
+      },
+      {
+        "name": "447.sst",
+        "bytes": 1076653,
+        "allocated_bytes": 1077248
+      },
+      {
+        "name": "454.sst",
+        "bytes": 1074648,
+        "allocated_bytes": 1077248
+      },
+      {
+        "name": "455.sst",
+        "bytes": 1076201,
+        "allocated_bytes": 1077248
+      },
+      {
+        "name": "456.sst",
+        "bytes": 1076158,
+        "allocated_bytes": 1077248
+      },
+      {
+        "name": "457.sst",
+        "bytes": 1076046,
+        "allocated_bytes": 1077248
+      },
+      {
+        "name": "458.sst",
+        "bytes": 1074977,
+        "allocated_bytes": 1077248
+      },
+      {
+        "name": "459.sst",
+        "bytes": 1075640,
+        "allocated_bytes": 1077248
+      },
+      {
+        "name": "460.sst",
+        "bytes": 1077893,
+        "allocated_bytes": 1081344
+      },
+      {
+        "name": "461.sst",
+        "bytes": 1078016,
+        "allocated_bytes": 1081344
+      },
+      {
+        "name": "462.sst",
+        "bytes": 1077706,
+        "allocated_bytes": 1081344
+      },
+      {
+        "name": "466.sst",
+        "bytes": 1074090,
+        "allocated_bytes": 1077248
+      },
+      {
+        "name": "468.sst",
+        "bytes": 1194791,
+        "allocated_bytes": 1196032
+      },
+      {
+        "name": "469.sst",
+        "bytes": 1146454,
+        "allocated_bytes": 1146880
+      },
+      {
+        "name": "470.sst",
+        "bytes": 1145329,
+        "allocated_bytes": 1146880
+      },
+      {
+        "name": "471.sst",
+        "bytes": 1146771,
+        "allocated_bytes": 1146880
+      },
+      {
+        "name": "472.sst",
+        "bytes": 1143708,
+        "allocated_bytes": 1146880
+      },
+      {
+        "name": "473.sst",
+        "bytes": 1146608,
+        "allocated_bytes": 1146880
+      },
+      {
+        "name": "474.sst",
+        "bytes": 1145668,
+        "allocated_bytes": 1146880
+      },
+      {
+        "name": "475.sst",
+        "bytes": 1147352,
+        "allocated_bytes": 1150976
+      },
+      {
+        "name": "477.sst",
+        "bytes": 1145297,
+        "allocated_bytes": 1146880
+      },
+      {
+        "name": "478.sst",
+        "bytes": 3381736,
+        "allocated_bytes": 3383296
+      },
+      {
+        "name": "479.sst",
+        "bytes": 1146063,
+        "allocated_bytes": 1146880
+      },
+      {
+        "name": "480.sst",
+        "bytes": 588480,
+        "allocated_bytes": 589824
+      },
+      {
+        "name": "482.sst",
+        "bytes": 520,
+        "allocated_bytes": 4096
+      },
+      {
+        "name": "53.sst",
+        "bytes": 1923119,
+        "allocated_bytes": 1925120
+      },
+      {
+        "name": "54.sst",
+        "bytes": 2305054,
+        "allocated_bytes": 2306048
+      },
+      {
+        "name": "81.sst",
+        "bytes": 2386403,
+        "allocated_bytes": 2387968
+      },
+      {
+        "name": "91.sst",
+        "bytes": 2960360,
+        "allocated_bytes": 2961408
+      },
+      {
+        "name": "93.sst",
+        "bytes": 1551683,
+        "allocated_bytes": 1552384
+      },
+      {
+        "name": "LOCK",
+        "bytes": 8,
+        "allocated_bytes": 4096
+      },
+      {
+        "name": "MANIFEST",
+        "bytes": 15032,
+        "allocated_bytes": 16384
+      },
+      {
+        "name": "OPTIONS",
+        "bytes": 24,
+        "allocated_bytes": 4096
+      }
+    ],
+    "file_count": 115,
+    "file_bytes": 231423916,
+    "allocated_total_bytes": 231669760,
+    "wal_files": [],
+    "page_size_bytes": 1048576,
+    "zstd_window_bytes": 1048576,
+    "rows": {
+      "customer": 30000,
+      "lineitem": 1199969,
+      "nation": 25,
+      "orders": 300000,
+      "part": 40000,
+      "partsupp": 160000,
+      "region": 5,
+      "supplier": 2000
+    },
+    "counts_verified_after_reopen": true
+  },
+  "after_maintenance": {
+    "all_sstables_at_bottom": true,
+    "bottom_level": 6,
+    "counts_verified_after_reopen": true,
+    "levels": [
+      {
+        "FileCount": 0,
+        "TotalSize": 0,
+        "Files": null
+      },
+      {
+        "FileCount": 0,
+        "TotalSize": 0,
+        "Files": null
+      },
+      {
+        "FileCount": 0,
+        "TotalSize": 0,
+        "Files": null
+      },
+      {
+        "FileCount": 0,
+        "TotalSize": 0,
+        "Files": null
+      },
+      {
+        "FileCount": 0,
+        "TotalSize": 0,
+        "Files": null
+      },
+      {
+        "FileCount": 0,
+        "TotalSize": 0,
+        "Files": null
+      },
+      {
+        "FileCount": 118,
+        "TotalSize": 171705381,
+        "Files": [
+          {
+            "Number": 483,
+            "Size": 2882988,
+            "Smallest": "\u0000__column_stats__",
+            "Largest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000*D\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Seeks": 0
+          },
+          {
+            "Number": 484,
+            "Size": 2261447,
+            "Smallest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000*D\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0004",
+            "Largest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0004",
+            "Seeks": 0
+          },
+          {
+            "Number": 485,
+            "Size": 2259438,
+            "Smallest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0005",
+            "Largest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0001\u007fg\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Seeks": 0
+          },
+          {
+            "Number": 486,
+            "Size": 2263505,
+            "Smallest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0001\u007fg\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0004",
+            "Largest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0002+ \u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Seeks": 0
+          },
+          {
+            "Number": 487,
+            "Size": 2262434,
+            "Smallest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0002+ \u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Largest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0002\ufffd\u0006\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0004",
+            "Seeks": 0
+          },
+          {
+            "Number": 488,
+            "Size": 2259014,
+            "Smallest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0002\ufffd\u0006\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0005",
+            "Largest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0003\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Seeks": 0
+          },
+          {
+            "Number": 489,
+            "Size": 2262533,
+            "Smallest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0003\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Largest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0004/ \u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Seeks": 0
+          },
+          {
+            "Number": 490,
+            "Size": 2263415,
+            "Smallest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0004/ \u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Largest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0004\ufffde\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Seeks": 0
+          },
+          {
+            "Number": 491,
+            "Size": 2260219,
+            "Smallest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0004\ufffde\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Largest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0005\ufffdC\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0005",
+            "Seeks": 0
+          },
+          {
+            "Number": 492,
+            "Size": 2263339,
+            "Smallest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0005\ufffdC\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0006",
+            "Largest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u00062@\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Seeks": 0
+          },
+          {
+            "Number": 493,
+            "Size": 2263510,
+            "Smallest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u00062@\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0004",
+            "Largest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0006\ufffd \u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0005",
+            "Seeks": 0
+          },
+          {
+            "Number": 494,
+            "Size": 2260537,
+            "Smallest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0006\ufffd!\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Largest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0007\ufffd#\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Seeks": 0
+          },
+          {
+            "Number": 495,
+            "Size": 2262300,
+            "Smallest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0007\ufffd#\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0004",
+            "Largest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\b2\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Seeks": 0
+          },
+          {
+            "Number": 496,
+            "Size": 2264960,
+            "Smallest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\b2\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0004",
+            "Largest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\b\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0006",
+            "Seeks": 0
+          },
+          {
+            "Number": 497,
+            "Size": 2260678,
+            "Smallest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\b\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0007",
+            "Largest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\t\ufffd\"\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Seeks": 0
+          },
+          {
+            "Number": 498,
+            "Size": 2266448,
+            "Smallest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\t\ufffd#\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Largest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\n5a\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0004",
+            "Seeks": 0
+          },
+          {
+            "Number": 499,
+            "Size": 2261990,
+            "Smallest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\n5a\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0005",
+            "Largest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\n\ufffd#\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Seeks": 0
+          },
+          {
+            "Number": 500,
+            "Size": 2257536,
+            "Smallest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\n\ufffd#\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0004",
+            "Largest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u000b\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Seeks": 0
+          },
+          {
+            "Number": 501,
+            "Size": 2263031,
+            "Smallest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u000b\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Largest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\f7b\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Seeks": 0
+          },
+          {
+            "Number": 502,
+            "Size": 2262862,
+            "Smallest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\f7b\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Largest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\f\ufffdE\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Seeks": 0
+          },
+          {
+            "Number": 503,
+            "Size": 2259521,
+            "Smallest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\f\ufffdE\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0004",
+            "Largest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\r\ufffd@\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Seeks": 0
+          },
+          {
+            "Number": 504,
+            "Size": 2263252,
+            "Smallest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\r\ufffd@\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Largest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u000e;\u0005\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Seeks": 0
+          },
+          {
+            "Number": 505,
+            "Size": 2263849,
+            "Smallest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u000e;\u0005\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Largest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u000e\ufffd`\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0005",
+            "Seeks": 0
+          },
+          {
+            "Number": 506,
+            "Size": 2259975,
+            "Smallest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u000e\ufffd`\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0006",
+            "Largest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u000f\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Seeks": 0
+          },
+          {
+            "Number": 507,
+            "Size": 2261864,
+            "Smallest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u000f\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Largest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0010>\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Seeks": 0
+          },
+          {
+            "Number": 508,
+            "Size": 2264319,
+            "Smallest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0010>\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Largest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0010\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Seeks": 0
+          },
+          {
+            "Number": 509,
+            "Size": 2258358,
+            "Smallest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0010\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Largest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0011\ufffdc\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Seeks": 0
+          },
+          {
+            "Number": 510,
+            "Size": 2261867,
+            "Smallest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0011\ufffdc\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Largest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0012A\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Seeks": 0
+          },
+          {
+            "Number": 511,
+            "Size": 2378712,
+            "Smallest": "\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0012A\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Largest": "\u0001orders:\u0001\ufffd\u0000\u0000\u0000\u0000\u0003\t\u0001",
+            "Seeks": 0
+          },
+          {
+            "Number": 512,
+            "Size": 2384812,
+            "Smallest": "\u0001orders:\u0001\ufffd\u0000\u0000\u0000\u0000\u0003\t\u0002",
+            "Largest": "\u0001orders:\u0001\ufffd\u0000\u0000\u0000\u0000\u0006V\u0006",
+            "Seeks": 0
+          },
+          {
+            "Number": 513,
+            "Size": 2386718,
+            "Smallest": "\u0001orders:\u0001\ufffd\u0000\u0000\u0000\u0000\u0006V\u0007",
+            "Largest": "\u0001orders:\u0001\ufffd\u0000\u0000\u0000\u0000\t\ufffd\ufffd",
+            "Seeks": 0
+          },
+          {
+            "Number": 514,
+            "Size": 2384300,
+            "Smallest": "\u0001orders:\u0001\ufffd\u0000\u0000\u0000\u0000\t\ufffd\ufffd",
+            "Largest": "\u0001orders:\u0001\ufffd\u0000\u0000\u0000\u0000\f\ufffd\ufffd",
+            "Seeks": 0
+          },
+          {
+            "Number": 515,
+            "Size": 2385035,
+            "Smallest": "\u0001orders:\u0001\ufffd\u0000\u0000\u0000\u0000\f\ufffd\ufffd",
+            "Largest": "\u0001orders:\u0001\ufffd\u0000\u0000\u0000\u0000\u0010;\ufffd",
+            "Seeks": 0
+          },
+          {
+            "Number": 516,
+            "Size": 2379128,
+            "Smallest": "\u0001orders:\u0001\ufffd\u0000\u0000\u0000\u0000\u0010;\ufffd",
+            "Largest": "\u0001part:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000L\ufffd",
+            "Seeks": 0
+          },
+          {
+            "Number": 517,
+            "Size": 2322411,
+            "Smallest": "\u0001part:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000L\ufffd",
+            "Largest": "\u0001partsupp:00000000000000026802",
+            "Seeks": 0
+          },
+          {
+            "Number": 518,
+            "Size": 2306005,
+            "Smallest": "\u0001partsupp:00000000000000026803",
+            "Largest": "\u0001partsupp:00000000000000070516",
+            "Seeks": 0
+          },
+          {
+            "Number": 519,
+            "Size": 2301493,
+            "Smallest": "\u0001partsupp:00000000000000070517",
+            "Largest": "\u0001partsupp:00000000000000114200",
+            "Seeks": 0
+          },
+          {
+            "Number": 520,
+            "Size": 2302543,
+            "Smallest": "\u0001partsupp:00000000000000114201",
+            "Largest": "\u0001partsupp:00000000000000157893",
+            "Seeks": 0
+          },
+          {
+            "Number": 521,
+            "Size": 1042983,
+            "Smallest": "\u0001partsupp:00000000000000157894",
+            "Largest": "\u0002lineitem_part_supplier:0180000000000001f1:0180000000000005da:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0001\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0005",
+            "Seeks": 0
+          },
+          {
+            "Number": 522,
+            "Size": 1145115,
+            "Smallest": "\u0002lineitem_part_supplier:0180000000000001f1:0180000000000005da:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0004iG\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0004",
+            "Largest": "\u0002lineitem_part_supplier:0180000000000009c1:0180000000000003e7:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\bC\u0007\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Seeks": 0
+          },
+          {
+            "Number": 523,
+            "Size": 1149552,
+            "Smallest": "\u0002lineitem_part_supplier:0180000000000009c1:0180000000000003e7:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\b\ufffd%\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Largest": "\u0002lineitem_part_supplier:0180000000000011a0:0180000000000005ed:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\fs\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0006",
+            "Seeks": 0
+          },
+          {
+            "Number": 524,
+            "Size": 1149386,
+            "Smallest": "\u0002lineitem_part_supplier:0180000000000011a0:0180000000000005ed:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\r\ufffdB\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Largest": "\u0002lineitem_part_supplier:01800000000000196e:0180000000000003f6:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0006\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0004",
+            "Seeks": 0
+          },
+          {
+            "Number": 525,
+            "Size": 1146801,
+            "Smallest": "\u0002lineitem_part_supplier:01800000000000196e:0180000000000003f6:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u000be\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Largest": "\u0002lineitem_part_supplier:01800000000000213a:018000000000000013:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0010\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Seeks": 0
+          },
+          {
+            "Number": 526,
+            "Size": 1146224,
+            "Smallest": "\u0002lineitem_part_supplier:01800000000000213a:018000000000000013:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0012Le\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0005",
+            "Largest": "\u0002lineitem_part_supplier:0180000000000028f8:0180000000000005db:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0007\u0243\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Seeks": 0
+          },
+          {
+            "Number": 527,
+            "Size": 1145502,
+            "Smallest": "\u0002lineitem_part_supplier:0180000000000028f8:0180000000000005db:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\b\ufffd\u0000\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Largest": "\u0002lineitem_part_supplier:0180000000000030c3:018000000000000002:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0007x\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Seeks": 0
+          },
+          {
+            "Number": 528,
+            "Size": 1148058,
+            "Smallest": "\u0002lineitem_part_supplier:0180000000000030c3:018000000000000002:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\n\u001e`\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0004",
+            "Largest": "\u0002lineitem_part_supplier:018000000000003892:0180000000000001e3:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0005h\u0002\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Seeks": 0
+          },
+          {
+            "Number": 529,
+            "Size": 1145770,
+            "Smallest": "\u0002lineitem_part_supplier:018000000000003892:0180000000000001e3:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\toA\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0005",
+            "Largest": "\u0002lineitem_part_supplier:018000000000004054:0180000000000003d1:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u000b\ufffd\u0005\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0006",
+            "Seeks": 0
+          },
+          {
+            "Number": 530,
+            "Size": 1146821,
+            "Smallest": "\u0002lineitem_part_supplier:018000000000004054:0180000000000003d1:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u000f\\\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0005",
+            "Largest": "\u0002lineitem_part_supplier:018000000000004822:0180000000000005cd:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\t\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0005",
+            "Seeks": 0
+          },
+          {
+            "Number": 531,
+            "Size": 1146881,
+            "Smallest": "\u0002lineitem_part_supplier:018000000000004822:0180000000000005cd:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u000e\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Largest": "\u0002lineitem_part_supplier:018000000000004fee:0180000000000005cb:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0007\u0000\u0002\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Seeks": 0
+          },
+          {
+            "Number": 532,
+            "Size": 1147278,
+            "Smallest": "\u0002lineitem_part_supplier:018000000000004fee:0180000000000005cb:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\n\ufffdF\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Largest": "\u0002lineitem_part_supplier:0180000000000057bb:0180000000000001cc:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0007&d\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Seeks": 0
+          },
+          {
+            "Number": 533,
+            "Size": 1144019,
+            "Smallest": "\u0002lineitem_part_supplier:0180000000000057bb:0180000000000001cc:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0007\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0006",
+            "Largest": "\u0002lineitem_part_supplier:018000000000005f94:0180000000000005d5:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0012 \ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0004",
+            "Seeks": 0
+          },
+          {
+            "Number": 534,
+            "Size": 1142420,
+            "Smallest": "\u0002lineitem_part_supplier:018000000000005f95:018000000000000006:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0001cE\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Largest": "\u0002lineitem_part_supplier:01800000000000676e:0180000000000001df:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0001\ufffdd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Seeks": 0
+          },
+          {
+            "Number": 535,
+            "Size": 1147497,
+            "Smallest": "\u0002lineitem_part_supplier:01800000000000676e:0180000000000001df:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0006A\"\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Largest": "\u0002lineitem_part_supplier:018000000000006f3f:018000000000000016:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\n\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0004",
+            "Seeks": 0
+          },
+          {
+            "Number": 536,
+            "Size": 1146010,
+            "Smallest": "\u0002lineitem_part_supplier:018000000000006f3f:018000000000000016:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\f>\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0007",
+            "Largest": "\u0002lineitem_part_supplier:01800000000000770e:018000000000000018:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\b\ufffd\u0005\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Seeks": 0
+          },
+          {
+            "Number": 537,
+            "Size": 1146005,
+            "Smallest": "\u0002lineitem_part_supplier:01800000000000770e:018000000000000018:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\t$\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Largest": "\u0002lineitem_part_supplier:018000000000007ecf:0180000000000005d8:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0011G\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Seeks": 0
+          },
+          {
+            "Number": 538,
+            "Size": 1148240,
+            "Smallest": "\u0002lineitem_part_supplier:018000000000007ed0:01800000000000000d:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0005_\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Largest": "\u0002lineitem_part_supplier:0180000000000086a9:018000000000000019:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\ufffd'\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0005",
+            "Seeks": 0
+          },
+          {
+            "Number": 539,
+            "Size": 1146850,
+            "Smallest": "\u0002lineitem_part_supplier:0180000000000086a9:018000000000000019:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0001\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Largest": "\u0002lineitem_part_supplier:018000000000008e70:018000000000000013:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0006\t\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0007",
+            "Seeks": 0
+          },
+          {
+            "Number": 540,
+            "Size": 1148576,
+            "Smallest": "\u0002lineitem_part_supplier:018000000000008e70:018000000000000013:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0007\ufffd'\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Largest": "\u0002lineitem_part_supplier:018000000000009631:0180000000000001c2:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u000f\ufffd\u0006\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Seeks": 0
+          },
+          {
+            "Number": 541,
+            "Size": 1119756,
+            "Smallest": "\u0002lineitem_part_supplier:018000000000009631:0180000000000001c2:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0011\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Largest": "\u0002lineitem_receiptdate:\u00031992-04-14:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u000f!\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0006",
+            "Seeks": 0
+          },
+          {
+            "Number": 542,
+            "Size": 1012678,
+            "Smallest": "\u0002lineitem_receiptdate:\u00031992-04-14:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u000f,\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Largest": "\u0002lineitem_receiptdate:\u00031992-09-15:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0004\ufffd\u0004\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Seeks": 0
+          },
+          {
+            "Number": 543,
+            "Size": 1013999,
+            "Smallest": "\u0002lineitem_receiptdate:\u00031992-09-15:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0004\ufffd%\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Largest": "\u0002lineitem_receiptdate:\u00031993-02-12:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\b \u0007\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0004",
+            "Seeks": 0
+          },
+          {
+            "Number": 544,
+            "Size": 1013591,
+            "Smallest": "\u0002lineitem_receiptdate:\u00031993-02-12:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\b \ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Largest": "\u0002lineitem_receiptdate:\u00031993-07-13:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0007@\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Seeks": 0
+          },
+          {
+            "Number": 545,
+            "Size": 1015082,
+            "Smallest": "\u0002lineitem_receiptdate:\u00031993-07-13:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0007Q\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Largest": "\u0002lineitem_receiptdate:\u00031993-12-12:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0002\u001d\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Seeks": 0
+          },
+          {
+            "Number": 546,
+            "Size": 1012924,
+            "Smallest": "\u0002lineitem_receiptdate:\u00031993-12-12:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0002#\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0006",
+            "Largest": "\u0002lineitem_receiptdate:\u00031994-05-09:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0005\ufffdC\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Seeks": 0
+          },
+          {
+            "Number": 547,
+            "Size": 1015058,
+            "Smallest": "\u0002lineitem_receiptdate:\u00031994-05-09:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0005\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Largest": "\u0002lineitem_receiptdate:\u00031994-10-05:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0002*\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Seeks": 0
+          },
+          {
+            "Number": 548,
+            "Size": 1014947,
+            "Smallest": "\u0002lineitem_receiptdate:\u00031994-10-05:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u00029\u0001\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Largest": "\u0002lineitem_receiptdate:\u00031995-03-02:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0007\u0012\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Seeks": 0
+          },
+          {
+            "Number": 549,
+            "Size": 1013809,
+            "Smallest": "\u0002lineitem_receiptdate:\u00031995-03-02:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0007\u0014\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Largest": "\u0002lineitem_receiptdate:\u00031995-07-27:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0006\ufffde\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0005",
+            "Seeks": 0
+          },
+          {
+            "Number": 550,
+            "Size": 1014507,
+            "Smallest": "\u0002lineitem_receiptdate:\u00031995-07-27:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0006\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Largest": "\u0002lineitem_receiptdate:\u00031995-12-22:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\bRD\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0005",
+            "Seeks": 0
+          },
+          {
+            "Number": 551,
+            "Size": 1013247,
+            "Smallest": "\u0002lineitem_receiptdate:\u00031995-12-22:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\b_\"\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0007",
+            "Largest": "\u0002lineitem_receiptdate:\u00031996-05-19:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0005\ufffdA\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Seeks": 0
+          },
+          {
+            "Number": 552,
+            "Size": 1014870,
+            "Smallest": "\u0002lineitem_receiptdate:\u00031996-05-19:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0005\ufffd%\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0005",
+            "Largest": "\u0002lineitem_receiptdate:\u00031996-10-17:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\b\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Seeks": 0
+          },
+          {
+            "Number": 553,
+            "Size": 1014814,
+            "Smallest": "\u0002lineitem_receiptdate:\u00031996-10-17:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\b\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Largest": "\u0002lineitem_receiptdate:\u00031997-03-14:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0011\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0004",
+            "Seeks": 0
+          },
+          {
+            "Number": 554,
+            "Size": 1014278,
+            "Smallest": "\u0002lineitem_receiptdate:\u00031997-03-14:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0011\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Largest": "\u0002lineitem_receiptdate:\u00031997-08-12:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0007\ufffd\"\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Seeks": 0
+          },
+          {
+            "Number": 555,
+            "Size": 1014618,
+            "Smallest": "\u0002lineitem_receiptdate:\u00031997-08-12:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0007\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Largest": "\u0002lineitem_receiptdate:\u00031998-01-08:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\f\u0013\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0007",
+            "Seeks": 0
+          },
+          {
+            "Number": 556,
+            "Size": 1015549,
+            "Smallest": "\u0002lineitem_receiptdate:\u00031998-01-08:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\f$\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Largest": "\u0002lineitem_receiptdate:\u00031998-06-06:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\b\u0006\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Seeks": 0
+          },
+          {
+            "Number": 557,
+            "Size": 1021311,
+            "Smallest": "\u0002lineitem_receiptdate:\u00031998-06-06:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\b(\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Largest": "\u0002lineitem_shipdate:\u00031992-02-27:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0004K\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0006",
+            "Seeks": 0
+          },
+          {
+            "Number": 558,
+            "Size": 1034337,
+            "Smallest": "\u0002lineitem_shipdate:\u00031992-02-27:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0004n\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Largest": "\u0002lineitem_shipdate:\u00031992-08-14:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0002\u0018\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Seeks": 0
+          },
+          {
+            "Number": 559,
+            "Size": 1038242,
+            "Smallest": "\u0002lineitem_shipdate:\u00031992-08-14:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0002\u001b\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0005",
+            "Largest": "\u0002lineitem_shipdate:\u00031993-01-14:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\bq\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0004",
+            "Seeks": 0
+          },
+          {
+            "Number": 560,
+            "Size": 1036256,
+            "Smallest": "\u0002lineitem_shipdate:\u00031993-01-14:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\b\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Largest": "\u0002lineitem_shipdate:\u00031993-06-17:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0005\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Seeks": 0
+          },
+          {
+            "Number": 561,
+            "Size": 1037262,
+            "Smallest": "\u0002lineitem_shipdate:\u00031993-06-17:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0005\ufffde\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Largest": "\u0002lineitem_shipdate:\u00031993-11-19:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\b\\\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0005",
+            "Seeks": 0
+          },
+          {
+            "Number": 562,
+            "Size": 1037383,
+            "Smallest": "\u0002lineitem_shipdate:\u00031993-11-19:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\bj@\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Largest": "\u0002lineitem_shipdate:\u00031994-04-20:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0002\ufffdE\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Seeks": 0
+          },
+          {
+            "Number": 563,
+            "Size": 1036448,
+            "Smallest": "\u0002lineitem_shipdate:\u00031994-04-20:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0002\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0004",
+            "Largest": "\u0002lineitem_shipdate:\u00031994-09-19:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0003\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Seeks": 0
+          },
+          {
+            "Number": 564,
+            "Size": 1036937,
+            "Smallest": "\u0002lineitem_shipdate:\u00031994-09-19:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0003\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0006",
+            "Largest": "\u0002lineitem_shipdate:\u00031995-02-17:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u000b[\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Seeks": 0
+          },
+          {
+            "Number": 565,
+            "Size": 1038689,
+            "Smallest": "\u0002lineitem_shipdate:\u00031995-02-17:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u000bd'\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0004",
+            "Largest": "\u0002lineitem_shipdate:\u00031995-07-17:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0011\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Seeks": 0
+          },
+          {
+            "Number": 566,
+            "Size": 1038439,
+            "Smallest": "\u0002lineitem_shipdate:\u00031995-07-17:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0011\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0005",
+            "Largest": "\u0002lineitem_shipdate:\u00031995-12-16:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0002\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Seeks": 0
+          },
+          {
+            "Number": 567,
+            "Size": 1035411,
+            "Smallest": "\u0002lineitem_shipdate:\u00031995-12-16:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0002\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Largest": "\u0002lineitem_shipdate:\u00031996-05-16:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u000b\ufffdg\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Seeks": 0
+          },
+          {
+            "Number": 568,
+            "Size": 1037234,
+            "Smallest": "\u0002lineitem_shipdate:\u00031996-05-16:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u000b\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Largest": "\u0002lineitem_shipdate:\u00031996-10-17:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\f;d\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Seeks": 0
+          },
+          {
+            "Number": 569,
+            "Size": 1036558,
+            "Smallest": "\u0002lineitem_shipdate:\u00031996-10-17:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\fI\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0006",
+            "Largest": "\u0002lineitem_shipdate:\u00031997-03-18:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u000e0\u0005\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0006",
+            "Seeks": 0
+          },
+          {
+            "Number": 570,
+            "Size": 1035870,
+            "Smallest": "\u0002lineitem_shipdate:\u00031997-03-18:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u000e9\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0006",
+            "Largest": "\u0002lineitem_shipdate:\u00031997-08-18:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\r\u0007\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0004",
+            "Seeks": 0
+          },
+          {
+            "Number": 571,
+            "Size": 1035362,
+            "Smallest": "\u0002lineitem_shipdate:\u00031997-08-18:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\r\f\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0004",
+            "Largest": "\u0002lineitem_shipdate:\u00031998-01-18:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\r!\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Seeks": 0
+          },
+          {
+            "Number": 572,
+            "Size": 1038074,
+            "Smallest": "\u0002lineitem_shipdate:\u00031998-01-18:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\r\"\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Largest": "\u0002lineitem_shipdate:\u00031998-06-19:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0007>$\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Seeks": 0
+          },
+          {
+            "Number": 573,
+            "Size": 1047164,
+            "Smallest": "\u0002lineitem_shipdate:\u00031998-06-19:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0007B\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Largest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000':\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0011\u0003\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0007",
+            "Seeks": 0
+          },
+          {
+            "Number": 574,
+            "Size": 1076975,
+            "Smallest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000':\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0011\u0007\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Largest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\ufffd:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\nB\u0000\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Seeks": 0
+          },
+          {
+            "Number": 575,
+            "Size": 1077518,
+            "Smallest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\ufffd:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\nJ\u0004\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0004",
+            "Largest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0001/:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0003JD\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Seeks": 0
+          },
+          {
+            "Number": 576,
+            "Size": 1075125,
+            "Smallest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0001/:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0003P\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Largest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0001\ufffd:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\b\u0006\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0005",
+            "Seeks": 0
+          },
+          {
+            "Number": 577,
+            "Size": 1077618,
+            "Smallest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0001\ufffd:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\b\u000e\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Largest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u00026:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u000fx\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Seeks": 0
+          },
+          {
+            "Number": 578,
+            "Size": 1075053,
+            "Smallest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u00026:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u000f~G\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0004",
+            "Largest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0002\ufffd:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0002\nc\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Seeks": 0
+          },
+          {
+            "Number": 579,
+            "Size": 1074656,
+            "Smallest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0002\ufffd:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0002\u000f\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Largest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0003=:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0005\u0010\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Seeks": 0
+          },
+          {
+            "Number": 580,
+            "Size": 1076767,
+            "Smallest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0003=:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0005\u0016e\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0002",
+            "Largest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0003\ufffd:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u000bw\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0006",
+            "Seeks": 0
+          },
+          {
+            "Number": 581,
+            "Size": 1076930,
+            "Smallest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0003\ufffd:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u000b|'\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Largest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0004D:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0002\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Seeks": 0
+          },
+          {
+            "Number": 582,
+            "Size": 1075233,
+            "Smallest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0004D:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0002\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Largest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0004\ufffd:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0004=!\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Seeks": 0
+          },
+          {
+            "Number": 583,
+            "Size": 1076598,
+            "Smallest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0004\ufffd:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0004>\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0004",
+            "Largest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0005J:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0011\ufffd`\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0004",
+            "Seeks": 0
+          },
+          {
+            "Number": 584,
+            "Size": 1074523,
+            "Smallest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0005J:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0011\ufffd\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0005",
+            "Largest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0005\ufffd:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\bOf\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0007",
+            "Seeks": 0
+          },
+          {
+            "Number": 585,
+            "Size": 1077571,
+            "Smallest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0005\ufffd:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\bT\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0007",
+            "Largest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0006P:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u00123\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Seeks": 0
+          },
+          {
+            "Number": 586,
+            "Size": 1075117,
+            "Smallest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0006P:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0012D\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Largest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0006\ufffd:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0006!\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Seeks": 0
+          },
+          {
+            "Number": 587,
+            "Size": 1076398,
+            "Smallest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0006\ufffd:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u00064'\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0003",
+            "Largest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0007X:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0006U\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Seeks": 0
+          },
+          {
+            "Number": 588,
+            "Size": 1093869,
+            "Smallest": "\u0002lineitem_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0007X:\u0001lineitem:\u0001\ufffd\u0000\u0000\u0000\u0000\u0006V\ufffd\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0001",
+            "Largest": "\u0002orders_customer:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0002\ufffd:\u0001orders:\u0001\ufffd\u0000\u0000\u0000\u0000\tv\ufffd",
+            "Seeks": 0
+          },
+          {
+            "Number": 589,
+            "Size": 1306961,
+            "Smallest": "\u0002orders_customer:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0002\ufffd:\u0001orders:\u0001\ufffd\u0000\u0000\u0000\u0000\nE\ufffd",
+            "Largest": "\u0002orders_customer:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000'\ufffd:\u0001orders:\u0001\ufffd\u0000\u0000\u0000\u0000\b\ufffd\ufffd",
+            "Seeks": 0
+          },
+          {
+            "Number": 590,
+            "Size": 1306707,
+            "Smallest": "\u0002orders_customer:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000'\ufffd:\u0001orders:\u0001\ufffd\u0000\u0000\u0000\u0000\t\u0005\ufffd",
+            "Largest": "\u0002orders_customer:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000L\ufffd:\u0001orders:\u0001\ufffd\u0000\u0000\u0000\u0000\u0003}\ufffd",
+            "Seeks": 0
+          },
+          {
+            "Number": 591,
+            "Size": 1306945,
+            "Smallest": "\u0002orders_customer:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000L\ufffd:\u0001orders:\u0001\ufffd\u0000\u0000\u0000\u0000\u0005\u0013\ufffd",
+            "Largest": "\u0002orders_customer:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000q\ufffd:\u0001orders:\u0001\ufffd\u0000\u0000\u0000\u0000\u000e<\ufffd",
+            "Seeks": 0
+          },
+          {
+            "Number": 592,
+            "Size": 1153130,
+            "Smallest": "\u0002orders_customer:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000q\ufffd:\u0001orders:\u0001\ufffd\u0000\u0000\u0000\u0000\u000fD\ufffd",
+            "Largest": "\u0002orders_date:\u00031993-11-12:\u0001orders:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\ufffd\ufffd",
+            "Seeks": 0
+          },
+          {
+            "Number": 593,
+            "Size": 1134781,
+            "Smallest": "\u0002orders_date:\u00031993-11-12:\u0001orders:\u0001\ufffd\u0000\u0000\u0000\u0000\u0001$\ufffd",
+            "Largest": "\u0002orders_date:\u00031995-11-27:\u0001orders:\u0001\ufffd\u0000\u0000\u0000\u0000\b\u02c7",
+            "Seeks": 0
+          },
+          {
+            "Number": 594,
+            "Size": 1137098,
+            "Smallest": "\u0002orders_date:\u00031995-11-27:\u0001orders:\u0001\ufffd\u0000\u0000\u0000\u0000\b\ufffd\ufffd",
+            "Largest": "\u0002orders_date:\u00031997-12-20:\u0001orders:\u0001\ufffd\u0000\u0000\u0000\u0000\u0006\u0012g",
+            "Seeks": 0
+          },
+          {
+            "Number": 595,
+            "Size": 1008070,
+            "Smallest": "\u0002orders_date:\u00031997-12-20:\u0001orders:\u0001\ufffd\u0000\u0000\u0000\u0000\u0006\u001b\ufffd",
+            "Largest": "\u0002part_type:\u0003PROMO PLATED NICKEL:\u0001part:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000i\ufffd",
+            "Seeks": 0
+          },
+          {
+            "Number": 596,
+            "Size": 752192,
+            "Smallest": "\u0002part_type:\u0003PROMO PLATED NICKEL:\u0001part:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000j\ufffd",
+            "Largest": "\u0002partsupp_part_supplier:01800000000000342e:01800000000000036d:\u0001partsupp:00000000000000053432",
+            "Seeks": 0
+          },
+          {
+            "Number": 597,
+            "Size": 703221,
+            "Smallest": "\u0002partsupp_part_supplier:01800000000000342e:01800000000000054f:\u0001partsupp:00000000000000053429",
+            "Largest": "\u0002partsupp_part_supplier:018000000000007495:01800000000000056c:\u0001partsupp:00000000000000119380",
+            "Seeks": 0
+          },
+          {
+            "Number": 598,
+            "Size": 661196,
+            "Smallest": "\u0002partsupp_part_supplier:018000000000007495:018000000000000736:\u0001partsupp:00000000000000119377",
+            "Largest": "\u0002partsupp_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0001\ufffd:\u0001partsupp:00000000000000037687",
+            "Seeks": 0
+          },
+          {
+            "Number": 599,
+            "Size": 562443,
+            "Smallest": "\u0002partsupp_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0001\ufffd:\u0001partsupp:00000000000000039702",
+            "Largest": "\u0002partsupp_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0006\u000f:\u0001partsupp:00000000000000080080",
+            "Seeks": 0
+          },
+          {
+            "Number": 600,
+            "Size": 241648,
+            "Smallest": "\u0002partsupp_supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0006\u000f:\u0001partsupp:00000000000000082119",
+            "Largest": "\u0002supplier_nation:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0018:\u0001supplier:\u0001\ufffd\u0000\u0000\u0000\u0000\u0000\u0007\ufffd",
+            "Seeks": 0
+          }
+        ]
+      }
+    ],
+    "maintenance_operation": "full_bottom_level_rewrite",
+    "maintenance_seconds": 13.240810658000001,
+    "page_size_bytes": 1048576,
+    "query_answers_verified_after_maintenance": 0,
+    "query_verification_seconds": 2.564e-05,
+    "rows": {
+      "customer": 30000,
+      "lineitem": 1199969,
+      "nation": 25,
+      "orders": 300000,
+      "part": 40000,
+      "partsupp": 160000,
+      "region": 5,
+      "supplier": 2000
+    },
+    "zstd_window_bytes": 1048576,
+    "files": [
+      {
+        "name": "483.sst",
+        "bytes": 2882988,
+        "allocated_bytes": 2883584
+      },
+      {
+        "name": "484.sst",
+        "bytes": 2261447,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "485.sst",
+        "bytes": 2259438,
+        "allocated_bytes": 2260992
+      },
+      {
+        "name": "486.sst",
+        "bytes": 2263505,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "487.sst",
+        "bytes": 2262434,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "488.sst",
+        "bytes": 2259014,
+        "allocated_bytes": 2260992
+      },
+      {
+        "name": "489.sst",
+        "bytes": 2262533,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "490.sst",
+        "bytes": 2263415,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "491.sst",
+        "bytes": 2260219,
+        "allocated_bytes": 2260992
+      },
+      {
+        "name": "492.sst",
+        "bytes": 2263339,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "493.sst",
+        "bytes": 2263510,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "494.sst",
+        "bytes": 2260537,
+        "allocated_bytes": 2260992
+      },
+      {
+        "name": "495.sst",
+        "bytes": 2262300,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "496.sst",
+        "bytes": 2264960,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "497.sst",
+        "bytes": 2260678,
+        "allocated_bytes": 2260992
+      },
+      {
+        "name": "498.sst",
+        "bytes": 2266448,
+        "allocated_bytes": 2269184
+      },
+      {
+        "name": "499.sst",
+        "bytes": 2261990,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "500.sst",
+        "bytes": 2257536,
+        "allocated_bytes": 2260992
+      },
+      {
+        "name": "501.sst",
+        "bytes": 2263031,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "502.sst",
+        "bytes": 2262862,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "503.sst",
+        "bytes": 2259521,
+        "allocated_bytes": 2260992
+      },
+      {
+        "name": "504.sst",
+        "bytes": 2263252,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "505.sst",
+        "bytes": 2263849,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "506.sst",
+        "bytes": 2259975,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "507.sst",
+        "bytes": 2261864,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "508.sst",
+        "bytes": 2264319,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "509.sst",
+        "bytes": 2258358,
+        "allocated_bytes": 2260992
+      },
+      {
+        "name": "510.sst",
+        "bytes": 2261867,
+        "allocated_bytes": 2265088
+      },
+      {
+        "name": "511.sst",
+        "bytes": 2378712,
+        "allocated_bytes": 2379776
+      },
+      {
+        "name": "512.sst",
+        "bytes": 2384812,
+        "allocated_bytes": 2387968
+      },
+      {
+        "name": "513.sst",
+        "bytes": 2386718,
+        "allocated_bytes": 2387968
+      },
+      {
+        "name": "514.sst",
+        "bytes": 2384300,
+        "allocated_bytes": 2387968
+      },
+      {
+        "name": "515.sst",
+        "bytes": 2385035,
+        "allocated_bytes": 2392064
+      },
+      {
+        "name": "516.sst",
+        "bytes": 2379128,
+        "allocated_bytes": 2379776
+      },
+      {
+        "name": "517.sst",
+        "bytes": 2322411,
+        "allocated_bytes": 2322432
+      },
+      {
+        "name": "518.sst",
+        "bytes": 2306005,
+        "allocated_bytes": 2306048
+      },
+      {
+        "name": "519.sst",
+        "bytes": 2301493,
+        "allocated_bytes": 2301952
+      },
+      {
+        "name": "520.sst",
+        "bytes": 2302543,
+        "allocated_bytes": 2306048
+      },
+      {
+        "name": "521.sst",
+        "bytes": 1042983,
+        "allocated_bytes": 1044480
+      },
+      {
+        "name": "522.sst",
+        "bytes": 1145115,
+        "allocated_bytes": 1146880
+      },
+      {
+        "name": "523.sst",
+        "bytes": 1149552,
+        "allocated_bytes": 1150976
+      },
+      {
+        "name": "524.sst",
+        "bytes": 1149386,
+        "allocated_bytes": 1150976
+      },
+      {
+        "name": "525.sst",
+        "bytes": 1146801,
+        "allocated_bytes": 1146880
+      },
+      {
+        "name": "526.sst",
+        "bytes": 1146224,
+        "allocated_bytes": 1146880
+      },
+      {
+        "name": "527.sst",
+        "bytes": 1145502,
+        "allocated_bytes": 1146880
+      },
+      {
+        "name": "528.sst",
+        "bytes": 1148058,
+        "allocated_bytes": 1150976
+      },
+      {
+        "name": "529.sst",
+        "bytes": 1145770,
+        "allocated_bytes": 1146880
+      },
+      {
+        "name": "530.sst",
+        "bytes": 1146821,
+        "allocated_bytes": 1146880
+      },
+      {
+        "name": "531.sst",
+        "bytes": 1146881,
+        "allocated_bytes": 1150976
+      },
+      {
+        "name": "532.sst",
+        "bytes": 1147278,
+        "allocated_bytes": 1150976
+      },
+      {
+        "name": "533.sst",
+        "bytes": 1144019,
+        "allocated_bytes": 1146880
+      },
+      {
+        "name": "534.sst",
+        "bytes": 1142420,
+        "allocated_bytes": 1142784
+      },
+      {
+        "name": "535.sst",
+        "bytes": 1147497,
+        "allocated_bytes": 1150976
+      },
+      {
+        "name": "536.sst",
+        "bytes": 1146010,
+        "allocated_bytes": 1146880
+      },
+      {
+        "name": "537.sst",
+        "bytes": 1146005,
+        "allocated_bytes": 1146880
+      },
+      {
+        "name": "538.sst",
+        "bytes": 1148240,
+        "allocated_bytes": 1150976
+      },
+      {
+        "name": "539.sst",
+        "bytes": 1146850,
+        "allocated_bytes": 1146880
+      },
+      {
+        "name": "540.sst",
+        "bytes": 1148576,
+        "allocated_bytes": 1150976
+      },
+      {
+        "name": "541.sst",
+        "bytes": 1119756,
+        "allocated_bytes": 1122304
+      },
+      {
+        "name": "542.sst",
+        "bytes": 1012678,
+        "allocated_bytes": 1015808
+      },
+      {
+        "name": "543.sst",
+        "bytes": 1013999,
+        "allocated_bytes": 1015808
+      },
+      {
+        "name": "544.sst",
+        "bytes": 1013591,
+        "allocated_bytes": 1015808
+      },
+      {
+        "name": "545.sst",
+        "bytes": 1015082,
+        "allocated_bytes": 1015808
+      },
+      {
+        "name": "546.sst",
+        "bytes": 1012924,
+        "allocated_bytes": 1015808
+      },
+      {
+        "name": "547.sst",
+        "bytes": 1015058,
+        "allocated_bytes": 1015808
+      },
+      {
+        "name": "548.sst",
+        "bytes": 1014947,
+        "allocated_bytes": 1015808
+      },
+      {
+        "name": "549.sst",
+        "bytes": 1013809,
+        "allocated_bytes": 1015808
+      },
+      {
+        "name": "550.sst",
+        "bytes": 1014507,
+        "allocated_bytes": 1015808
+      },
+      {
+        "name": "551.sst",
+        "bytes": 1013247,
+        "allocated_bytes": 1015808
+      },
+      {
+        "name": "552.sst",
+        "bytes": 1014870,
+        "allocated_bytes": 1015808
+      },
+      {
+        "name": "553.sst",
+        "bytes": 1014814,
+        "allocated_bytes": 1015808
+      },
+      {
+        "name": "554.sst",
+        "bytes": 1014278,
+        "allocated_bytes": 1015808
+      },
+      {
+        "name": "555.sst",
+        "bytes": 1014618,
+        "allocated_bytes": 1015808
+      },
+      {
+        "name": "556.sst",
+        "bytes": 1015549,
+        "allocated_bytes": 1015808
+      },
+      {
+        "name": "557.sst",
+        "bytes": 1021311,
+        "allocated_bytes": 1024000
+      },
+      {
+        "name": "558.sst",
+        "bytes": 1034337,
+        "allocated_bytes": 1036288
+      },
+      {
+        "name": "559.sst",
+        "bytes": 1038242,
+        "allocated_bytes": 1040384
+      },
+      {
+        "name": "560.sst",
+        "bytes": 1036256,
+        "allocated_bytes": 1036288
+      },
+      {
+        "name": "561.sst",
+        "bytes": 1037262,
+        "allocated_bytes": 1040384
+      },
+      {
+        "name": "562.sst",
+        "bytes": 1037383,
+        "allocated_bytes": 1040384
+      },
+      {
+        "name": "563.sst",
+        "bytes": 1036448,
+        "allocated_bytes": 1040384
+      },
+      {
+        "name": "564.sst",
+        "bytes": 1036937,
+        "allocated_bytes": 1040384
+      },
+      {
+        "name": "565.sst",
+        "bytes": 1038689,
+        "allocated_bytes": 1040384
+      },
+      {
+        "name": "566.sst",
+        "bytes": 1038439,
+        "allocated_bytes": 1040384
+      },
+      {
+        "name": "567.sst",
+        "bytes": 1035411,
+        "allocated_bytes": 1036288
+      },
+      {
+        "name": "568.sst",
+        "bytes": 1037234,
+        "allocated_bytes": 1040384
+      },
+      {
+        "name": "569.sst",
+        "bytes": 1036558,
+        "allocated_bytes": 1040384
+      },
+      {
+        "name": "570.sst",
+        "bytes": 1035870,
+        "allocated_bytes": 1036288
+      },
+      {
+        "name": "571.sst",
+        "bytes": 1035362,
+        "allocated_bytes": 1036288
+      },
+      {
+        "name": "572.sst",
+        "bytes": 1038074,
+        "allocated_bytes": 1040384
+      },
+      {
+        "name": "573.sst",
+        "bytes": 1047164,
+        "allocated_bytes": 1048576
+      },
+      {
+        "name": "574.sst",
+        "bytes": 1076975,
+        "allocated_bytes": 1077248
+      },
+      {
+        "name": "575.sst",
+        "bytes": 1077518,
+        "allocated_bytes": 1081344
+      },
+      {
+        "name": "576.sst",
+        "bytes": 1075125,
+        "allocated_bytes": 1077248
+      },
+      {
+        "name": "577.sst",
+        "bytes": 1077618,
+        "allocated_bytes": 1081344
+      },
+      {
+        "name": "578.sst",
+        "bytes": 1075053,
+        "allocated_bytes": 1077248
+      },
+      {
+        "name": "579.sst",
+        "bytes": 1074656,
+        "allocated_bytes": 1077248
+      },
+      {
+        "name": "580.sst",
+        "bytes": 1076767,
+        "allocated_bytes": 1077248
+      },
+      {
+        "name": "581.sst",
+        "bytes": 1076930,
+        "allocated_bytes": 1077248
+      },
+      {
+        "name": "582.sst",
+        "bytes": 1075233,
+        "allocated_bytes": 1077248
+      },
+      {
+        "name": "583.sst",
+        "bytes": 1076598,
+        "allocated_bytes": 1077248
+      },
+      {
+        "name": "584.sst",
+        "bytes": 1074523,
+        "allocated_bytes": 1077248
+      },
+      {
+        "name": "585.sst",
+        "bytes": 1077571,
+        "allocated_bytes": 1081344
+      },
+      {
+        "name": "586.sst",
+        "bytes": 1075117,
+        "allocated_bytes": 1077248
+      },
+      {
+        "name": "587.sst",
+        "bytes": 1076398,
+        "allocated_bytes": 1077248
+      },
+      {
+        "name": "588.sst",
+        "bytes": 1093869,
+        "allocated_bytes": 1097728
+      },
+      {
+        "name": "589.sst",
+        "bytes": 1306961,
+        "allocated_bytes": 1310720
+      },
+      {
+        "name": "590.sst",
+        "bytes": 1306707,
+        "allocated_bytes": 1310720
+      },
+      {
+        "name": "591.sst",
+        "bytes": 1306945,
+        "allocated_bytes": 1310720
+      },
+      {
+        "name": "592.sst",
+        "bytes": 1153130,
+        "allocated_bytes": 1155072
+      },
+      {
+        "name": "593.sst",
+        "bytes": 1134781,
+        "allocated_bytes": 1138688
+      },
+      {
+        "name": "594.sst",
+        "bytes": 1137098,
+        "allocated_bytes": 1138688
+      },
+      {
+        "name": "595.sst",
+        "bytes": 1008070,
+        "allocated_bytes": 1011712
+      },
+      {
+        "name": "596.sst",
+        "bytes": 752192,
+        "allocated_bytes": 753664
+      },
+      {
+        "name": "597.sst",
+        "bytes": 703221,
+        "allocated_bytes": 704512
+      },
+      {
+        "name": "598.sst",
+        "bytes": 661196,
+        "allocated_bytes": 663552
+      },
+      {
+        "name": "599.sst",
+        "bytes": 562443,
+        "allocated_bytes": 565248
+      },
+      {
+        "name": "600.sst",
+        "bytes": 241648,
+        "allocated_bytes": 241664
+      },
+      {
+        "name": "LOCK",
+        "bytes": 8,
+        "allocated_bytes": 4096
+      },
+      {
+        "name": "MANIFEST",
+        "bytes": 16607,
+        "allocated_bytes": 20480
+      },
+      {
+        "name": "OPTIONS",
+        "bytes": 24,
+        "allocated_bytes": 4096
+      }
+    ],
+    "file_count": 121,
+    "file_bytes": 171722020,
+    "allocated_total_bytes": 171974656,
+    "wal_files": []
+  },
+  "query_benchmarked": false,
+  "query_benchmark_skip_reason": "Storage-only measurement requested",
+  "load_mode": "bulk_insert",
+  "load_batch_rows": 4096,
+  "query_answers_verified": false,
+  "status": "ok",
+  "workload": "tpch",
+  "engine": "slopdb",
+  "requested_page_size_bytes": 1048576,
+  "page_size_bytes": 1048576
+}
