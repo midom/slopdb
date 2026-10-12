@@ -14,10 +14,10 @@
 ## Joins (7/7 done)
 ## Subqueries (5/5 done)
 ## Data Types & Expressions (18/18 done)
-## DML Extensions (4/5 done)
+## DML Extensions (5/5 done)
 
 - [x] Multi-row INSERT, INSERT...SELECT, REPLACE, RETURNING
-- [ ] UPSERT (ON CONFLICT)
+- [x] UPSERT (ON CONFLICT and MySQL ON DUPLICATE KEY UPDATE)
 
 ## Views & Triggers (5/5 done)
 ## Query Plan & Introspection (4/4 done)
@@ -104,7 +104,7 @@ and reconcile indexes on every open for diagnostics. Ordinary writes continue
 to enforce strict indexed types. Row-ID counters initialize lazily with bounded
 reverse seeks. `VACUUM` flushes writes and compacts SSTables.
 
-## Miscellaneous (5/9 done)
+## Miscellaneous
 
 - [x] SQL comments (-- and /* */)
 - [x] NULLS FIRST / LAST in ORDER BY
@@ -112,7 +112,8 @@ reverse seeks. `VACUUM` flushes writes and compacts SSTables.
 - [x] COLLATE (no-op)
 - [x] IF NOT EXISTS (CREATE TABLE/INDEX)
 - [ ] Table-valued functions
-- [ ] Common Table Expressions (WITH / CTE)
-- [ ] Window functions (ROW_NUMBER, RANK, etc.)
-- [ ] Recursive CTEs
-- [ ] generate_series / virtual tables
+- [x] Common Table Expressions, including dependent scopes and wrapped DML
+- [x] Window functions: ranking, navigation, aggregate windows and frames
+- [x] Recursive CTEs for supported single-SELECT UNION / UNION ALL shapes
+- [ ] Additional recursive query shapes and window functions/extensions
+- [ ] Table-valued functions and generate_series / virtual tables
