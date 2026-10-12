@@ -9,6 +9,7 @@ package plus the separate Go runner; SQLite uses Python's standard library.
 import argparse
 import csv
 import ctypes
+import datetime
 import hashlib
 import importlib.util
 import json
@@ -367,9 +368,16 @@ def main():
         workload, engine, size = args.cell
         cell_run(args, workload, engine, int(size))
         return
+    if args.output.is_relative_to(ROOT):
+        parser.error("benchmark artifacts must be outside the repository")
     args.output.mkdir(parents=True, exist_ok=False)
     workloads = (["tpcc"] if args.tpcc_snapshot else []) + (["tpch"] if args.tpch_data else [])
-    result = {"slopdb_revision": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+    result = {"started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              "command": [sys.executable, str(Path(__file__).resolve()), *sys.argv[1:]],
+              "binaries": {name: {"path": str(path), "sha256": digest(path),
+                           "build_metadata": subprocess.check_output(["go", "version", "-m", str(path)], text=True)}
+                           for name, path in (("slop_snapshot", args.slop_snapshot), ("slop_tpch", args.slop_tpch), ("duck_tpch", args.duck_tpch)) if path},
+              "slopdb_revision": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
               "platform": platform.platform(), "python_version": platform.python_version(), "cpus": os.cpu_count(),
               "units": "bytes; MiB=1048576 bytes", "method": "serial fresh equal-data fixtures; file and allocated bytes after close and maintenance",
               "durability": "WAL enabled; WAL fsync disabled; SlopDB/DuckDB checkpoint and data-file synchronization enabled; SQLite synchronous=OFF also disables its checkpoint synchronization",
@@ -408,6 +416,8 @@ def main():
                 result["cells"].append(item)
                 (args.output / "comparison.json").write_text(json.dumps(result, indent=2) + "\n")
                 print(workload, engine, size, item["status"], flush=True)
+    result["finished_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    (args.output / "comparison.json").write_text(json.dumps(result, indent=2) + "\n")
     if failed:
         raise SystemExit(1)
 
