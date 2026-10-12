@@ -33,3 +33,8 @@ Windows reject budget exhaustion rather than spilling. Recursive queries and
 UPSERT support the documented subset; unsupported shapes produce errors.
 Statistics remain unchanged after DML until ANALYZE. Logical profiling bytes and
 storage file counters do not measure physical device I/O.
+
+[Paired benchmark results](benchmarks/improvements/README.md) preserve all twenty-two
+TPC-H queries, TPC-C throughput, correctness evidence and measured revisions.
+TPC-H total measured query time fell 34.8%; individual query regressions remain.
+The single paired TPC-C runs measured 2,139.5 and 2,125.8 transactions/second.
