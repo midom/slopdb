@@ -110,7 +110,7 @@ reverse seeks. `VACUUM` flushes writes and compacts SSTables.
 - [x] SQL comments (-- and /* */)
 - [x] NULLS FIRST / LAST in ORDER BY
 - [x] ESCAPE for LIKE
-- [x] COLLATE BINARY in column definitions (default collation; other collations are rejected)
+- [x] Database-wide Unicode normalization and case insensitive collations, with BINARY expression and column overrides
 - [x] IF NOT EXISTS (CREATE TABLE/INDEX)
 - [x] Common Table Expressions, including dependent scopes and wrapped DML
 - [x] Window functions: ranking, navigation, aggregate windows and frames

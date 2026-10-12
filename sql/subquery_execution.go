@@ -398,7 +398,7 @@ func (s *Schema) membership(rs *ResultSet) *subqueryMembership {
 		if v.Null {
 			m.hasNull = true
 		} else {
-			m.values[string(appendEqualityKey(nil, v))] = true
+			m.values[string(s.appendEqualityKey(nil, v))] = true
 		}
 	}
 	if s.selectDepth > 0 && len(s.subquerySets) < 4096 {

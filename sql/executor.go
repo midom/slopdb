@@ -24,6 +24,7 @@ import (
 )
 
 type TableInfo struct {
+	collation     Collation       `json:"-"`
 	ID            uint64          `json:"id,omitempty"`
 	Constraints   []ConstraintDef `json:"constraints,omitempty"`
 	Name          string          `json:"name"`
@@ -36,13 +37,15 @@ type TableInfo struct {
 }
 
 type IndexInfo struct {
-	ID       uint64   `json:"id,omitempty"`
-	Name     string   `json:"name"`
-	Table    string   `json:"table"`
-	Column   string   `json:"column"`
-	IsUnique bool     `json:"is_unique"`
-	Columns  []string `json:"columns,omitempty"`
-	Auto     bool     `json:"auto,omitempty"`
+	collation     Collation       `json:"-"`
+	binaryColumns map[string]bool `json:"-"`
+	ID            uint64          `json:"id,omitempty"`
+	Name          string          `json:"name"`
+	Table         string          `json:"table"`
+	Column        string          `json:"column"`
+	IsUnique      bool            `json:"is_unique"`
+	Columns       []string        `json:"columns,omitempty"`
+	Auto          bool            `json:"auto,omitempty"`
 }
 
 type ViewInfo struct {
@@ -73,6 +76,7 @@ type Schema struct {
 	distributions      map[string]*tableStatistics
 	nextObjectID       uint64
 	userVersion        int64
+	collation          Collation
 	views              map[string]*ViewInfo
 	triggers           map[string]*TriggerInfo
 	autoincMax         map[string]int64
@@ -164,6 +168,7 @@ const (
 	schemaPrefix      = "\x00__schema__"
 	statsPrefix       = "\x00__stats__"
 	versionPrefix     = "\x00__version__"
+	collationPrefix   = "\x00__collation__"
 	schemaViewsPrefix = "\x00__schema_views__"
 	schemaTrigPrefix  = "\x00__schema_trig__"
 	schemaIdxPrefix   = "\x00__schema_indexes__"
@@ -206,6 +211,9 @@ func NewSchemaWithOptions(lsm *storage.LSMTree, pageSize int, opt *storage.Optio
 		}
 		s.queryMemoryBytes, s.queryTempDir = opt.QueryMemoryBytes, opt.QueryTempDir
 	}
+	if err := s.loadCollation(); err != nil {
+		return nil, err
+	}
 	if err := s.loadSchema(); err != nil {
 		return nil, err
 	}
@@ -221,6 +229,7 @@ func NewSchemaWithOptions(lsm *storage.LSMTree, pageSize int, opt *storage.Optio
 	if err := s.loadIndexes(); err != nil {
 		return nil, err
 	}
+	s.bindCatalogCollation()
 	for _, info := range s.tables {
 		if err := s.foreignDefinitions(info); err != nil {
 			return nil, err
@@ -440,6 +449,7 @@ func (s *Schema) CreateTable(stmt *CreateTableStmt) error {
 		return err
 	}
 	info := &TableInfo{
+		collation:     s.collation,
 		ID:            id,
 		Constraints:   stmt.Constraints,
 		Name:          name,
@@ -470,11 +480,14 @@ func (s *Schema) CreateTable(stmt *CreateTableStmt) error {
 				if err != nil {
 					return err
 				}
-				s.indexes[idxName] = &IndexInfo{ID: indexID, Name: idxName, Table: name, Column: col.Name, IsUnique: true, Auto: true}
+				idx := &IndexInfo{ID: indexID, Name: idxName, Table: name, Column: col.Name, IsUnique: true, Auto: true}
+				s.bindIndexCollation(idx)
+				s.indexes[idxName] = idx
 			}
 		}
 	}
 	for _, idx := range inlineIndexes {
+		s.bindIndexCollation(idx)
 		idx.ID, err = s.allocateObjectID()
 		if err != nil {
 			return err
@@ -760,6 +773,9 @@ func (s *Schema) getCreateTableSQL(tableName string, inlineIndexes bool) string 
 			b.WriteString(", ")
 		}
 		fmt.Fprintf(&b, "%s %s", quoteIdent(col.Name), col.ColType.String())
+		if col.Binary {
+			b.WriteString(" COLLATE BINARY")
+		}
 		if col.NotNull {
 			b.WriteString(inlineName("NOT_NULL", col.Name) + " NOT NULL")
 		}
@@ -890,6 +906,8 @@ func (s *Schema) ExecutePragma(stmt *PragmaStmt) (*ResultSet, error) {
 		return s.singleValueResult("user_version", NewIntValue(s.userVersion))
 	case "page_size":
 		return s.pragmaPageSize(stmt)
+	case "collation":
+		return s.pragmaCollation(stmt)
 	case "compile_options":
 		return &ResultSet{
 			Columns: []ColumnDef{{Name: "compile_options", ColType: ColText}},
@@ -1577,6 +1595,7 @@ type schemaState struct {
 	distributions   map[string]*tableStatistics
 	autoinc, rowIDs map[string]int64
 	userVersion     int64
+	collation       Collation
 	nextObjectID    uint64
 	lookups         *catalogLookups
 }
@@ -1588,7 +1607,7 @@ func (s *Schema) captureState() *schemaState {
 		s.catalogShared = true
 	}
 	return &schemaState{tables: s.tables, indexes: s.indexes, views: s.views, triggers: s.triggers,
-		stats: maps.Clone(s.stats), distributions: maps.Clone(s.distributions), autoinc: maps.Clone(s.autoincMax), rowIDs: maps.Clone(s.rowIDCount), userVersion: s.userVersion, nextObjectID: s.nextObjectID, lookups: s.catalogLookup}
+		stats: maps.Clone(s.stats), distributions: maps.Clone(s.distributions), autoinc: maps.Clone(s.autoincMax), rowIDs: maps.Clone(s.rowIDCount), userVersion: s.userVersion, collation: s.collation, nextObjectID: s.nextObjectID, lookups: s.catalogLookup}
 }
 
 func (s *Schema) ensureCatalogWritable() {
@@ -1659,6 +1678,7 @@ func (s *Schema) restoreState(st *schemaState) {
 	s.autoincMax = st.autoinc
 	s.rowIDCount = st.rowIDs
 	s.userVersion = st.userVersion
+	s.collation = st.collation
 	s.nextObjectID = st.nextObjectID
 }
 func (s *Schema) Begin() error {
@@ -1755,6 +1775,13 @@ func (s *Schema) Commit() error {
 		version := make([]byte, 8)
 		binary.LittleEndian.PutUint64(version, uint64(s.userVersion))
 		batch = append(batch, storage.Mutation{Key: []byte(versionPrefix), Value: version})
+	}
+	if s.collation != s.txState.collation {
+		encoded, err := json.Marshal(s.collation)
+		if err != nil {
+			return err
+		}
+		batch = append(batch, storage.Mutation{Key: []byte(collationPrefix), Value: encoded})
 	}
 	if err := s.lsm.WriteBatch(batch); err != nil {
 		return err
@@ -2241,6 +2268,7 @@ func (s *Schema) CreateIndex(stmt *CreateIndexStmt) error {
 	}
 
 	idx := newIndexInfo(idxName, tableName, columns, stmt.Unique)
+	s.bindIndexCollation(idx)
 	var err error
 	idx.ID, err = s.allocateObjectID()
 	if err != nil {
@@ -2265,7 +2293,7 @@ func (s *Schema) CreateIndex(stmt *CreateIndexStmt) error {
 			if !hasNull {
 				var signature []byte
 				for _, value := range v {
-					signature = appendValueIdentity(signature, value)
+					signature = s.appendValueIdentity(signature, value)
 				}
 				if values[string(signature)] {
 					iter.Close()
@@ -2521,9 +2549,9 @@ func (s *Schema) Union(stmt *UnionStmt) (*ResultSet, error) {
 
 	switch stmt.Op {
 	case "INTERSECT":
-		left.Rows = intersectRows(left.Rows, right.Rows)
+		left.Rows = s.intersectRows(left.Rows, right.Rows)
 	case "EXCEPT":
-		left.Rows = exceptRows(left.Rows, right.Rows)
+		left.Rows = s.exceptRows(left.Rows, right.Rows)
 	default:
 		left.Rows = append(left.Rows, right.Rows...)
 		if !stmt.All {
@@ -2584,30 +2612,30 @@ func (s *Schema) execUnionRight(stmt Statement) (*ResultSet, error) {
 	}
 }
 
-func intersectRows(a, b []map[string]Value) []map[string]Value {
+func (s *Schema) intersectRows(a, b []map[string]Value) []map[string]Value {
 	seen := make(map[string]bool)
 	for _, r := range b {
-		seen[rowKey(r)] = true
+		seen[s.rowKey(r)] = true
 	}
 	var out []map[string]Value
 	for _, r := range a {
-		if seen[rowKey(r)] {
-			delete(seen, rowKey(r))
+		if seen[s.rowKey(r)] {
+			delete(seen, s.rowKey(r))
 			out = append(out, r)
 		}
 	}
 	return out
 }
 
-func exceptRows(a, b []map[string]Value) []map[string]Value {
+func (s *Schema) exceptRows(a, b []map[string]Value) []map[string]Value {
 	seen := make(map[string]bool)
 	for _, r := range b {
-		seen[rowKey(r)] = true
+		seen[s.rowKey(r)] = true
 	}
 	var out []map[string]Value
 	for _, r := range a {
-		if !seen[rowKey(r)] {
-			seen[rowKey(r)] = true
+		if !seen[s.rowKey(r)] {
+			seen[s.rowKey(r)] = true
 			out = append(out, r)
 		}
 	}
@@ -3410,11 +3438,14 @@ func (s *Schema) checkUniqueScan(tableName string, colNames []string, row map[st
 		for _, cn := range colNames {
 			ev := existing[cn]
 			rv := row[cn]
+			if info.binaryColumn(cn) {
+				ev.Binary, rv.Binary = true, true
+			}
 			if ev.Null || rv.Null {
 				match = false
 				break
 			}
-			if ValueCompare(ev, rv) != 0 {
+			if s.valueCompare(ev, rv) != 0 {
 				match = false
 				break
 			}
@@ -4505,7 +4536,7 @@ func (s *Schema) processGroups(stmt *SelectStmt, rows []map[string]Value, info *
 				if err != nil {
 					return nil, nil, err
 				}
-				key = append(key, valueIdentity(v)...)
+				key = s.appendValueIdentity(key, v)
 			}
 			k := string(key)
 			if _, ok := groups[k]; !ok {
@@ -4636,7 +4667,7 @@ func (s *Schema) evalAggregate(fc *FuncCallExpr, rows []map[string]Value) (Value
 		}
 		if !v.Null {
 			if fc.Distinct {
-				key := string(valueIdentity(v))
+				key := string(s.valueIdentity(v))
 				if seen[key] {
 					continue
 				}
@@ -4658,7 +4689,7 @@ func (s *Schema) evalAggregate(fc *FuncCallExpr, rows []map[string]Value) (Value
 	case "MIN", "MAX":
 		best := values[0]
 		for _, v := range values[1:] {
-			cmp := ValueCompare(v, best)
+			cmp := s.valueCompare(v, best)
 			if name == "MIN" && cmp < 0 || name == "MAX" && cmp > 0 {
 				best = v
 			}
@@ -4727,7 +4758,7 @@ func (s *Schema) distinctRowsColsWithKeys(rows []map[string]Value, cols []string
 	for i, row := range rows {
 		var key []byte
 		for _, col := range cols {
-			key = append(key, valueIdentity(row[col])...)
+			key = s.appendValueIdentity(key, row[col])
 		}
 		k := string(key)
 		position, exists := seen[k]
@@ -4749,7 +4780,7 @@ func (s *Schema) distinctRows(rows []map[string]Value) []map[string]Value {
 	seen := make(map[string]bool)
 	var out []map[string]Value
 	for _, row := range rows {
-		k := rowKey(row)
+		k := s.rowKey(row)
 		if !seen[k] {
 			seen[k] = true
 			out = append(out, row)
@@ -4757,7 +4788,7 @@ func (s *Schema) distinctRows(rows []map[string]Value) []map[string]Value {
 	}
 	return out
 }
-func rowKey(row map[string]Value) string {
+func (s *Schema) rowKey(row map[string]Value) string {
 	var names []string
 	for k := range row {
 		names = append(names, k)
@@ -4766,7 +4797,7 @@ func rowKey(row map[string]Value) string {
 	var key []byte
 	for _, name := range names {
 		key = append(key, encodeValue(NewTextValue(name))...)
-		key = append(key, valueIdentity(row[name])...)
+		key = s.appendValueIdentity(key, row[name])
 	}
 	return string(key)
 }
@@ -5133,7 +5164,7 @@ func (s *Schema) compareRows(a, b map[string]Value, orders []OrderByClause) bool
 			return va.Null
 		}
 
-		cmp := ValueCompare(va, vb)
+		cmp := s.valueCompare(va, vb)
 		if cmp != 0 {
 			if o.Desc {
 				return cmp > 0
@@ -5525,7 +5556,7 @@ func (s *Schema) deleteConflicts(table string, info *TableInfo, row map[string]V
 			match := true
 			for _, name := range group {
 				a, b := old[name], row[name]
-				if a.Null || b.Null || ValueCompare(a, b) != 0 {
+				if a.Null || b.Null || s.valueCompare(a, b) != 0 {
 					match = false
 					break
 				}
@@ -5590,6 +5621,10 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 		right, err := s.evalExpr(e.Right, row)
 		if err != nil {
 			return NewNullValue(), err
+		}
+		if e.Op == "BINARY" {
+			right.Binary = true
+			return right, nil
 		}
 		if right.Null {
 			return right, nil
@@ -5689,7 +5724,7 @@ func (s *Schema) evalFunc(e *FuncCallExpr, row map[string]Value) (Value, error) 
 		if err != nil {
 			return NewNullValue(), err
 		}
-		if ValueCompare(v1, v2) == 0 {
+		if s.valueCompare(v1, v2) == 0 {
 			return NewNullValue(), nil
 		}
 		return v1, nil
@@ -6028,7 +6063,7 @@ func (s *Schema) evalFunc(e *FuncCallExpr, row map[string]Value) (Value, error) 
 			if err != nil || v.Null {
 				return NewNullValue(), err
 			}
-			if i == 0 || name == "MIN" && ValueCompare(v, best) < 0 || name == "MAX" && ValueCompare(v, best) > 0 {
+			if i == 0 || name == "MIN" && s.valueCompare(v, best) < 0 || name == "MAX" && s.valueCompare(v, best) > 0 {
 				best = v
 			}
 		}
@@ -6054,7 +6089,7 @@ func (s *Schema) evalInList(e *InListExpr, row map[string]Value) (Value, error) 
 		if v.Null {
 			hasNull = true
 		}
-		if !val.Null && !v.Null && ValueCompare(val, v) == 0 {
+		if !val.Null && !v.Null && s.valueCompare(val, v) == 0 {
 			if e.Not {
 				return NewIntValue(0), nil
 			}
@@ -6107,7 +6142,7 @@ func (s *Schema) evalCase(e *CaseExpr, row map[string]Value) (Value, error) {
 			if err != nil {
 				return NewNullValue(), err
 			}
-			if !caseVal.Null && !condVal.Null && ValueCompare(caseVal, condVal) == 0 {
+			if !caseVal.Null && !condVal.Null && s.valueCompare(caseVal, condVal) == 0 {
 				return s.evalExpr(when.Then, row)
 			}
 		}
@@ -6195,7 +6230,7 @@ func (s *Schema) evalBinary(e *BinaryExpr, row map[string]Value) (Value, error) 
 				return NewNullValue(), fmt.Errorf("IN subquery must return one column")
 			}
 			membership := s.membership(rs)
-			if !lv.Null && membership.values[string(appendEqualityKey(nil, lv))] {
+			if !lv.Null && membership.values[string(s.appendEqualityKey(nil, lv))] {
 				if e.Op == "NOT IN" {
 					return NewIntValue(0), nil
 				}
@@ -6223,7 +6258,7 @@ func (s *Schema) evalBinary(e *BinaryExpr, row map[string]Value) (Value, error) 
 		if lv.Null || rv.Null {
 			return NewNullValue(), nil
 		}
-		if s.matchLike(lv.String(), rv.String(), e.Escape) {
+		if s.matchLikeValues(lv, rv, e.Escape) {
 			return NewIntValue(1), nil
 		}
 		return NewIntValue(0), nil
@@ -6239,7 +6274,7 @@ func (s *Schema) evalBinary(e *BinaryExpr, row map[string]Value) (Value, error) 
 		if lv.Null || rv.Null {
 			return NewNullValue(), nil
 		}
-		if s.matchLike(lv.String(), rv.String(), e.Escape) {
+		if s.matchLikeValues(lv, rv, e.Escape) {
 			return NewIntValue(0), nil
 		}
 		return NewIntValue(1), nil
@@ -6277,7 +6312,7 @@ func (s *Schema) evalBinary(e *BinaryExpr, row map[string]Value) (Value, error) 
 		if err != nil {
 			return NewNullValue(), err
 		}
-		same := left.Null && right.Null || !left.Null && !right.Null && ValueCompare(left, right) == 0
+		same := left.Null && right.Null || !left.Null && !right.Null && s.valueCompare(left, right) == 0
 		if e.Op == "IS NOT" {
 			same = !same
 		}
@@ -6422,14 +6457,30 @@ func (s *Schema) evalBitwise(e *BinaryExpr, row map[string]Value, fn func(int64,
 }
 
 func (s *Schema) compareValues(lv, rv Value, op string) Value {
-	return compareSQLValues(lv, rv, op)
+	if lv.Null || rv.Null {
+		return NewNullValue()
+	}
+	return compareSQLValuesBy(lv, rv, op, s.valueCompare(lv, rv))
 }
 
 func compareSQLValues(lv, rv Value, op string) Value {
 	if lv.Null || rv.Null {
 		return NewNullValue()
 	}
-	cmp := ValueCompare(lv, rv)
+	return compareSQLValuesBy(lv, rv, op, ValueCompare(lv, rv))
+}
+
+func (s *Schema) valueCompare(a, b Value) int {
+	if !a.Null && !b.Null && a.Type == ColText && b.Type == ColText {
+		if a.Binary || b.Binary {
+			return strings.Compare(a.Text, b.Text)
+		}
+		return s.collation.Compare(a.Text, b.Text)
+	}
+	return ValueCompare(a, b)
+}
+
+func compareSQLValuesBy(lv, rv Value, op string, cmp int) Value {
 	var result bool
 	switch op {
 	case "=":
@@ -6488,6 +6539,15 @@ func applyAffinity(v Value, typ ColumnType) Value {
 	return v
 }
 func valueIdentity(v Value) []byte { return appendValueIdentity(nil, v) }
+
+func (s *Schema) valueIdentity(v Value) []byte { return s.appendValueIdentity(nil, v) }
+
+func (s *Schema) appendValueIdentity(buf []byte, v Value) []byte {
+	if !v.Null && v.Type == ColText && !v.Binary {
+		v.Text = s.collation.Key(v.Text)
+	}
+	return appendValueIdentity(buf, v)
+}
 
 func appendValueIdentity(buf []byte, v Value) []byte {
 	if !v.Null && v.Type == ColReal && v.Real >= math.MinInt64 && v.Real < 9223372036854775808.0 && v.Real == math.Trunc(v.Real) {
@@ -6768,6 +6828,7 @@ func decodeRow(data []byte, info *TableInfo) map[string]Value {
 			continue
 		}
 		v, n := decodeValue(data[offset:])
+		v.Binary = col.Binary
 		row[col.Name] = v
 		offset += n
 	}

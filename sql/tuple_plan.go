@@ -273,8 +273,8 @@ func buildTuplePlan(stmt *SelectStmt, info *TableInfo, idx *IndexInfo, constrain
 	if len(columns) == 0 {
 		return nil
 	}
-	appendValue := func(prefix []byte, value Value) []byte {
-		return appendAccessValue(prefix, value, idx)
+	appendValue := func(prefix []byte, value Value, column string) []byte {
+		return appendAccessValueColumn(prefix, value, idx, info, column)
 	}
 	plan := &tupleReadPlan{index: idx, info: info}
 	plan.ordered, plan.reverse = tupleOrdered(stmt, columns, constraints, info)
@@ -313,7 +313,7 @@ func buildTuplePlan(stmt *SelectStmt, info *TableInfo, idx *IndexInfo, constrain
 		var next [][]byte
 		for _, start := range starts {
 			for _, value := range values {
-				next = append(next, appendValue(start, value))
+				next = append(next, appendValue(start, value, columns[position]))
 			}
 		}
 		starts = next
@@ -329,7 +329,7 @@ func buildTuplePlan(stmt *SelectStmt, info *TableInfo, idx *IndexInfo, constrain
 		low, high := start, prefixSuccessor(start)
 		if position < len(columns) {
 			c := constraints[columns[position]]
-			if c != nil && (c.lower != nil || c.upper != nil) {
+			if c != nil && (c.lower != nil || c.upper != nil) && !collatedTextRange(info, idx, columns[position]) {
 				intervals, exact := accessRangeIntervals(start, columns[position], info, idx, c)
 				// Legacy secondary TEXT/BLOB components have no terminator.
 				// Their bounds are conservative and require SQL rechecking.

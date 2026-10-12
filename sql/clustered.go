@@ -11,9 +11,22 @@ import (
 func (info *TableInfo) encodePK(table string, row map[string]Value) []byte {
 	key := []byte(info.storagePrefix(table))
 	for _, name := range info.PKColumns {
-		key = appendClusteredValue(key, row[name])
+		value := row[name]
+		if value.Type == ColText && !value.Null && !info.binaryColumn(name) {
+			value.Text = info.collation.Key(value.Text)
+		}
+		key = appendClusteredValue(key, value)
 	}
 	return key
+}
+
+func (info *TableInfo) binaryColumn(name string) bool {
+	for _, col := range info.Columns {
+		if col.Name == name {
+			return col.Binary
+		}
+	}
+	return false
 }
 
 func appendClusteredValue(key []byte, value Value) []byte {

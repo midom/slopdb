@@ -16,6 +16,13 @@ func appendEqualityKey(dst []byte, value Value) []byte {
 	return appendValue(dst, value)
 }
 
+func (s *Schema) appendEqualityKey(dst []byte, value Value) []byte {
+	if !value.Null && value.Type == ColText && !value.Binary {
+		value.Text = s.collation.Key(value.Text)
+	}
+	return appendEqualityKey(dst, value)
+}
+
 func andTerms(expr Expression) []Expression {
 	var terms []Expression
 	var collect func(Expression)
@@ -110,7 +117,7 @@ func joinKeyPairs(stmt *SelectStmt, jc JoinClause, alias string, columns []Colum
 	return pairs
 }
 
-func joinRowKey(row map[string]Value, pairs []joinKeyPair, right bool) (string, bool) {
+func (s *Schema) joinRowKey(row map[string]Value, pairs []joinKeyPair, right bool) (string, bool) {
 	var local [64]byte
 	key := local[:0]
 	for _, pair := range pairs {
@@ -122,7 +129,7 @@ func joinRowKey(row map[string]Value, pairs []joinKeyPair, right bool) (string, 
 		if !ok || value.Null {
 			return "", false
 		}
-		key = appendEqualityKey(key, value)
+		key = s.appendEqualityKey(key, value)
 	}
 	return string(key), true
 }
@@ -265,6 +272,11 @@ func (s *Schema) executeJoins(stmt *SelectStmt, baseRows []map[string]Value, bas
 		}
 		pruneJoinRows(joinRows, needed, alias)
 		pairs := joinKeyPairs(stmt, jc, alias, columns, leftNames)
+		if s.collation != "" && s.collation != BinaryCollation {
+			// A BINARY column can be compared to a collated column. Their
+			// hash representations then differ even when the raw values match.
+			pairs = nil
+		}
 		var buckets map[string][]int
 		var disk *diskHash
 		var bucketBytes int64
@@ -276,7 +288,7 @@ func (s *Schema) executeJoins(stmt *SelectStmt, baseRows []map[string]Value, bas
 						return nil, nil, err
 					}
 				}
-				if key, valid := joinRowKey(row, pairs, true); valid {
+				if key, valid := s.joinRowKey(row, pairs, true); valid {
 					bucketBytes += int64(len(key) + 16)
 					if disk == nil && bucketBytes > s.memoryBudget() {
 						disk, err = newDiskHash(s)
@@ -311,7 +323,7 @@ func (s *Schema) executeJoins(stmt *SelectStmt, baseRows []map[string]Value, bas
 			}
 			var candidates []int
 			if buckets != nil {
-				if key, valid := joinRowKey(left, pairs, false); valid {
+				if key, valid := s.joinRowKey(left, pairs, false); valid {
 					candidates = buckets[key]
 				}
 			}
@@ -337,7 +349,7 @@ func (s *Schema) executeJoins(stmt *SelectStmt, baseRows []map[string]Value, bas
 				match := true
 				for _, name := range using {
 					a, b := left[name], right[name]
-					if a.Null || b.Null || ValueCompare(a, b) != 0 {
+					if a.Null || b.Null || s.valueCompare(a, b) != 0 {
 						match = false
 						break
 					}
@@ -369,7 +381,7 @@ func (s *Schema) executeJoins(stmt *SelectStmt, baseRows []map[string]Value, bas
 				return nil
 			}
 			if disk != nil {
-				if key, valid := joinRowKey(left, pairs, false); valid {
+				if key, valid := s.joinRowKey(left, pairs, false); valid {
 					if err := disk.walk(key, func(row map[string]Value) error { return acceptIndex(int(row["pos"].Int)) }); err != nil {
 						return nil, nil, err
 					}

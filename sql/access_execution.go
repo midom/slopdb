@@ -122,11 +122,28 @@ func (s *Schema) accessConstraints(e Expression, info *TableInfo) map[string]*tu
 	return tupleConstraints(s.accessExpression(e), info.Name, "", info)
 }
 
-func appendAccessValue(prefix []byte, v Value, idx *IndexInfo) []byte {
+func appendAccessValue(prefix []byte, v Value, idx *IndexInfo, info ...*TableInfo) []byte {
+	var table *TableInfo
+	if len(info) != 0 {
+		table = info[0]
+	}
+	column := ""
+	if idx != nil && len(idx.columnNames()) != 0 {
+		column = idx.columnNames()[0]
+	} else if table != nil && len(table.PKColumns) != 0 {
+		column = table.PKColumns[0]
+	}
+	return appendAccessValueColumn(prefix, v, idx, table, column)
+}
+
+func appendAccessValueColumn(prefix []byte, v Value, idx *IndexInfo, info *TableInfo, column string) []byte {
 	if idx == nil {
+		if info != nil && !info.binaryColumn(column) {
+			v = info.collation.keyValue(v)
+		}
 		return appendClusteredValue(copyBytes(prefix), v)
 	}
-	encoded := valueToSortableKey(v)
+	encoded := valueToSortableKey(idx.keyValue(column, v))
 	if len(idx.columnNames()) > 1 {
 		encoded = hex.EncodeToString([]byte(encoded))
 	}
@@ -165,7 +182,7 @@ func buildAccessPath(info *TableInfo, idx *IndexInfo, constraints map[string]*tu
 		var next [][]byte
 		for _, a := range starts {
 			for _, v := range values {
-				next = append(next, appendAccessValue(a, v, idx))
+				next = append(next, appendAccessValueColumn(a, v, idx, info, columns[pos]))
 			}
 		}
 		starts = next
@@ -182,7 +199,7 @@ func buildAccessPath(info *TableInfo, idx *IndexInfo, constraints map[string]*tu
 	for _, start := range starts {
 		low, high := start, prefixSuccessor(start)
 		if pos < len(columns) {
-			if c := constraints[columns[pos]]; c != nil && (c.lower != nil || c.upper != nil) {
+			if c := constraints[columns[pos]]; c != nil && (c.lower != nil || c.upper != nil) && !collatedTextRange(info, idx, columns[pos]) {
 				intervals, _ := accessRangeIntervals(start, columns[pos], info, idx, c)
 				p.intervals = append(p.intervals, intervals...)
 				bounded = true
@@ -561,7 +578,7 @@ func (s *Schema) accessIndexRowKey(p *accessPath, interval coveringInterval, key
 		n = 9
 	} else if len(data) > 1 && data[0] == 1 {
 		v, _ := decodeValue(data[1:])
-		n = len(valueToSortableKey(v))
+		n = len(valueToSortableKey(idx.keyValue(idx.columnNames()[0], v)))
 	} else {
 		// Legacy single-column variable values are raw and can contain ':'.
 		// Auto indexes have no payload; recover the authoritative row suffix,

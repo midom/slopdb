@@ -267,7 +267,7 @@ type windowRow struct {
 	keys []Value
 }
 
-func windowCompare(a, b Value, o OrderByClause) int {
+func (s *Schema) windowCompare(a, b Value, o OrderByClause) int {
 	if a.Null || b.Null {
 		if a.Null && b.Null {
 			return 0
@@ -284,15 +284,15 @@ func windowCompare(a, b Value, o OrderByClause) int {
 		}
 		return 1
 	}
-	c := ValueCompare(a, b)
+	c := s.valueCompare(a, b)
 	if o.Desc {
 		return -c
 	}
 	return c
 }
-func windowPeers(a, b windowRow, orders []OrderByClause) bool {
+func (s *Schema) windowPeers(a, b windowRow, orders []OrderByClause) bool {
 	for i, o := range orders {
-		if windowCompare(a.keys[i], b.keys[i], o) != 0 {
+		if s.windowCompare(a.keys[i], b.keys[i], o) != 0 {
 			return false
 		}
 	}
@@ -392,7 +392,7 @@ func (s *Schema) evaluateWindow(f *FuncCallExpr, rows []map[string]Value) error 
 			if err != nil {
 				return err
 			}
-			key = append(key, valueIdentity(v)...)
+			key = s.appendValueIdentity(key, v)
 		}
 		k := string(key)
 		if _, ok := partitions[k]; !ok {
@@ -421,7 +421,7 @@ func (s *Schema) evaluateWindow(f *FuncCallExpr, rows []map[string]Value) error 
 				return false
 			}
 			for n, o := range w.OrderBy {
-				c := windowCompare(part[i].keys[n], part[j].keys[n], o)
+				c := s.windowCompare(part[i].keys[n], part[j].keys[n], o)
 				if c != 0 {
 					return c < 0
 				}
@@ -437,7 +437,7 @@ func (s *Schema) evaluateWindow(f *FuncCallExpr, rows []map[string]Value) error 
 		var gs, ge []int
 		for start := 0; start < len(part); {
 			end := start + 1
-			for end < len(part) && windowPeers(part[start], part[end], w.OrderBy) {
+			for end < len(part) && s.windowPeers(part[start], part[end], w.OrderBy) {
 				end++
 			}
 			g := len(gs)
@@ -598,7 +598,7 @@ func (s *Schema) windowFrame(w *WindowSpec, p []windowRow, i int, starts, ends, 
 						c = -c
 					}
 				} else {
-					c = windowCompare(v, NewIntValue(0), w.OrderBy[0])
+					c = s.windowCompare(v, NewIntValue(0), w.OrderBy[0])
 				}
 				if end {
 					return c > 0

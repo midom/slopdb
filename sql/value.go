@@ -43,6 +43,7 @@ type ColumnDef struct {
 	ConstraintNames map[string]string `json:"constraint_names,omitempty"`
 	Name            string
 	ColType         ColumnType
+	Binary          bool `json:"binary,omitempty"`
 	NotNull         bool
 	Default         Expression `json:"-"`
 	DefaultSQL      string     `json:"default_sql,omitempty"`
@@ -417,12 +418,13 @@ func (*SubqueryExpr) expr()  {}
 func (*ExistsExpr) expr()    {}
 
 type Value struct {
-	Type ColumnType
-	Int  int64
-	Real float64
-	Text string
-	Blob []byte
-	Null bool
+	Type   ColumnType
+	Binary bool `json:"-"` // expression-level BINARY override; never persisted
+	Int    int64
+	Real   float64
+	Text   string
+	Blob   []byte
+	Null   bool
 }
 
 func (v Value) MarshalJSON() ([]byte, error) {

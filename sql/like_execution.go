@@ -95,3 +95,12 @@ func (s *Schema) matchLike(input, pattern string, escape byte) bool {
 	}
 	return p.match(input)
 }
+
+func (s *Schema) matchLikeValues(input, pattern Value, escape byte) bool {
+	left, right := input.String(), pattern.String()
+	if !input.Binary && !pattern.Binary {
+		left = s.collation.Key(left)
+		right = s.collation.Key(right)
+	}
+	return s.matchLike(left, right, escape)
+}

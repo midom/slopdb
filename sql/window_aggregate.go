@@ -130,7 +130,7 @@ func (a *windowAggregate) frame(lo, hi int) (Value, error) {
 			continue
 		}
 		for len(a.extrema) > 0 {
-			c := ValueCompare(a.values[a.extrema[len(a.extrema)-1]], v)
+			c := a.schema.valueCompare(a.values[a.extrema[len(a.extrema)-1]], v)
 			if a.name == "MIN" && c <= 0 || a.name == "MAX" && c >= 0 {
 				break
 			}

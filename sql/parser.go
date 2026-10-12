@@ -477,6 +477,18 @@ func (p *Parser) parseColumnDef(col *ColumnDef, alteration ...bool) error {
 			if !strings.EqualFold(p.cur.Value, "BINARY") {
 				return fmt.Errorf("unsupported collation: %s", p.cur.Value)
 			}
+			if col.ColType != ColText {
+				return fmt.Errorf("BINARY collation requires a TEXT column")
+			}
+			col.Binary = true
+			p.advance()
+			continue
+		}
+		if p.cur.Type == TokKeyword && kw == "BINARY" {
+			if col.ColType != ColText {
+				return fmt.Errorf("BINARY modifier requires a TEXT column")
+			}
+			col.Binary = true
 			p.advance()
 			continue
 		}
@@ -1776,6 +1788,14 @@ func (p *Parser) parseMultiplicative() (Expression, error) {
 }
 
 func (p *Parser) parseUnary() (Expression, error) {
+	if p.cur.Type == TokKeyword && strings.EqualFold(p.cur.Value, "BINARY") {
+		p.advance()
+		right, err := p.parseUnary()
+		if err != nil {
+			return nil, err
+		}
+		return &UnaryExpr{Op: "BINARY", Right: right}, nil
+	}
 	if p.cur.Type == TokMinus || p.cur.Type == TokPlus || p.cur.Type == TokTilde {
 		op := p.cur.Value
 		p.advance()
@@ -1786,7 +1806,19 @@ func (p *Parser) parseUnary() (Expression, error) {
 		return &UnaryExpr{Op: op, Right: right}, nil
 	}
 
-	return p.parsePrimary()
+	expr, err := p.parsePrimary()
+	if err != nil {
+		return nil, err
+	}
+	for p.cur.Type == TokKeyword && strings.EqualFold(p.cur.Value, "COLLATE") {
+		p.advance()
+		if !strings.EqualFold(p.cur.Value, "BINARY") || p.cur.Type != TokIdent && p.cur.Type != TokKeyword {
+			return nil, fmt.Errorf("unsupported collation: %s", p.cur.Value)
+		}
+		p.advance()
+		expr = &UnaryExpr{Op: "BINARY", Right: expr}
+	}
+	return expr, nil
 }
 
 func (p *Parser) parsePrimary() (Expression, error) {

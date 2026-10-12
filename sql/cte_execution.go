@@ -179,7 +179,7 @@ func (s *Schema) recursiveCTE(c CommonTableExpr) (*ResultSet, error) {
 				return nil, err
 			}
 			if !compound.All {
-				key := rowKey(row)
+				key := s.rowKey(row)
 				if seen[key] {
 					continue
 				}

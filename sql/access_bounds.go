@@ -41,6 +41,18 @@ func accessRangeIntervals(start []byte, column string, info *TableInfo, idx *Ind
 			break
 		}
 	}
+	// A normalization can expand or contract bytes. Legacy secondary TEXT
+	// components lack a terminator, so their prefix bands cannot be derived
+	// from the original literal's byte length. Scan the TEXT band and retain
+	// the SQL predicate as a residual instead.
+	if idx != nil && typ == ColText && !idx.binaryColumns[column] && idx.collation != "" && idx.collation != BinaryCollation {
+		band := []byte{3}
+		if len(idx.columnNames()) > 1 {
+			band = []byte(hex.EncodeToString(band))
+		}
+		low := append(copyBytes(start), band...)
+		return []coveringInterval{{low, prefixSuccessor(low)}}, false
+	}
 	if idx == nil || (typ != ColText && typ != ColBlob) || c.upper == nil {
 		add(low, high)
 		return intervals, exact
@@ -56,7 +68,7 @@ func accessRangeIntervals(start []byte, column string, info *TableInfo, idx *Ind
 		add(low, high)
 		return intervals, false
 	}
-	encoded := appendAccessValue(start, upper, idx)
+	encoded := appendAccessValueColumn(start, upper, idx, info, column)
 	add(low, encoded[:len(encoded)-1])
 	if !c.upperStrict {
 		add(encoded, prefixSuccessor(encoded))
@@ -74,7 +86,7 @@ func accessRangeIntervals(start []byte, column string, info *TableInfo, idx *Ind
 				continue
 			}
 		}
-		key := appendAccessValue(start, prefix, idx)
+		key := appendAccessValueColumn(start, prefix, idx, info, column)
 		add(key, prefixSuccessor(key))
 	}
 	return normalizeAccessIntervals(intervals), false
@@ -124,7 +136,7 @@ func accessRangeBounds(start []byte, column string, info *TableInfo, idx *IndexI
 	variable := idx != nil && (typ == ColText || typ == ColBlob)
 	exact = !variable
 	if c.lower != nil {
-		low = appendAccessValue(start, *c.lower, idx)
+		low = appendAccessValueColumn(start, *c.lower, idx, info, column)
 		if variable {
 			low = low[:len(low)-1]
 		} else if c.lowerStrict {
@@ -138,7 +150,7 @@ func accessRangeBounds(start []byte, column string, info *TableInfo, idx *IndexI
 		}
 	}
 	if c.upper != nil {
-		high = appendAccessValue(start, *c.upper, idx)
+		high = appendAccessValueColumn(start, *c.upper, idx, info, column)
 		if variable {
 			encoded := high[:len(high)-1]
 			high = prefixSuccessor(encoded)
@@ -177,6 +189,33 @@ func variableIndexColumns(info *TableInfo, idx *IndexInfo) bool {
 			if name == col.Name && (col.ColType == ColText || col.ColType == ColBlob) {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+// Bound intersection currently compares literal TEXT bytewise. Until that
+// intersection uses the configured collation, avoid narrowing a Unicode TEXT
+// range and let the full scan evaluate the SQL predicate.
+func collatedTextRange(info *TableInfo, idx *IndexInfo, column string) bool {
+	if info == nil {
+		return false
+	}
+	mode := info.collation
+	if idx != nil {
+		mode = idx.collation
+		if idx.binaryColumns[column] {
+			return false
+		}
+	} else if info.binaryColumn(column) {
+		return false
+	}
+	if mode == "" || mode == BinaryCollation {
+		return false
+	}
+	for _, def := range info.Columns {
+		if def.Name == column {
+			return def.ColType == ColText
 		}
 	}
 	return false

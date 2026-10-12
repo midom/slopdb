@@ -169,6 +169,9 @@ func (s *Schema) lockRow(table string, info *TableInfo, row map[string]Value, ke
 				null = true
 				break
 			}
+			if !columnBinary(info, column) {
+				v = s.collation.keyValue(v)
+			}
 			values = append(values, v)
 		}
 		if null {

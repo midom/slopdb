@@ -225,6 +225,7 @@ func (p *PointUpdate) Run(ctx context.Context) (int64, error) {
 			continue
 		}
 		v, n := decodeValue(data[offset:])
+		v.Binary = p.info.Columns[i].Binary
 		values[i] = v
 		offset += n
 	}

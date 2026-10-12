@@ -70,12 +70,32 @@ inputs. DEFAULT expressions cannot refer to columns or subqueries, and CHECK
 cannot contain a subquery or refer to an unknown column.
 
 TRUE and FALSE are recognized. SQL three-valued NULL logic remains intact.
-Nonbinary collations and unsupported conflict policies produce an error rather
-than being ignored. The existing SQLite-style truth values, affinity, scalar
+Unsupported conflict policies produce an error rather than being ignored. The
+existing SQLite-style truth values, affinity, scalar
 MIN/MAX, AUTOINCREMENT, REPLACE, TOTAL, GROUP_CONCAT, date functions, LIMIT, and
 MySQL-style introspection remain dialect extensions. Supported CTEs, recursive
 CTEs, window functions and UPSERT now have their own feature documentation. Other unimplemented language features remain outside this
 subset.
+
+## Text collation
+
+The database-wide default is `BINARY`, which compares TEXT as bytes and keeps
+existing databases compatible. `PRAGMA collation` reads the current mode;
+`PRAGMA collation='NFKC_CI'` or `db.SetCollation("NFKC_CI")` changes it. Supported
+Unicode modes are `NFC`, `NFD`, `NFKC`, and `NFKD`, each optionally suffixed
+`_CI` for Unicode case folding. NFC/NFD treat canonically equivalent strings
+as equal; NFKC/NFKD also equate compatibility forms. Invalid UTF-8 text remains
+bytewise so normalization does not silently replace stored bytes.
+
+The mode affects TEXT equality, ordering, grouping, `LIKE` matching and text
+index keys. `BINARY expression` or `expression COLLATE BINARY` overrides it for
+that expression. A `TEXT BINARY` or `TEXT COLLATE BINARY` column keeps bytewise
+comparison and indexing across database mode changes. Other column collations
+are rejected. Changing the mode atomically rebuilds clustered TEXT primary
+keys and secondary indexes. If newly equivalent values would violate a PRIMARY
+KEY or UNIQUE constraint, the change fails and the old mode and indexes remain.
+The new mode persists across reopening and participates in transaction rollback.
+See [Text collation](text-collation.md) for examples and operational details.
 
 ## Composite query execution
 

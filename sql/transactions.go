@@ -137,7 +137,7 @@ func cloneState(state *schemaState) *schemaState {
 
 func (s *Schema) persistentStateChanged() bool {
 	return s.catalogChanged() || !reflect.DeepEqual(s.stats, s.txState.stats) || !reflect.DeepEqual(s.distributions, s.txState.distributions) ||
-		!reflect.DeepEqual(s.autoincMax, s.txState.autoinc) || s.userVersion != s.txState.userVersion
+		!reflect.DeepEqual(s.autoincMax, s.txState.autoinc) || s.userVersion != s.txState.userVersion || s.collation != s.txState.collation
 }
 
 func mergeMap[T any](base, local, latest map[string]T) map[string]T {
@@ -183,6 +183,10 @@ func mergeState(base, local, latest *schemaState) *schemaState {
 	if local.userVersion != base.userVersion {
 		version = local.userVersion
 	}
+	collation := latest.collation
+	if local.collation != base.collation {
+		collation = local.collation
+	}
 	merged := &schemaState{
 		tables:        mergeCatalogMap(base.tables, local.tables, latest.tables),
 		indexes:       mergeCatalogMap(base.indexes, local.indexes, latest.indexes),
@@ -193,6 +197,7 @@ func mergeState(base, local, latest *schemaState) *schemaState {
 		autoinc:       mergeCounter(base.autoinc, local.autoinc, latest.autoinc),
 		rowIDs:        mergeCounter(base.rowIDs, local.rowIDs, latest.rowIDs),
 		userVersion:   version,
+		collation:     collation,
 		nextObjectID:  max(local.nextObjectID, latest.nextObjectID),
 	}
 	if reflect.DeepEqual(merged.tables, latest.tables) && reflect.DeepEqual(merged.indexes, latest.indexes) {
@@ -205,7 +210,7 @@ func (s *Schema) catalogChanged() bool {
 	if s.txState == nil {
 		return false
 	}
-	return s.nextObjectID != s.txState.nextObjectID || !reflect.DeepEqual(s.tables, s.txState.tables) ||
+	return s.nextObjectID != s.txState.nextObjectID || s.collation != s.txState.collation || !reflect.DeepEqual(s.tables, s.txState.tables) ||
 		!reflect.DeepEqual(s.indexes, s.txState.indexes) ||
 		!reflect.DeepEqual(s.views, s.txState.views) ||
 		!reflect.DeepEqual(s.triggers, s.txState.triggers)

@@ -230,8 +230,17 @@ func (s *Schema) checkStatementForeignKeys(pos int) error {
 				continue
 			}
 			after, exists := foreignValues(columns, newRow)
-			if !latest.del && exists && equalIndexValues(before, after) {
-				continue
+			if !latest.del && exists {
+				unchanged := len(before) == len(after)
+				for i := range before {
+					if s.valueCompare(before[i], after[i]) != 0 {
+						unchanged = false
+						break
+					}
+				}
+				if unchanged {
+					continue
+				}
 			}
 			entries, err := s.matchingDMLRows(ref.table, s.tables[ref.table], equalityPredicate(ref.key.Columns, before), -1, 0)
 			if err != nil {

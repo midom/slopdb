@@ -176,7 +176,7 @@ func (p *preparedExecutionPlan) completePointBindings() bool {
 }
 
 func preparedExactValue(v Value, typ ColumnType) bool {
-	return !v.Null && v.Type == typ && (typ != ColReal || (v.Real != 0 && !math.IsNaN(v.Real)))
+	return !v.Null && !v.Binary && v.Type == typ && (typ != ColReal || (v.Real != 0 && !math.IsNaN(v.Real)))
 }
 func (p *preparedExecutionPlan) primaryKey(table string, info *TableInfo) ([]byte, bool) {
 	if p.pointKeyReady {

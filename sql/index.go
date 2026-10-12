@@ -141,6 +141,20 @@ func indexValues(columns []string, row map[string]Value) ([]Value, bool) {
 	return values, hasNull
 }
 
+func (c Collation) keyValue(value Value) Value {
+	if !value.Null && value.Type == ColText {
+		value.Text = c.Key(value.Text)
+	}
+	return value
+}
+
+func (idx *IndexInfo) keyValue(column string, value Value) Value {
+	if idx.binaryColumns[column] {
+		return value
+	}
+	return idx.collation.keyValue(value)
+}
+
 func equalIndexValues(a, b []Value) bool {
 	for i := range a {
 		if ValueCompare(a[i], b[i]) != 0 {
@@ -159,13 +173,13 @@ func encodeRowIndexKey(idx *IndexInfo, row map[string]Value, rowKey []byte) []by
 		if !ok {
 			value = NewNullValue()
 		}
-		return []byte(idx.storagePrefix() + valueToSortableKey(value) + ":" + string(rowKey))
+		return []byte(idx.storagePrefix() + valueToSortableKey(idx.keyValue(columns[0], value)) + ":" + string(rowKey))
 	}
 	values, _ := indexValues(columns, row)
 	var b strings.Builder
 	b.WriteString(idx.storagePrefix())
-	for _, value := range values {
-		b.WriteString(hex.EncodeToString([]byte(valueToSortableKey(value))))
+	for i, value := range values {
+		b.WriteString(hex.EncodeToString([]byte(valueToSortableKey(idx.keyValue(columns[i], value)))))
 		b.WriteByte(':')
 	}
 	b.Write(rowKey)
@@ -173,7 +187,7 @@ func encodeRowIndexKey(idx *IndexInfo, row map[string]Value, rowKey []byte) []by
 }
 
 func indexValuePrefix(idx *IndexInfo, value Value) string {
-	encoded := valueToSortableKey(value)
+	encoded := valueToSortableKey(idx.keyValue(idx.columnNames()[0], value))
 	if len(idx.columnNames()) > 1 {
 		encoded = hex.EncodeToString([]byte(encoded))
 	}
@@ -186,8 +200,8 @@ func indexTuplePrefix(idx *IndexInfo, values []Value) string {
 	}
 	var b strings.Builder
 	b.WriteString(idx.storagePrefix())
-	for _, v := range values {
-		b.WriteString(hex.EncodeToString([]byte(valueToSortableKey(v))))
+	for i, v := range values {
+		b.WriteString(hex.EncodeToString([]byte(valueToSortableKey(idx.keyValue(idx.columnNames()[i], v)))))
 		b.WriteByte(':')
 	}
 	return b.String()

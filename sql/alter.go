@@ -118,6 +118,15 @@ func (s *Schema) AlterTable(a *AlterTableStmt) error {
 			if a.NewName != "binary" {
 				return fmt.Errorf("unsupported collation: %s", a.NewName)
 			}
+			if col.ColType != ColText {
+				return fmt.Errorf("BINARY collation requires a TEXT column")
+			}
+			if !col.Binary {
+				col.Binary = true
+				if err := s.rebuildCollation(s.collation); err != nil {
+					return err
+				}
+			}
 		}
 		if err = validateConstraintExpressions(info); err != nil {
 			return err
@@ -355,8 +364,11 @@ func (s *Schema) AlterTable(a *AlterTableStmt) error {
 				continue
 			}
 			var buf []byte
-			for _, v := range values {
-				buf = appendValueIdentity(buf, v)
+			for i, v := range values {
+				if info.binaryColumn(g[i]) {
+					v.Binary = true
+				}
+				buf = s.appendValueIdentity(buf, v)
 			}
 			if seen[n][string(buf)] {
 				return fmt.Errorf("UNIQUE constraint failed: %s.%s", info.Name, strings.Join(g, ","))
@@ -518,6 +530,7 @@ func (s *Schema) renameColumn(info *TableInfo, old, name string) error {
 				idx.Column = name
 			}
 			rename(idx.Columns)
+			s.bindIndexCollation(idx)
 		}
 	}
 	s.renameForeignKeys(info.Name, info.Name, old, name)
@@ -646,6 +659,7 @@ func (s *Schema) addConstraintIndex(info *TableInfo, c *ConstraintDef) error {
 		name = "__constraint_" + strconv.FormatUint(id, 10)
 	}
 	idx := newIndexInfo(name, info.Name, c.Columns, true)
+	s.bindIndexCollation(idx)
 	idx.ID = id
 	idx.Auto = true
 	s.indexes[name] = idx

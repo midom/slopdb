@@ -134,8 +134,12 @@ func (db *Database) statementCatalogLock(schema *sql.Schema, statement sql.State
 		exclusive = true
 	case *sql.PragmaStmt:
 		pragma := statement.(*sql.PragmaStmt)
-		if pragma.Value == nil && !(pragma.Name == "page_size" && len(pragma.Args) > 0) {
+		setting := pragma.Value != nil || len(pragma.Args) > 0
+		if !setting {
 			return nil
+		}
+		if pragma.Name == "collation" {
+			exclusive = true
 		}
 	case *sql.InsertStmt, *sql.UpdateStmt, *sql.DeleteStmt, *sql.AnalyzeStmt:
 	default:

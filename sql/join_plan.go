@@ -420,6 +420,9 @@ type joinReader struct {
 }
 
 func (s *Schema) joinReader(r *joinRelation, pairs []joinKeyPair) *joinReader {
+	if s.collation != "" && s.collation != BinaryCollation {
+		pairs = nil
+	}
 	reader := &joinReader{relation: r, pairs: pairs, cache: make(map[string][]map[string]Value)}
 	bound := make(map[string]bool)
 	for _, pair := range pairs {
@@ -495,7 +498,7 @@ func joinTypedValue(v Value, typ ColumnType) (Value, bool) {
 
 func (s *Schema) readerRows(reader *joinReader, left map[string]Value) ([]map[string]Value, error) {
 	r := reader.relation
-	key, valid := joinRowKey(left, reader.pairs, false)
+	key, valid := s.joinRowKey(left, reader.pairs, false)
 	if !valid {
 		return nil, nil
 	}
@@ -528,7 +531,7 @@ func (s *Schema) readerRows(reader *joinReader, left map[string]Value) ([]map[st
 			if path != nil {
 				var rows []map[string]Value
 				err := s.walkAccess(r.info, r.needed, []*accessPath{path}, func(row map[string]Value) error {
-					rk, ok := joinRowKey(row, reader.pairs, true)
+					rk, ok := s.joinRowKey(row, reader.pairs, true)
 					if !ok || rk != key {
 						return nil
 					}
@@ -742,7 +745,7 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 			return nil
 		}
 		if reader.disk != nil {
-			key, valid := joinRowKey(row, reader.pairs, false)
+			key, valid := s.joinRowKey(row, reader.pairs, false)
 			if valid {
 				if err := reader.disk.walk(key, acceptCandidate); err != nil {
 					return err

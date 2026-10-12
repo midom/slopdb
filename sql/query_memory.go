@@ -564,7 +564,7 @@ func (s *Schema) buildJoinBuckets(reader *joinReader) error {
 	reader.buckets = make(map[string][]map[string]Value)
 	var used int64
 	add := func(row map[string]Value) error {
-		key, valid := joinRowKey(row, reader.pairs, true)
+		key, valid := s.joinRowKey(row, reader.pairs, true)
 		if !valid {
 			return nil
 		}
@@ -645,7 +645,7 @@ func (s *Schema) addAggregateValue(a *aggregateState, f *FuncCallExpr, v Value) 
 	return addAggregateValue(a, f, v)
 }
 func (s *Schema) aggregateDistinct(a *aggregateState, v Value) (bool, error) {
-	key := string(valueIdentity(v))
+	key := string(s.valueIdentity(v))
 	if a.distinctDisk == nil {
 		if a.seen == nil {
 			a.seen = make(map[string]bool)
@@ -694,7 +694,7 @@ func (s *Schema) distinctBounded(rows []map[string]Value, cols []string, keys []
 	identity := func(row map[string]Value) string {
 		var key []byte
 		for _, col := range cols {
-			key = append(key, valueIdentity(row[col])...)
+			key = s.appendValueIdentity(key, row[col])
 		}
 		return string(key)
 	}

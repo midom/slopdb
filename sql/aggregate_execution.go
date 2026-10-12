@@ -72,6 +72,9 @@ func addAggregateValue(a *aggregateState, f *FuncCallExpr, v Value) error {
 	case "COUNT":
 	case "MIN", "MAX":
 		cmp := ValueCompare(v, a.best)
+		if a.owner != nil {
+			cmp = a.owner.valueCompare(v, a.best)
+		}
 		if name == "MIN" && cmp < 0 || name == "MAX" && cmp > 0 {
 			a.best = v
 		}
@@ -434,7 +437,7 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 			if err != nil {
 				return err
 			}
-			key = append(key, valueIdentity(v)...)
+			key = s.appendValueIdentity(key, v)
 		}
 		k := string(key)
 		var g *aggregateGroup
@@ -520,13 +523,19 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 			}
 		}
 		ordered = orderedAggregateInput(stmt, info, groupExprs, paths)
+		if s.collation != "" && s.collation != BinaryCollation {
+			ordered = false
+		}
 		finish := (func(int64, int64, error))(nil)
 		if ordered {
 			finish = s.ProfileOperator("OrderedAggregate", stmt.From)
 		}
 		var typed *typedAggregate
 		var ok bool
-		if p := stmt.prepared; p != nil {
+		if s.collation != "" && s.collation != BinaryCollation {
+			// The typed program uses bytewise comparison and grouping keys.
+			// Unicode modes use the expression evaluator's collation rules.
+		} else if p := stmt.prepared; p != nil {
 			if !p.aggregateReady {
 				p.aggregate, _ = compileTypedAggregate(info, stmt.From, alias, stmt.Where, groupExprs, functions, representative)
 				p.aggregateReady = true
@@ -596,7 +605,7 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 				if e != nil {
 					return e
 				}
-				key = append(key, valueIdentity(v)...)
+				key = s.appendValueIdentity(key, v)
 			}
 			inputs++
 			return sorter.add(input, nil, string(key))

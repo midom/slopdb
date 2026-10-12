@@ -13,7 +13,10 @@ are optional benchmark comparisons.
 
 - **SQL:** joins, subqueries, grouping, compound queries, UPSERT, common table
   expressions, recursive queries and window functions. Tables support composite
-  primary keys, secondary indexes, constraints, views and triggers.
+  primary keys, secondary indexes, constraints, views and triggers. Text
+  collation supports canonical Unicode equivalence (NFC/NFD), compatibility
+  equivalence (NFKC/NFKD), and optional Unicode case folding. SQL `BINARY`
+  overrides the database-wide collation for expressions or columns.
 - **Transactions:** independent sessions, READ COMMITTED statement snapshots,
   atomic commits, row and unique-key locks, savepoints, cancellation and optional
   deadlock detection.
@@ -33,6 +36,8 @@ Supported SQL behavior and restrictions are described in
 [window functions](docs/window-functions.md).
 [ALTER operations](docs/alter-table.md) covers schema changes, constraints,
 atomic renames and legacy storage upgrades.
+[Text collation](docs/text-collation.md) explains Unicode compatibility,
+`BINARY` overrides and index rebuilds.
 [Catalog performance](docs/catalog-performance.md) records point SELECT and
 transaction measurements, profiling and concurrent-rename consistency checks.
 
