@@ -1,0 +1,26 @@
+TPC-C-inspired workload: workers=10 duration=1m0s warehouses=2 districts=10 customers=100 items=1000
+Database: /tmp/slopdb-bench/page-tpcc-bulk-window-20261012/tpcc-sqlite-65536/database
+Engine: sqlite; settings: map[busy_timeout_ms:250 cache_size_kib:131072 driver:github.com/mattn/go-sqlite3 v1.14.43 engine:sqlite journal_mode:wal page_size_bytes:65536 prepared_per_worker:true storage:disk synchronous:OFF transaction_mode:BEGIN IMMEDIATE for writers; BEGIN for read-only transactions version:3.51.3 wal_checkpoint_target_bytes:67108864 wal_fsync:false]
+Prepared statements=true; preparation took 0.217s
+Loaded nine tables in 0.02s. Mix: 45% new-order, 43% payment, 4% each order-status/delivery/stock-level.
+ 10.0s: committed=19246 failed=0 retries=201
+ 20.0s: committed=37588 failed=0 retries=413
+ 30.0s: committed=55492 failed=0 retries=619
+ 40.0s: committed=58444 failed=34 retries=896
+ 50.0s: committed=60131 failed=76 retries=1176
+Checking committed data...
+
+Measured 60.000s; drained in 0.239s; committed=62361 (1039.34 tx/s), new-orders/min=28052.77
+transaction   committed  tx/s     mean ms  p50 ms  p95 ms  p99 ms  failed  retries  rollback  canceled
+new_order     28053      467.55   7.71     0.76    1.77    255.63  59      745      247       2
+payment       26684      444.73   6.49     0.16    0.36    252.84  50      681      0         5
+order_status  2534       42.23    0.20     0.18    0.32    0.54    0       0        0         0
+delivery      2528       42.13    7.46     1.61    2.63    253.11  1       37       0         2
+stock_level   2562       42.70    1.23     0.93    1.39    1.98    0       0        0         0
+TOTAL         62361      1039.34  6.61     0.56    1.86    252.10  110     1463     247       9
+Errors: map[lock_timeout:110]
+Retry causes: map[lock_timeout:1463]
+After run consistency checks: 15/15 passed
+After close/reopen consistency checks: 15/15 passed
+JSON report: /tmp/slopdb-bench/page-tpcc-bulk-window-20261012/tpcc-sqlite-65536/report.json
+tpcc-compare: 110 unexpected transaction failures

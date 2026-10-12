@@ -1,0 +1,25 @@
+TPC-C-inspired workload: workers=10 duration=1m0s warehouses=2 districts=10 customers=100 items=1000
+Database: /tmp/slopdb-bench/page-tpcc-bulk-window-20261012/tpcc-slopdb-4096/database
+Engine: slopdb; settings: map[deadlock_detection:true engine:slopdb page_size_bytes:4096 page_size_kind:uncompressed SSTable data-block target storage:disk transaction_mode:READ COMMITTED, row locking wal:true wal_fsync:false zstd_window_bytes:8388608]
+Prepared statements=true; preparation took 0.021s
+Loaded nine tables in 0.14s. Mix: 45% new-order, 43% payment, 4% each order-status/delivery/stock-level.
+ 10.0s: committed=23269 failed=0 retries=0
+ 20.0s: committed=46270 failed=0 retries=0
+ 30.0s: committed=68249 failed=0 retries=0
+ 40.0s: committed=88773 failed=0 retries=0
+ 50.0s: committed=108413 failed=0 retries=0
+Checking committed data...
+
+Measured 60.007s; drained in 0.001s; committed=126877 (2114.38 tx/s), new-orders/min=57042.69
+transaction   committed  tx/s     mean ms  p50 ms  p95 ms  p99 ms  failed  retries  rollback  canceled
+new_order     57049      950.71   4.90     3.76    12.85   21.25   0       0        550       5
+payment       54489      908.05   3.99     2.51    13.02   22.38   0       0        0         2
+order_status  5087       84.77    0.50     0.36    1.23    2.63    0       0        0         0
+delivery      5129       85.47    16.88    16.21   27.87   37.54   0       0        0         3
+stock_level   5123       85.37    2.12     1.81    3.82    5.70    0       0        0         0
+TOTAL         126877     2114.38  4.71     3.13    15.29   24.34   0       0        550       10
+Errors: map[]
+Retry causes: map[]
+After run consistency checks: 15/15 passed
+After close/reopen consistency checks: 15/15 passed
+JSON report: /tmp/slopdb-bench/page-tpcc-bulk-window-20261012/tpcc-slopdb-4096/report.json

@@ -1,4 +1,13 @@
-# Database storage comparison, 2026-10-11
+# Database storage comparisons
+
+The [page-size comparison](page-size-comparison.md) adds fresh 16 KiB, 64 KiB
+and 1 MiB SlopDB measurements, supported native sizes and default-size controls.
+It includes large equal-data storage fixtures and separate TPC-C/TPC-H timings.
+At 64 KiB, maintained SlopDB footprints are 145.60 MiB for the 10.5-million-row
+TPC-C snapshot and 170.15 MiB for TPC-H SF=0.2. Larger pages reduced storage
+but slowed this TPC-H query workload; the new report preserves both outcomes.
+
+## Historical small-dataset comparison, 2026-10-11
 
 The [larger comparison](storage-large-comparison.md) measures both workloads
 above 100 MiB per engine, including TPC-H SF=0.2 and a 10.5-million-row TPC-C
@@ -50,7 +59,7 @@ database; DuckDB executed VACUUM followed by CHECKPOINT. These are engine-specif
 operations. DuckDB's file size did not change in these runs.
 
 New SQLite files use Python SQLite 3.45.1; DuckDB uses 1.5.6. The original TPC-C
-SQLite run used the Go driver's SQLite 3.51.3. SlopDB uses the current checkout
+SQLite run used the Go driver's SQLite 3.51.3. SlopDB used `f45ea982792cd25c94478b76dd4bf20ac83bb8eb`
 and its default storage settings: 4 MiB memtable, 4 KiB blocks, and auto
 compression. WAL was retained with WAL fsync disabled for new SlopDB/SQLite
 loads; sizes were measured after clean shutdown/checkpointing.

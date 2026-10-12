@@ -1,0 +1,63 @@
+{
+  "load_seconds": 17.27122707851231,
+  "query_report": "/tmp/slopdb-bench/page-matrix-bulk-window-20261012/tpch-sqlite-4096/queries.json",
+  "closed": {
+    "files": [
+      {
+        "name": "benchmark.sqlite",
+        "bytes": 336699392,
+        "allocated_bytes": 336703488
+      }
+    ],
+    "file_count": 1,
+    "file_bytes": 336699392,
+    "allocated_total_bytes": 336707584,
+    "wal_files": [],
+    "storage_info": {
+      "page_size": 4096,
+      "page_count": 82202,
+      "freelist_count": 0
+    }
+  },
+  "after_maintenance": {
+    "maintenance_seconds": 2.057501475326717,
+    "rows": {
+      "region": 5,
+      "nation": 25,
+      "supplier": 2000,
+      "customer": 30000,
+      "part": 40000,
+      "partsupp": 160000,
+      "orders": 300000,
+      "lineitem": 1199969
+    },
+    "counts_verified_after_reopen": true,
+    "query_answers_verified_after_maintenance": 22,
+    "storage_info": {
+      "page_size": 4096,
+      "page_count": 81642,
+      "freelist_count": 0
+    },
+    "files": [
+      {
+        "name": "benchmark.sqlite",
+        "bytes": 334405632,
+        "allocated_bytes": 334409728
+      }
+    ],
+    "file_count": 1,
+    "file_bytes": 334405632,
+    "allocated_total_bytes": 334413824,
+    "wal_files": []
+  },
+  "query_benchmarked": true,
+  "query_benchmark_skip_reason": null,
+  "load_mode": "executemany",
+  "load_batch_rows": 4096,
+  "query_answers_verified": true,
+  "status": "ok",
+  "workload": "tpch",
+  "engine": "sqlite",
+  "requested_page_size_bytes": 4096,
+  "page_size_bytes": 4096
+}

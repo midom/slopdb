@@ -1,0 +1,9 @@
+sqlite warehouse 256
+sqlite district 2560
+sqlite customer 256000
+sqlite item 1000
+sqlite stock 256000
+sqlite orders 859520
+sqlite new_order 113920
+sqlite order_line 8216320
+sqlite history 812544

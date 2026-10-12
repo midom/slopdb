@@ -1,0 +1,8 @@
+{
+  "engine": "sqlite",
+  "requested_page_size_bytes": 1048576,
+  "report": "/tmp/slopdb-bench/page-tpcc-bulk-window-20261012/tpcc-sqlite-1048576/report.json",
+  "log": "/tmp/slopdb-bench/page-tpcc-bulk-window-20261012/tpcc-sqlite-1048576/run.log",
+  "status": "unsupported",
+  "reason": "sqlite does not support the requested page/block size"
+}

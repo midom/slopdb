@@ -1,0 +1,76 @@
+{
+  "load_seconds": 18.147245423,
+  "query_report": "/tmp/slopdb-bench/page-matrix-bulk-window-20261012/tpch-duckdb-16384/queries.json",
+  "closed": {
+    "files": [
+      {
+        "name": "benchmark.duckdb",
+        "bytes": 285290496,
+        "allocated_bytes": 285294592
+      }
+    ],
+    "file_count": 1,
+    "file_bytes": 285290496,
+    "allocated_total_bytes": 285298688,
+    "wal_files": [],
+    "storage_info": {
+      "database_name": "benchmark",
+      "database_size": "272.0 MiB",
+      "block_size": 16384,
+      "total_blocks": 17412,
+      "used_blocks": 17391,
+      "free_blocks": 21,
+      "wal_size": "0 bytes",
+      "memory_usage": "496.0 KiB",
+      "memory_limit": "953.6 MiB"
+    }
+  },
+  "after_maintenance": {
+    "maintenance_seconds": 0.003692852333188057,
+    "rows": {
+      "region": 5,
+      "nation": 25,
+      "supplier": 2000,
+      "customer": 30000,
+      "part": 40000,
+      "partsupp": 160000,
+      "orders": 300000,
+      "lineitem": 1199969
+    },
+    "counts_verified_after_reopen": true,
+    "query_answers_verified_after_maintenance": 22,
+    "storage_info": {
+      "database_name": "benchmark",
+      "database_size": "272.0 MiB",
+      "block_size": 16384,
+      "total_blocks": 17412,
+      "used_blocks": 17391,
+      "free_blocks": 21,
+      "wal_size": "0 bytes",
+      "memory_usage": "96.2 MiB",
+      "memory_limit": "953.6 MiB"
+    },
+    "files": [
+      {
+        "name": "benchmark.duckdb",
+        "bytes": 285290496,
+        "allocated_bytes": 285294592
+      }
+    ],
+    "file_count": 1,
+    "file_bytes": 285290496,
+    "allocated_total_bytes": 285298688,
+    "wal_files": []
+  },
+  "query_benchmarked": true,
+  "query_benchmark_skip_reason": null,
+  "load_mode": "appender",
+  "load_batch_rows": null,
+  "query_answers_verified": true,
+  "status": "ok",
+  "workload": "tpch",
+  "engine": "duckdb",
+  "requested_page_size_bytes": 16384,
+  "page_size_bytes": 16384,
+  "wal_fsync_calls_skipped": 34
+}

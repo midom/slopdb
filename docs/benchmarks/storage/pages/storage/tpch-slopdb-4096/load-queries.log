@@ -1,0 +1,38 @@
+TPC-H query workload: 22 queries, runs=1 warmups=1 timeout=3m0s prepared=true indexes=true
+Data: /tmp/slopdb-bench/storage-large-uxqRa0/tpch-inputs
+Database: /tmp/slopdb-bench/page-matrix-bulk-window-20261012/tpch-slopdb-4096/database
+WAL enabled; WAL fsync=false. Single query stream.
+  loaded region   5 rows
+  loaded nation   25 rows
+  loaded supplier 2000 rows
+  loaded customer 30000 rows
+  loaded part     40000 rows
+  loaded partsupp 160000 rows
+  loaded orders   300000 rows
+  loaded lineitem 1199969 rows
+Loaded and indexed in 100.353s, reopened in 0.022s; persisted row counts verified.
+Rows: map[customer:30000 lineitem:1199969 nation:25 orders:300000 part:40000 partsupp:160000 region:5 supplier:2000]; database bytes=280296641
+Q01 Pricing summary                     map[ok:1] median=3757.500ms rows=4
+Q02 Minimum cost supplier               map[ok:1] median=53.422ms rows=80
+Q03 Shipping priority                   map[ok:1] median=2274.251ms rows=10
+Q04 Order priority                      map[ok:1] median=499.214ms rows=5
+Q05 Local supplier volume               map[ok:1] median=6819.279ms rows=5
+Q06 Forecasting revenue                 map[ok:1] median=2056.864ms rows=1
+Q07 Volume shipping                     map[ok:1] median=3189.451ms rows=4
+Q08 National market share               map[ok:1] median=224.220ms rows=2
+Q09 Product type profit                 map[ok:1] median=5140.632ms rows=175
+Q10 Returned item reporting             map[ok:1] median=663.051ms rows=20
+Q11 Important stock identification      map[ok:1] median=112.195ms rows=3509
+Q12 Shipping modes                      map[ok:1] median=2425.834ms rows=2
+Q13 Customer distribution               map[ok:1] median=3210.266ms rows=40
+Q14 Promotion effect                    map[ok:1] median=242.674ms rows=1
+Q15 Top supplier                        map[ok:1] median=556.822ms rows=1
+Q16 Parts supplier relationship         map[ok:1] median=259.503ms rows=5307
+Q17 Small quantity order revenue        map[ok:1] median=56.774ms rows=1
+Q18 Large volume customer               map[ok:1] median=2716.349ms rows=9
+Q19 Discounted revenue                  map[ok:1] median=93.787ms rows=1
+Q20 Potential part promotion            map[ok:1] median=338.284ms rows=36
+Q21 Suppliers who kept orders waiting   map[ok:1] median=4271.206ms rows=91
+Q22 Global sales opportunity            map[ok:1] median=214.314ms rows=7
+Executions: 22 completed, 0 timed out, 0 failed; query phase 80.840s
+Report: /tmp/slopdb-bench/page-matrix-bulk-window-20261012/tpch-slopdb-4096/queries.json

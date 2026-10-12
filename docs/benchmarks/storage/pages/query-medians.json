@@ -1,0 +1,1784 @@
+[
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 16384,
+    "query": 1,
+    "median_ms": 3403.990432,
+    "sample_ms": [
+      3403.990432
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 16384,
+    "query": 2,
+    "median_ms": 51.955918,
+    "sample_ms": [
+      51.955918
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 16384,
+    "query": 3,
+    "median_ms": 3163.749981,
+    "sample_ms": [
+      3163.749981
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 16384,
+    "query": 4,
+    "median_ms": 1167.999392,
+    "sample_ms": [
+      1167.999392
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 16384,
+    "query": 5,
+    "median_ms": 12256.003591,
+    "sample_ms": [
+      12256.003591
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 16384,
+    "query": 6,
+    "median_ms": 3635.372815,
+    "sample_ms": [
+      3635.372815
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 16384,
+    "query": 7,
+    "median_ms": 6351.311635,
+    "sample_ms": [
+      6351.311635
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 16384,
+    "query": 8,
+    "median_ms": 806.745454,
+    "sample_ms": [
+      806.745454
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 16384,
+    "query": 9,
+    "median_ms": 7417.093836,
+    "sample_ms": [
+      7417.093836
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 16384,
+    "query": 10,
+    "median_ms": 1636.882498,
+    "sample_ms": [
+      1636.882498
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 16384,
+    "query": 11,
+    "median_ms": 110.181335,
+    "sample_ms": [
+      110.181335
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 16384,
+    "query": 12,
+    "median_ms": 4147.947174,
+    "sample_ms": [
+      4147.947174
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 16384,
+    "query": 13,
+    "median_ms": 3170.0764,
+    "sample_ms": [
+      3170.0764
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 16384,
+    "query": 14,
+    "median_ms": 265.704368,
+    "sample_ms": [
+      265.704368
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 16384,
+    "query": 15,
+    "median_ms": 1844.130729,
+    "sample_ms": [
+      1844.130729
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 16384,
+    "query": 16,
+    "median_ms": 249.033398,
+    "sample_ms": [
+      249.033398
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 16384,
+    "query": 17,
+    "median_ms": 56.728092,
+    "sample_ms": [
+      56.728092
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 16384,
+    "query": 18,
+    "median_ms": 2293.620215,
+    "sample_ms": [
+      2293.620215
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 16384,
+    "query": 19,
+    "median_ms": 90.974516,
+    "sample_ms": [
+      90.974516
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 16384,
+    "query": 20,
+    "median_ms": 1000.581203,
+    "sample_ms": [
+      1000.581203
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 16384,
+    "query": 21,
+    "median_ms": 5422.115409,
+    "sample_ms": [
+      5422.115409
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 16384,
+    "query": 22,
+    "median_ms": 212.705927,
+    "sample_ms": [
+      212.705927
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 65536,
+    "query": 1,
+    "median_ms": 3150.493655,
+    "sample_ms": [
+      3150.493655
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 65536,
+    "query": 2,
+    "median_ms": 52.0062,
+    "sample_ms": [
+      52.0062
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 65536,
+    "query": 3,
+    "median_ms": 6426.490093,
+    "sample_ms": [
+      6426.490093
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 65536,
+    "query": 4,
+    "median_ms": 2460.475529,
+    "sample_ms": [
+      2460.475529
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 65536,
+    "query": 5,
+    "median_ms": 31168.007123,
+    "sample_ms": [
+      31168.007123
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 65536,
+    "query": 6,
+    "median_ms": 16419.950197,
+    "sample_ms": [
+      16419.950197
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 65536,
+    "query": 7,
+    "median_ms": 17344.156208,
+    "sample_ms": [
+      17344.156208
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 65536,
+    "query": 8,
+    "median_ms": 1961.11338,
+    "sample_ms": [
+      1961.11338
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 65536,
+    "query": 9,
+    "median_ms": 14943.617975,
+    "sample_ms": [
+      14943.617975
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 65536,
+    "query": 10,
+    "median_ms": 2244.363886,
+    "sample_ms": [
+      2244.363886
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 65536,
+    "query": 11,
+    "median_ms": 105.705125,
+    "sample_ms": [
+      105.705125
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 65536,
+    "query": 12,
+    "median_ms": 17104.169738,
+    "sample_ms": [
+      17104.169738
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 65536,
+    "query": 13,
+    "median_ms": 3069.670933,
+    "sample_ms": [
+      3069.670933
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 65536,
+    "query": 14,
+    "median_ms": 1569.522413,
+    "sample_ms": [
+      1569.522413
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 65536,
+    "query": 15,
+    "median_ms": 8041.389813,
+    "sample_ms": [
+      8041.389813
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 65536,
+    "query": 16,
+    "median_ms": 250.147687,
+    "sample_ms": [
+      250.147687
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 65536,
+    "query": 17,
+    "median_ms": 55.896611,
+    "sample_ms": [
+      55.896611
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 65536,
+    "query": 18,
+    "median_ms": 2106.651898,
+    "sample_ms": [
+      2106.651898
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 65536,
+    "query": 19,
+    "median_ms": 240.713898,
+    "sample_ms": [
+      240.713898
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 65536,
+    "query": 20,
+    "median_ms": 2026.576612,
+    "sample_ms": [
+      2026.576612
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 65536,
+    "query": 21,
+    "median_ms": 9702.747377,
+    "sample_ms": [
+      9702.747377
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 65536,
+    "query": 22,
+    "median_ms": 209.875963,
+    "sample_ms": [
+      209.875963
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 4096,
+    "query": 1,
+    "median_ms": 3757.499833,
+    "sample_ms": [
+      3757.499833
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 4096,
+    "query": 2,
+    "median_ms": 53.421523,
+    "sample_ms": [
+      53.421523
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 4096,
+    "query": 3,
+    "median_ms": 2274.250904,
+    "sample_ms": [
+      2274.250904
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 4096,
+    "query": 4,
+    "median_ms": 499.213884,
+    "sample_ms": [
+      499.213884
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 4096,
+    "query": 5,
+    "median_ms": 6819.278981,
+    "sample_ms": [
+      6819.278981
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 4096,
+    "query": 6,
+    "median_ms": 2056.864319,
+    "sample_ms": [
+      2056.864319
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 4096,
+    "query": 7,
+    "median_ms": 3189.451298,
+    "sample_ms": [
+      3189.451298
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 4096,
+    "query": 8,
+    "median_ms": 224.220165,
+    "sample_ms": [
+      224.220165
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 4096,
+    "query": 9,
+    "median_ms": 5140.631854,
+    "sample_ms": [
+      5140.631854
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 4096,
+    "query": 10,
+    "median_ms": 663.051024,
+    "sample_ms": [
+      663.051024
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 4096,
+    "query": 11,
+    "median_ms": 112.195102,
+    "sample_ms": [
+      112.195102
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 4096,
+    "query": 12,
+    "median_ms": 2425.834326,
+    "sample_ms": [
+      2425.834326
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 4096,
+    "query": 13,
+    "median_ms": 3210.2658,
+    "sample_ms": [
+      3210.2658
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 4096,
+    "query": 14,
+    "median_ms": 242.674101,
+    "sample_ms": [
+      242.674101
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 4096,
+    "query": 15,
+    "median_ms": 556.82166,
+    "sample_ms": [
+      556.82166
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 4096,
+    "query": 16,
+    "median_ms": 259.503432,
+    "sample_ms": [
+      259.503432
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 4096,
+    "query": 17,
+    "median_ms": 56.774413,
+    "sample_ms": [
+      56.774413
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 4096,
+    "query": 18,
+    "median_ms": 2716.349212,
+    "sample_ms": [
+      2716.349212
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 4096,
+    "query": 19,
+    "median_ms": 93.786566,
+    "sample_ms": [
+      93.786566
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 4096,
+    "query": 20,
+    "median_ms": 338.284033,
+    "sample_ms": [
+      338.284033
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 4096,
+    "query": 21,
+    "median_ms": 4271.206158,
+    "sample_ms": [
+      4271.206158
+    ]
+  },
+  {
+    "engine": "slopdb",
+    "page_size_bytes": 4096,
+    "query": 22,
+    "median_ms": 214.313574,
+    "sample_ms": [
+      214.313574
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 16384,
+    "query": 1,
+    "median_ms": 2763.8730723410845,
+    "sample_ms": [
+      2763.8730723410845
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 16384,
+    "query": 2,
+    "median_ms": 3.4230509772896767,
+    "sample_ms": [
+      3.4230509772896767
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 16384,
+    "query": 3,
+    "median_ms": 250.48716366291046,
+    "sample_ms": [
+      250.48716366291046
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 16384,
+    "query": 4,
+    "median_ms": 69.11400984972715,
+    "sample_ms": [
+      69.11400984972715
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 16384,
+    "query": 5,
+    "median_ms": 156.36203717440367,
+    "sample_ms": [
+      156.36203717440367
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 16384,
+    "query": 6,
+    "median_ms": 241.65769666433334,
+    "sample_ms": [
+      241.65769666433334
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 16384,
+    "query": 7,
+    "median_ms": 1684.8212601616979,
+    "sample_ms": [
+      1684.8212601616979
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 16384,
+    "query": 8,
+    "median_ms": 44.72769610583782,
+    "sample_ms": [
+      44.72769610583782
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 16384,
+    "query": 9,
+    "median_ms": 640.3651125729084,
+    "sample_ms": [
+      640.3651125729084
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 16384,
+    "query": 10,
+    "median_ms": 136.21429540216923,
+    "sample_ms": [
+      136.21429540216923
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 16384,
+    "query": 11,
+    "median_ms": 19.835741259157658,
+    "sample_ms": [
+      19.835741259157658
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 16384,
+    "query": 12,
+    "median_ms": 321.33750058710575,
+    "sample_ms": [
+      321.33750058710575
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 16384,
+    "query": 13,
+    "median_ms": 410.6362937018275,
+    "sample_ms": [
+      410.6362937018275
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 16384,
+    "query": 14,
+    "median_ms": 32.511498779058456,
+    "sample_ms": [
+      32.511498779058456
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 16384,
+    "query": 15,
+    "median_ms": 167.26703010499477,
+    "sample_ms": [
+      167.26703010499477
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 16384,
+    "query": 16,
+    "median_ms": 46.40114214271307,
+    "sample_ms": [
+      46.40114214271307
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 16384,
+    "query": 17,
+    "median_ms": 19.843939691781998,
+    "sample_ms": [
+      19.843939691781998
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 16384,
+    "query": 18,
+    "median_ms": 328.69256287813187,
+    "sample_ms": [
+      328.69256287813187
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 16384,
+    "query": 19,
+    "median_ms": 17.527773045003414,
+    "sample_ms": [
+      17.527773045003414
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 16384,
+    "query": 20,
+    "median_ms": 24.07615352421999,
+    "sample_ms": [
+      24.07615352421999
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 16384,
+    "query": 21,
+    "median_ms": 246.1570305749774,
+    "sample_ms": [
+      246.1570305749774
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 16384,
+    "query": 22,
+    "median_ms": 17.638453282415867,
+    "sample_ms": [
+      17.638453282415867
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 65536,
+    "query": 1,
+    "median_ms": 4003.84209305048,
+    "sample_ms": [
+      4003.84209305048
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 65536,
+    "query": 2,
+    "median_ms": 3.397931344807148,
+    "sample_ms": [
+      3.397931344807148
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 65536,
+    "query": 3,
+    "median_ms": 359.41389575600624,
+    "sample_ms": [
+      359.41389575600624
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 65536,
+    "query": 4,
+    "median_ms": 110.07153522223234,
+    "sample_ms": [
+      110.07153522223234
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 65536,
+    "query": 5,
+    "median_ms": 191.6132653132081,
+    "sample_ms": [
+      191.6132653132081
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 65536,
+    "query": 6,
+    "median_ms": 430.6563138961792,
+    "sample_ms": [
+      430.6563138961792
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 65536,
+    "query": 7,
+    "median_ms": 2885.1701598614454,
+    "sample_ms": [
+      2885.1701598614454
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 65536,
+    "query": 8,
+    "median_ms": 72.90266174823046,
+    "sample_ms": [
+      72.90266174823046
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 65536,
+    "query": 9,
+    "median_ms": 1001.0044928640127,
+    "sample_ms": [
+      1001.0044928640127
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 65536,
+    "query": 10,
+    "median_ms": 177.24129930138588,
+    "sample_ms": [
+      177.24129930138588
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 65536,
+    "query": 11,
+    "median_ms": 17.999575473368168,
+    "sample_ms": [
+      17.999575473368168
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 65536,
+    "query": 12,
+    "median_ms": 631.17088470608,
+    "sample_ms": [
+      631.17088470608
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 65536,
+    "query": 13,
+    "median_ms": 386.3342581316829,
+    "sample_ms": [
+      386.3342581316829
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 65536,
+    "query": 14,
+    "median_ms": 57.32693336904049,
+    "sample_ms": [
+      57.32693336904049
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 65536,
+    "query": 15,
+    "median_ms": 258.05774703621864,
+    "sample_ms": [
+      258.05774703621864
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 65536,
+    "query": 16,
+    "median_ms": 45.454658567905426,
+    "sample_ms": [
+      45.454658567905426
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 65536,
+    "query": 17,
+    "median_ms": 18.191094510257244,
+    "sample_ms": [
+      18.191094510257244
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 65536,
+    "query": 18,
+    "median_ms": 317.44452845305204,
+    "sample_ms": [
+      317.44452845305204
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 65536,
+    "query": 19,
+    "median_ms": 16.892731189727783,
+    "sample_ms": [
+      16.892731189727783
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 65536,
+    "query": 20,
+    "median_ms": 59.29141957312822,
+    "sample_ms": [
+      59.29141957312822
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 65536,
+    "query": 21,
+    "median_ms": 393.9001625403762,
+    "sample_ms": [
+      393.9001625403762
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 65536,
+    "query": 22,
+    "median_ms": 17.403013072907925,
+    "sample_ms": [
+      17.403013072907925
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 4096,
+    "query": 1,
+    "median_ms": 2672.386991791427,
+    "sample_ms": [
+      2672.386991791427
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 4096,
+    "query": 2,
+    "median_ms": 3.458811901509762,
+    "sample_ms": [
+      3.458811901509762
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 4096,
+    "query": 3,
+    "median_ms": 230.9479834511876,
+    "sample_ms": [
+      230.9479834511876
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 4096,
+    "query": 4,
+    "median_ms": 47.09730390459299,
+    "sample_ms": [
+      47.09730390459299
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 4096,
+    "query": 5,
+    "median_ms": 138.58382310718298,
+    "sample_ms": [
+      138.58382310718298
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 4096,
+    "query": 6,
+    "median_ms": 218.04802492260933,
+    "sample_ms": [
+      218.04802492260933
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 4096,
+    "query": 7,
+    "median_ms": 1432.8728495165706,
+    "sample_ms": [
+      1432.8728495165706
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 4096,
+    "query": 8,
+    "median_ms": 27.393204160034657,
+    "sample_ms": [
+      27.393204160034657
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 4096,
+    "query": 9,
+    "median_ms": 547.5468300282955,
+    "sample_ms": [
+      547.5468300282955
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 4096,
+    "query": 10,
+    "median_ms": 108.32300968468189,
+    "sample_ms": [
+      108.32300968468189
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 4096,
+    "query": 11,
+    "median_ms": 18.918178044259548,
+    "sample_ms": [
+      18.918178044259548
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 4096,
+    "query": 12,
+    "median_ms": 275.2342391759157,
+    "sample_ms": [
+      275.2342391759157
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 4096,
+    "query": 13,
+    "median_ms": 405.6527577340603,
+    "sample_ms": [
+      405.6527577340603
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 4096,
+    "query": 14,
+    "median_ms": 31.976377591490746,
+    "sample_ms": [
+      31.976377591490746
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 4096,
+    "query": 15,
+    "median_ms": 146.03208471089602,
+    "sample_ms": [
+      146.03208471089602
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 4096,
+    "query": 16,
+    "median_ms": 47.17002343386412,
+    "sample_ms": [
+      47.17002343386412
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 4096,
+    "query": 17,
+    "median_ms": 20.654703490436077,
+    "sample_ms": [
+      20.654703490436077
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 4096,
+    "query": 18,
+    "median_ms": 364.17671106755733,
+    "sample_ms": [
+      364.17671106755733
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 4096,
+    "query": 19,
+    "median_ms": 18.543856218457222,
+    "sample_ms": [
+      18.543856218457222
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 4096,
+    "query": 20,
+    "median_ms": 23.066391237080097,
+    "sample_ms": [
+      23.066391237080097
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 4096,
+    "query": 21,
+    "median_ms": 208.7133163586259,
+    "sample_ms": [
+      208.7133163586259
+    ]
+  },
+  {
+    "engine": "sqlite",
+    "page_size_bytes": 4096,
+    "query": 22,
+    "median_ms": 18.572176806628704,
+    "sample_ms": [
+      18.572176806628704
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 16384,
+    "query": 1,
+    "median_ms": 74.607908,
+    "sample_ms": [
+      74.607908
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 16384,
+    "query": 2,
+    "median_ms": 12.176437,
+    "sample_ms": [
+      12.176437
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 16384,
+    "query": 3,
+    "median_ms": 51.148836,
+    "sample_ms": [
+      51.148836
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 16384,
+    "query": 4,
+    "median_ms": 50.334714,
+    "sample_ms": [
+      50.334714
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 16384,
+    "query": 5,
+    "median_ms": 32.67014,
+    "sample_ms": [
+      32.67014
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 16384,
+    "query": 6,
+    "median_ms": 38.621718,
+    "sample_ms": [
+      38.621718
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 16384,
+    "query": 7,
+    "median_ms": 54.012404,
+    "sample_ms": [
+      54.012404
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 16384,
+    "query": 8,
+    "median_ms": 30.548694,
+    "sample_ms": [
+      30.548694
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 16384,
+    "query": 9,
+    "median_ms": 67.476846,
+    "sample_ms": [
+      67.476846
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 16384,
+    "query": 10,
+    "median_ms": 47.816066,
+    "sample_ms": [
+      47.816066
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 16384,
+    "query": 11,
+    "median_ms": 5.230496,
+    "sample_ms": [
+      5.230496
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 16384,
+    "query": 12,
+    "median_ms": 88.169069,
+    "sample_ms": [
+      88.169069
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 16384,
+    "query": 13,
+    "median_ms": 63.867835,
+    "sample_ms": [
+      63.867835
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 16384,
+    "query": 14,
+    "median_ms": 40.577764,
+    "sample_ms": [
+      40.577764
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 16384,
+    "query": 15,
+    "median_ms": 36.385631,
+    "sample_ms": [
+      36.385631
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 16384,
+    "query": 16,
+    "median_ms": 16.670851,
+    "sample_ms": [
+      16.670851
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 16384,
+    "query": 17,
+    "median_ms": 17.532253,
+    "sample_ms": [
+      17.532253
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 16384,
+    "query": 18,
+    "median_ms": 61.644708,
+    "sample_ms": [
+      61.644708
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 16384,
+    "query": 19,
+    "median_ms": 32.83794,
+    "sample_ms": [
+      32.83794
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 16384,
+    "query": 20,
+    "median_ms": 47.016063,
+    "sample_ms": [
+      47.016063
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 16384,
+    "query": 21,
+    "median_ms": 178.362424,
+    "sample_ms": [
+      178.362424
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 16384,
+    "query": 22,
+    "median_ms": 9.333228,
+    "sample_ms": [
+      9.333228
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 65536,
+    "query": 1,
+    "median_ms": 59.350701,
+    "sample_ms": [
+      59.350701
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 65536,
+    "query": 2,
+    "median_ms": 9.394828,
+    "sample_ms": [
+      9.394828
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 65536,
+    "query": 3,
+    "median_ms": 33.100821,
+    "sample_ms": [
+      33.100821
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 65536,
+    "query": 4,
+    "median_ms": 31.999937,
+    "sample_ms": [
+      31.999937
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 65536,
+    "query": 5,
+    "median_ms": 25.722518,
+    "sample_ms": [
+      25.722518
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 65536,
+    "query": 6,
+    "median_ms": 22.201708,
+    "sample_ms": [
+      22.201708
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 65536,
+    "query": 7,
+    "median_ms": 38.036436,
+    "sample_ms": [
+      38.036436
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 65536,
+    "query": 8,
+    "median_ms": 19.068059,
+    "sample_ms": [
+      19.068059
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 65536,
+    "query": 9,
+    "median_ms": 62.487711,
+    "sample_ms": [
+      62.487711
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 65536,
+    "query": 10,
+    "median_ms": 43.016491,
+    "sample_ms": [
+      43.016491
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 65536,
+    "query": 11,
+    "median_ms": 5.048296,
+    "sample_ms": [
+      5.048296
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 65536,
+    "query": 12,
+    "median_ms": 45.749819,
+    "sample_ms": [
+      45.749819
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 65536,
+    "query": 13,
+    "median_ms": 63.023952,
+    "sample_ms": [
+      63.023952
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 65536,
+    "query": 14,
+    "median_ms": 25.495918,
+    "sample_ms": [
+      25.495918
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 65536,
+    "query": 15,
+    "median_ms": 23.19763,
+    "sample_ms": [
+      23.19763
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 65536,
+    "query": 16,
+    "median_ms": 14.798006,
+    "sample_ms": [
+      14.798006
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 65536,
+    "query": 17,
+    "median_ms": 13.516481,
+    "sample_ms": [
+      13.516481
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 65536,
+    "query": 18,
+    "median_ms": 55.59581,
+    "sample_ms": [
+      55.59581
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 65536,
+    "query": 19,
+    "median_ms": 28.778047,
+    "sample_ms": [
+      28.778047
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 65536,
+    "query": 20,
+    "median_ms": 32.283338,
+    "sample_ms": [
+      32.283338
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 65536,
+    "query": 21,
+    "median_ms": 110.930098,
+    "sample_ms": [
+      110.930098
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 65536,
+    "query": 22,
+    "median_ms": 8.629147,
+    "sample_ms": [
+      8.629147
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 262144,
+    "query": 1,
+    "median_ms": 55.90081,
+    "sample_ms": [
+      55.90081
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 262144,
+    "query": 2,
+    "median_ms": 11.314515,
+    "sample_ms": [
+      11.314515
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 262144,
+    "query": 3,
+    "median_ms": 28.312526,
+    "sample_ms": [
+      28.312526
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 262144,
+    "query": 4,
+    "median_ms": 23.09467,
+    "sample_ms": [
+      23.09467
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 262144,
+    "query": 5,
+    "median_ms": 27.705284,
+    "sample_ms": [
+      27.705284
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 262144,
+    "query": 6,
+    "median_ms": 20.143222,
+    "sample_ms": [
+      20.143222
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 262144,
+    "query": 7,
+    "median_ms": 34.574465,
+    "sample_ms": [
+      34.574465
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 262144,
+    "query": 8,
+    "median_ms": 20.755464,
+    "sample_ms": [
+      20.755464
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 262144,
+    "query": 9,
+    "median_ms": 59.465501,
+    "sample_ms": [
+      59.465501
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 262144,
+    "query": 10,
+    "median_ms": 42.138609,
+    "sample_ms": [
+      42.138609
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 262144,
+    "query": 11,
+    "median_ms": 4.862815,
+    "sample_ms": [
+      4.862815
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 262144,
+    "query": 12,
+    "median_ms": 32.409018,
+    "sample_ms": [
+      32.409018
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 262144,
+    "query": 13,
+    "median_ms": 62.071389,
+    "sample_ms": [
+      62.071389
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 262144,
+    "query": 14,
+    "median_ms": 21.544306,
+    "sample_ms": [
+      21.544306
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 262144,
+    "query": 15,
+    "median_ms": 19.406859,
+    "sample_ms": [
+      19.406859
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 262144,
+    "query": 16,
+    "median_ms": 20.204662,
+    "sample_ms": [
+      20.204662
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 262144,
+    "query": 17,
+    "median_ms": 17.343453,
+    "sample_ms": [
+      17.343453
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 262144,
+    "query": 18,
+    "median_ms": 51.940318,
+    "sample_ms": [
+      51.940318
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 262144,
+    "query": 19,
+    "median_ms": 30.433333,
+    "sample_ms": [
+      30.433333
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 262144,
+    "query": 20,
+    "median_ms": 27.746924,
+    "sample_ms": [
+      27.746924
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 262144,
+    "query": 21,
+    "median_ms": 95.32309,
+    "sample_ms": [
+      95.32309
+    ]
+  },
+  {
+    "engine": "duckdb",
+    "page_size_bytes": 262144,
+    "query": 22,
+    "median_ms": 7.428222,
+    "sample_ms": [
+      7.428222
+    ]
+  }
+]

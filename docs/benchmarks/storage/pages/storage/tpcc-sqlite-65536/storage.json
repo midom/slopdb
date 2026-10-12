@@ -1,0 +1,76 @@
+{
+  "engine_version": "3.45.1",
+  "load_mode": "executemany",
+  "load_batch_rows": 4096,
+  "load_seconds": 47.59732610732317,
+  "maintenance_seconds": 2.2023880928754807,
+  "closed": {
+    "rows": {
+      "warehouse": 256,
+      "district": 2560,
+      "customer": 256000,
+      "item": 1000,
+      "stock": 256000,
+      "orders": 859520,
+      "new_order": 113920,
+      "order_line": 8216320,
+      "history": 812544
+    },
+    "verified_rows": 10518120,
+    "all_values_verified_after_reopen": true,
+    "storage_info": {
+      "page_size": 65536,
+      "page_count": 7366,
+      "freelist_count": 0
+    },
+    "files": [
+      {
+        "name": "benchmark.sqlite",
+        "bytes": 482738176,
+        "allocated_bytes": 482742272
+      }
+    ],
+    "file_count": 1,
+    "file_bytes": 482738176,
+    "allocated_total_bytes": 482746368,
+    "wal_files": []
+  },
+  "after_maintenance": {
+    "rows": {
+      "warehouse": 256,
+      "district": 2560,
+      "customer": 256000,
+      "item": 1000,
+      "stock": 256000,
+      "orders": 859520,
+      "new_order": 113920,
+      "order_line": 8216320,
+      "history": 812544
+    },
+    "verified_rows": 10518120,
+    "all_values_verified_after_reopen": true,
+    "storage_info": {
+      "page_size": 65536,
+      "page_count": 6987,
+      "freelist_count": 0
+    },
+    "files": [
+      {
+        "name": "benchmark.sqlite",
+        "bytes": 457900032,
+        "allocated_bytes": 457904128
+      }
+    ],
+    "file_count": 1,
+    "file_bytes": 457900032,
+    "allocated_total_bytes": 457908224,
+    "wal_files": []
+  },
+  "warehouse_stride": 2,
+  "history_stride": 6353,
+  "status": "ok",
+  "workload": "tpcc",
+  "engine": "sqlite",
+  "requested_page_size_bytes": 65536,
+  "page_size_bytes": 65536
+}

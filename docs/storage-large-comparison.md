@@ -1,4 +1,63 @@
-# Storage comparisons above 100 MiB, 2026-10-11
+# Storage comparisons above 100 MiB
+
+The [page-size comparison](page-size-comparison.md) extends these measurements
+with fresh equal-data fixtures at multiple page sizes, physical allocation and
+controlled TPC-C/TPC-H timings. The dated results below remain historical.
+
+## Page-size storage measurements, 2026-10-12
+
+These fresh fixtures preserve the same source hashes and row counts as the
+historical large comparison. Every TPC-C value and, at benchmarked sizes, all
+twenty-two TPC-H answers were checked after reopening and again after maintenance.
+SlopDB 1 MiB is bulk-load/storage-only: TPC-H checks persisted row counts/schema
+and hash-verified inputs, with no query-answer or full-column verification.
+TPC-C storage still checks every value at 1 MiB. Page targets have
+different meanings across engines; SQLite and DuckDB cannot use 1 MiB.
+
+### TPC-C replicated snapshot
+
+| Engine | Page/block target | Reported load s | Closed MiB | After maintenance MiB | Closed allocated MiB | After allocated MiB |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| slopdb | 4 KiB (default) | 180.0 | 185.27 | 176.19 | 185.61 | 176.50 |
+| slopdb | 16 KiB | 182.8 | 156.89 | 147.66 | 157.38 | 148.11 |
+| slopdb | 64 KiB | 177.9 | 154.74 | 145.60 | 155.20 | 146.06 |
+| slopdb | 1 MiB | 170.3 | 159.44 | 150.14 | 159.82 | 150.53 |
+| sqlite | 4 KiB (default) | 47.0 | 461.68 | 438.36 | 461.69 | 438.36 |
+| sqlite | 16 KiB | 45.1 | 460.02 | 436.30 | 460.02 | 436.30 |
+| sqlite | 64 KiB | 47.6 | 460.38 | 436.69 | 460.38 | 436.70 |
+| sqlite | 1 MiB | Unsupported | — | — | — | — |
+| duckdb | 16 KiB | 30.2 | 571.78 | 571.78 | 571.79 | 571.79 |
+| duckdb | 64 KiB | 20.7 | 265.95 | 265.95 | 265.96 | 265.96 |
+| duckdb | 256 KiB (default) | 22.0 | 272.26 | 272.26 | 272.27 | 272.27 |
+| duckdb | 1 MiB | Unsupported | — | — | — | — |
+
+### TPC-H SF=0.2
+
+| Engine | Page/block target | Reported load s | Closed MiB | After maintenance MiB | Closed allocated MiB | After allocated MiB |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| slopdb | 4 KiB (default) | 100.4 | 267.31 | 211.80 | 267.57 | 212.03 |
+| slopdb | 16 KiB | 107.3 | 237.93 | 181.34 | 238.18 | 181.61 |
+| slopdb | 64 KiB | 94.9 | 226.83 | 170.15 | 227.09 | 170.42 |
+| slopdb | 1 MiB | 91.4 | 220.70 | 163.77 | 220.94 | 163.99 |
+| sqlite | 4 KiB (default) | 17.3 | 321.10 | 318.91 | 321.11 | 318.92 |
+| sqlite | 16 KiB | 16.9 | 317.86 | 315.66 | 317.87 | 315.66 |
+| sqlite | 64 KiB | 16.6 | 318.44 | 316.19 | 318.45 | 316.20 |
+| sqlite | 1 MiB | Unsupported | — | — | — | — |
+| duckdb | 16 KiB | 18.1 | 272.07 | 272.07 | 272.08 | 272.08 |
+| duckdb | 64 KiB | 17.2 | 233.95 | 233.95 | 233.96 | 233.96 |
+| duckdb | 256 KiB (default) | 16.8 | 203.76 | 203.76 | 203.77 | 203.77 |
+| duckdb | 1 MiB | Unsupported | — | — | — | — |
+
+See the [complete page-size comparison](page-size-comparison.md) for TPC-H and
+TPC-C timings, exact revisions, engine versions, durability differences, input
+hashes and raw inventories. SQLite storage used Python SQLite 3.45.1; throughput
+used the Go driver’s SQLite 3.51.3. Native default controls use SQLite 4 KiB
+and DuckDB 256 KiB, while SlopDB defaults to 4 KiB. SlopDB’s maintained 64 KiB
+footprints are 17.4% / 19.7% smaller than its new TPC-C / TPC-H 4 KiB controls;
+its 1 MiB TPC-C footprint is larger than 64 KiB. Larger targets do not guarantee
+better packing or faster queries.
+
+## Historical default-size comparison, 2026-10-11
 
 All three engines were measured on larger, identical datasets for both workloads.
 Every database exceeds 100 MiB before and after maintenance. After maintenance,
@@ -68,7 +127,7 @@ processes; OS caches were not reset. See the [query measurement](benchmarks/stor
 
 ## Settings and evidence
 
-SlopDB uses the current checkout, Go 1.22.2, a 4 MiB memtable, 4 KiB blocks and
+SlopDB used `f45ea982792cd25c94478b76dd4bf20ac83bb8eb`, Go 1.22.2, a 4 MiB memtable, 4 KiB blocks and
 default auto compression. DuckDB is 1.5.6; its TPC-H Go runner uses one execution
 thread and a 1 GB memory limit. New SQLite files use Python SQLite 3.45.1.
 WAL remains enabled and WAL fsync is disabled during new loads. DuckDB uses the

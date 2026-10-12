@@ -1,0 +1,33 @@
+DuckDB v1.5.6: threads=1 queries=22 runs=1 warmups=1
+  loaded region   5 rows
+  loaded nation   25 rows
+  loaded supplier 2000 rows
+  loaded customer 30000 rows
+  loaded part     40000 rows
+  loaded partsupp 160000 rows
+  loaded orders   300000 rows
+  loaded lineitem 1199969 rows
+Loaded in 18.147s; reopened in 0.018s; persisted counts verified.
+Q01 median=74.608ms rows=4 status=ok
+Q02 median=12.176ms rows=80 status=ok
+Q03 median=51.149ms rows=10 status=ok
+Q04 median=50.335ms rows=5 status=ok
+Q05 median=32.670ms rows=5 status=ok
+Q06 median=38.622ms rows=1 status=ok
+Q07 median=54.012ms rows=4 status=ok
+Q08 median=30.549ms rows=2 status=ok
+Q09 median=67.477ms rows=175 status=ok
+Q10 median=47.816ms rows=20 status=ok
+Q11 median=5.230ms rows=3509 status=ok
+Q12 median=88.169ms rows=2 status=ok
+Q13 median=63.868ms rows=40 status=ok
+Q14 median=40.578ms rows=1 status=ok
+Q15 median=36.386ms rows=1 status=ok
+Q16 median=16.671ms rows=5307 status=ok
+Q17 median=17.532ms rows=1 status=ok
+Q18 median=61.645ms rows=9 status=ok
+Q19 median=32.838ms rows=1 status=ok
+Q20 median=47.016ms rows=36 status=ok
+Q21 median=178.362ms rows=91 status=ok
+Q22 median=9.333ms rows=7 status=ok
+22 completed, 0 timed out, 0 failed; query phase 2.354s; report /tmp/slopdb-bench/page-matrix-bulk-window-20261012/tpch-duckdb-16384/queries.json

@@ -1,0 +1,26 @@
+TPC-C-inspired workload: workers=10 duration=1m0s warehouses=2 districts=10 customers=100 items=1000
+Database: /tmp/slopdb-bench/page-tpcc-bulk-window-20261012/tpcc-duckdb-65536/database
+Engine: duckdb; settings: map[driver:github.com/duckdb/duckdb-go/v2 v2.10506.0 engine:duckdb memory_limit:1GB page_size_bytes:65536 prepared_per_worker:true storage:disk threads:1 transaction_mode:snapshot isolation; optimistic write conflict retries version:v1.5.6 wal_fsync:false wal_fsync_calls_skipped:0 wal_fsync_mode:benchmark-only LD_PRELOAD bypass for exact WAL path; checkpoint sync unchanged]
+Prepared statements=true; preparation took 1.521s
+Loaded nine tables in 0.33s. Mix: 45% new-order, 43% payment, 4% each order-status/delivery/stock-level.
+ 10.0s: committed=2309 failed=73 retries=1827
+ 20.0s: committed=4576 failed=136 retries=3501
+ 30.0s: committed=6835 failed=196 retries=5091
+ 40.0s: committed=9090 failed=246 retries=6717
+ 50.0s: committed=11283 failed=306 retries=8363
+Checking committed data...
+
+Measured 60.000s; drained in 0.002s; committed=13415 (223.58 tx/s), new-orders/min=5916.97
+transaction   committed  tx/s    mean ms  p50 ms  p95 ms  p99 ms  failed  retries  rollback  canceled
+new_order     5917       98.62   71.70    58.67   168.45  239.09  321     7420     60        9
+payment       5867       97.78   8.53     6.21    21.56   46.37   5       1874     0         0
+order_status  545        9.08    5.49     4.81    11.35   16.37   0       0        0         0
+delivery      510        8.50    113.16   102.54  193.89  225.65  48      762      0         1
+stock_level   576        9.60    9.73     8.68    18.33   23.49   0       0        0         0
+TOTAL         13415      223.58  40.30    20.63   134.99  214.90  374     10056    60        10
+Errors: map[conflict:374]
+Retry causes: map[conflict:10056]
+After run consistency checks: 15/15 passed
+After close/reopen consistency checks: 15/15 passed
+JSON report: /tmp/slopdb-bench/page-tpcc-bulk-window-20261012/tpcc-duckdb-65536/report.json
+tpcc-compare: 374 unexpected transaction failures

@@ -1,0 +1,8 @@
+{
+  "engine": "slopdb",
+  "requested_page_size_bytes": 1048576,
+  "report": "/tmp/slopdb-bench/page-tpcc-bulk-window-20261012/tpcc-slopdb-1048576/report.json",
+  "log": "/tmp/slopdb-bench/page-tpcc-bulk-window-20261012/tpcc-slopdb-1048576/run.log",
+  "status": "skipped",
+  "reason": "User requested loading/storage only for 1 MiB blocks"
+}

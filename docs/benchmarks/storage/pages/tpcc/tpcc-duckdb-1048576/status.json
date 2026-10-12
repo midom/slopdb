@@ -1,0 +1,8 @@
+{
+  "engine": "duckdb",
+  "requested_page_size_bytes": 1048576,
+  "report": "/tmp/slopdb-bench/page-tpcc-bulk-window-20261012/tpcc-duckdb-1048576/report.json",
+  "log": "/tmp/slopdb-bench/page-tpcc-bulk-window-20261012/tpcc-duckdb-1048576/run.log",
+  "status": "unsupported",
+  "reason": "duckdb does not support the requested page/block size"
+}
