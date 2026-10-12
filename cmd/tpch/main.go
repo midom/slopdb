@@ -29,6 +29,7 @@ import (
 var assets embed.FS
 
 type config struct {
+	LoadOnly   bool          `json:"load_only"`
 	PageSize   int64         `json:"requested_page_size_bytes"`
 	Data       string        `json:"data_directory"`
 	Dir        string        `json:"database_directory"`
@@ -70,6 +71,7 @@ type queryReport struct {
 }
 
 type report struct {
+	QueryBenchmarked bool          `json:"query_benchmarked"`
 	PageSize       int64            `json:"page_size_bytes"`
 	Config         config           `json:"config"`
 	Started        time.Time        `json:"started_at"`
@@ -114,6 +116,7 @@ func run() (retErr error) {
 	flag.BoolVar(&c.Indexes, "indexes", true, "create the documented secondary indexes after loading")
 	flag.BoolVar(&c.WALFsync, "wal-fsync", false, "enable WAL fsync during loading; WAL stays enabled")
 	flag.Int64Var(&c.PageSize, "page-size", 0, "uncompressed SSTable data-block target in bytes (0 uses persisted/default target)")
+	flag.BoolVar(&c.LoadOnly, "load-only", false, "bulk load, index and verify persisted counts without executing TPC-H queries")
 	flag.Parse()
 	if flag.NArg() != 0 || c.PageSize < 0 || c.Data == "" || c.Runs < 1 || c.Warmups < 0 || c.Timeout <= 0 {
 		return errors.New("-data is required; runs and timeout must be positive; warmups must be nonnegative")
@@ -121,6 +124,9 @@ func run() (retErr error) {
 	selected, err := queryNumbers(c.Queries)
 	if err != nil {
 		return err
+	}
+	if c.LoadOnly {
+		selected = nil
 	}
 	c.Data, err = filepath.Abs(c.Data)
 	if err != nil {
@@ -166,7 +172,7 @@ func run() (retErr error) {
 			retErr = errors.Join(retErr, database.Close())
 		}
 	}()
-	r := report{PageSize: database.PageSize(), Config: c, Started: time.Now().UTC(), GoVersion: runtime.Version(), Platform: runtime.GOOS + "/" + runtime.GOARCH, CPUs: runtime.NumCPU()}
+	r := report{QueryBenchmarked: !c.LoadOnly, PageSize: database.PageSize(), Config: c, Started: time.Now().UTC(), GoVersion: runtime.Version(), Platform: runtime.GOOS + "/" + runtime.GOARCH, CPUs: runtime.NumCPU()}
 	if manifest, e := os.ReadFile(filepath.Join(c.Data, "manifest.json")); e == nil {
 		if !json.Valid(manifest) {
 			return errors.New("invalid data manifest JSON")
@@ -202,14 +208,16 @@ func run() (retErr error) {
 	}
 	fmt.Printf("Loaded and indexed in %.3fs, reopened in %.3fs; persisted row counts verified.\n", r.LoadSeconds, r.ReopenSeconds)
 	fmt.Printf("Rows: %v; database bytes=%d\n", r.TableRows, r.DatabaseBytes)
+	needsView := c.LoadOnly
 	for _, n := range selected {
-		if n == 15 {
+		needsView = needsView || n == 15
+	}
+	if needsView {
 			setup, _ := assets.ReadFile("queries/q15-setup.sql")
 			r.SetupSQL = string(setup)
 			if _, err = database.ExecContext(parent, string(setup)); err != nil {
 				return fmt.Errorf("Q15 view: %w", err)
 			}
-		}
 	}
 	start := time.Now()
 	for _, n := range selected {
