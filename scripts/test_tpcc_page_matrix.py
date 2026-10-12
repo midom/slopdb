@@ -83,9 +83,9 @@ class TimedPageMatrixTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0)
             with patch("tpcc_page_matrix.subprocess.run", side_effect=execute), patch("tpcc_page_matrix.subprocess.check_output", return_value="revision\n"):
                 self.assertTrue(run(args))
-            self.assertEqual(calls, [("slopdb", 16384), ("slopdb", 1048576), ("sqlite", 16384), ("duckdb", 16384)])
+            self.assertEqual(calls, [("slopdb", 16384), ("sqlite", 16384), ("duckdb", 16384)])
             results = json.loads((args.output / "comparison.json").read_text())
-            self.assertEqual([cell["status"] for cell in results["cells"]], ["ok", "ok", "failed", "unsupported", "ok", "unsupported"])
+            self.assertEqual([cell["status"] for cell in results["cells"]], ["ok", "skipped", "failed", "unsupported", "ok", "unsupported"])
             for cell in results["cells"]:
                 folder = args.output / f"tpcc-{cell['engine']}-{cell['requested_page_size_bytes']}"
                 self.assertTrue((folder / "run.log").is_file())

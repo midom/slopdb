@@ -32,6 +32,11 @@ def supported(engine, size):
     return low <= size <= high and size & (size - 1) == 0
 
 
+def performance_enabled(size):
+    # Large pages are deliberately load/storage-only in this comparison.
+    return size < 1 << 20
+
+
 def measure(directory):
     files = []
     for path in sorted(directory.rglob("*")):
@@ -108,11 +113,12 @@ def snapshot_native(args, engine, size, cell, directory):
         if engine == "sqlite":
             query = f"INSERT INTO {name} VALUES ({','.join('?' for _ in cols)})"
             for replica in range(replicas):
-                shifted = ([value + replica * warehouses if col == "w_id" or col.endswith("_w_id") else
-                            value + replica * history if col == "h_id" else value
-                            for col, value in zip(cols, row)] for row in rows)
-                con.executemany(query, shifted)
-                con.commit()
+                for offset in range(0, len(rows), args.load_batch_rows):
+                    shifted = ([value + replica * warehouses if col == "w_id" or col.endswith("_w_id") else
+                                value + replica * history if col == "h_id" else value
+                                for col, value in zip(cols, row)] for row in rows[offset:offset + args.load_batch_rows])
+                    con.executemany(query, shifted)
+                    con.commit()
         else:
             # Bulk COPY avoids millions of native prepared-call crossings. CSV is
             # an intermediate outside the database directory and size accounting.
@@ -166,6 +172,8 @@ def snapshot_native(args, engine, size, cell, directory):
     after = verify()
     after.update(measure(directory))
     return {"engine_version": sqlite3.sqlite_version if engine == "sqlite" else __import__("duckdb").__version__,
+            "load_mode": "executemany" if engine == "sqlite" else "copy_and_insert_select",
+            "load_batch_rows": args.load_batch_rows if engine == "sqlite" else None,
             "load_seconds": load_seconds, "maintenance_seconds": maintenance_seconds, "closed": before,
             "after_maintenance": after, "warehouse_stride": warehouses, "history_stride": history}
 
@@ -198,7 +206,7 @@ def sqlite_tpch(args, size, cell, directory):
                 batch.append([int(value) if col[2] == "INTEGER" else float(value) if col[2] == "REAL" else value
                               for col, value in zip(cols, fields)])
                 count += 1
-                if len(batch) == 10000:
+                if len(batch) == args.load_batch_rows:
                     con.executemany(f"INSERT INTO {table} VALUES ({marks})", batch)
                     con.commit()
                     batch.clear()
@@ -240,6 +248,7 @@ def sqlite_tpch(args, size, cell, directory):
     report = {"engine": "SQLite", "version": sqlite3.sqlite_version, "page_size_bytes": size,
               "config": {"data_directory": str(args.tpch_data), "secondary_indexes": True},
               "data_manifest": manifest, "table_rows": rows, "load_seconds": load_seconds, "queries": queries,
+              "load_mode": "executemany", "load_batch_rows": args.load_batch_rows, "query_benchmarked": True,
               "counts_verified_after_reopen": True}
     (cell / "queries.json").write_text(json.dumps(report, indent=2) + "\n")
     return report
@@ -257,14 +266,20 @@ def tpch(args, engine, size, cell, directory):
             # The runner creates its own fresh directory.
             directory.rmdir()
             command += ["-dir", directory]
+            command += ["-load-batch-rows", args.load_batch_rows]
+            if not performance_enabled(size):
+                command += ["-load-only"]
         else:
             command += ["-database", directory / "benchmark.duckdb", "-query-root", ROOT / "cmd/tpch", "-threads", "1"]
         run(command, cell / "load-queries.log")
         report = json.loads(raw.read_text())
+    timed = performance_enabled(size)
+    if not timed and (report.get("queries") or report.get("successful_executions") or report.get("query_benchmarked") is not False):
+        raise ValueError("load-only page size unexpectedly executed benchmark queries")
     for query in report["queries"]:
         if any(sample["status"] != "ok" for sample in query["samples"]):
             raise ValueError(f"query {query['number']} failed or timed out; inspect {raw}")
-    if args.reference_report:
+    if args.reference_report and timed:
         reference = {q["number"]: q for q in json.loads(args.reference_report.read_text())["queries"]}
         check = verifier()
         for query in report["queries"]:
@@ -274,7 +289,10 @@ def tpch(args, engine, size, cell, directory):
     before = measure(directory)
     if engine == "slopdb":
         maintenance = cell / "maintenance.json"
-        run([args.slop_snapshot, "-mode", "compact", "-dir", directory, "-page-size", size, "-verify-report", raw, "-json", maintenance], cell / "maintenance.log")
+        command = [args.slop_snapshot, "-mode", "compact", "-dir", directory, "-page-size", size, "-json", maintenance]
+        if timed:
+            command += ["-verify-report", raw]
+        run(command, cell / "maintenance.log")
         maintenance = json.loads(maintenance.read_text())
     else:
         file = directory / ("benchmark.sqlite" if engine == "sqlite" else "benchmark.duckdb")
@@ -300,7 +318,10 @@ def tpch(args, engine, size, cell, directory):
         con.close()
     maintenance.update(measure(directory))
     return {"load_seconds": report["load_seconds"], "query_report": str(raw), "closed": before,
-            "after_maintenance": maintenance, "query_answers_verified": bool(args.reference_report)}
+            "after_maintenance": maintenance, "query_benchmarked": timed,
+            "query_benchmark_skip_reason": None if timed else "User requested loading/storage only for 1 MiB blocks",
+            "load_mode": report.get("load_mode", "appender"), "load_batch_rows": report.get("config", {}).get("load_batch_rows", report.get("load_batch_rows")),
+            "query_answers_verified": bool(args.reference_report and timed)}
 
 
 def cell_run(args, workload, engine, size):
@@ -311,7 +332,7 @@ def cell_run(args, workload, engine, size):
         directory.rmdir()
         before_json, after_json = cell / "load.json", cell / "maintenance.json"
         common = [args.slop_snapshot, "-dir", directory, "-snapshot", args.tpcc_snapshot,
-                  "-replicas", args.tpcc_replicas, "-page-size", size]
+                  "-replicas", args.tpcc_replicas, "-page-size", size, "-load-batch-rows", args.load_batch_rows]
         run(common + ["-mode", "load", "-json", before_json], cell / "load.log")
         before = json.loads(before_json.read_text())
         before.update(measure(directory))
@@ -342,6 +363,7 @@ def main():
     parser.add_argument("--output", type=Path, required=True, help="fresh output directory outside the repository")
     parser.add_argument("--tpcc-snapshot", type=Path)
     parser.add_argument("--tpcc-replicas", type=int, default=128)
+    parser.add_argument("--load-batch-rows", type=int, default=4096, help="rows per bounded SlopDB bulk/SQLite executemany transaction")
     parser.add_argument("--tpch-data", type=Path)
     parser.add_argument("--reference-report", type=Path, help="independent DuckDB TPC-H answers on these inputs")
     parser.add_argument("--engines", nargs="+", choices=["slopdb", "sqlite", "duckdb"], default=["slopdb", "sqlite", "duckdb"])
@@ -357,7 +379,7 @@ def main():
     parser.add_argument("--timeout-seconds", type=float, default=120)
     parser.add_argument("--cell", nargs=3, help=argparse.SUPPRESS)
     args = parser.parse_args()
-    if args.tpcc_replicas < 1 or args.runs < 1 or args.warmups < 0 or args.timeout_seconds <= 0 or any(n <= 0 for n in args.page_sizes):
+    if args.load_batch_rows < 1 or args.tpcc_replicas < 1 or args.runs < 1 or args.warmups < 0 or args.timeout_seconds <= 0 or any(n <= 0 for n in args.page_sizes):
         parser.error("replicas/runs/timeout/page sizes must be positive; warmups nonnegative")
     if not args.tpcc_snapshot and not args.tpch_data:
         parser.error("provide --tpcc-snapshot and/or --tpch-data")
@@ -370,6 +392,11 @@ def main():
         return
     if args.output.is_relative_to(ROOT):
         parser.error("benchmark artifacts must be outside the repository")
+    if args.tpch_data:
+        manifest = json.loads((args.tpch_data / "manifest.json").read_text())
+        for table in TABLES:
+            if digest(args.tpch_data / f"{table}.tbl") != manifest["sha256"][table]:
+                parser.error(f"TPC-H input hash mismatch: {table}")
     args.output.mkdir(parents=True, exist_ok=False)
     workloads = (["tpcc"] if args.tpcc_snapshot else []) + (["tpch"] if args.tpch_data else [])
     result = {"started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
@@ -382,7 +409,7 @@ def main():
               "units": "bytes; MiB=1048576 bytes", "method": "serial fresh equal-data fixtures; file and allocated bytes after close and maintenance",
               "durability": "WAL enabled; WAL fsync disabled; SlopDB/DuckDB checkpoint and data-file synchronization enabled; SQLite synchronous=OFF also disables its checkpoint synchronization",
               "page_size_meaning": {"slopdb": "uncompressed SSTable data-block target", "sqlite": "fixed B-tree page", "duckdb": "storage block"},
-              "run_settings": {"slopdb_block_cache_bytes": 128 << 20, "slopdb_memtable_bytes": 4 << 20, "slopdb_compression": "auto", "duckdb_threads": 1, "duckdb_memory_limit": "1GB", "sqlite_cache_size_kib": 131072, "sqlite_wal_checkpoint_target_bytes": 64 << 20, "warmups": args.warmups, "runs": args.runs},
+              "run_settings": {"slopdb_block_cache_bytes": 128 << 20, "slopdb_memtable_bytes": 4 << 20, "slopdb_compression": "auto", "zstd_window_bytes": 8 << 20, "zstd_encoder_concurrency": 1, "zstd_level": "default", "zstd_match_memory": "normal", "load_batch_rows": args.load_batch_rows, "large_page_performance": "disabled; 1 MiB is loading/storage only", "duckdb_threads": 1, "duckdb_memory_limit": "1GB", "sqlite_cache_size_kib": 131072, "sqlite_wal_checkpoint_target_bytes": 64 << 20, "warmups": args.warmups, "runs": args.runs},
               "tpcc_replicas": args.tpcc_replicas, "tpcc_snapshot_sha256": digest(args.tpcc_snapshot) if args.tpcc_snapshot else None,
               "tpch_manifest": json.loads((args.tpch_data / "manifest.json").read_text()) if args.tpch_data else None,
               "cells": []}

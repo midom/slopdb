@@ -256,7 +256,7 @@ func run() (err error) {
 		}
 	}
 	stats := database.Stats()
-	result := map[string]any{"page_size_bytes": database.PageSize(), "requested_page_size_bytes": pageSize, "load_seconds": loadSeconds, "load_mode": "bulk_insert", "load_batch_rows": loadBatchRows, "load_transactions": loadTransactions, "maintenance_seconds": maintenanceSeconds, "verification_seconds": time.Since(verifyStart).Seconds(), "rows": counts, "verified_rows": checked, "all_values_verified": true, "replicas": copies, "warehouse_stride": maxWarehouse, "history_stride": historyStride, "levels": stats.Levels, "finished_at": time.Now().UTC()}
+	result := map[string]any{"zstd_window_bytes": storage.SSTableZstdWindowSize, "page_size_bytes": database.PageSize(), "requested_page_size_bytes": pageSize, "load_seconds": loadSeconds, "load_mode": "bulk_insert", "load_batch_rows": loadBatchRows, "load_transactions": loadTransactions, "maintenance_seconds": maintenanceSeconds, "verification_seconds": time.Since(verifyStart).Seconds(), "rows": counts, "verified_rows": checked, "all_values_verified": true, "replicas": copies, "warehouse_stride": maxWarehouse, "history_stride": historyStride, "levels": stats.Levels, "finished_at": time.Now().UTC()}
 	if err = database.Close(); err != nil {
 		return err
 	}
@@ -339,7 +339,7 @@ func compact(dir string, pageSize int64, report, verificationReport string) (err
 			return err
 		}
 	}
-	result := map[string]any{"page_size_bytes": database.PageSize(), "rows": after, "counts_verified_after_reopen": true, "query_answers_verified_after_maintenance": answersChecked, "query_verification_seconds": time.Since(verificationStart).Seconds(), "maintenance_seconds": elapsed, "levels": database.Stats().Levels}
+	result := map[string]any{"zstd_window_bytes": storage.SSTableZstdWindowSize, "page_size_bytes": database.PageSize(), "rows": after, "counts_verified_after_reopen": true, "query_answers_verified_after_maintenance": answersChecked, "query_verification_seconds": time.Since(verificationStart).Seconds(), "maintenance_seconds": elapsed, "levels": database.Stats().Levels}
 	if err = database.Close(); err != nil {
 		return err
 	}

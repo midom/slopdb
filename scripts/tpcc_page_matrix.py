@@ -16,7 +16,7 @@ import subprocess
 import time
 
 from run_benchmarks import validate_report
-from storage_page_matrix import supported
+from storage_page_matrix import performance_enabled, supported
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SIZES = [16384, 65536, 1048576]
@@ -100,6 +100,7 @@ def run(args):
                           "districts": 10, "customers": 100, "items": 1000, "seed": 42,
                           "prepared": True, "page_sizes": args.page_sizes, "controls": args.controls,
                           "slopdb_block_cache_bytes": 128 << 20, "slopdb_memtable_bytes": 4 << 20,
+                          "zstd_window_bytes": 8 << 20, "large_page_performance": "disabled; 1 MiB is loading/storage only",
                           "sqlite_cache_size_kib": 131072, "sqlite_wal_checkpoint_target_bytes": 64 << 20,
                           "duckdb_threads": 1, "duckdb_memory_limit": "1GB"},
         "cells": [],
@@ -113,6 +114,9 @@ def run(args):
         entry = {"engine": engine, "requested_page_size_bytes": size, "report": str(report_path), "log": str(cell / "run.log")}
         if not supported(engine, size):
             entry.update(status="unsupported", reason=f"{engine} does not support the requested page/block size")
+            (cell / "run.log").write_text(entry["reason"] + "\n")
+        elif not performance_enabled(size):
+            entry.update(status="skipped", reason="User requested loading/storage only for 1 MiB blocks")
             (cell / "run.log").write_text(entry["reason"] + "\n")
         else:
             invocation = command(args, engine, size, directory, report_path)

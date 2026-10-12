@@ -56,7 +56,7 @@ func (d *slopDatabase) BeginContext(ctx context.Context, _ int, _ bool) (Transac
 	return &slopTransaction{tx}, nil
 }
 func (d *slopDatabase) Info() map[string]any {
-	return map[string]any{"engine": "slopdb", "wal": true, "wal_fsync": d.config.WALFsync, "deadlock_detection": true, "transaction_mode": "READ COMMITTED, row locking", "storage": "disk", "page_size_bytes": d.PageSize(), "page_size_kind": "uncompressed SSTable data-block target"}
+	return map[string]any{"engine": "slopdb", "wal": true, "wal_fsync": d.config.WALFsync, "deadlock_detection": true, "transaction_mode": "READ COMMITTED, row locking", "storage": "disk", "page_size_bytes": d.PageSize(), "page_size_kind": "uncompressed SSTable data-block target", "zstd_window_bytes": storage.SSTableZstdWindowSize}
 }
 
 // BenchmarkMetrics samples counters at workload boundaries without requiring
