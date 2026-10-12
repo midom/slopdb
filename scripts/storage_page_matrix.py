@@ -14,6 +14,7 @@ import importlib.util
 import json
 import os
 import platform
+import shutil
 from pathlib import Path
 import sqlite3
 import subprocess
@@ -272,7 +273,7 @@ def tpch(args, engine, size, cell, directory):
     before = measure(directory)
     if engine == "slopdb":
         maintenance = cell / "maintenance.json"
-        run([args.slop_snapshot, "-mode", "compact", "-dir", directory, "-page-size", size, "-json", maintenance], cell / "maintenance.log")
+        run([args.slop_snapshot, "-mode", "compact", "-dir", directory, "-page-size", size, "-verify-report", raw, "-json", maintenance], cell / "maintenance.log")
         maintenance = json.loads(maintenance.read_text())
     else:
         file = directory / ("benchmark.sqlite" if engine == "sqlite" else "benchmark.duckdb")
@@ -287,8 +288,14 @@ def tpch(args, engine, size, cell, directory):
         con = native_open(engine, file, size)
         actual = {table: con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] for table in TABLES}
         assert actual == report["table_rows"]
+        check = verifier()
+        for query in report["queries"]:
+            answers = [list(row) for row in con.execute(query["sql"]).fetchall()]
+            error = check.compare(answers, query.get("results", [])) or check.order_error(query["number"], answers)
+            if error:
+                raise ValueError(f"Q{query['number']} answer changed after maintenance: {error}")
         maintenance = {"maintenance_seconds": elapsed, "rows": actual, "counts_verified_after_reopen": True,
-                       "storage_info": native_info(con, engine)}
+                       "query_answers_verified_after_maintenance": len(report["queries"]), "storage_info": native_info(con, engine)}
         con.close()
     maintenance.update(measure(directory))
     return {"load_seconds": report["load_seconds"], "query_report": str(raw), "closed": before,
@@ -343,6 +350,7 @@ def main():
     parser.add_argument("--duck-tpch", type=Path)
     parser.add_argument("--duckdb-wal-shim", type=Path, help="Linux WAL-only preload shim; required for DuckDB no-fsync loading")
     parser.add_argument("--controls", action="store_true", help="also run SlopDB/SQLite4KiB and DuckDB256KiB controls")
+    parser.add_argument("--discard-databases", action="store_true", help="remove only each successful cell's newly created database after validation and size inventory")
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--warmups", type=int, default=1)
     parser.add_argument("--timeout-seconds", type=float, default=120)
@@ -394,6 +402,9 @@ def main():
                         failed = True
                     else:
                         item = json.loads((cell / "storage.json").read_text())
+                        if args.discard_databases:
+                            shutil.rmtree(cell / "database")
+                            item["database_removed_after_validation"] = True
                 result["cells"].append(item)
                 (args.output / "comparison.json").write_text(json.dumps(result, indent=2) + "\n")
                 print(workload, engine, size, item["status"], flush=True)
