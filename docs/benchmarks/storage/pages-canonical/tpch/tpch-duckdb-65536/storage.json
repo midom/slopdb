@@ -1,0 +1,188 @@
+{
+  "engine_version": "1.5.6",
+  "sql_sha256": "921ac0b2c9114c3e309c1b14ba987e1657c5c8fa04b87aa84452056f629b1ed3",
+  "sql_bytes": 247091243,
+  "load_mode": "canonical_sql_replay",
+  "load_seconds": 262.5083915181458,
+  "statements": 7650,
+  "maintenance_seconds": 0.002518046647310257,
+  "closed": {
+    "tables": [
+      {
+        "name": "customer",
+        "rows": 30000,
+        "logical_bytes": 4914176,
+        "encoded_bytes": 6504176,
+        "sha256": "b224c7a3f07e384999b20fe75e4b20ef4777067f39043aaf5c5282ae75331fec"
+      },
+      {
+        "name": "lineitem",
+        "rows": 1199969,
+        "logical_bytes": 166530784,
+        "encoded_bytes": 268528149,
+        "sha256": "6bbbdbdd52561453885ab6dd69bdb40c72b12cbcfbd5f85d5cd39547c398bdf4"
+      },
+      {
+        "name": "nation",
+        "rows": 25,
+        "logical_bytes": 2434,
+        "encoded_bytes": 3059,
+        "sha256": "32bbefbaefb03db1d99b15905058bc01e9f7fd4a65dabcf2b993268e926bb37b"
+      },
+      {
+        "name": "orders",
+        "rows": 300000,
+        "logical_bytes": 34481520,
+        "encoded_bytes": 50681520,
+        "sha256": "61229c2d968497de8c0d1f23bb54dbcd841eaa51169b170667e938171f093638"
+      },
+      {
+        "name": "part",
+        "rows": 40000,
+        "logical_bytes": 4817033,
+        "encoded_bytes": 7297033,
+        "sha256": "db7f63b860cbab420dc1a54cdf5603e9f5f5e82f717d46c2174c2c74635a83f2"
+      },
+      {
+        "name": "partsupp",
+        "rows": 160000,
+        "logical_bytes": 24894077,
+        "encoded_bytes": 27774077,
+        "sha256": "bdf57da0d054ee954b0cfc53f3655e70e25415ce3e4a5cada0e62f6caef8e660"
+      },
+      {
+        "name": "region",
+        "rows": 5,
+        "logical_bytes": 404,
+        "encoded_bytes": 524,
+        "sha256": "9c1532ea1628aa0c004b1b402779aec5e5a2859475dd0d80cdccdffed38c24fa"
+      },
+      {
+        "name": "supplier",
+        "rows": 2000,
+        "logical_bytes": 289183,
+        "encoded_bytes": 377183,
+        "sha256": "adf5ff0ab43cf83d7a189b2c5943df5e57f12e3e830c576e2b05dc0c7bbc3abd"
+      }
+    ],
+    "total_rows": 1731999,
+    "total_logical_bytes": 235929611,
+    "verification_seconds": 17.224092439748347,
+    "storage_info": {
+      "database_name": "benchmark",
+      "database_size": "232.8 MiB",
+      "block_size": 65536,
+      "total_blocks": 3726,
+      "used_blocks": 3725,
+      "free_blocks": 1,
+      "wal_size": "0 bytes",
+      "memory_usage": "87.6 MiB",
+      "memory_limit": "953.6 MiB"
+    },
+    "files": [
+      {
+        "name": "benchmark.duckdb",
+        "bytes": 244199424,
+        "allocated_bytes": 244203520
+      }
+    ],
+    "file_count": 1,
+    "file_bytes": 244199424,
+    "allocated_total_bytes": 244207616,
+    "wal_files": []
+  },
+  "after_maintenance": {
+    "tables": [
+      {
+        "name": "customer",
+        "rows": 30000,
+        "logical_bytes": 4914176,
+        "encoded_bytes": 6504176,
+        "sha256": "b224c7a3f07e384999b20fe75e4b20ef4777067f39043aaf5c5282ae75331fec"
+      },
+      {
+        "name": "lineitem",
+        "rows": 1199969,
+        "logical_bytes": 166530784,
+        "encoded_bytes": 268528149,
+        "sha256": "6bbbdbdd52561453885ab6dd69bdb40c72b12cbcfbd5f85d5cd39547c398bdf4"
+      },
+      {
+        "name": "nation",
+        "rows": 25,
+        "logical_bytes": 2434,
+        "encoded_bytes": 3059,
+        "sha256": "32bbefbaefb03db1d99b15905058bc01e9f7fd4a65dabcf2b993268e926bb37b"
+      },
+      {
+        "name": "orders",
+        "rows": 300000,
+        "logical_bytes": 34481520,
+        "encoded_bytes": 50681520,
+        "sha256": "61229c2d968497de8c0d1f23bb54dbcd841eaa51169b170667e938171f093638"
+      },
+      {
+        "name": "part",
+        "rows": 40000,
+        "logical_bytes": 4817033,
+        "encoded_bytes": 7297033,
+        "sha256": "db7f63b860cbab420dc1a54cdf5603e9f5f5e82f717d46c2174c2c74635a83f2"
+      },
+      {
+        "name": "partsupp",
+        "rows": 160000,
+        "logical_bytes": 24894077,
+        "encoded_bytes": 27774077,
+        "sha256": "bdf57da0d054ee954b0cfc53f3655e70e25415ce3e4a5cada0e62f6caef8e660"
+      },
+      {
+        "name": "region",
+        "rows": 5,
+        "logical_bytes": 404,
+        "encoded_bytes": 524,
+        "sha256": "9c1532ea1628aa0c004b1b402779aec5e5a2859475dd0d80cdccdffed38c24fa"
+      },
+      {
+        "name": "supplier",
+        "rows": 2000,
+        "logical_bytes": 289183,
+        "encoded_bytes": 377183,
+        "sha256": "adf5ff0ab43cf83d7a189b2c5943df5e57f12e3e830c576e2b05dc0c7bbc3abd"
+      }
+    ],
+    "total_rows": 1731999,
+    "total_logical_bytes": 235929611,
+    "verification_seconds": 17.469838284887373,
+    "storage_info": {
+      "database_name": "benchmark",
+      "database_size": "232.8 MiB",
+      "block_size": 65536,
+      "total_blocks": 3726,
+      "used_blocks": 3725,
+      "free_blocks": 1,
+      "wal_size": "0 bytes",
+      "memory_usage": "87.6 MiB",
+      "memory_limit": "953.6 MiB"
+    },
+    "files": [
+      {
+        "name": "benchmark.duckdb",
+        "bytes": 244199424,
+        "allocated_bytes": 244203520
+      }
+    ],
+    "file_count": 1,
+    "file_bytes": 244199424,
+    "allocated_total_bytes": 244207616,
+    "wal_files": []
+  },
+  "wal_fsync_calls_skipped": 448,
+  "status": "ok",
+  "dataset": "tpch",
+  "engine": "duckdb",
+  "requested_page_size_bytes": 65536,
+  "page_size_bytes": 65536,
+  "query_benchmarked": false,
+  "workload_transactions": 0,
+  "logical_data_verified_twice": true
+}
