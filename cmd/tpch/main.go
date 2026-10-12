@@ -178,7 +178,7 @@ func run() (retErr error) {
 			retErr = errors.Join(retErr, database.Close())
 		}
 	}()
-	r := report{ZstdWindowBytes: storage.SSTableZstdWindowSize, QueryBenchmarked: !c.LoadOnly, LoadMode: "bulk_insert", PageSize: database.PageSize(), Config: c, Started: time.Now().UTC(), GoVersion: runtime.Version(), Platform: runtime.GOOS + "/" + runtime.GOARCH, CPUs: runtime.NumCPU()}
+	r := report{ZstdWindowBytes: storage.SSTableZstdWindowSizeForBlock(database.PageSize()), QueryBenchmarked: !c.LoadOnly, LoadMode: "bulk_insert", PageSize: database.PageSize(), Config: c, Started: time.Now().UTC(), GoVersion: runtime.Version(), Platform: runtime.GOOS + "/" + runtime.GOARCH, CPUs: runtime.NumCPU()}
 	if manifest, e := os.ReadFile(filepath.Join(c.Data, "manifest.json")); e == nil {
 		if !json.Valid(manifest) {
 			return errors.New("invalid data manifest JSON")

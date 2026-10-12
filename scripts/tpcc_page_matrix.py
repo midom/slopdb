@@ -42,8 +42,11 @@ def validate(report, engine, size, seconds, workers, warehouses):
             raise ValueError(f"configuration {key}: got {config[key]!r}, expected {value!r}")
     if info["page_size_bytes"] != size or info["wal_fsync"] is not False:
         raise ValueError("engine page size or WAL fsync setting differs from the request")
-    if engine == "slopdb" and info["wal"] is not True:
-        raise ValueError("SlopDB WAL must remain enabled")
+    if engine == "slopdb":
+        if info["wal"] is not True:
+            raise ValueError("SlopDB WAL must remain enabled")
+        if info.get("zstd_window_bytes") != max(1024, size):
+            raise ValueError("SlopDB compression window must match its page target")
     if engine == "sqlite":
         if info["journal_mode"] != "wal" or info["synchronous"] != "OFF":
             raise ValueError("SQLite must use WAL with synchronous=OFF")
@@ -100,7 +103,7 @@ def run(args):
                           "districts": 10, "customers": 100, "items": 1000, "seed": 42,
                           "prepared": True, "page_sizes": args.page_sizes, "controls": args.controls,
                           "slopdb_block_cache_bytes": 128 << 20, "slopdb_memtable_bytes": 4 << 20,
-                          "zstd_window_bytes": 8 << 20, "large_page_performance": "disabled; 1 MiB is loading/storage only",
+                          "zstd_window_policy": "configured page target; minimum 1024 bytes", "large_page_performance": "disabled; 1 MiB is loading/storage only",
                           "sqlite_cache_size_kib": 131072, "sqlite_wal_checkpoint_target_bytes": 64 << 20,
                           "duckdb_threads": 1, "duckdb_memory_limit": "1GB"},
         "cells": [],

@@ -70,8 +70,9 @@ otherwise remain untouched; pinned MVCC snapshots retain their required older
 versions. Reopening with an explicit option/CLI flag changes and persists the
 future target without an automatic rewrite. CLI `.open` carries an explicit CLI
 selection to the next database; absent that selection, it honors the destination's
-stored size. Avoid concurrent size changes when requesting a uniform VACUUM
-layout: each new writer reads the current target when it starts.
+stored size. Full compaction performs one merge of all SSTables directly into L6, including
+existing L6 files. Writes, flushes and page-size changes wait until that rewrite
+finishes; existing readers keep their pinned snapshots.
 
 Larger blocks reduce block/index overhead and can improve compression and
 sequential reads, while point reads may decompress more unrelated rows. Writer
