@@ -68,7 +68,7 @@ class PageMatrixTests(unittest.TestCase):
                     if "-mode" not in command:
                         self.assertIn("-load-only", command)
                         directory.mkdir()
-                        (directory / "data.sst").write_bytes(b"data")
+                        (directory / "1.sst").write_bytes(b"data")
                         value = {"queries": None, "query_benchmarked": False, "load_seconds": 1,
                                  "load_mode": "bulk_insert", "config": {"load_batch_rows": 4096},
                                  "page_size_bytes": size, "zstd_window_bytes": size,
@@ -108,6 +108,27 @@ class PageMatrixTests(unittest.TestCase):
             value["maintenance_operation"] = "promote_only"
             with self.assertRaisesRegex(ValueError, "rewrite all files"):
                 matrix.validate_slop_metadata(value, size, maintained=True)
+
+    def test_physical_sstables_must_match_bottom_inventory(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            (directory / "1.sst").write_bytes(b"data")
+            report = self.maintained_report(65536)
+            report.update(matrix.measure(directory))
+            matrix.validate_slop_inventory(report)
+            (directory / "2.sst").write_bytes(b"orphan")
+            report.update(matrix.measure(directory))
+            with self.assertRaisesRegex(ValueError, "physical SSTable"):
+                matrix.validate_slop_inventory(report)
+            (directory / "2.sst").unlink()
+            (directory / "1.sst").write_bytes(b"changed size")
+            report.update(matrix.measure(directory))
+            with self.assertRaisesRegex(ValueError, "physical SSTable"):
+                matrix.validate_slop_inventory(report)
+            (directory / "1.sst").unlink()
+            report.update(matrix.measure(directory))
+            with self.assertRaisesRegex(ValueError, "physical SSTable"):
+                matrix.validate_slop_inventory(report)
 
     def test_storage_only_skips_queries_at_every_size(self):
         for size in (4096, 16384, 65536, 1048576):
