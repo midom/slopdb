@@ -62,6 +62,21 @@ def validate_slop_metadata(report, size, maintained=False):
             raise ValueError("SlopDB level inventory is inconsistent")
 
 
+def validate_slop_inventory(report):
+    expected = {}
+    for file in report["levels"][report["bottom_level"]].get("Files") or []:
+        number, size = file.get("Number"), file.get("Size")
+        if not isinstance(number, int) or number < 1 or not isinstance(size, int) or size < 1:
+            raise ValueError("SlopDB L6 file inventory lacks valid file IDs and sizes")
+        name = f"{number}.sst"
+        if name in expected:
+            raise ValueError("SlopDB L6 file inventory contains duplicate file IDs")
+        expected[name] = size
+    physical = {file["name"]: file["bytes"] for file in report["files"] if file["name"].endswith(".sst")}
+    if physical != expected:
+        raise ValueError("physical SSTable files do not match verified bottom-level inventory")
+
+
 def measure(directory):
     files = []
     for path in sorted(directory.rglob("*")):
@@ -352,6 +367,8 @@ def tpch(args, engine, size, cell, directory):
                        "query_answers_verified_after_maintenance": len(report["queries"]), "storage_info": native_info(con, engine)}
         con.close()
     maintenance.update(measure(directory))
+    if engine == "slopdb":
+        validate_slop_inventory(maintenance)
     return {"load_seconds": report["load_seconds"], "query_report": str(raw), "closed": before,
             "after_maintenance": maintenance, "query_benchmarked": timed,
             "query_benchmark_skip_reason": None if timed else ("Storage-only measurement requested" if args.storage_only else "User requested loading/storage only for 1 MiB blocks"),
@@ -376,6 +393,7 @@ def cell_run(args, workload, engine, size):
         after = json.loads(after_json.read_text())
         validate_slop_metadata(after, size, maintained=True)
         after.update(measure(directory))
+        validate_slop_inventory(after)
         result = {"load_seconds": before["load_seconds"], "closed": before, "after_maintenance": after}
     elif workload == "tpcc":
         result = snapshot_native(args, engine, size, cell, directory)
