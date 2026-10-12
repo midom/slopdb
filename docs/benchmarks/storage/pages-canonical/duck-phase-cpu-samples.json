@@ -1,0 +1,46 @@
+{
+  "method": "10-second cpu-clock samples at 99 Hz; self samples by DSO; libc nearest resolved DuckDB/Python caller attribution for loading",
+  "engine": "duckdb",
+  "dataset": "tpcc",
+  "requested_page_size_bytes": 16384,
+  "claims": "phase-specific CPU samples; not a bulk-loading or query-throughput benchmark",
+  "phases": [
+    {
+      "phase": "load",
+      "profile_path": "/tmp/slopdb-bench/canonical-storage-20261012/duck-load-profile.data",
+      "sha256": "456ffd88f5cc23445a83cbe4b1f2c9d2fbf75dc7df58f96e10c487cd621f8059",
+      "samples": 904,
+      "self_samples_by_dso": {
+        "libc.so.6": 209,
+        "python3.12": 120,
+        "_duckdb.cpython-312-aarch64-linux-gnu.so": 553,
+        "[unknown]": 3,
+        "libstdc++.so.6.0.33": 7,
+        "ld-linux-aarch64.so.1": 12
+      },
+      "libc_nearest_caller_samples": {
+        "duckdb": 196,
+        "python": 13
+      }
+    },
+    {
+      "phase": "verification",
+      "profile_path": "/tmp/slopdb-bench/canonical-storage-20261012/duck-verification-profile.data",
+      "sha256": "44bc81e32e43d7fad6027f090c0929a12219fc78c006823b2fd0d66f4e803c34",
+      "samples": 910,
+      "self_samples_by_dso": {
+        "python3.12": 726,
+        "_duckdb.cpython-312-aarch64-linux-gnu.so": 136,
+        "libc.so.6": 25,
+        "libcrypto.so.3": 13,
+        "[unknown]": 6,
+        "_hashlib.cpython-312-aarch64-linux-gnu.so": 2,
+        "ld-linux-aarch64.so.1": 1,
+        "libstdc++.so.6.0.33": 1
+      },
+      "libc_nearest_caller_samples": {
+        "python": 25
+      }
+    }
+  ]
+}

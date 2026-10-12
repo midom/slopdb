@@ -1,0 +1,189 @@
+{
+  "engine_version": "3.45.1",
+  "sql_sha256": "8772c9bfcb2672d1b18bfb6aa98059489d26962083c94568f089be211eccd543",
+  "sql_bytes": 321378587,
+  "load_mode": "canonical_sql_replay",
+  "load_seconds": 154.9885474042967,
+  "statements": 46242,
+  "maintenance_seconds": 3.6465782010927796,
+  "closed": {
+    "tables": [
+      {
+        "name": "customer",
+        "rows": 256000,
+        "logical_bytes": 14336000,
+        "encoded_bytes": 17408000,
+        "sha256": "c25dbd92b2298003ea3693435f011810e17f7408ae31ebe524505b4ea797f87a"
+      },
+      {
+        "name": "district",
+        "rows": 2560,
+        "logical_bytes": 81920,
+        "encoded_bytes": 104960,
+        "sha256": "9cfb0e32f1628b690bc167f7a09a99ea90892ddeaf754803fed2712f7a6f8aed"
+      },
+      {
+        "name": "history",
+        "rows": 812544,
+        "logical_bytes": 45502464,
+        "encoded_bytes": 55252992,
+        "sha256": "9177f3cfb11de22f22171b71c3570d173e95e60df59a03006297e49d78398d64"
+      },
+      {
+        "name": "item",
+        "rows": 1000,
+        "logical_bytes": 16000,
+        "encoded_bytes": 23000,
+        "sha256": "377bcc1a779de8f8b8c6a0937887b49bd2c1c686212117d6ca50ed47b38fe749"
+      },
+      {
+        "name": "new_order",
+        "rows": 113920,
+        "logical_bytes": 2734080,
+        "encoded_bytes": 3645440,
+        "sha256": "d0e4dbad43fb49a03f3a7d8e2f0dd9b33f821acfc9505c53099ec8f8e926f16e"
+      },
+      {
+        "name": "order_line",
+        "rows": 8216320,
+        "logical_bytes": 591575040,
+        "encoded_bytes": 706603520,
+        "sha256": "b39c6cd4b7ec8831ee65b7966edd724194d52679ffb1107cf3924f363db7eaba"
+      },
+      {
+        "name": "orders",
+        "rows": 859520,
+        "logical_bytes": 47221760,
+        "encoded_bytes": 57536000,
+        "sha256": "63873da94146cfc79f0e9bc7dc717f3d73ae4088087af175c3e4e997f607ac8e"
+      },
+      {
+        "name": "stock",
+        "rows": 256000,
+        "logical_bytes": 12288000,
+        "encoded_bytes": 15104000,
+        "sha256": "50aa4483d5544b5c13226e5e1612dc92ce9ecd0f0e88c3c97e093f360df799c0"
+      },
+      {
+        "name": "warehouse",
+        "rows": 256,
+        "logical_bytes": 4096,
+        "encoded_bytes": 5888,
+        "sha256": "0d543b4665c0a444170fcc31774d0a8cce0399c6636e3ce3411899d666370686"
+      }
+    ],
+    "total_rows": 10518120,
+    "total_logical_bytes": 713759360,
+    "verification_seconds": 56.49520881008357,
+    "storage_info": {
+      "page_size": 4096,
+      "page_count": 121008,
+      "freelist_count": 0
+    },
+    "files": [
+      {
+        "name": "benchmark.sqlite",
+        "bytes": 495648768,
+        "allocated_bytes": 495656960
+      }
+    ],
+    "file_count": 1,
+    "file_bytes": 495648768,
+    "allocated_total_bytes": 495661056,
+    "wal_files": []
+  },
+  "after_maintenance": {
+    "tables": [
+      {
+        "name": "customer",
+        "rows": 256000,
+        "logical_bytes": 14336000,
+        "encoded_bytes": 17408000,
+        "sha256": "c25dbd92b2298003ea3693435f011810e17f7408ae31ebe524505b4ea797f87a"
+      },
+      {
+        "name": "district",
+        "rows": 2560,
+        "logical_bytes": 81920,
+        "encoded_bytes": 104960,
+        "sha256": "9cfb0e32f1628b690bc167f7a09a99ea90892ddeaf754803fed2712f7a6f8aed"
+      },
+      {
+        "name": "history",
+        "rows": 812544,
+        "logical_bytes": 45502464,
+        "encoded_bytes": 55252992,
+        "sha256": "9177f3cfb11de22f22171b71c3570d173e95e60df59a03006297e49d78398d64"
+      },
+      {
+        "name": "item",
+        "rows": 1000,
+        "logical_bytes": 16000,
+        "encoded_bytes": 23000,
+        "sha256": "377bcc1a779de8f8b8c6a0937887b49bd2c1c686212117d6ca50ed47b38fe749"
+      },
+      {
+        "name": "new_order",
+        "rows": 113920,
+        "logical_bytes": 2734080,
+        "encoded_bytes": 3645440,
+        "sha256": "d0e4dbad43fb49a03f3a7d8e2f0dd9b33f821acfc9505c53099ec8f8e926f16e"
+      },
+      {
+        "name": "order_line",
+        "rows": 8216320,
+        "logical_bytes": 591575040,
+        "encoded_bytes": 706603520,
+        "sha256": "b39c6cd4b7ec8831ee65b7966edd724194d52679ffb1107cf3924f363db7eaba"
+      },
+      {
+        "name": "orders",
+        "rows": 859520,
+        "logical_bytes": 47221760,
+        "encoded_bytes": 57536000,
+        "sha256": "63873da94146cfc79f0e9bc7dc717f3d73ae4088087af175c3e4e997f607ac8e"
+      },
+      {
+        "name": "stock",
+        "rows": 256000,
+        "logical_bytes": 12288000,
+        "encoded_bytes": 15104000,
+        "sha256": "50aa4483d5544b5c13226e5e1612dc92ce9ecd0f0e88c3c97e093f360df799c0"
+      },
+      {
+        "name": "warehouse",
+        "rows": 256,
+        "logical_bytes": 4096,
+        "encoded_bytes": 5888,
+        "sha256": "0d543b4665c0a444170fcc31774d0a8cce0399c6636e3ce3411899d666370686"
+      }
+    ],
+    "total_rows": 10518120,
+    "total_logical_bytes": 713759360,
+    "verification_seconds": 56.42920438759029,
+    "storage_info": {
+      "page_size": 4096,
+      "page_count": 115197,
+      "freelist_count": 0
+    },
+    "files": [
+      {
+        "name": "benchmark.sqlite",
+        "bytes": 471846912,
+        "allocated_bytes": 471855104
+      }
+    ],
+    "file_count": 1,
+    "file_bytes": 471846912,
+    "allocated_total_bytes": 471859200,
+    "wal_files": []
+  },
+  "status": "ok",
+  "dataset": "tpcc",
+  "engine": "sqlite",
+  "requested_page_size_bytes": 4096,
+  "page_size_bytes": 4096,
+  "query_benchmarked": false,
+  "workload_transactions": 0,
+  "logical_data_verified_twice": true
+}
