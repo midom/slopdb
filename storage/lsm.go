@@ -889,6 +889,10 @@ func (l *LSMTree) compactLevelLocked(level int) error {
 }
 
 func (l *LSMTree) installCompactionLocked(level int, inputs, output []*FileMetaData) error {
+	return l.installCompactionToLevelLocked(inputs, output, level+1)
+}
+
+func (l *LSMTree) installCompactionToLevelLocked(inputs, output []*FileMetaData, destination int) error {
 	cleanup := func() {
 		for _, f := range output {
 			l.tableCache.evict(f.Number)
@@ -901,7 +905,7 @@ func (l *LSMTree) installCompactionLocked(level int, inputs, output []*FileMetaD
 	for _, f := range inputs {
 		removed[f.Number] = true
 	}
-	for _, lv := range []int{level, level + 1} {
+	for lv := range l.levels {
 		var kept []*FileMetaData
 		for _, f := range l.levels[lv] {
 			if !removed[f.Number] {
@@ -910,7 +914,7 @@ func (l *LSMTree) installCompactionLocked(level int, inputs, output []*FileMetaD
 		}
 		l.levels[lv] = kept
 	}
-	l.levels[level+1] = append(l.levels[level+1], output...)
+	l.levels[destination] = append(l.levels[destination], output...)
 	if err := l.saveManifest(); err != nil {
 		l.levels = old
 		cleanup()
@@ -1006,7 +1010,15 @@ func (l *LSMTree) levelTotalSize(level int) int64 {
 	return total
 }
 
+// CompactRange flushes pending writes and merges all current SSTables into the
+// bottom level using the current page size and compression configuration. Writes
+// and page-size changes wait; reads retain their snapshots throughout the rewrite.
 func (l *LSMTree) CompactRange() error {
+	l.writerMu.Lock()
+	defer l.writerMu.Unlock()
+	if err := l.flushWithWriterLocked(); err != nil {
+		return err
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.closed {
@@ -1034,26 +1046,7 @@ func (l *LSMTree) CompactRange() error {
 	}
 	l.compactionWg.Add(1)
 	defer l.compactionWg.Done()
-	previousBottom := make(map[uint64]bool, len(l.levels[maxLevels-1]))
-	for _, file := range l.levels[maxLevels-1] {
-		previousBottom[file.Number] = true
-	}
-	for lv := 0; lv < maxLevels-1; lv++ {
-		for len(l.levels[lv]) > 0 {
-			if err := l.compactLevelLocked(lv); err != nil {
-				return err
-			}
-			if lv == 0 { // Do not chase new flushes indefinitely.
-				break
-			}
-		}
-	}
-	for _, file := range l.levels[maxLevels-1] {
-		if previousBottom[file.Number] {
-			return l.rewriteBottomLevelLocked()
-		}
-	}
-	return nil
+	return l.compactAllFilesToBottomLocked()
 }
 
 func (l *LSMTree) replayWALFiles(dir string) error {

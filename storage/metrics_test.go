@@ -32,7 +32,7 @@ func TestInstalledStorageWorkCounters(t *testing.T) {
 		t.Fatal(err)
 	}
 	after := l.Stats()
-	if after.CompletedCompactions != maxLevels-1 || after.CompactionInputBytes <= 0 || after.CompactionOutputBytes <= 0 {
+	if after.CompletedCompactions != 1 || after.CompactionInputBytes <= 0 || after.CompactionOutputBytes <= 0 {
 		t.Fatalf("missing installed compaction counters: %+v", after)
 	}
 	if after.CompletedFlushes != before.CompletedFlushes || after.FlushOutputBytes != before.FlushOutputBytes {
