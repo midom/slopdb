@@ -1,18 +1,19 @@
 # Page-size measurement protocol
 
-Measure storage/loading at the requested 16 KiB, 64 KiB and 1 MiB settings with
-fresh databases, plus a 4 KiB SlopDB control. The current matched-window refresh
-is storage-only at every SlopDB size: use `--storage-only --engines slopdb` so
-loading and persisted-data checks execute without the TPC-H query pack. Earlier
-TPC-H and TPC-C performance samples used an 8 MiB window policy and remain
-historical; they do not measure the new matched-window policy. SlopDB 1 MiB
-remains excluded from every performance test and query-answer check.
-Keep the source data, schema, indexes, compression codec/level, cache byte
-budgets, prepared execution and durability settings constant within each engine.
-Match each Zstd encoder window to the configured SSTable data-block target
-(minimum 1 KiB, the codec’s supported minimum).
-Page-size comparisons use the same executable revision; earlier storage reports
-remain historical evidence, not a controlled baseline for new code.
+Storage comparisons replay one frozen canonical `.sql` file per dataset into
+fresh SlopDB, SQLite and DuckDB databases. Every engine/page case receives the
+same SQL bytes, schema, indexes, views, INSERT values and transaction boundaries.
+The SQL SHA256 and byte length must match its sidecar manifest before replay.
+There is no benchmark run, per-engine data/schema rewrite, native COPY shortcut
+or query performance test in this storage matrix. Earlier snapshots and timings
+remain historical evidence rather than current comparison cells.
+
+Use `scripts/canonical_storage_fixture.py` to dump the pinned source once, then
+`scripts/storage_sql_matrix.py --sql DATA.sql --manifest DATA.sql.manifest.json`
+to replay it at 16 KiB, 64 KiB and 1 MiB plus default controls. Native engines
+reject 1 MiB; unsupported requests remain explicit. SlopDB's Zstd maximum window
+matches its configured block target (minimum 1 KiB). All fresh cases use one
+compiled SlopDB revision; every native case is reloaded, not reused.
 
 ## Supported sizes and interpretation
 
@@ -45,55 +46,60 @@ and [ATTACH options](https://duckdb.org/docs/current/sql/statements/attach#optio
 Record unsupported engine/size pairs explicitly. Do not substitute a supported
 size or report a successful measurement for an ignored setting.
 
-## Datasets
+## Canonical datasets and equality gates
 
-The large TPC-H fixture uses the same hash-verified DBGEN SF=0.2 inputs as
-[the large storage comparison](storage-large-comparison.md): eight tables,
-1,731,999 rows, fourteen secondary indexes, ANALYZE and the Q15 view.
-Preserve all input hashes in the report. The current storage-only refresh verifies
-persisted row counts/schema and hash-verified source inputs at all sizes, before
-and after maintenance, without running the TPC-H query pack or checking every
-stored column. If performance is measured separately in future, compare every
-result from all 22 queries with independent SQLite/DuckDB or native qualification
-answers at benchmarked sizes; keep 1 MiB load-only.
+The TPC-H dump originates from the pinned DBGEN SF=0.2 inputs: eight tables,
+1,731,999 rows, fourteen secondary indexes, ANALYZE and the Q15 view. The TPC-C
+storage dump originates from the pinned 83,165-row committed snapshot, with
+128 replicas except its shared 1,000-row item catalog: 10,518,120 rows across
+256 warehouses. The generator shifts warehouse/history keys once before
+freezing the SQL. Repeated values influence compression; this is a replicated
+storage fixture, not a fresh transactional benchmark.
 
-The large TPC-C storage fixture uses the pinned committed snapshot from the
-earlier comparison. Its nine tables contain 83,165 source rows. Replicate each
-table 128 times except the shared 1,000-row item catalog, producing 10,518,120
-rows across 256 warehouses. Shift `w_id` and every column ending in `_w_id` by
-`replica * 2`; shift `h_id` by `replica * (maximum source h_id + 1)`. Preserve
-the source JSON hash and declared keys plus `orders_customer` index. Compare
-every column of every row with the shifted source, not just row counts.
-Repeated values influence compression; label this as a replicated storage
-fixture rather than a fresh transactional benchmark.
+Both dumps use identical portable `BIGINT`, `DOUBLE` and `TEXT` declarations
+across engines, including explicit NOT NULL primary keys. Do not replace DuckDB
+INTEGER/REAL types during replay. Multi-row INSERTs contain at most 256 rows;
+transactions contain at most 4,096 rows. Native runners stream statements with
+quote/comment-aware splitting and execute the original text. SlopDB also streams
+and executes those statements through its normal SQL path. SQL, source hashes,
+generation configuration and expected fingerprints remain frozen in manifests.
 
-TPC-C timed runs use a separate fresh seeded load. The existing consistency
-checks assume that initial state, so the previously mutated storage snapshot
-cannot be substituted without redefining the baseline. Use ten workers,
-one minute, seed 42, prepared statements and WAL fsync disabled at benchmarked
-sizes. Record the 1 MiB timed case as skipped by request, not as a throughput
-result. Hold warehouse,
-district, customer and item counts constant and report them explicitly. Keep
-loading, preparation, validation, close and reopen outside the timed window.
-Require all fifteen consistency checks both immediately after execution and
-after reopening. Report expected rollbacks, shutdown cancellations, retries and
-unexpected failures separately. Databases from equal-duration runs contain
-different numbers of committed rows; their final sizes are workload outcomes,
-not equal-data space-efficiency comparisons.
+After clean close/reopen, read every declared column of every table in its
+canonical key order and compute the exact `slopdb-canonical-sql-v1` SHA256:
+
+- A row starts with ASCII `R` and a big-endian uint32 column count.
+- NULL is tag 0; its logical payload size is zero.
+- int64 is tag 1 plus eight signed big-endian bytes; comparisons remain exact.
+- float64 is tag 2 plus eight big-endian IEEE-754 bytes. Values must be finite;
+  signed zero is normalized to positive zero. Other floating values are exact.
+- Text is tag 3 plus a big-endian uint64 UTF-8 length and the exact UTF-8 bytes.
+
+Each table report must match the manifest's row count, SHA256, `logical_bytes`
+(non-NULL payload: integer/real eight bytes, text UTF-8 bytes) and `encoded_bytes`
+(payload plus hash framing). Dataset row and logical-byte totals must also match.
+Independent Python and Go encoders verify results. Repeat the complete check after
+maintenance and another close/reopen. Neither row counts alone nor aggregate
+TPC-H answers establish logical-data equality. No size result is published until
+both full-value checks pass. The SQL hash is checked again during/after replay.
+
+TPC-C throughput fixtures remain separate. Equal-duration benchmark runs commit
+different row counts and values, so their final sizes are not equal-data storage
+comparisons. No TPC-C or TPC-H workload executes in the canonical storage matrix,
+including at 1 MiB. A full-column validation scan verifies storage rather than
+measuring query throughput.
 
 ## Memory, maintenance and timing controls
 
 SlopDB defaults to a 4 MiB memtable and a 128 MiB decoded-block cache. Keep
 these byte budgets, compression codec/level and window-to-page policy fixed
-across page sizes. Current SlopDB loads use 4,096-row transactions
-and up to 256 rows per prepared INSERT; record these sizes. Use `-load-only`
-for every TPC-H runner in the current storage refresh. Set the Zstd window
+across page sizes. Canonical loads use the same bounded multi-row SQL INSERTs
+and transaction boundaries in every engine. Set the Zstd window
 to the configured data-block target: 4 KiB, 16 KiB, 64 KiB or 1 MiB, respectively.
 Independent blocks do not share compression history. Earlier explicit 8 MiB
 windows are a different configuration and must be labeled historical. The cache has
 sixteen shards, so each default shard retains at most 8 MiB of decoded data.
-Report its hits and misses together with allocations and throughput; larger
-pages reduce the number of retained blocks without increasing the cache budget.
+Larger pages reduce the number of retained blocks without increasing the cache
+budget. The storage matrix does not collect query throughput or cache-hit samples.
 
 For SQLite, set any cache budget in KiB with a negative `cache_size` after the
 page size is established, on every connection. A positive page count would
@@ -119,9 +125,8 @@ does not meet this requirement. Multiple output files are expected: L6 is the
 lowest level, not a requirement to create one enormous SSTable.
 
 Native maintenance remains SQLite VACUUM, and DuckDB VACUUM followed by
-CHECKPOINT. Reused native storage measurements must identify their original
-revision and method. These
-operations have different semantics. In particular, DuckDB VACUUM itself does
+CHECKPOINT. Every native cell is freshly replayed from the same canonical SQL.
+These operations have different semantics. In particular, DuckDB VACUUM itself does
 not reclaim file space; see [its documentation](https://duckdb.org/docs/current/sql/statements/vacuum#reclaiming-space).
 Do not describe them as identical physical compactions.
 
@@ -133,12 +138,11 @@ allocation. The matrix obtains allocated bytes from filesystem `st_blocks`;
 `du -s -B1` can independently check them. Preserve a per-file inventory,
 actual page/block metadata, row counts, validation status and exact operations.
 
-Run loads, maintenance, full tests and timed workloads serially on the same
-machine. Use fresh cases in a recorded order; report OS-cache conditions rather
-than claiming cold reads without resetting them. For TPC-H, one warmup precedes each measured query. The current matrix uses
-one measured sample per query; its median does not establish repeatability.
-Additional repeated samples are needed for statistical conclusions. A timeout is an incomplete query, not a timing sample. A single
-TPC-C run per size is descriptive evidence, not statistical proof.
+Run loads, maintenance and full tests serially on the same machine. Use fresh
+cases in a recorded order and preserve host/version/build metadata. OS caches are
+not reset. Loading durations are diagnostics, with SQL hashing/open/verification
+boundaries reported by the runner; they are not certified benchmark scores. No
+query or transaction timing samples are collected by this storage matrix.
 
 With limited disk space, finish a case's validation, measurements and saved
 reports before removing only that case's task-created database. Preserve the
