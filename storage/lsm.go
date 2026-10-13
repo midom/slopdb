@@ -582,6 +582,12 @@ func readPointFromView(view *readView, key []byte, snapshot, since uint64, versi
 	return readPointWithWorkspace(view, key, snapshot, since, versionOnly, &workspace)
 }
 func readPointWithWorkspace(view *readView, key []byte, snapshot, since uint64, versionOnly bool, workspace *pointWorkspace) ([]byte, bool, uint64, error) {
+	return readPointWithWorkspaceMode(view, key, snapshot, since, versionOnly, workspace, true)
+}
+
+// Internal callers may borrow immutable values while holding the read view.
+// Public point reads always copy values before releasing that view.
+func readPointWithWorkspaceMode(view *readView, key []byte, snapshot, since uint64, versionOnly bool, workspace *pointWorkspace, copyValue bool) ([]byte, bool, uint64, error) {
 	var best KeyValue
 	found := false
 	var rangeSeq uint64
@@ -658,7 +664,10 @@ func readPointWithWorkspace(view *readView, key []byte, snapshot, since uint64, 
 	if versionOnly {
 		return nil, true, best.Key.SeqNum, nil
 	}
-	return append([]byte(nil), best.Value...), true, best.Key.SeqNum, nil
+	if copyValue {
+		return append([]byte(nil), best.Value...), true, best.Key.SeqNum, nil
+	}
+	return best.Value, true, best.Key.SeqNum, nil
 }
 
 func (l *LSMTree) NewIteratorAt(snapshot uint64) Iterator { return l.iteratorView(snapshot, false) }

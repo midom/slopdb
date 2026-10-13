@@ -56,6 +56,7 @@ type MemTable struct {
 	head      *skipNode
 	height    atomic.Int32
 	approxSz  atomic.Int64
+	entries   int64 // protected by mu; includes retained versions and tombstones
 	arena     []byte
 	arenaOff  int
 	refs      atomic.Int32
@@ -157,6 +158,7 @@ func (m *MemTable) insertWithFinger(ik InternalKey, value []byte, update *[maxHe
 		m.height.Store(int32(h))
 	}
 	m.approxSz.Add(int64(len(ik.UserKey) + len(value) + 32))
+	m.entries++
 }
 
 // Keep the successor observed at the bottom search step. Reloading the

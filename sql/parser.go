@@ -9,10 +9,11 @@ import (
 )
 
 type Parser struct {
-	tok            *Tokenizer
-	cur            Token
-	parameters     bool
-	parameterCount int
+	tok              *Tokenizer
+	cur              Token
+	parameters       bool
+	parameterCount   int
+	showStatusFilter bool
 }
 
 func Parse(sql string) ([]Statement, error) {
@@ -1956,6 +1957,12 @@ func (p *Parser) parseUnary() (Expression, error) {
 }
 
 func (p *Parser) parsePrimary() (Expression, error) {
+	// ROWS is also a window-frame keyword; in table-status predicates it
+	// names the output column without requiring identifier quoting.
+	if p.showStatusFilter && p.showWord("ROWS") {
+		p.advance()
+		return &ColumnRefExpr{Name: "rows"}, nil
+	}
 	if p.cur.Type == TokParameter {
 		if !p.parameters {
 			return nil, fmt.Errorf("parameters require Prepare")

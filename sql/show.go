@@ -27,6 +27,9 @@ func (s *Schema) ExecuteShow(stmt *ShowStmt) (*ResultSet, error) {
 	var err error
 	likeColumn := ""
 	switch stmt.Kind {
+	case "TABLE STATUS":
+		rs, err = s.showTableStatus(stmt)
+		likeColumn = "Name"
 	case "DATABASES":
 		rs = showResult("Database")
 		rs.Rows = append(rs.Rows, map[string]Value{"Database": NewTextValue("main")})

@@ -20,10 +20,11 @@
 - [x] UPSERT (ON CONFLICT and MySQL ON DUPLICATE KEY UPDATE)
 
 ## Views & Triggers (5/5 done)
-## Query Plan & Introspection (4/4 done)
+## Query Plan & Introspection (5/5 done)
 
 - [x] SQL syntax locations, live lock waits/session IDs, typed lock timeout/deadlock diagnostics
 - [x] EXPLAIN schema-change work and locking; CLI `.plan`, `.explain`, `.locks` and `.status`
+- [x] MySQL-style `SHOW TABLE STATUS` with bounded LSM range sizes and sampled visible row estimates; see [table status](docs/table-status.md)
 ## Constraints (8/8 done)
 ## Schema Operations (5/5 done)
 

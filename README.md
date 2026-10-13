@@ -72,7 +72,7 @@ for working with results, loading data, backups and integrity checks.
 | Getting started | [First database and scripts](docs/getting-started.md) |
 | Working with data | [Supported behavior](docs/sql-semantics.md), [International text](docs/text-collation.md), [Unexpected query results](docs/sql-surprises.md) |
 | Changing a database | [Schema changes](docs/alter-table.md), [Online changes](docs/online-indexes.md), [Planning changes](docs/schema-change-planning.md) |
-| Applications and operations | [Application queries](docs/prepared-statements.md), [Operations](docs/application-operations.md), [Troubleshooting](docs/diagnostics.md) |
+| Applications and operations | [Application queries](docs/prepared-statements.md), [Operations](docs/application-operations.md), [Table status](docs/table-status.md), [Troubleshooting](docs/diagnostics.md) |
 | Performance | [Profiling](docs/query-profiling.md), [Resource use](docs/query-memory.md), [Measurements](docs/catalog-performance.md) |
 
 ## Tests and benchmarks

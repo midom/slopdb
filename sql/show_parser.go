@@ -63,6 +63,9 @@ func (p *Parser) parseShowFilter(stmt *ShowStmt, allowLike bool) error {
 		p.advance()
 	} else if p.showWord("WHERE") {
 		p.advance()
+		previous := p.showStatusFilter
+		p.showStatusFilter = stmt.Kind == "TABLE STATUS"
+		defer func() { p.showStatusFilter = previous }()
 		var err error
 		stmt.Where, err = p.parseExpression()
 		return err
@@ -86,6 +89,15 @@ func (p *Parser) parseShow() (Statement, error) {
 		return nil, fmt.Errorf("FULL is only supported for SHOW TABLES and SHOW COLUMNS")
 	}
 	switch kind {
+	case "TABLE":
+		if !p.showWord("STATUS") {
+			return nil, fmt.Errorf("expected STATUS after SHOW TABLE")
+		}
+		p.advance()
+		stmt.Kind = "TABLE STATUS"
+		if err := p.showDatabase(stmt); err != nil {
+			return nil, err
+		}
 	case "DATABASES", "SCHEMAS":
 		stmt.Kind = "DATABASES"
 	case "TABLES", "TRIGGERS":
