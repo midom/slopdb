@@ -17,7 +17,16 @@ type Parser struct {
 }
 
 func Parse(sql string) ([]Statement, error) {
-	p := &Parser{tok: NewTokenizer(sql)}
+	return ParseWithOptions(sql, ParseOptions{})
+}
+
+// ParseOptions controls input syntax without changing stored catalog SQL.
+type ParseOptions struct {
+	MySQLQuoting bool
+}
+
+func ParseWithOptions(sql string, options ParseOptions) ([]Statement, error) {
+	p := &Parser{tok: NewTokenizerWithOptions(sql, options)}
 	return p.parse()
 }
 
@@ -953,7 +962,16 @@ func (p *Parser) parseCreateTrigger() (Statement, error) {
 		}
 		if body != nil {
 			stmt.Body = append(stmt.Body, body)
-			stmt.BodySQL = append(stmt.BodySQL, strings.TrimSpace(p.tok.Input()[start:p.cur.Start]))
+			text := strings.TrimSpace(p.tok.Input()[start:p.cur.Start])
+			if p.tok.options.MySQLQuoting {
+				// Persist canonical literals/identifiers; reopening and schema
+				// rewrites use the default parser regardless of input mode.
+				text, err = formatDMLStatement(body)
+				if err != nil {
+					return nil, err
+				}
+			}
+			stmt.BodySQL = append(stmt.BodySQL, text)
 		}
 		if err := p.expect(TokSemicolon); err != nil {
 			return nil, err
@@ -1375,7 +1393,7 @@ func (p *Parser) parseSelectColumn() (SelectColumn, error) {
 		p.advance()
 		sc.Alias = p.cur.Value
 		p.advance()
-	} else if p.cur.Type == TokIdent {
+	} else if p.cur.Type == TokIdent || p.tok.options.MySQLQuoting && p.cur.Type == TokString {
 		sc.Alias = p.cur.Value
 		p.advance()
 	}
@@ -1659,9 +1677,15 @@ func (p *Parser) parseComparison() (Expression, error) {
 			return nil, err
 		}
 		be := &BinaryExpr{Left: left, Op: "LIKE", Right: right}
+		if p.tok.options.MySQLQuoting {
+			be.Escape = '\\'
+		}
 		if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "ESCAPE" {
 			p.advance()
 			if p.cur.Type == TokString {
+				if len(p.cur.Value) != 1 {
+					return nil, fmt.Errorf("ESCAPE requires a one-byte string")
+				}
 				be.Escape = p.cur.Value[0]
 				p.advance()
 			}
@@ -1679,6 +1703,9 @@ func (p *Parser) parseComparison() (Expression, error) {
 		if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "ESCAPE" {
 			p.advance()
 			if p.cur.Type == TokString {
+				if len(p.cur.Value) != 1 {
+					return nil, fmt.Errorf("ESCAPE requires a one-byte string")
+				}
 				be.Escape = p.cur.Value[0]
 				p.advance()
 			}
@@ -1705,9 +1732,15 @@ func (p *Parser) parseComparison() (Expression, error) {
 				return nil, err
 			}
 			be := &BinaryExpr{Left: left, Op: "NOT LIKE", Right: right}
+			if p.tok.options.MySQLQuoting {
+				be.Escape = '\\'
+			}
 			if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "ESCAPE" {
 				p.advance()
 				if p.cur.Type == TokString {
+					if len(p.cur.Value) != 1 {
+						return nil, fmt.Errorf("ESCAPE requires a one-byte string")
+					}
 					be.Escape = p.cur.Value[0]
 					p.advance()
 				}
@@ -1725,6 +1758,9 @@ func (p *Parser) parseComparison() (Expression, error) {
 			if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "ESCAPE" {
 				p.advance()
 				if p.cur.Type == TokString {
+					if len(p.cur.Value) != 1 {
+						return nil, fmt.Errorf("ESCAPE requires a one-byte string")
+					}
 					be.Escape = p.cur.Value[0]
 					p.advance()
 				}
@@ -1994,6 +2030,15 @@ func (p *Parser) parsePrimary() (Expression, error) {
 	if p.cur.Type == TokString {
 		val := p.cur.Value
 		p.advance()
+		if p.tok.options.MySQLQuoting && p.cur.Type == TokString {
+			var text strings.Builder
+			text.WriteString(val)
+			for p.cur.Type == TokString {
+				text.WriteString(p.cur.Value)
+				p.advance()
+			}
+			val = text.String()
+		}
 		return &LiteralExpr{Value: NewTextValue(val)}, nil
 	}
 

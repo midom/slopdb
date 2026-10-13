@@ -17,6 +17,7 @@ import (
 	"github.com/chzyer/readline"
 
 	"slopdb/db"
+	sqldb "slopdb/sql"
 	"slopdb/storage"
 )
 
@@ -38,6 +39,7 @@ func Run() {
 	flags := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	flags.BoolVar(&cliCfg.allowDotCommands, "allow-dot-commands", false, "allow CLI dot commands in non-interactive stdin (including shell and file commands)")
 	flags.BoolVar(&opt.DisableWAL, "no-wal", false, "disable WAL; persist writes on flush/clean exit, unflushed writes are lost on crash")
+	flags.BoolVar(&opt.MySQLQuoting, "mysql-quoting", false, "use MySQL double-quoted strings and backslash escapes; quote identifiers with backticks")
 	flags.BoolVar(&opt.DisableWALSync, "no-wal-fsync", false, "write WAL without fsync; power loss may lose recent writes, SSTables and MANIFEST stay synced")
 	flags.BoolVar(&opt.DisableWALSync, "no-fsync", false, "alias for --no-wal-fsync")
 	flags.DurationVar(&opt.QueryTimeout, "query-timeout", opt.QueryTimeout, "default SQL call timeout (0 disables it)")
@@ -136,7 +138,7 @@ func processPipe() {
 		exitCLI(1)
 	}
 
-	statements := splitSQL(string(data))
+	statements := splitSQLWithOptions(string(data), cliParseOptions())
 	for _, sql := range statements {
 		sql = strings.TrimSpace(sql)
 		if sql == "" {
@@ -202,7 +204,7 @@ func processREPL() {
 		buffer.WriteString(line)
 		buffer.WriteString(" ")
 
-		if strings.HasSuffix(line, ";") {
+		if hasStatementTerminator(buffer.String(), cliParseOptions()) {
 			sql := strings.TrimSpace(buffer.String())
 			sql = strings.TrimSuffix(sql, ";")
 			buffer.Reset()
@@ -224,7 +226,7 @@ func processBasic() {
 		return
 	}
 
-	statements := splitSQL(string(data))
+	statements := splitSQLWithOptions(string(data), cliParseOptions())
 	for _, sql := range statements {
 		sql = strings.TrimSpace(sql)
 		if strings.HasPrefix(sql, ".") {
@@ -645,6 +647,26 @@ func handleDotCommand(cmd string) {
 }
 
 func splitSQL(input string) []string {
+	return splitSQLWithOptions(input, sqldb.ParseOptions{})
+}
+
+func hasStatementTerminator(input string, options sqldb.ParseOptions) bool {
+	tokens := sqldb.NewTokenizerWithOptions(input, options)
+	last := sqldb.TokEOF
+	for token := tokens.Next(); token.Type != sqldb.TokEOF; token = tokens.Next() {
+		last = token.Type
+	}
+	return last == sqldb.TokSemicolon
+}
+
+func cliParseOptions() sqldb.ParseOptions {
+	if currentDBOptions == nil {
+		return sqldb.ParseOptions{}
+	}
+	return sqldb.ParseOptions{MySQLQuoting: currentDBOptions.MySQLQuoting}
+}
+
+func splitSQLWithOptions(input string, options sqldb.ParseOptions) []string {
 	var result []string
 	var current strings.Builder
 	depth := 0
@@ -688,6 +710,11 @@ func splitSQL(input string) []string {
 				c := input[i]
 				current.WriteByte(c)
 				i++
+				if options.MySQLQuoting && (ch == '\'' || ch == '"') && c == '\\' && i < len(input) {
+					current.WriteByte(input[i])
+					i++
+					continue
+				}
 				if c == end {
 					if ch != '[' && i < len(input) && input[i] == end {
 						current.WriteByte(input[i])

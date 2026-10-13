@@ -85,12 +85,17 @@ func isKeyword(s string) bool {
 }
 
 type Tokenizer struct {
-	input string
-	pos   int
+	input   string
+	pos     int
+	options ParseOptions
 }
 
 func NewTokenizer(input string) *Tokenizer {
-	return &Tokenizer{input: input}
+	return NewTokenizerWithOptions(input, ParseOptions{})
+}
+
+func NewTokenizerWithOptions(input string, options ParseOptions) *Tokenizer {
+	return &Tokenizer{input: input, options: options}
 }
 
 func (t *Tokenizer) Next() (tok Token) {
@@ -244,7 +249,7 @@ func (t *Tokenizer) skipWhitespace() {
 func (t *Tokenizer) scanString(quote byte) Token {
 	typ := TokString
 	end := quote
-	if quote != '\'' {
+	if quote != '\'' && !(quote == '"' && t.options.MySQLQuoting) {
 		typ = TokIdent
 	}
 	if quote == '[' {
@@ -255,6 +260,32 @@ func (t *Tokenizer) scanString(quote byte) Token {
 	for t.pos < len(t.input) {
 		ch := t.input[t.pos]
 		t.pos++
+		if ch == '\\' && typ == TokString && t.options.MySQLQuoting {
+			if t.pos == len(t.input) {
+				break
+			}
+			escaped := t.input[t.pos]
+			t.pos++
+			switch escaped {
+			case '0':
+				escaped = 0
+			case 'b':
+				escaped = '\b'
+			case 'n':
+				escaped = '\n'
+			case 'r':
+				escaped = '\r'
+			case 't':
+				escaped = '\t'
+			case 'Z':
+				escaped = 26
+			case '%', '_':
+				// Preserve the LIKE escape marker, including outside patterns.
+				value.WriteByte('\\')
+			}
+			value.WriteByte(escaped)
+			continue
+		}
 		if ch == end {
 			if t.pos < len(t.input) && t.input[t.pos] == end && quote != '[' {
 				value.WriteByte(end)

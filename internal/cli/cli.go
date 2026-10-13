@@ -475,7 +475,7 @@ func handleRead(arg string) {
 }
 
 func processSQLContent(content string) {
-	statements := splitSQL(content)
+	statements := splitSQLWithOptions(content, cliParseOptions())
 	for _, sql := range statements {
 		sql = strings.TrimSpace(sql)
 		if strings.HasPrefix(sql, ".") {
@@ -545,4 +545,4 @@ func runShell(arg string) {
 	}
 }
 
-func quoteCLIIdentifier(name string) string { return `"` + strings.ReplaceAll(name, `"`, `""`) + `"` }
+func quoteCLIIdentifier(name string) string { return "`" + strings.ReplaceAll(name, "`", "``") + "`" }

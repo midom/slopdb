@@ -130,7 +130,8 @@ type ExecResult struct {
 }
 
 type statementExecutor struct {
-	schema *sql.Schema
+	schema       *sql.Schema
+	parseOptions sql.ParseOptions
 }
 
 func (db *Database) Exec(sqlText string) (*ExecResult, error) {
@@ -190,7 +191,7 @@ func (db *Database) execSQL(ctx context.Context, sqlText string, schema *sql.Sch
 		return nil, err
 	}
 	schema.SetContext(ctx)
-	stmts, err := sql.Parse(sqlText)
+	stmts, err := sql.ParseWithOptions(sqlText, db.ParseOptions())
 	if err != nil {
 		return nil, fmt.Errorf("parse error: %w", err)
 	}
@@ -208,7 +209,7 @@ func (db *Database) execStatements(ctx context.Context, stmts []sql.Statement, s
 	schema.SetContext(ctx)
 	var err error
 	result := &ExecResult{}
-	executor := &statementExecutor{schema: schema}
+	executor := &statementExecutor{schema: schema, parseOptions: db.ParseOptions()}
 	var lockDeadline time.Time
 	for _, stmt := range stmts {
 		if stmt == nil {
@@ -413,6 +414,15 @@ func (db *statementExecutor) execStatement(stmt sql.Statement) (*ExecResult, err
 		if err != nil {
 			return nil, fmt.Errorf("SHOW error: %w", err)
 		}
+		if db.parseOptions.MySQLQuoting && strings.HasPrefix(s.Kind, "CREATE ") {
+			for _, row := range rs.Rows {
+				for _, name := range []string{"Create table", "Create view", "SQL Original Statement"} {
+					if value, ok := row[name]; ok {
+						row[name] = sql.NewTextValue(renderMySQLSQL(value.Text))
+					}
+				}
+			}
+		}
 		result = &ExecResult{Columns: rs.Columns, Rows: rs.Rows, Changes: int64(len(rs.Rows))}
 	case *sql.PragmaStmt:
 		rs, err := db.schema.ExecutePragma(s)
@@ -516,7 +526,7 @@ func (db *Database) GetCreateTableSQL(name string) string {
 	db.execution.RLockContext(context.Background())
 	defer db.execution.RUnlock()
 	_ = db.schema.RefreshReadCommitted()
-	return db.schema.GetCreateTableSQL(name)
+	return db.renderSQL(db.schema.GetCreateTableSQL(name))
 }
 
 func (db *Database) GetViewList() []string {
@@ -534,7 +544,7 @@ func (db *Database) GetViewSQL(name string) string {
 	db.execution.RLockContext(context.Background())
 	defer db.execution.RUnlock()
 	_ = db.schema.RefreshReadCommitted()
-	return db.schema.GetViewSQL(name)
+	return db.renderSQL(db.schema.GetViewSQL(name))
 }
 
 func (db *Database) GetCreateViewSQL(name string) string {
@@ -543,7 +553,7 @@ func (db *Database) GetCreateViewSQL(name string) string {
 	db.execution.RLockContext(context.Background())
 	defer db.execution.RUnlock()
 	_ = db.schema.RefreshReadCommitted()
-	return db.schema.GetCreateViewSQL(name)
+	return db.renderSQL(db.schema.GetCreateViewSQL(name))
 }
 
 func (db *Database) GetTriggerList() []string {
@@ -561,7 +571,7 @@ func (db *Database) GetTriggerSQL(name string) string {
 	db.execution.RLockContext(context.Background())
 	defer db.execution.RUnlock()
 	_ = db.schema.RefreshReadCommitted()
-	return db.schema.GetTriggerSQL(name)
+	return db.renderSQL(db.schema.GetTriggerSQL(name))
 }
 
 func (db *Database) GetIndexList() []string {
@@ -579,7 +589,7 @@ func (db *Database) GetIndexSQL(name string) string {
 	db.execution.RLockContext(context.Background())
 	defer db.execution.RUnlock()
 	_ = db.schema.RefreshReadCommitted()
-	return db.schema.GetIndexSQL(name)
+	return db.renderSQL(db.schema.GetIndexSQL(name))
 }
 
 func (db *Database) Stats() storage.LSMStats {
@@ -596,19 +606,19 @@ func (db *Database) Dump() string {
 		b.WriteString(createSQL)
 		b.WriteString(";\n")
 
-		rs, err := db.Exec("SELECT * FROM " + quoteIdentifier(name))
+		rs, err := db.Exec(db.renderSQL("SELECT * FROM " + quoteIdentifier(name)))
 		if err != nil || rs == nil || len(rs.Columns) == 0 || len(rs.Rows) == 0 {
 			continue
 		}
 		for _, row := range rs.Rows {
 			b.WriteString("INSERT INTO ")
-			b.WriteString(quoteIdentifier(name))
+			b.WriteString(db.renderSQL(quoteIdentifier(name)))
 			b.WriteString(" VALUES(")
 			for i, col := range rs.Columns {
 				if i > 0 {
 					b.WriteString(",")
 				}
-				b.WriteString(formatValue(row[col.Name]))
+				b.WriteString(db.renderSQL(formatValue(row[col.Name])))
 			}
 			b.WriteString(");\n")
 		}

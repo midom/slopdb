@@ -46,6 +46,7 @@ go test ./sql -run '^$' -fuzz FuzzParse -fuzztime 30s
 | CLI formatting, schema planning, atomic CSV import, backup/integrity commands and page-size options | `internal/cli/*_test.go`, `tests/regression/cli_page_size_test.go` | CLI unit tests live with the implementation; process tests build the root entry point |
 | CLI EOF/exit/bail/SIGTERM persistence, `.open` and flush errors | `tests/regression/cli_linux_test.go`, compression CLI tests | `no_wal_cli_review.go` and the current compression review programs |
 | Malformed parser input and fuzz seeds | `sql/parser_test.go` | `parser_review.go`; also covers the ALTER-column semicolon regression found while migrating |
+| Optional MySQL quoting, string escapes, input splitting, SQL exports and persistence | `sql/mysql_quoting_test.go`, `internal/cli/mysql_quoting_test.go`, `tests/regression/mysql_quoting_test.go` | Tokenizer/parser cases, API sessions/transactions/preparation/streaming, dump restore, CLI import/read/open and default-mode compatibility |
 
 The SQL reference tests execute 599 semantics queries, 98 execution queries, and
 1,797 join/index/LIKE queries both before and after reopening: **4,291 reference

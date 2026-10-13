@@ -25,7 +25,11 @@ type PreparedQuery struct {
 // value expressions and LIMIT/OFFSET. Schema definitions cannot contain bound
 // parameters because their expression SQL must survive database reopening.
 func Prepare(query string) (*PreparedQuery, error) {
-	p := &Parser{tok: NewTokenizer(query), parameters: true}
+	return PrepareWithOptions(query, ParseOptions{})
+}
+
+func PrepareWithOptions(query string, options ParseOptions) (*PreparedQuery, error) {
+	p := &Parser{tok: NewTokenizerWithOptions(query, options), parameters: true}
 	statements, err := p.parse()
 	if err != nil {
 		return nil, err
@@ -35,7 +39,7 @@ func Prepare(query string) (*PreparedQuery, error) {
 	}
 	// Identifiers and aliases are not parameter positions. Some dialect parsing
 	// paths consume a name without parsePrimary, so check for swallowed markers.
-	t := NewTokenizer(query)
+	t := NewTokenizerWithOptions(query, options)
 	markers := 0
 	for tok := t.Next(); tok.Type != TokEOF; tok = t.Next() {
 		if tok.Type == TokParameter {

@@ -10,7 +10,11 @@ import (
 )
 
 func queryExplanationSQL(query string) (string, error) {
-	statements, err := sqldb.Parse(query)
+	return queryExplanationSQLWithOptions(query, sqldb.ParseOptions{})
+}
+
+func queryExplanationSQLWithOptions(query string, options sqldb.ParseOptions) (string, error) {
+	statements, err := sqldb.ParseWithOptions(query, options)
 	if err != nil {
 		return "", err
 	}
@@ -37,7 +41,7 @@ func queryExplanationSQL(query string) (string, error) {
 }
 
 func printQueryExplanation(query string) {
-	explain, err := queryExplanationSQL(query)
+	explain, err := queryExplanationSQLWithOptions(query, currentDB.ParseOptions())
 	if err != nil {
 		queryExplanationError(err)
 		return

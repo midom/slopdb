@@ -22,6 +22,11 @@ func formatDatabaseStatus(stats storage.LSMStats, options *storage.Options) stri
 	}
 	fmt.Fprintf(&b, "SSTable page target: %d bytes\n", stats.PageSize)
 	if options != nil {
+		quoting := "default (double-quoted identifiers)"
+		if options.MySQLQuoting {
+			quoting = "MySQL (double-quoted strings, backslash escapes)"
+		}
+		fmt.Fprintf(&b, "SQL quoting: %s\n", quoting)
 		queryTimeout := options.QueryTimeout.String()
 		if options.QueryTimeout == 0 {
 			queryTimeout = "unlimited"

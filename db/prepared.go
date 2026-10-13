@@ -43,7 +43,7 @@ func (db *Database) PrepareContext(ctx context.Context, query string) (*Stmt, er
 	if db.closed.Load() {
 		return nil, errors.New("database closed")
 	}
-	p, err := sql.Prepare(query)
+	p, err := sql.PrepareWithOptions(query, db.ParseOptions())
 	if err != nil {
 		return nil, fmt.Errorf("prepare: %w", err)
 	}

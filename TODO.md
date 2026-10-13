@@ -13,7 +13,9 @@
 ## Aggregates & Grouping (8/8 done)
 ## Joins (7/7 done)
 ## Subqueries (5/5 done)
-## Data Types & Expressions (18/18 done)
+## Data Types & Expressions (19/19 done)
+
+- [x] Optional MySQL default quoting for CLI/API input, prepared and streaming queries, with canonical schema persistence and matching SQL exports; see [SQL quoting](docs/sql-quoting.md)
 ## DML Extensions (5/5 done)
 
 - [x] Multi-row INSERT, INSERT...SELECT, REPLACE, RETURNING

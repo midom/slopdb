@@ -21,6 +21,7 @@ const (
 )
 
 type Options struct {
+	MySQLQuoting         bool   // input SQL: double-quoted strings and MySQL backslash escapes; default false
 	QueryMemoryBytes     int64  // per-operator working budget; zero selects 64 MiB, negative is invalid
 	QueryTempDir         string // temporary operator spills; empty uses the OS temp directory
 	MaxCTEIterations     int64  // recursive CTE iterations; default 100,000, zero unlimited

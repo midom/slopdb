@@ -9,7 +9,7 @@ import (
 )
 
 func planSchemaChange(database *db.Database, query string) (*db.ExecResult, error) {
-	statements, err := sqldb.Parse(query)
+	statements, err := sqldb.ParseWithOptions(query, database.ParseOptions())
 	if err != nil {
 		return nil, err
 	}

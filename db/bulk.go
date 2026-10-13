@@ -41,7 +41,7 @@ func (db *Database) BulkInsert(ctx context.Context, table string, columns []stri
 		names[i] = quoteIdentifier(name)
 		parameters[i] = "?"
 	}
-	queryPrefix := "INSERT INTO " + quoteIdentifier(table) + " (" + strings.Join(names, ",") + ") VALUES "
+	queryPrefix := db.renderSQL("INSERT INTO " + quoteIdentifier(table) + " (" + strings.Join(names, ",") + ") VALUES ")
 	rowShape := "(" + strings.Join(parameters, ",") + ")"
 	tx, err := db.BeginContext(ctx)
 	if err != nil {
@@ -49,7 +49,7 @@ func (db *Database) BulkInsert(ctx context.Context, table string, columns []stri
 	}
 	defer tx.Rollback()
 	// Validate the target and column names even when the source is empty.
-	validation, err := tx.QueryContext(ctx, "SELECT "+strings.Join(names, ",")+" FROM "+quoteIdentifier(table)+" LIMIT 0")
+	validation, err := tx.QueryContext(ctx, db.renderSQL("SELECT "+strings.Join(names, ",")+" FROM "+quoteIdentifier(table)+" LIMIT 0"))
 	if err != nil {
 		return 0, err
 	}
