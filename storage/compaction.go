@@ -63,7 +63,11 @@ func (h *rawTableHeap) Pop() any {
 // here. The caller holds no storage mutex during reads, compression or file sync.
 func (l *LSMTree) buildCompaction(inputs []*FileMetaData, oldest uint64, level int) (output []*FileMetaData, err error) {
 	var entries []*cacheEntry
+	var iterators []*SSTableIterator
 	defer func() {
+		for _, it := range iterators {
+			it.Close()
+		}
 		for _, entry := range entries {
 			l.tableCache.release(entry)
 		}
@@ -82,6 +86,7 @@ func (l *LSMTree) buildCompaction(inputs []*FileMetaData, oldest uint64, level i
 		}
 		entries = append(entries, entry)
 		it := entry.reader.newIterator(true, false, false)
+		iterators = append(iterators, it)
 		if e := it.Err(); e != nil {
 			return output, e
 		}
@@ -136,6 +141,7 @@ func (l *LSMTree) buildCompaction(inputs []*FileMetaData, oldest uint64, level i
 			heap.Fix(&h, 0)
 		} else {
 			heap.Pop(&h)
+			it.Close()
 		}
 	}
 	if len(chunk) > 0 {

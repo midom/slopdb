@@ -15,6 +15,15 @@ type CompressionType string
 // change persisted data or the separate SSTable-reader cache.
 type BlockCachePolicy string
 
+// BlockCacheMemory selects allocation for cached decoded pages and records.
+// It is an in-memory setting and does not change the SSTable format.
+type BlockCacheMemory string
+
+const (
+	BlockCacheHeap BlockCacheMemory = "heap"
+	BlockCacheMmap BlockCacheMemory = "mmap"
+)
+
 const (
 	BlockCacheLRU   BlockCachePolicy = "lru"
 	BlockCacheCLOCK BlockCachePolicy = "clock"
@@ -41,8 +50,9 @@ type Options struct {
 	PageSize             int64            // uncompressed SSTable data-block target; 0 reuses stored size/default 4096
 	MaxLevels            int              // number of levels (default 7)
 	BloomBitsKey         int              // bits per key for bloom filter (default 10)
-	BlockCacheSize       int              // decoded block-cache byte budget; default 128 MiB
+	BlockCacheSize       int              // decoded cached page bytes; default 128 MiB (metadata/reserve extra)
 	BlockCachePolicy     BlockCachePolicy // empty/lru (default) or clock
+	BlockCacheMemory     BlockCacheMemory // empty/mmap (default) or heap
 	VerifySSTableChanges bool             // diagnostic: stat files before cache hits to detect external modification
 	VerifyIndexesOnOpen  bool             // diagnostic: scan rows, validate indexed types and reconcile indexes on every open
 	MaxOpenFiles         int              // SSTable LRU capacity (default 500); active read views/iterators pin additional readers
@@ -103,6 +113,7 @@ func DefaultOptions() *Options {
 		MaxOpenFiles:        500,
 		BlockCacheSize:      defaultBlockCacheBytes,
 		BlockCachePolicy:    BlockCacheLRU,
+		BlockCacheMemory:    BlockCacheMmap,
 		CompactionL0Trigger: 4,
 		BaseLevelSize:       10,
 		MaxSeekCompaction:   100,

@@ -3876,6 +3876,28 @@ func (s *Schema) validateQueryUncached(stmt *SelectStmt, info *TableInfo) error 
 }
 
 func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
+	return s.selectInto(stmt, nil)
+}
+
+// SelectInto may reuse dst's columns, row maps and BLOB buffers for a prepared
+// point SELECT. The caller gives up the old contents on entry. Other SELECT
+// shapes use their normal executor and replace dst with an owned result.
+// dst and all of its buffers must belong exclusively to this call.
+func (s *Schema) SelectInto(stmt *SelectStmt, dst *ResultSet) (*ResultSet, error) {
+	if dst == nil {
+		return s.Select(stmt)
+	}
+	result, err := s.selectInto(stmt, dst)
+	if err == nil && result != dst {
+		*dst = *result
+	}
+	if err != nil {
+		return nil, err
+	}
+	return dst, nil
+}
+
+func (s *Schema) selectInto(stmt *SelectStmt, dst *ResultSet) (result *ResultSet, err error) {
 	if stmt.With != nil {
 		restore, err := s.enterCTEs(stmt.With)
 		if err != nil {
@@ -3925,7 +3947,7 @@ func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
 		if info := s.tables[strings.ToLower(stmt.From)]; info != nil {
 			defer s.restorePreparedPlan(s.usePreparedPlan(stmt.prepared, info))
 			planUsed = true
-			if rs, used, err := s.selectPreparedPoint(stmt, info); used || err != nil {
+			if rs, used, err := s.selectPreparedPoint(stmt, info, dst); used || err != nil {
 				return rs, err
 			}
 		}
@@ -6917,6 +6939,10 @@ func appendValue(buf []byte, v Value) []byte {
 }
 
 func decodeValue(data []byte) (Value, int) {
+	return decodeValueInto(data, nil)
+}
+
+func decodeValueInto(data, blobBuffer []byte) (Value, int) {
 	if len(data) < 1 {
 		return NewNullValue(), 0
 	}
@@ -6946,8 +6972,10 @@ func decodeValue(data []byte) (Value, int) {
 		if n <= 0 || len(data) < 1+n+int(length) {
 			return NewNullValue(), 1 + n
 		}
-		blob := make([]byte, int(length))
-		copy(blob, data[1+n:1+n+int(length)])
+		blob := append(blobBuffer[:0], data[1+n:1+n+int(length)]...)
+		if blob == nil {
+			blob = []byte{} // preserve an empty, non-NULL BLOB
+		}
 		return Value{Type: ColBlob, Blob: blob}, 1 + n + int(length)
 	}
 	return NewNullValue(), 1

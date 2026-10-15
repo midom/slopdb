@@ -38,6 +38,7 @@ type Session struct {
 	transactionHandle bool
 	abortError        atomic.Pointer[TransactionAbortedError]
 	executionReader   uint64
+	selectTarget      sql.ResultSet // private destination view; session gate protects it
 }
 
 func (db *Database) NewSession() (*Session, error) {
@@ -115,6 +116,13 @@ func (s *Session) ExecContextWithOptions(ctx context.Context, query string, opti
 }
 
 func (s *Session) execParsed(ctx context.Context, statements []sql.Statement, cancel context.CancelFunc, bound bool, lockTimeout time.Duration) (result *ExecResult, resultErr error) {
+	return s.execParsedInto(ctx, statements, cancel, bound, lockTimeout, nil)
+}
+
+func (s *Session) execParsedInto(ctx context.Context, statements []sql.Statement, cancel context.CancelFunc, bound bool, lockTimeout time.Duration, dst *ExecResult) (result *ExecResult, resultErr error) {
+	if dst != nil {
+		defer func() { s.selectTarget = sql.ResultSet{} }()
+	}
 	if err := s.terminalTransactionError(); err != nil {
 		return nil, err
 	}
@@ -151,10 +159,14 @@ func (s *Session) execParsed(ctx context.Context, statements []sql.Statement, ca
 	}
 	if !bound {
 		if result, handled, err := s.tryPointUpdate(ctx, statements); handled {
+			if err == nil && dst != nil {
+				*dst = *result
+				result = dst
+			}
 			return result, err
 		}
 	}
-	result, err := s.db.execStatements(ctx, statements, s.schema, bound, lockTimeout)
+	result, err := s.db.execStatementsInto(ctx, statements, s.schema, bound, lockTimeout, dst, &s.selectTarget)
 	return result, err
 }
 

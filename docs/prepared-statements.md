@@ -81,6 +81,41 @@ in `ORDER BY ?` or `GROUP BY ?` is a constant expression, not a column ordinal.
 already-started execution may finish. Closing a statement does not close its
 session or roll back its transaction.
 
+## Reuse SELECT result buffers
+
+`Session.ExecPreparedInto` lets a reader reuse its own result buffers:
+
+```go
+var result db.ExecResult
+for _, id := range ids {
+    _, err := session.ExecPreparedInto(&result, stmt, id)
+    if err != nil {
+        return err
+    }
+    // Consume this result before the next call that uses result.
+    consume(result.Rows)
+}
+```
+
+A prepared point SELECT reuses the column slice, row map, and BLOB capacity.
+The caller gives up all old contents on entry. Do not retain aliases to these
+buffers across calls or share a destination between concurrent readers.
+Use one destination per reader. On error, its contents are unspecified.
+Other query shapes and writes use their normal executor and replace the result.
+Cancellation, statement snapshots, transaction rules, and validation are the
+same as for `ExecPrepared`. Context and per-call options are available through
+`ExecPreparedContextInto` and `ExecPreparedContextWithOptionsInto`.
+
+The ordinary API continues to return independent results that can be retained.
+Point SELECTs decode only columns needed by the projection and WHERE predicate,
+so an unselected text or BLOB field is not copied.
+
+Prepared plan counters use 128 independent counter shards. A private bound AST
+gets its shard when it is created and keeps it through metadata invalidation.
+The hot query path does not update a global counter. `PlanStats` sums the shards;
+totals are exact when executions are idle. A read during execution can observe
+increments from different moments, as with the previous separate counters.
+
 ## 64-bit pagination
 
 SELECT, compound SELECT, UPDATE, and DELETE store both `Limit` and `Offset` as

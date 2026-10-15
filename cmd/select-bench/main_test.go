@@ -16,8 +16,10 @@ func TestSeedReuseAndCheckedConcurrentReaders(t *testing.T) {
 		t.Fatal("reseed overwrote existing database")
 	}
 	c.SeedBytes = 0
-	for _, policy := range []string{"lru", "clock"} {
+	for _, mode := range []struct{ policy, memory string }{{"lru", "mmap"}, {"clock", "mmap"}, {"lru", "heap"}, {"clock", "heap"}} {
+		policy := mode.policy
 		c.CachePolicy = policy
+		c.CacheMemory = mode.memory
 		r, err := run(c)
 		if err != nil {
 			t.Fatal(err)
@@ -26,7 +28,7 @@ func TestSeedReuseAndCheckedConcurrentReaders(t *testing.T) {
 			t.Fatalf("incomplete run: %+v", r)
 		}
 		for _, s := range r.Samples {
-			if s.Queries <= 0 || s.QueriesPerSecond <= 0 || s.After.BlockCacheBytes > int64(c.CacheBytes) || s.After.BlockCacheHits <= s.Before.BlockCacheHits || string(s.After.BlockCachePolicy) != policy {
+			if s.Queries <= 0 || s.QueriesPerSecond <= 0 || s.After.BlockCacheBytes > int64(c.CacheBytes) || s.After.BlockCacheHits <= s.Before.BlockCacheHits || string(s.After.BlockCachePolicy) != policy || string(s.After.BlockCacheMemory) != mode.memory {
 				t.Fatalf("invalid sample: %+v", s)
 			}
 		}

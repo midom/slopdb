@@ -121,6 +121,12 @@ func NewLSMTree(dir string, opt *Options) (*LSMTree, error) {
 	if opt.BlockCachePolicy != BlockCacheLRU && opt.BlockCachePolicy != BlockCacheCLOCK {
 		return nil, fmt.Errorf("invalid block cache policy %q: want lru or clock", opt.BlockCachePolicy)
 	}
+	if opt.BlockCacheMemory == "" {
+		opt.BlockCacheMemory = BlockCacheMmap
+	}
+	if opt.BlockCacheMemory != BlockCacheHeap && opt.BlockCacheMemory != BlockCacheMmap {
+		return nil, fmt.Errorf("invalid block cache memory %q: want heap or mmap", opt.BlockCacheMemory)
+	}
 	if _, err := opt.compressionType(0); err != nil {
 		return nil, err
 	}
@@ -160,7 +166,7 @@ func NewLSMTree(dir string, opt *Options) (*LSMTree, error) {
 		mem:        NewMemTable(),
 		seqNum:     0,
 		fileNum:    0,
-		tableCache: newTableCache(dir, opt.MaxOpenFiles, opt.BlockCacheSize, opt.BlockCachePolicy),
+		tableCache: newTableCache(dir, opt.MaxOpenFiles, opt.BlockCacheSize, opt.BlockCachePolicy, opt.BlockCacheMemory),
 		snapshots:  make(map[uint64]int),
 		closeDone:  make(chan struct{}),
 	}
@@ -617,20 +623,25 @@ func readPointWithWorkspace(view *readView, key []byte, snapshot, since uint64, 
 	return readPointWithWorkspaceMode(view, key, snapshot, since, versionOnly, workspace, true)
 }
 
-// Internal callers may borrow immutable values while holding the read view.
-// Public point reads always copy values before releasing that view.
+// Internal callers borrow values while the workspace pins the winning block.
+// Public point reads copy values before releasing that workspace.
 func readPointWithWorkspaceMode(view *readView, key []byte, snapshot, since uint64, versionOnly bool, workspace *pointWorkspace, copyValue bool) ([]byte, bool, uint64, error) {
+	workspace.releaseBlocks()
 	var best KeyValue
 	found := false
 	var rangeSeq uint64
 	consider := func(kv KeyValue, ok bool, rd uint64) {
 		if ok && (!found || kv.Key.SeqNum > best.Key.SeqNum) {
+			workspace.bestBlock.release()
+			workspace.bestBlock, workspace.block = workspace.block, nil
 			best = kv
 			found = true
 		}
 		if rd > rangeSeq {
 			rangeSeq = rd
 		}
+		workspace.block.release()
+		workspace.block = nil
 	}
 	kv, ok, rd := view.mem.lookupAt(key, snapshot)
 	consider(kv, ok, rd)
@@ -1329,6 +1340,7 @@ func (f *fileIterator) Prev()           { f.iter.Prev() }
 func (f *fileIterator) Close() {
 	if !f.closed {
 		f.closed = true
+		f.iter.Close()
 		f.cache.release(f.entry)
 	}
 }
@@ -1760,6 +1772,7 @@ func (h *mergeHeap) Pop() interface{} {
 
 type LSMStats struct {
 	BlockCachePolicy      BlockCachePolicy
+	BlockCacheMemory      BlockCacheMemory
 	PageSize              int64 // effective uncompressed SSTable data-block target
 	CompletedCompactions  int64 // successfully installed compactions in this open instance
 	CompactionInputBytes  int64 // total input SSTable file sizes, not device I/O
@@ -1777,15 +1790,18 @@ type LSMStats struct {
 	FileNum               uint64
 	Levels                [maxLevels]LevelStats
 
-	BloomHits                int64
-	BloomMisses              int64
-	CacheHits                int64
-	CacheMisses              int64
-	BlockCacheBytes          int64
-	BlockCacheHits           int64
-	BlockCacheAdmissionSkips int64
-	BlockCacheMisses         int64
-	PointIndexBytes          int64 // additional decoded index arrays in the current file view; outside the page budget
+	BloomHits                 int64
+	BloomMisses               int64
+	CacheHits                 int64
+	CacheMisses               int64
+	BlockCacheBytes           int64
+	BlockCacheArenaBytes      int64 // reserved anonymous mapping bytes, including allocator reserve
+	BlockCacheArenaInUseBytes int64 // live spans, including pinned evictions, headers and alignment
+	BlockCacheArenaFailures   int64 // failed mapping/admission/unmapping operations
+	BlockCacheHits            int64
+	BlockCacheAdmissionSkips  int64
+	BlockCacheMisses          int64
+	PointIndexBytes           int64 // additional decoded index arrays in the current file view; outside the page budget
 }
 
 type LevelStats struct {
@@ -1806,9 +1822,11 @@ func (l *LSMTree) Stats() LSMStats {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	blockHits, blockMisses := l.tableCache.blocks.statistics()
+	arenaMapped, arenaInUse, arenaFailures := l.tableCache.blocks.arenaStatistics()
 
 	s := LSMStats{
 		BlockCachePolicy:      l.opt.BlockCachePolicy,
+		BlockCacheMemory:      l.opt.BlockCacheMemory,
 		PageSize:              l.PageSize(),
 		CompletedCompactions:  l.completedCompactions.Load(),
 		CompactionInputBytes:  l.compactionInputBytes.Load(),
@@ -1816,20 +1834,23 @@ func (l *LSMTree) Stats() LSMStats {
 		CompletedFlushes:      l.completedFlushes.Load(),
 		FlushOutputBytes:      l.flushOutputBytes.Load(),
 		WriteGroups:           l.writeGroups.Load(), WriteBatches: l.writeBatches.Load(),
-		Dir:                      l.dir,
-		MemSize:                  l.mem.ApproximateSize(),
-		SeqNum:                   l.seqNum,
-		FileNum:                  l.fileNum,
-		WALActive:                l.wal != nil,
-		WALSyncDisabled:          l.opt.DisableWALSync && !l.opt.DisableWAL,
-		BloomHits:                l.bloomHits.Load(),
-		BloomMisses:              l.bloomMisses.Load(),
-		CacheHits:                l.tableCache.Hits(),
-		CacheMisses:              l.tableCache.Misses(),
-		BlockCacheBytes:          l.tableCache.blocks.used.Load(),
-		BlockCacheHits:           blockHits,
-		BlockCacheAdmissionSkips: l.tableCache.blocks.skippedAdmissions(),
-		BlockCacheMisses:         blockMisses,
+		Dir:                       l.dir,
+		MemSize:                   l.mem.ApproximateSize(),
+		SeqNum:                    l.seqNum,
+		FileNum:                   l.fileNum,
+		WALActive:                 l.wal != nil,
+		WALSyncDisabled:           l.opt.DisableWALSync && !l.opt.DisableWAL,
+		BloomHits:                 l.bloomHits.Load(),
+		BloomMisses:               l.bloomMisses.Load(),
+		CacheHits:                 l.tableCache.Hits(),
+		CacheMisses:               l.tableCache.Misses(),
+		BlockCacheBytes:           l.tableCache.blocks.used.Load(),
+		BlockCacheArenaBytes:      arenaMapped,
+		BlockCacheArenaInUseBytes: arenaInUse,
+		BlockCacheArenaFailures:   arenaFailures,
+		BlockCacheHits:            blockHits,
+		BlockCacheAdmissionSkips:  l.tableCache.blocks.skippedAdmissions(),
+		BlockCacheMisses:          blockMisses,
 	}
 	if l.imm != nil {
 		s.ImmSize = l.imm.ApproximateSize()

@@ -13,12 +13,21 @@ import (
 // compiled execution structure, invalidated against the current catalog and
 // statistics; runtime bounds and costs use current arguments and snapshots.
 type PreparedQuery struct {
-	template   Statement
-	count      int
-	pooled     bool
-	pool       sync.Pool
-	planBuilds atomic.Uint64
-	planHits   atomic.Uint64
+	template Statement
+	count    int
+	pooled   bool
+	pool     sync.Pool
+	// Assign a counter shard only when building a private AST, never on a hit.
+	nextCounter atomic.Uint64
+	counters    [preparedCounterShards]preparedCounter
+}
+
+const preparedCounterShards = 128
+
+type preparedCounter struct {
+	builds  atomic.Uint64
+	hits    atomic.Uint64
+	padding [48]byte
 }
 
 // Prepare accepts one statement and anonymous positional '?' parameters in
@@ -142,15 +151,16 @@ func (b *BoundQuery) Release() {
 
 func (q *PreparedQuery) newBound() *BoundQuery {
 	b := &BoundQuery{query: q, literals: make([]*LiteralExpr, q.count)}
+	counter := &q.counters[(q.nextCounter.Add(1)-1)%preparedCounterShards]
 	stmt := b.clone(reflect.ValueOf(q.template)).Interface().(Statement)
 	switch st := stmt.(type) {
 	case *SelectStmt:
 		if preparedSelectEligible(st) {
-			st.prepared = &preparedExecutionPlan{owner: q, where: st.Where, fromAlias: st.FromAlias}
+			st.prepared = &preparedExecutionPlan{owner: q, counter: counter, where: st.Where, fromAlias: st.FromAlias}
 		}
 	case *UpdateStmt:
 		if st.With == nil {
-			st.prepared = &preparedExecutionPlan{owner: q, where: st.Where}
+			st.prepared = &preparedExecutionPlan{owner: q, counter: counter, where: st.Where}
 		}
 	}
 	b.statements = []Statement{stmt}

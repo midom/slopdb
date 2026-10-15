@@ -9,11 +9,21 @@ import (
 // Point lookup needs no public iterator state. Reusable private buffers decode
 // restart keys without allocating iterator objects or returning borrowed keys.
 // Data blocks still use the shared cache and normal corruption checks.
-type pointWorkspace struct{ dataKey []byte }
+type pointWorkspace struct {
+	dataKey          []byte
+	block, bestBlock *BlockReader
+}
+
+func (workspace *pointWorkspace) releaseBlocks() {
+	workspace.block.release()
+	workspace.bestBlock.release()
+	workspace.block, workspace.bestBlock = nil, nil
+}
 
 var pointWorkspaces = sync.Pool{New: func() any { return new(pointWorkspace) }}
 
 func releasePointWorkspace(workspace *pointWorkspace) {
+	workspace.releaseBlocks()
 	// Large user keys must not turn transient scratch into unbounded retention.
 	if cap(workspace.dataKey) > 64<<10 {
 		*workspace = pointWorkspace{}
@@ -42,11 +52,14 @@ func (r *SSTableReader) pointLookup(key []byte, snapshot uint64, workspace *poin
 		}
 	}()
 	for index := r.pointIndexSeek(key); index < len(r.pointIndex); index++ {
+		workspace.block.release()
+		workspace.block = nil
 		handle := r.pointIndex[index].handle
 		reader, err := r.loadBlockReaderMode(handle.Offset, handle.Size, true)
 		if err != nil {
 			return KeyValue{}, false, rd, err
 		}
+		workspace.block = reader
 		if reader.numRestarts == 0 {
 			if reader.err != nil {
 				return KeyValue{}, false, rd, reader.err

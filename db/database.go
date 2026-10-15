@@ -134,6 +134,8 @@ type ExecResult struct {
 type statementExecutor struct {
 	schema       *sql.Schema
 	parseOptions sql.ParseOptions
+	resultTarget *ExecResult
+	selectTarget *sql.ResultSet
 }
 
 func (db *Database) Exec(sqlText string) (*ExecResult, error) {
@@ -201,6 +203,10 @@ func (db *Database) execSQL(ctx context.Context, sqlText string, schema *sql.Sch
 }
 
 func (db *Database) execStatements(ctx context.Context, stmts []sql.Statement, schema *sql.Schema, transactionBound bool, lockTimeout time.Duration) (*ExecResult, error) {
+	return db.execStatementsInto(ctx, stmts, schema, transactionBound, lockTimeout, nil, nil)
+}
+
+func (db *Database) execStatementsInto(ctx context.Context, stmts []sql.Statement, schema *sql.Schema, transactionBound bool, lockTimeout time.Duration, dst *ExecResult, selectTarget *sql.ResultSet) (*ExecResult, error) {
 	defer schema.StopQueryProfile()
 	if db.closed.Load() {
 		return nil, fmt.Errorf("database closed")
@@ -211,7 +217,7 @@ func (db *Database) execStatements(ctx context.Context, stmts []sql.Statement, s
 	schema.SetContext(ctx)
 	var err error
 	var result *ExecResult
-	executor := &statementExecutor{schema: schema, parseOptions: db.ParseOptions()}
+	executor := &statementExecutor{schema: schema, parseOptions: db.ParseOptions(), resultTarget: dst, selectTarget: selectTarget}
 	var lockDeadline time.Time
 	for _, stmt := range stmts {
 		if stmt == nil {
@@ -324,6 +330,10 @@ func (db *Database) execStatements(ctx context.Context, stmts []sql.Statement, s
 	if result == nil {
 		result = &ExecResult{}
 	}
+	if dst != nil && result != dst {
+		*dst = *result
+		result = dst
+	}
 	return result, nil
 }
 func (db *statementExecutor) execStatement(stmt sql.Statement) (*ExecResult, error) {
@@ -353,15 +363,22 @@ func (db *statementExecutor) execStatement(stmt sql.Statement) (*ExecResult, err
 			}
 		}
 	case *sql.SelectStmt:
-		rs, err := db.schema.Select(s)
+		var rs *sql.ResultSet
+		var err error
+		if dst := db.resultTarget; dst != nil {
+			*db.selectTarget = sql.ResultSet{Columns: dst.Columns, Rows: dst.Rows}
+			rs, err = db.schema.SelectInto(s, db.selectTarget)
+		} else {
+			rs, err = db.schema.Select(s)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("SELECT error: %w", err)
 		}
-		result = &ExecResult{
-			Columns: rs.Columns,
-			Rows:    rs.Rows,
-			Changes: int64(len(rs.Rows)),
+		result = db.resultTarget
+		if result == nil {
+			result = &ExecResult{}
 		}
+		*result = ExecResult{Columns: rs.Columns, Rows: rs.Rows, Changes: int64(len(rs.Rows))}
 	case *sql.UnionStmt:
 		rs, err := db.schema.Union(s)
 		if err != nil {

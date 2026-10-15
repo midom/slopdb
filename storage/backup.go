@@ -230,6 +230,7 @@ func (l *LSMTree) CheckIntegrity(ctx context.Context) (report IntegrityReport, e
 	for _, t := range tables {
 		report.Tables++
 		it := t.reader.newIterator(true, false, false)
+		defer it.Close()
 		var previous InternalKey
 		havePrevious := false
 		for it.Valid() {

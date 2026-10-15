@@ -18,6 +18,12 @@ binary and seed. Both policies use 128 shards and identical byte budgets. The
 public storage option is `Options.BlockCachePolicy` (`BlockCacheLRU` or
 `BlockCacheCLOCK`); it changes eviction only and is not persisted in the database.
 
+The cache uses mmap arenas by default. Add `--memory heap` to the matrix script,
+or `-cache-memory heap` to the benchmark binary, to use the Go heap cache.
+`--memory mmap` and `-cache-memory mmap` select the default explicitly.
+The public option is `Options.BlockCacheMemory`, with `BlockCacheMmap` and
+`BlockCacheHeap`. This setting does not change the database files.
+
 Seeding refuses to overwrite a database. The fixture contains 39,062,500 rows
 of 256 logical bytes: two BIGINT values and a 240-byte deterministic BLOB.
 This is 10 decimal GB of logical data, excluding row tags, keys, SSTable metadata

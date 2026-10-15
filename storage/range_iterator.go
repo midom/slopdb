@@ -16,6 +16,9 @@ type levelIterator struct {
 }
 
 func (it *levelIterator) open(index int) {
+	if it.iter != nil {
+		it.iter.Close()
+	}
 	it.index = index
 	it.iter = nil
 	if index >= 0 && index < len(it.files) {
@@ -95,7 +98,12 @@ func (it *levelIterator) RangeTombstones() []KeyValue {
 	}
 	return ranges
 }
-func (it *levelIterator) Close() { it.iter = nil }
+func (it *levelIterator) Close() {
+	if it.iter != nil {
+		it.iter.Close()
+	}
+	it.iter = nil
+}
 
 type boundedIterator struct {
 	Iterator

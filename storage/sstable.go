@@ -357,7 +357,8 @@ func (r *SSTableReader) loadBlockMode(offset, size uint64, fillCache bool) ([]by
 	if err != nil {
 		return nil, err
 	}
-	return reader.data, nil
+	defer reader.release()
+	return append([]byte(nil), reader.data...), nil
 }
 
 func (r *SSTableReader) loadBlockReaderMode(offset, size uint64, fillCache bool) (*BlockReader, error) {
@@ -377,13 +378,15 @@ func (r *SSTableReader) loadBlockReaderMode(offset, size uint64, fillCache bool)
 			return reader, nil
 		}
 	}
-	block, err := r.readBlockBytes(offset, size)
+	block, decodeBuffer, err := r.readBlockBytes(offset, size)
 	if err != nil {
 		return nil, err
 	}
-	reader := NewBlockReader(block)
-	if reader.err != nil {
-		return nil, reader.err
+	reader := borrowedBlockReader(block)
+	reader.decodeBuffer = decodeBuffer
+	if err := reader.err; err != nil {
+		reader.release()
+		return nil, err
 	}
 	if cacheable && fillCache {
 		r.blocks.addReader(key, reader)
@@ -392,6 +395,10 @@ func (r *SSTableReader) loadBlockReaderMode(offset, size uint64, fillCache bool)
 }
 
 func (r *SSTableReader) readRawBlock(data []byte) ([]byte, error) {
+	return r.readRawBlockInto(data, nil)
+}
+
+func (r *SSTableReader) readRawBlockInto(data, destination []byte) ([]byte, error) {
 	if len(data) < 5 {
 		return nil, fmt.Errorf("block too short")
 	}
@@ -405,10 +412,13 @@ func (r *SSTableReader) readRawBlock(data []byte) ([]byte, error) {
 	}
 
 	if compressionType == kNoCompression {
+		if destination != nil {
+			return append(destination[:0], payload...), nil
+		}
 		return payload, nil
 	}
 	if compressionType == kSnappyCompression {
-		decoded, err := snappy.Decode(nil, payload)
+		decoded, err := snappy.Decode(destination, payload)
 		if err != nil {
 			return nil, fmt.Errorf("snappy decompress: %w", err)
 		}
@@ -422,7 +432,7 @@ func (r *SSTableReader) readRawBlock(data []byte) ([]byte, error) {
 		return decoded, nil
 	}
 	if compressionType == kZstdCompression {
-		decoded, err := decodeZstdBlock(payload)
+		decoded, err := decodeZstdBlockInto(payload, destination[:0])
 		if err != nil {
 			return nil, fmt.Errorf("zstd decompress: %w", err)
 		}
@@ -591,6 +601,10 @@ func (r *SSTableReader) Close() error {
 var zstdBlockDecoders sync.Pool
 
 func decodeZstdBlock(payload []byte) ([]byte, error) {
+	return decodeZstdBlockInto(payload, nil)
+}
+
+func decodeZstdBlockInto(payload, destination []byte) ([]byte, error) {
 	var decoder *zstd.Decoder
 	if cached := zstdBlockDecoders.Get(); cached != nil {
 		decoder = cached.(*zstd.Decoder)
@@ -601,7 +615,7 @@ func decodeZstdBlock(payload []byte) ([]byte, error) {
 			return nil, err
 		}
 	}
-	decoded, err := decoder.DecodeAll(payload, nil)
+	decoded, err := decoder.DecodeAll(payload, destination)
 	zstdBlockDecoders.Put(decoder)
 	return decoded, err
 }
@@ -616,6 +630,15 @@ type SSTableIterator struct {
 	err       error
 	fillCache bool
 	reuseKeys bool
+	closed    bool
+}
+
+func (it *SSTableIterator) clearBlock() {
+	if it.blockIter != nil {
+		it.blockIter.block.release()
+	}
+	it.blockIter = nil
+	it.value = nil
 }
 
 func (it *SSTableIterator) Valid() bool { return it.valid }
@@ -639,6 +662,7 @@ func (it *SSTableIterator) Next() {
 	for !it.valid && it.err == nil {
 		it.idxIter.Next()
 		if !it.idxIter.Valid() {
+			it.clearBlock()
 			return
 		}
 		it.openCurrentBlock()
@@ -649,7 +673,10 @@ func (it *SSTableIterator) openCurrentBlock() {
 }
 func (it *SSTableIterator) openBlock(position bool) {
 	it.valid = false
-	it.blockIter = nil
+	it.clearBlock()
+	if it.closed {
+		return
+	}
 	if !it.idxIter.Valid() {
 		return
 	}
@@ -670,6 +697,7 @@ func (it *SSTableIterator) openBlock(position bool) {
 		return
 	}
 	if reader.numRestarts == 0 {
+		reader.release()
 		it.err = fmt.Errorf("invalid data block")
 		return
 	}
@@ -680,9 +708,12 @@ func (it *SSTableIterator) openBlock(position bool) {
 	it.update()
 }
 func (it *SSTableIterator) Seek(key []byte) {
+	if it.closed {
+		return
+	}
 	it.err = nil
 	it.valid = false
-	it.blockIter = nil
+	it.clearBlock()
 	it.idxIter.Seek(key)
 	for it.idxIter.Valid() {
 		it.openBlock(false)
@@ -708,11 +739,18 @@ func (it *SSTableIterator) Key() InternalKey {
 }
 func (it *SSTableIterator) Value() []byte {
 	if it.valid {
+		// Returned values survive movement, eviction and close.
+		if it.blockIter.block.arena != nil || it.blockIter.block.decodeBuffer != nil {
+			return append([]byte(nil), it.value...)
+		}
 		return it.value
 	}
 	return nil
 }
 func (it *SSTableIterator) Prev() {
+	if it.closed {
+		return
+	}
 	if it.valid {
 		it.blockIter.Prev()
 		it.update()
@@ -738,12 +776,19 @@ func (it *SSTableIterator) Prev() {
 	}
 	it.valid = false
 }
-func (it *SSTableIterator) Close() {}
+func (it *SSTableIterator) Close() {
+	it.clearBlock()
+	it.valid = false
+	it.closed = true
+}
 
 func (it *SSTableIterator) SeekToLast() {
+	if it.closed {
+		return
+	}
 	it.err = nil
 	it.valid = false
-	it.blockIter = nil
+	it.clearBlock()
 	it.idxIter.SeekToLast()
 	for it.idxIter.Valid() {
 		it.openBlock(false)

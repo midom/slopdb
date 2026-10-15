@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
+	"sync"
 )
 
 const blockRestartInterval = 16
@@ -78,19 +79,56 @@ func (b *BlockBuilder) Finish() []byte {
 func (b *BlockBuilder) Empty() bool { return len(b.buf) == 0 && len(b.restarts) == 0 }
 
 type BlockReader struct {
-	data        []byte
-	restarts    []byte
-	numRestarts int
-	err         error
+	data         []byte
+	restarts     []byte
+	numRestarts  int
+	err          error
+	arena        *blockArena
+	arenaOffset  int
+	decodeBuffer *blockDecodeBuffer // private transient decode; never shared in cache
+	pooled       bool
+}
+
+var blockReaderViews = sync.Pool{New: func() any { return new(BlockReader) }}
+
+// Each internal view owns one pin. Releasing it also returns private Go
+// decode buffers and the cleared view to their bounded pools.
+func (r *BlockReader) release() {
+	if r != nil && r.arena != nil {
+		r.arena.release(r.arenaOffset)
+	} else if r != nil && r.decodeBuffer != nil {
+		blockDecodeBuffers.Put(r.decodeBuffer)
+		r.decodeBuffer = nil
+	}
+	if r != nil && r.pooled {
+		*r = BlockReader{}
+		blockReaderViews.Put(r)
+	}
 }
 
 func NewBlockReader(data []byte) *BlockReader {
+	r := new(BlockReader)
+	r.reset(data)
+	return r
+}
+
+func borrowedBlockReader(data []byte) *BlockReader {
+	r := blockReaderViews.Get().(*BlockReader)
+	r.reset(data)
+	r.pooled = true
+	return r
+}
+
+func (r *BlockReader) reset(data []byte) {
+	*r = BlockReader{}
 	if len(data) < 4 {
-		return &BlockReader{err: fmt.Errorf("block too short")}
+		r.err = fmt.Errorf("block too short")
+		return
 	}
 	numRestarts := int(binary.LittleEndian.Uint32(data[len(data)-4:]))
 	if numRestarts > (len(data)-4)/4 {
-		return &BlockReader{err: fmt.Errorf("invalid restart array")}
+		r.err = fmt.Errorf("invalid restart array")
+		return
 	}
 	restartOffset := len(data) - 4 - numRestarts*4
 	restarts := data[restartOffset : len(data)-4]
@@ -98,15 +136,12 @@ func NewBlockReader(data []byte) *BlockReader {
 	for i := 0; i < numRestarts; i++ {
 		offset := binary.LittleEndian.Uint32(restarts[i*4:])
 		if int(offset) >= restartOffset || (i > 0 && offset <= previous) {
-			return &BlockReader{err: fmt.Errorf("invalid restart array")}
+			r.err = fmt.Errorf("invalid restart array")
+			return
 		}
 		previous = offset
 	}
-	return &BlockReader{
-		data:        data,
-		restarts:    restarts,
-		numRestarts: numRestarts,
-	}
+	r.data, r.restarts, r.numRestarts = data, restarts, numRestarts
 }
 
 func (r *BlockReader) restart(i int) int { return int(binary.LittleEndian.Uint32(r.restarts[i*4:])) }

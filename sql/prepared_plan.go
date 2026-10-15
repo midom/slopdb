@@ -14,7 +14,12 @@ type PreparedPlanStats struct {
 }
 
 func (q *PreparedQuery) PlanStats() PreparedPlanStats {
-	return PreparedPlanStats{Builds: q.planBuilds.Load(), Hits: q.planHits.Load()}
+	var stats PreparedPlanStats
+	for i := range q.counters {
+		stats.Builds += q.counters[i].builds.Load()
+		stats.Hits += q.counters[i].hits.Load()
+	}
+	return stats
 }
 
 type preparedEquality struct {
@@ -34,6 +39,7 @@ type preparedRangeTerm struct {
 // costs and typed registers stay private. No snapshots or iterators are retained.
 type preparedExecutionPlan struct {
 	owner                              *PreparedQuery
+	counter                            *preparedCounter
 	where                              Expression
 	fromAlias                          string
 	info                               *TableInfo
@@ -55,6 +61,8 @@ type preparedExecutionPlan struct {
 	aggregateReady                     bool
 	pointProjectionReady               bool
 	pointProjection                    []ColumnDef
+	pointDecodeColumns                 []bool
+	pointDecodeCount                   int
 }
 
 func preparedSelectEligible(stmt *SelectStmt) bool {
@@ -100,13 +108,13 @@ func (s *Schema) usePreparedPlan(p *preparedExecutionPlan, info *TableInfo) *pre
 	}
 	distribution := s.distributions[info.Name]
 	if !p.initialized || p.info != info || p.distribution != distribution || p.catalogVersion != catalog || p.stateVersion != state {
-		owner, where, alias := p.owner, p.where, p.fromAlias
-		*p = preparedExecutionPlan{owner: owner, where: where, fromAlias: alias, info: info, distribution: distribution, catalogVersion: catalog, stateVersion: state, initialized: true}
+		owner, counter, where, alias := p.owner, p.counter, p.where, p.fromAlias
+		*p = preparedExecutionPlan{owner: owner, counter: counter, where: where, fromAlias: alias, info: info, distribution: distribution, catalogVersion: catalog, stateVersion: state, initialized: true}
 		p.compilePointBindings()
 		p.compileRangeTerms(info.Name)
-		owner.planBuilds.Add(1)
+		counter.builds.Add(1)
 	} else {
-		p.owner.planHits.Add(1)
+		p.counter.hits.Add(1)
 	}
 	p.pointKey, p.pointKeyReady, p.pointKeyOK = nil, false, false
 	s.preparedPlan = p

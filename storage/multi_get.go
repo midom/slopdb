@@ -26,6 +26,7 @@ func (l *LSMTree) getMulti(keys [][]byte, snapshot uint64, latest bool) ([]Point
 	}
 	values := make([]PointValue, len(keys))
 	var workspace pointWorkspace
+	defer workspace.releaseBlocks()
 	for i, key := range keys {
 		v, found, _, err := readPointWithWorkspace(view, key, snapshot, 0, false, &workspace)
 		if err != nil {

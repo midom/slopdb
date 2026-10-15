@@ -1,8 +1,13 @@
 package sql
 
+import (
+	"encoding/binary"
+	"strings"
+)
+
 // Each prepared AST belongs to one execution at a time. Cache only immutable
 // projection metadata, invalidated together with its catalog/plan recipe.
-func (s *Schema) selectPreparedPoint(stmt *SelectStmt, info *TableInfo) (*ResultSet, bool, error) {
+func (s *Schema) selectPreparedPoint(stmt *SelectStmt, info *TableInfo, dst *ResultSet) (*ResultSet, bool, error) {
 	p := stmt.prepared
 	if !p.pointProjectionReady {
 		p.pointProjectionReady = true
@@ -50,6 +55,27 @@ func (s *Schema) selectPreparedPoint(stmt *SelectStmt, info *TableInfo) (*Result
 			p.pointProjectionReady = false
 			return nil, true, err
 		}
+		p.pointDecodeColumns = make([]bool, len(info.Columns))
+		mark := func(name string) {
+			if _, rest, qualified := strings.Cut(name, "."); qualified {
+				name = rest
+			}
+			for i, col := range info.Columns {
+				if col.Name == name && !p.pointDecodeColumns[i] {
+					p.pointDecodeColumns[i] = true
+					p.pointDecodeCount++
+				}
+			}
+		}
+		for _, col := range p.pointProjection {
+			mark(col.Name)
+		}
+		_ = walkExpression(stmt.Where, func(e Expression) (bool, error) {
+			if col, ok := e.(*ColumnRefExpr); ok {
+				mark(col.Name)
+			}
+			return false, nil
+		})
 	}
 	if len(p.pointProjection) == 0 || s.profile != nil {
 		return nil, false, nil
@@ -58,7 +84,17 @@ func (s *Schema) selectPreparedPoint(stmt *SelectStmt, info *TableInfo) (*Result
 	if !ok {
 		return nil, false, nil
 	}
-	result := &ResultSet{Columns: append([]ColumnDef(nil), p.pointProjection...)}
+	result := dst
+	if result == nil {
+		result = &ResultSet{}
+	}
+	var row map[string]Value
+	if dst != nil && cap(result.Rows) > 0 {
+		row = result.Rows[:1][0]
+	}
+	result.Profile, result.rowKeys = nil, nil
+	result.Columns = append(result.Columns[:0], p.pointProjection...)
+	result.Rows = result.Rows[:0]
 	var data []byte
 	var found bool
 	var err error
@@ -74,7 +110,11 @@ func (s *Schema) selectPreparedPoint(stmt *SelectStmt, info *TableInfo) (*Result
 	if !found {
 		return result, true, nil
 	}
-	row := decodeRow(data, info)
+	if dst == nil {
+		row = decodePointRowInto(data, info, p, nil)
+	} else {
+		row = decodePointRowInto(data, info, p, row)
+	}
 	matches, err := s.evalCondition(stmt.Where, row)
 	if err != nil {
 		return nil, true, err
@@ -99,6 +139,68 @@ func (s *Schema) selectPreparedPoint(stmt *SelectStmt, info *TableInfo) (*Result
 	if err := s.checkInterrupt(); err != nil {
 		return nil, true, err
 	}
-	result.Rows = []map[string]Value{row}
+	result.Rows = append(result.Rows, row)
 	return result, true, nil
+}
+
+// Row buffers are reused only when the caller explicitly supplies a destination.
+// BLOBs remain independent of storage scratch and can reuse their old capacity.
+func decodePointRowInto(data []byte, info *TableInfo, p *preparedExecutionPlan, row map[string]Value) map[string]Value {
+	reuse := row != nil
+	if row == nil {
+		row = make(map[string]Value, p.pointDecodeCount)
+	}
+	// The destination can have come from another query or an earlier catalog.
+	for name := range row {
+		found := false
+		for i, col := range info.Columns {
+			if col.Name == name && p.pointDecodeColumns[i] {
+				found = true
+				break
+			}
+		}
+		if !found {
+			delete(row, name)
+		}
+	}
+	offset := 0
+	for i, col := range info.Columns {
+		if !p.pointDecodeColumns[i] {
+			if offset < len(data) {
+				offset += skipPointValue(data[offset:])
+			}
+			continue
+		}
+		if offset >= len(data) {
+			row[col.Name] = NewNullValue()
+			continue
+		}
+		var blobBuffer []byte
+		if reuse {
+			blobBuffer = row[col.Name].Blob
+		}
+		v, n := decodeValueInto(data[offset:], blobBuffer)
+		v.Binary = col.Binary
+		row[col.Name] = v
+		offset += n
+	}
+	return row
+}
+
+// Match decodeValue's advance through an unneeded field without copying its
+// text or BLOB. The normal decoder still handles every field used by WHERE.
+func skipPointValue(data []byte) int {
+	switch data[0] {
+	case binTypeInt64, binTypeFloat64:
+		if len(data) >= 9 {
+			return 9
+		}
+	case binTypeText, binTypeBlob:
+		length, n := binary.Uvarint(data[1:])
+		if n <= 0 || length > uint64(len(data)-1-n) {
+			return 1 + n
+		}
+		return 1 + n + int(length)
+	}
+	return 1
 }

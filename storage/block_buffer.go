@@ -4,19 +4,22 @@ import "sync"
 
 const pooledBlockReadBytes = 8 << 10
 
-// Encoded input is transient when decompression allocates the decoded block.
-// Bound pooled scratch independently of page/cache size; large pages retain
-// their existing allocation path. Decode-only states and these buffers have no
-// external resources and may be discarded by sync.Pool during collection.
+// Encoded input and private decode output use separate bounded pools. Cache
+// admission copies output to owned heap storage or an arena before returning
+// scratch; bypassed reads keep output until their private reader releases it. Large blocks can
+// use an owned Go buffer. Pools own no external resources and may be collected.
 type blockReadBuffer [pooledBlockReadBytes]byte
 
-var blockReadBuffers = sync.Pool{New: func() any { return new(blockReadBuffer) }}
+type blockDecodeBuffer [pooledBlockReadBytes]byte
 
-func (r *SSTableReader) readBlockBytes(offset, size uint64) ([]byte, error) {
+var blockReadBuffers = sync.Pool{New: func() any { return new(blockReadBuffer) }}
+var blockDecodeBuffers = sync.Pool{New: func() any { return new(blockDecodeBuffer) }}
+
+func (r *SSTableReader) readBlockBytes(offset, size uint64) ([]byte, *blockDecodeBuffer, error) {
 	compressed := r.hasCompressedBlocks.Load()
 	var scratch *blockReadBuffer
 	var data []byte
-	if compressed && size <= pooledBlockReadBytes {
+	if size <= pooledBlockReadBytes {
 		scratch = blockReadBuffers.Get().(*blockReadBuffer)
 		defer blockReadBuffers.Put(scratch)
 		data = scratch[:size]
@@ -24,20 +27,33 @@ func (r *SSTableReader) readBlockBytes(offset, size uint64) ([]byte, error) {
 		data = make([]byte, size)
 	}
 	if _, err := r.file.ReadAt(data, int64(offset)); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	block, err := r.readRawBlock(data)
+	var decoded *blockDecodeBuffer
+	var destination []byte
+	if size <= pooledBlockReadBytes {
+		decoded = blockDecodeBuffers.Get().(*blockDecodeBuffer)
+		destination = decoded[:]
+	}
+	block, err := r.readRawBlockInto(data, destination)
 	if err != nil {
-		return nil, err
+		if decoded != nil {
+			blockDecodeBuffers.Put(decoded)
+		}
+		return nil, nil, err
+	}
+	if decoded != nil && (len(block) == 0 || &block[0] != &decoded[0]) {
+		blockDecodeBuffers.Put(decoded)
+		decoded = nil
 	}
 	if data[len(data)-1] != kNoCompression {
 		if !compressed {
 			r.hasCompressedBlocks.Store(true)
 		}
-	} else if scratch != nil {
+	} else if scratch != nil && decoded == nil {
 		// A compressed SSTable can also contain raw pages. Detach their data
 		// before returning scratch so readers/cached blocks retain ownership.
 		block = append([]byte(nil), block...)
 	}
-	return block, nil
+	return block, decoded, nil
 }

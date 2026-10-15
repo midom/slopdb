@@ -40,6 +40,7 @@ type seedInfo struct {
 
 type config struct {
 	CachePolicy string
+	CacheMemory string
 	Dir         string
 	SeedBytes   int64
 	CacheBytes  int
@@ -103,6 +104,7 @@ func check(r *db.ExecResult, id int64, expected []byte) error {
 func options(c config) *storage.Options {
 	o := storage.DefaultOptions()
 	o.BlockCacheSize = c.CacheBytes
+	o.BlockCacheMemory = storage.BlockCacheMemory(c.CacheMemory)
 	if c.CachePolicy != "" {
 		o.BlockCachePolicy = storage.BlockCachePolicy(c.CachePolicy)
 	}
@@ -466,6 +468,7 @@ func main() {
 	flag.Int64Var(&c.SeedBytes, "seed-bytes", 0, "create a fresh seed of this many logical bytes; never overwrite")
 	flag.IntVar(&c.CacheBytes, "cache-bytes", 100000000, "decoded page-cache bytes (decimal)")
 	flag.StringVar(&c.CachePolicy, "cache-policy", "lru", "decoded page-cache policy: lru or clock")
+	flag.StringVar(&c.CacheMemory, "cache-memory", "mmap", "decoded page-cache allocation: heap or mmap")
 	flag.IntVar(&c.Workers, "workers", 100, "independent concurrent reader sessions")
 	flag.DurationVar(&c.Duration, "duration", 30*time.Second, "measurement duration per sample")
 	flag.IntVar(&c.Samples, "samples", 3, "consecutive samples in the same process")

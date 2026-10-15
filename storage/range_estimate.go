@@ -293,6 +293,7 @@ func (e *rangeEstimator) block(r *SSTableReader, h BlockHandle, lower, upper []b
 	if err != nil {
 		return 0, 0, 0, err
 	}
+	defer b.release()
 	it := b.NewIterator()
 	it.reuseKey = true
 	var sample estimateSample

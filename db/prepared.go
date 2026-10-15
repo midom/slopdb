@@ -170,6 +170,28 @@ func (s *Session) ExecPrepared(stmt *Stmt, args ...any) (*ExecResult, error) {
 	return s.ExecPreparedContext(context.Background(), stmt, args...)
 }
 
+// ExecPreparedInto executes stmt into caller-owned storage. On entry, the
+// caller gives up all previous contents of dst, including its row maps and
+// BLOB buffers. Do not share dst or retain aliases to its contents across calls.
+// A prepared point SELECT reuses these buffers; other statements replace them.
+// On error, dst's contents are unspecified. Execution and cancellation follow
+// the same rules as ExecPrepared.
+func (s *Session) ExecPreparedInto(dst *ExecResult, stmt *Stmt, args ...any) (*ExecResult, error) {
+	return s.ExecPreparedContextInto(context.Background(), dst, stmt, args...)
+}
+
+func (s *Session) ExecPreparedContextInto(ctx context.Context, dst *ExecResult, stmt *Stmt, args ...any) (*ExecResult, error) {
+	return s.ExecPreparedContextWithOptionsInto(ctx, dst, stmt, ExecOptions{}, args...)
+}
+
+// ExecPreparedContextWithOptionsInto adds per-call options to ExecPreparedInto.
+func (s *Session) ExecPreparedContextWithOptionsInto(ctx context.Context, dst *ExecResult, stmt *Stmt, options ExecOptions, args ...any) (*ExecResult, error) {
+	if dst == nil {
+		return nil, errors.New("nil result destination")
+	}
+	return s.execPreparedInto(ctx, stmt, options, false, args, dst)
+}
+
 func (s *Session) ExecPreparedContext(ctx context.Context, stmt *Stmt, args ...any) (*ExecResult, error) {
 	return s.ExecPreparedContextWithOptions(ctx, stmt, ExecOptions{}, args...)
 }
@@ -179,6 +201,10 @@ func (s *Session) ExecPreparedContextWithOptions(ctx context.Context, stmt *Stmt
 }
 
 func (s *Session) execPrepared(ctx context.Context, stmt *Stmt, options ExecOptions, bound bool, args []any) (*ExecResult, error) {
+	return s.execPreparedInto(ctx, stmt, options, bound, args, nil)
+}
+
+func (s *Session) execPreparedInto(ctx context.Context, stmt *Stmt, options ExecOptions, bound bool, args []any, dst *ExecResult) (*ExecResult, error) {
 	ctx, cancel, lockTimeout, err := s.db.queryContext(ctx, options)
 	if err != nil {
 		return nil, err
@@ -193,7 +219,7 @@ func (s *Session) execPrepared(ctx context.Context, stmt *Stmt, options ExecOpti
 		return nil, err
 	}
 	defer b.Release()
-	return s.execParsed(ctx, b.Statements(), cancel, bound, lockTimeout)
+	return s.execParsedInto(ctx, b.Statements(), cancel, bound, lockTimeout, dst)
 }
 
 func (s *Stmt) bind(database *Database, session *Session, bound bool, args []any) (*sql.BoundQuery, error) {

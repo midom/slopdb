@@ -1,61 +1,63 @@
 package storage
 
-// Intrusive typed links avoid a separate container/list node and interface for
-// every resident page. Only shard-locked code reads or changes these links.
-// Borrowed BlockReaders remain immutable when their cache records are reused.
+// List links are arena offsets, stored in each page's header. No persistent
+// per-page list nodes or reader records live on the Go heap. Shard writer
+// ownership protects links; zero is the sentinel and offsets are encoded +1.
 type blockCacheList struct {
-	front, back *cachedBlock
+	arena       *blockArena
+	front, back uint64
 	length      int
 }
 
-func (l *blockCacheList) Init()               { *l = blockCacheList{} }
-func (l *blockCacheList) Front() *cachedBlock { return l.front }
-func (l *blockCacheList) Back() *cachedBlock  { return l.back }
-func (l *blockCacheList) Len() int            { return l.length }
-func (b *cachedBlock) Next() *cachedBlock     { return b.next }
-
-func (l *blockCacheList) PushFront(b *cachedBlock) *cachedBlock {
-	b.prev, b.next = nil, l.front
-	if l.front != nil {
-		l.front.prev = b
+func (l *blockCacheList) Init()                   { l.front, l.back, l.length = 0, 0, 0 }
+func (l *blockCacheList) Front() uint64           { return l.front }
+func (l *blockCacheList) Back() uint64            { return l.back }
+func (l *blockCacheList) Len() int                { return l.length }
+func (l *blockCacheList) Next(link uint64) uint64 { return l.arena.word(int(link-1) + 64) }
+func (l *blockCacheList) PushFront(link uint64) {
+	off := int(link - 1)
+	l.arena.set(off+56, 0)
+	l.arena.set(off+64, l.front)
+	if l.front != 0 {
+		l.arena.set(int(l.front-1)+56, link)
 	} else {
-		l.back = b
+		l.back = link
 	}
-	l.front = b
+	l.front = link
 	l.length++
-	return b
 }
-
-func (l *blockCacheList) PushBack(b *cachedBlock) *cachedBlock {
-	b.prev, b.next = l.back, nil
-	if l.back != nil {
-		l.back.next = b
+func (l *blockCacheList) PushBack(link uint64) {
+	off := int(link - 1)
+	l.arena.set(off+56, l.back)
+	l.arena.set(off+64, 0)
+	if l.back != 0 {
+		l.arena.set(int(l.back-1)+64, link)
 	} else {
-		l.front = b
+		l.front = link
 	}
-	l.back = b
+	l.back = link
 	l.length++
-	return b
 }
-
-func (l *blockCacheList) Remove(b *cachedBlock) {
-	if b.prev != nil {
-		b.prev.next = b.next
+func (l *blockCacheList) Remove(link uint64) {
+	off := int(link - 1)
+	prev, next := l.arena.word(off+56), l.arena.word(off+64)
+	if prev != 0 {
+		l.arena.set(int(prev-1)+64, next)
 	} else {
-		l.front = b.next
+		l.front = next
 	}
-	if b.next != nil {
-		b.next.prev = b.prev
+	if next != 0 {
+		l.arena.set(int(next-1)+56, prev)
 	} else {
-		l.back = b.prev
+		l.back = prev
 	}
-	b.prev, b.next = nil, nil
+	l.arena.set(off+56, 0)
+	l.arena.set(off+64, 0)
 	l.length--
 }
-
-func (l *blockCacheList) MoveToFront(b *cachedBlock) {
-	if l.front != b {
-		l.Remove(b)
-		l.PushFront(b)
+func (l *blockCacheList) MoveToFront(link uint64) {
+	if l.front != link {
+		l.Remove(link)
+		l.PushFront(link)
 	}
 }

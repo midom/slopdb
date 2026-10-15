@@ -8,33 +8,43 @@ import (
 	"time"
 )
 
-func testBlockCacheReusesVictimWithoutReusingReader(t *testing.T, policy BlockCachePolicy) {
-	c := newBlockCacheWithPolicy(blockCacheShards*128, policy)
+func testBlockCacheEvictionRetainsBorrowedPage(t *testing.T, policy BlockCachePolicy, memory BlockCacheMemory) {
+	c := newBlockCacheWithMemory(blockCacheShards*128, policy, memory)
 	defer c.close()
 	keys := sameShardKeys(c, 3)
 	c.add(keys[0], make([]byte, 64))
 	c.add(keys[1], make([]byte, 64))
 	s := c.shard(keys[0])
-	victim := s.blocks[keys[0]]
 	retained, ok := c.lookupReader(keys[0], false)
 	if !ok {
 		t.Fatal("missing victim")
 	}
+	defer retained.release()
 	data := make([]byte, 96)
 	data[0] = 7
 	c.add(keys[2], data)
-	if s.blocks[keys[2]] != victim || len(s.blocks) != 1 || s.lru.Len() != 1 || s.used != 96 {
-		t.Fatal("multiple-victim replacement did not reuse exactly one node")
+	if memory == BlockCacheMmap {
+		if s.blocks[keys[2]] == 0 || len(s.blocks) != 1 || s.lru.Len() != 1 || s.used != 96 {
+			t.Fatal("multiple-victim replacement did not retain exactly one arena record")
+		}
+	} else if s.heapBlocks[keys[2]] == nil || len(s.heapBlocks) != 1 || s.heapLRU.Len() != 1 || s.used != 96 {
+		t.Fatal("multiple-victim replacement did not retain exactly one heap record")
 	}
 	if !bytes.Equal(retained.data, make([]byte, 64)) {
-		t.Fatal("reusing a cache record modified an already borrowed immutable reader")
+		t.Fatal("eviction modified an already borrowed immutable reader")
 	}
 }
 
 func TestBlockCacheAdmissionDoesNotQueueBehindReaders(t *testing.T) {
+	for _, memory := range []BlockCacheMemory{BlockCacheHeap, BlockCacheMmap} {
+		t.Run(string(memory), func(t *testing.T) { testBlockCacheAdmissionDoesNotQueueBehindReaders(t, memory) })
+	}
+}
+
+func testBlockCacheAdmissionDoesNotQueueBehindReaders(t *testing.T, memory BlockCacheMemory) {
 	for _, policy := range []BlockCachePolicy{BlockCacheLRU, BlockCacheCLOCK} {
 		t.Run(string(policy), func(t *testing.T) {
-			c := newBlockCacheWithPolicy(blockCacheShards*512, policy)
+			c := newBlockCacheWithMemory(blockCacheShards*512, policy, memory)
 			defer c.close()
 			keys := sameShardKeys(c, 2)
 			c.add(keys[0], make([]byte, 64))
@@ -75,8 +85,14 @@ func sameShardKeys(c *blockCache, n int) []blockCacheKey {
 }
 
 func TestBlockCacheSampledTouchesAndScanLookups(t *testing.T) {
+	for _, memory := range []BlockCacheMemory{BlockCacheHeap, BlockCacheMmap} {
+		t.Run(string(memory), func(t *testing.T) { testBlockCacheSampledTouchesAndScanLookups(t, memory) })
+	}
+}
+
+func testBlockCacheSampledTouchesAndScanLookups(t *testing.T, memory BlockCacheMemory) {
 	for _, touch := range []bool{false, true} {
-		c := newBlockCache(blockCacheShards * 128)
+		c := newBlockCacheWithMemory(blockCacheShards*128, BlockCacheLRU, memory)
 		keys := sameShardKeys(c, 3)
 		// Begin admission pressure, then restore the two pages under test.
 		c.add(keys[2], make([]byte, 128))
@@ -101,19 +117,26 @@ func TestBlockCacheSampledTouchesAndScanLookups(t *testing.T) {
 }
 
 func TestBlockCacheFittingWorkingSetNeedsNoLRUWriter(t *testing.T) {
-	c := newBlockCache(blockCacheShards * 256)
+	for _, memory := range []BlockCacheMemory{BlockCacheHeap, BlockCacheMmap} {
+		t.Run(string(memory), func(t *testing.T) { testBlockCacheFittingWorkingSetNeedsNoLRUWriter(t, memory) })
+	}
+}
+
+func testBlockCacheFittingWorkingSetNeedsNoLRUWriter(t *testing.T, memory BlockCacheMemory) {
+	c := newBlockCacheWithMemory(blockCacheShards*256, BlockCacheLRU, memory)
 	defer c.close()
 	keys := sameShardKeys(c, 2)
 	c.add(keys[0], make([]byte, 64))
 	c.add(keys[1], make([]byte, 64))
 	s := c.shard(keys[0])
 	first := s.blocks[keys[0]]
+	heapFirst := s.heapBlocks[keys[0]]
 	for n := 0; n < 32; n++ {
 		if _, ok := c.get(keys[0]); !ok {
 			t.Fatal("missing fitting page")
 		}
 	}
-	if s.evicted || s.lru.Back() != first {
+	if s.evicted || (memory == BlockCacheMmap && s.lru.Back() != first) || (memory == BlockCacheHeap && s.heapLRU.Back() != heapFirst) {
 		t.Fatal("fitting working set performed LRU writes")
 	}
 	// Eviction begins maintaining approximate recency for future hits.
@@ -126,14 +149,14 @@ func TestBlockCacheFittingWorkingSetNeedsNoLRUWriter(t *testing.T) {
 	for n := 0; n < 16; n++ {
 		c.get(keys[1])
 	}
-	if s.lru.Front() != s.blocks[keys[1]] {
+	if (memory == BlockCacheMmap && s.lru.Front() != s.blocks[keys[1]]) || (memory == BlockCacheHeap && s.heapLRU.Front() != s.heapBlocks[keys[1]]) {
 		t.Fatal("recency was not maintained under admission pressure")
 	}
 }
 
-func testBlockCacheConcurrentReadersEvictionAndBudget(t *testing.T, policy BlockCachePolicy) {
+func testBlockCacheConcurrentReadersEvictionAndBudget(t *testing.T, policy BlockCachePolicy, memory BlockCacheMemory) {
 	const capacity = blockCacheShards * 512
-	c := newBlockCacheWithPolicy(capacity, policy)
+	c := newBlockCacheWithMemory(capacity, policy, memory)
 	defer c.close()
 	var wg sync.WaitGroup
 	for worker := 0; worker < 100; worker++ {
@@ -163,8 +186,8 @@ func testBlockCacheConcurrentReadersEvictionAndBudget(t *testing.T, policy Block
 	}
 }
 
-func testBlockCacheConcurrentClose(t *testing.T, policy BlockCachePolicy) {
-	c := newBlockCacheWithPolicy(blockCacheShards*512, policy)
+func testBlockCacheConcurrentClose(t *testing.T, policy BlockCachePolicy, memory BlockCacheMemory) {
+	c := newBlockCacheWithMemory(blockCacheShards*512, policy, memory)
 	var ready, wg sync.WaitGroup
 	start := make(chan struct{})
 	for worker := 0; worker < 100; worker++ {
@@ -194,18 +217,26 @@ func testBlockCacheConcurrentClose(t *testing.T, policy BlockCachePolicy) {
 }
 
 func TestBlockCachePolicies(t *testing.T) {
-	for _, policy := range []BlockCachePolicy{BlockCacheLRU, BlockCacheCLOCK} {
-		t.Run(string(policy), func(t *testing.T) {
-			t.Run("ReuseVictim", func(t *testing.T) { testBlockCacheReusesVictimWithoutReusingReader(t, policy) })
-			t.Run("ConcurrentBudget", func(t *testing.T) { testBlockCacheConcurrentReadersEvictionAndBudget(t, policy) })
-			t.Run("ConcurrentClose", func(t *testing.T) { testBlockCacheConcurrentClose(t, policy) })
-		})
+	for _, memory := range []BlockCacheMemory{BlockCacheHeap, BlockCacheMmap} {
+		for _, policy := range []BlockCachePolicy{BlockCacheLRU, BlockCacheCLOCK} {
+			t.Run(string(memory)+"/"+string(policy), func(t *testing.T) {
+				t.Run("RetainedVictim", func(t *testing.T) { testBlockCacheEvictionRetainsBorrowedPage(t, policy, memory) })
+				t.Run("ConcurrentBudget", func(t *testing.T) { testBlockCacheConcurrentReadersEvictionAndBudget(t, policy, memory) })
+				t.Run("ConcurrentClose", func(t *testing.T) { testBlockCacheConcurrentClose(t, policy, memory) })
+			})
+		}
 	}
 }
 
 func TestBlockCacheClockSecondChanceAndScanReads(t *testing.T) {
+	for _, memory := range []BlockCacheMemory{BlockCacheHeap, BlockCacheMmap} {
+		t.Run(string(memory), func(t *testing.T) { testBlockCacheClockSecondChanceAndScanReads(t, memory) })
+	}
+}
+
+func testBlockCacheClockSecondChanceAndScanReads(t *testing.T, memory BlockCacheMemory) {
 	for _, touch := range []bool{false, true} {
-		c := newBlockCacheWithPolicy(blockCacheShards*192, BlockCacheCLOCK)
+		c := newBlockCacheWithMemory(blockCacheShards*192, BlockCacheCLOCK, memory)
 		keys := sameShardKeys(c, 5)
 		for i := 0; i < 4; i++ {
 			c.add(keys[i], make([]byte, 64))
@@ -227,7 +258,7 @@ func TestBlockCacheClockSecondChanceAndScanReads(t *testing.T) {
 			t.Fatal("newly admitted page lost its second chance")
 		}
 		c.close()
-		if c.used.Load() != 0 || c.shard(keys[0]).hand != nil {
+		if c.used.Load() != 0 || c.shard(keys[0]).hand != 0 || c.shard(keys[0]).heapHand != nil {
 			t.Fatal("closed CLOCK cache retained state")
 		}
 	}

@@ -35,6 +35,7 @@ def main():
     parser.add_argument("--samples", type=int, default=3)
     parser.add_argument("--workers", type=int, default=100)
     parser.add_argument("--policy", choices=["lru", "clock"], default="lru")
+    parser.add_argument("--memory", choices=["heap", "mmap"], default="mmap")
     parser.add_argument("--caches", type=int, nargs="+", default=[100_000_000, 1_000_000_000, 10_000_000_000, 20_000_000_000])
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=False)
@@ -44,6 +45,7 @@ def main():
         "cpus": os.cpu_count(),
         "environment": {key: os.environ.get(key, "runtime default") for key in ["GOGC", "GOMEMLIMIT", "GOMAXPROCS"]},
         "policy": args.policy,
+        "memory": args.memory,
         "binary_sha256": hashlib.sha256(args.binary.read_bytes()).hexdigest(),
         "seed": json.loads((args.dir / "seed.json").read_text()),
         "method": "Serial fresh processes; same seeded SSTables; independent sessions; uniformly random prepared full-row primary-key SELECTs; every answer checked. Page-spaced warmup (stride 8 rows) before three timed samples. Linux filesystem cache enabled, never reset. Decimal byte budgets; decoded engine cache, not a process-memory limit. WAL enabled, WAL fsync disabled; no measured writes. Profiles use separate diagnostic runs.",
@@ -57,7 +59,7 @@ def main():
     for cache in args.caches:
         label = f"cache-{cache}"
         report_path = args.output / f"{label}.json"
-        command = [str(args.binary.resolve()), "-dir", str(args.dir.resolve()), "-cache-bytes", str(cache), "-cache-policy", args.policy, "-workers", str(args.workers), "-duration", f"{args.seconds}s", "-samples", str(args.samples), "-json", str(report_path.resolve())]
+        command = [str(args.binary.resolve()), "-dir", str(args.dir.resolve()), "-cache-bytes", str(cache), "-cache-policy", args.policy, "-cache-memory", args.memory, "-workers", str(args.workers), "-duration", f"{args.seconds}s", "-samples", str(args.samples), "-json", str(report_path.resolve())]
         print(" ".join(command), flush=True)
         with (args.output / f"{label}.log").open("w") as log:
             completed = subprocess.run(["/usr/bin/time", "-v", "-o", str(args.output / f"{label}.resources.txt"), *command], stdout=log, stderr=subprocess.STDOUT)
@@ -65,7 +67,7 @@ def main():
         if completed.returncode or report.get("Error") or len(report["Samples"]) != args.samples:
             raise RuntimeError(f"{label} failed: {report.get('Error')}")
         for sample in report["Samples"]:
-            if sample["Queries"] <= 0 or sample["Before"]["SeqNum"] != sample["After"]["SeqNum"] or sample["After"]["BlockCacheBytes"] > cache or sample["After"].get("BlockCachePolicy") != args.policy:
+            if sample["Queries"] <= 0 or sample["Before"]["SeqNum"] != sample["After"]["SeqNum"] or sample["After"]["BlockCacheBytes"] > cache or sample["After"].get("BlockCachePolicy") != args.policy or sample["After"].get("BlockCacheMemory") != args.memory:
                 raise RuntimeError(f"{label}: invalid results or mutation/cache-budget violation")
         row = {"cache_bytes": cache, "command": command, "report": report_path.name,
                "median_selects_per_second": statistics.median(s["QueriesPerSecond"] for s in report["Samples"]),

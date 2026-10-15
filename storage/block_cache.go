@@ -12,46 +12,53 @@ type blockCacheKey struct {
 	table, offset, size uint64
 	modified            int64
 }
-type cachedBlock struct {
-	key        blockCacheKey
-	reader     *BlockReader
-	prev, next *cachedBlock
-	referenced atomic.Uint32
-}
+
 type blockCacheShard struct {
-	mu             sync.RWMutex
-	capacity, used int
-	lru            blockCacheList
-	hand           *cachedBlock // next CLOCK candidate; protected by mu
-	blocks         map[blockCacheKey]*cachedBlock
-	closed         bool
-	evicted        bool // LRU refreshes are unnecessary until there is admission pressure
-	hits, misses   atomic.Int64
-	admissionSkips atomic.Int64
-	padding        [16]byte // separate neighboring shard reader/writer counters
+	mu              sync.RWMutex
+	capacity, used  int
+	lru             blockCacheList
+	hand            uint64                   // arena offset+1; zero is an empty CLOCK ring
+	blocks          map[blockCacheKey]uint64 // pointer-free arena offsets
+	arena           *blockArena
+	arenaStats      blockArenaStats
+	heapBlocks      map[blockCacheKey]*cachedHeapBlock
+	heapLRU         heapBlockCacheList
+	heapHand        *cachedHeapBlock
+	closed, evicted bool
+	hits, misses    atomic.Int64
+	admissionSkips  atomic.Int64
+	padding         [16]byte
 }
 
-// Shard both metadata and the byte budget so independent point reads do not
-// serialize on one LRU mutex. Retained decoded bytes never exceed capacity.
+// Both memory backends share shard locks, budgets, policies and counters.
+// mmap stores resident data and records outside the Go heap; heap keeps owned
+// Go slices and immutable readers with typed intrusive cache records.
 type blockCache struct {
 	policy        BlockCachePolicy
-	policyPadding [48]byte // keep immutable policy off mutable shard cache lines
+	memory        BlockCacheMemory
+	policyPadding [32]byte
 	shards        [blockCacheShards]blockCacheShard
 	used          atomic.Int64
 }
 
-func newBlockCache(capacity int) *blockCache {
-	return newBlockCacheWithPolicy(capacity, BlockCacheLRU)
-}
-func newBlockCacheWithPolicy(capacity int, policy BlockCachePolicy) *blockCache {
-	c := &blockCache{policy: policy}
+func newBlockCacheWithMemory(capacity int, policy BlockCachePolicy, memory BlockCacheMemory) *blockCache {
+	if memory == "" {
+		memory = BlockCacheMmap
+	}
+	c := &blockCache{policy: policy, memory: memory}
 	for i := range c.shards {
 		s := &c.shards[i]
 		s.capacity = capacity / blockCacheShards
 		if i < capacity%blockCacheShards {
 			s.capacity++
 		}
-		s.blocks = make(map[blockCacheKey]*cachedBlock)
+		if memory == BlockCacheMmap {
+			s.blocks = make(map[blockCacheKey]uint64)
+			s.arena = &blockArena{capacity: s.capacity, stats: &s.arenaStats}
+			s.lru.arena = s.arena
+		} else {
+			s.heapBlocks = make(map[blockCacheKey]*cachedHeapBlock)
+		}
 	}
 	return c
 }
@@ -67,9 +74,19 @@ func (c *blockCache) close() {
 		s := &c.shards[i]
 		s.mu.Lock()
 		s.closed = true
-		s.blocks = nil
-		s.lru.Init()
-		s.hand = nil
+		if c.memory == BlockCacheMmap {
+			for _, link := range s.blocks {
+				s.arena.release(int(link - 1))
+			}
+			s.blocks = nil
+			s.lru.Init()
+			s.hand = 0
+			s.arena.close()
+		} else {
+			s.heapBlocks = nil
+			s.heapLRU.Init()
+			s.heapHand = nil
+		}
 		c.used.Add(-int64(s.used))
 		s.used = 0
 		s.mu.Unlock()
@@ -77,85 +94,86 @@ func (c *blockCache) close() {
 }
 func (c *blockCache) get(key blockCacheKey) ([]byte, bool) { return c.lookup(key, true) }
 func (c *blockCache) lookup(key blockCacheKey, touch bool) ([]byte, bool) {
-	reader, ok := c.lookupReader(key, touch)
+	r, ok := c.lookupReader(key, touch)
 	if !ok {
 		return nil, false
 	}
-	return reader.data, true
+	defer r.release()
+	return append([]byte(nil), r.data...), true
 }
 func (c *blockCache) lookupReader(key blockCacheKey, touch bool) (*BlockReader, bool) {
+	if c.memory != BlockCacheMmap {
+		return c.lookupHeapReader(key, touch)
+	}
 	s := c.shard(key)
 	s.mu.RLock()
 	if s.closed {
 		s.mu.RUnlock()
 		return nil, false
 	}
-	elem, ok := s.blocks[key]
-	if !ok {
+	link := s.blocks[key]
+	if link == 0 {
 		s.misses.Add(1)
 		s.mu.RUnlock()
 		return nil, false
 	}
 	hits := s.hits.Add(1)
-	entry := elem
-	reader := entry.reader
-	refresh := false
-	if touch && s.evicted {
-		if c.policy == BlockCacheCLOCK {
-			// A second chance needs no list mutation or writer lock. Avoid
-			// repeated stores when another hit already set the reference bit.
-			if entry.referenced.Load() == 0 {
-				entry.referenced.Store(1)
-			}
-		} else {
-			refresh = hits%16 == 0
-		}
-	}
+	reader := s.arena.reader(int(link-1), touch && s.evicted && c.policy == BlockCacheCLOCK)
+	refresh := touch && s.evicted && c.policy != BlockCacheCLOCK && hits%16 == 0
 	s.mu.RUnlock()
-	// Immutable blocks can be shared under a reader lock. Approximate LRU
-	// refreshes avoid serializing all hits on list writes. Recheck membership
-	// after upgrading: eviction/close may have removed the old list element.
-	if refresh {
-		if !s.mu.TryLock() {
-			return reader, true
-		}
-		if !s.closed && s.blocks[key] == elem {
-			s.lru.MoveToFront(elem)
+	if refresh && s.mu.TryLock() {
+		// The outstanding pin prevents this offset from being reused before
+		// membership is rechecked after the lock upgrade.
+		if !s.closed && s.blocks[key] == link {
+			s.lru.MoveToFront(link)
 		}
 		s.mu.Unlock()
 	}
 	return reader, true
 }
-
 func (c *blockCache) statistics() (hits, misses int64) {
 	for i := range c.shards {
-		shard := &c.shards[i]
-		hits += shard.hits.Load()
-		misses += shard.misses.Load()
+		hits += c.shards[i].hits.Load()
+		misses += c.shards[i].misses.Load()
 	}
 	return
 }
-
 func (c *blockCache) skippedAdmissions() int64 {
-	var skipped int64
+	var n int64
 	for i := range c.shards {
-		skipped += c.shards[i].admissionSkips.Load()
+		n += c.shards[i].admissionSkips.Load()
 	}
-	return skipped
+	return n
+}
+func (c *blockCache) arenaStatistics() (mapped, inUse, failures int64) {
+	for i := range c.shards {
+		s := &c.shards[i].arenaStats
+		mapped += s.mapped.Load()
+		inUse += s.inUse.Load()
+		failures += s.failures.Load()
+	}
+	return
 }
 func (c *blockCache) add(key blockCacheKey, data []byte) {
 	reader := NewBlockReader(data)
 	reader.data = data
 	c.addReader(key, reader)
+	reader.release()
 }
+
+// The input reader is private. Successful admission transfers its data to the
+// arena in place: allocation ownership stays with the caller, and cache
+// membership acquires another reference. No resident Go reader is created.
 func (c *blockCache) addReader(key blockCacheKey, reader *BlockReader) {
-	data := reader.data
-	s := c.shard(key)
-	if cap(data) > s.capacity {
+	if c.memory != BlockCacheMmap {
+		c.addHeapReader(key, reader)
 		return
 	}
-	// The decoded page already satisfies the read. Admission is best effort:
-	// avoid queued writer preference stalling other readers of this shard.
+	data := reader.data
+	s := c.shard(key)
+	if len(data) > s.capacity {
+		return
+	}
 	if !s.mu.TryLock() {
 		s.admissionSkips.Add(1)
 		return
@@ -164,85 +182,89 @@ func (c *blockCache) addReader(key blockCacheKey, reader *BlockReader) {
 	if s.closed {
 		return
 	}
-	if elem := s.blocks[key]; elem != nil {
+	if link := s.blocks[key]; link != 0 {
 		if c.policy == BlockCacheCLOCK {
-			elem.referenced.Store(1)
+			atomic.StoreUint64(s.arena.atomicWord(int(link-1)+72), 1)
 		} else {
-			s.lru.MoveToFront(elem)
+			s.lru.MoveToFront(link)
 		}
 		return
 	}
+	stored, off, ok := s.arena.allocate(len(data))
+	if !ok {
+		s.admissionSkips.Add(1)
+		return
+	}
+	copy(stored, data)
+	s.arena.setCacheKey(off, key)
+	s.arena.set(off+80, uint64(reader.numRestarts))
+	s.arena.pin(off, true) // cache ownership, alongside the caller's allocation
+	if len(reader.restarts) > 0 {
+		reader.restarts = stored[len(stored)-4-reader.numRestarts*4 : len(stored)-4]
+	}
+	reader.data = stored
+	if reader.decodeBuffer != nil {
+		blockDecodeBuffers.Put(reader.decodeBuffer)
+		reader.decodeBuffer = nil
+	}
+	reader.arena, reader.arenaOffset = s.arena, off
 	before := s.used
-	var reusable *cachedBlock
-	for s.used+cap(data) > s.capacity {
-		elem := s.lru.Back()
+	for s.used+len(stored) > s.capacity {
+		victim := s.lru.Back()
 		if c.policy == BlockCacheCLOCK {
-			elem = s.clockVictim(reusable)
+			victim = s.clockVictim()
 		}
-		if elem == nil {
-			break
+		if victim == 0 {
+			panic("block cache budget has no eviction victim")
 		}
-		entry := elem
+		v := int(victim - 1)
+		s.used -= int(s.arena.word(v + 16))
+		delete(s.blocks, s.arena.cacheKey(v))
+		s.lru.Remove(victim)
+		if s.lru.Len() == 0 {
+			s.hand = 0
+		} else if s.hand == victim {
+			s.hand = s.lru.Front()
+		}
+		s.arena.release(v)
 		s.evicted = true
-		s.used -= cap(entry.reader.data)
-		delete(s.blocks, entry.key)
-		if reusable == nil {
-			// Keep one node attached for the incoming page. Reusing its record
-			// avoids allocation/GC assistance while holding the writer lock on
-			// steady-state misses. Other victims (larger pages) are removed.
-			reusable = elem
-			if c.policy != BlockCacheCLOCK {
-				s.lru.MoveToFront(elem)
-			}
-		} else {
-			s.lru.Remove(elem)
-		}
 	}
-	if reusable != nil {
-		entry := reusable
-		entry.key, entry.reader = key, reader
-		entry.referenced.Store(1)
-		s.blocks[key] = reusable
+	link := uint64(off + 1)
+	if c.policy == BlockCacheCLOCK {
+		s.lru.PushBack(link)
+		if s.hand == 0 {
+			s.hand = link
+		}
 	} else {
-		entry := &cachedBlock{key: key, reader: reader}
-		entry.referenced.Store(1)
-		if c.policy == BlockCacheCLOCK {
-			elem := s.lru.PushBack(entry)
-			s.blocks[key] = elem
-			if s.hand == nil {
-				s.hand = elem
-			}
-		} else {
-			s.blocks[key] = s.lru.PushFront(entry)
-		}
+		s.lru.PushFront(link)
 	}
-	s.used += cap(data)
+	s.blocks[key] = link
+	s.used += len(stored)
 	if delta := s.used - before; delta != 0 {
 		c.used.Add(int64(delta))
 	}
 }
 
-// Called with the shard writer lock. Reader hits cannot reset reference bits
-// during a sweep, so a victim is found within two revolutions. A reusable node
-// is already uncharged/deleted but remains in the ring until replacement ends.
-func (s *blockCacheShard) clockVictim(reusable *cachedBlock) *cachedBlock {
-	if s.hand == nil {
+// Writer ownership excludes hits while reference bits are swept, so a victim
+// is found within two revolutions. Release of borrowed views only changes the
+// allocation reference count and cannot alter an attached CLOCK record.
+func (s *blockCacheShard) clockVictim() uint64 {
+	if s.hand == 0 {
 		s.hand = s.lru.Front()
 	}
-	if s.hand == nil {
-		return nil
+	if s.hand == 0 {
+		return 0
 	}
 	for {
-		elem := s.hand
-		s.hand = elem.Next()
-		if s.hand == nil {
+		link := s.hand
+		s.hand = s.lru.Next(link)
+		if s.hand == 0 {
 			s.hand = s.lru.Front()
 		}
-		if elem == reusable {
-			continue
+		off := int(link - 1)
+		if atomic.LoadUint64(s.arena.atomicWord(off+72)) == 0 {
+			return link
 		}
-		if elem.referenced.Swap(0) == 0 {
-			return elem
-		}
+		atomic.StoreUint64(s.arena.atomicWord(off+72), 0)
 	}
 }
