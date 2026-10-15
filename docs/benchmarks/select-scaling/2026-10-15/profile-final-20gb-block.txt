@@ -1,0 +1,31 @@
+File: select-pilot-v4
+Build ID: 7569e03250624a42f63c5a9d6651634c138e1f62
+Type: delay
+Time: Oct 15, 2026 at 3:19am (UTC)
+Showing nodes accounting for 16481.75ms, 99.73% of 16526.02ms total
+Dropped 4 nodes (cum <= 82.63ms)
+      flat  flat%   sum%        cum   cum%
+15014.63ms 90.85% 90.85% 15014.63ms 90.85%  sync.(*WaitGroup).Wait
+ 1467.12ms  8.88% 99.73%  1467.12ms  8.88%  sync.(*Mutex).Lock (inline)
+         0     0% 99.73% 15041.90ms 91.02%  main.main
+         0     0% 99.73% 15041.90ms 91.02%  main.run
+         0     0% 99.73%  1484.12ms  8.98%  main.run.func5
+         0     0% 99.73%  1484.12ms  8.98%  main.run.gowrap4
+         0     0% 99.73% 15041.90ms 91.02%  runtime.main
+         0     0% 99.73%  1467.12ms  8.88%  slopdb/db.(*Database).execStatements
+         0     0% 99.73%  1467.12ms  8.88%  slopdb/db.(*Session).ExecPrepared (inline)
+         0     0% 99.73%  1467.12ms  8.88%  slopdb/db.(*Session).ExecPreparedContext
+         0     0% 99.73%  1467.12ms  8.88%  slopdb/db.(*Session).ExecPreparedContextWithOptions (inline)
+         0     0% 99.73%  1467.12ms  8.88%  slopdb/db.(*Session).execParsed
+         0     0% 99.73%  1467.12ms  8.88%  slopdb/db.(*Session).execPrepared
+         0     0% 99.73%   217.24ms  1.31%  slopdb/db.(*statementExecutor).execStatement
+         0     0% 99.73%   861.02ms  5.21%  slopdb/sql.(*Schema).EndStatement (inline)
+         0     0% 99.73%   217.24ms  1.31%  slopdb/sql.(*Schema).Select
+         0     0% 99.73%   388.87ms  2.35%  slopdb/sql.(*Schema).StartStatement
+         0     0% 99.73%   217.24ms  1.31%  slopdb/sql.(*Schema).committedGet
+         0     0% 99.73%   217.24ms  1.31%  slopdb/sql.(*Schema).schemaGet
+         0     0% 99.73%   217.24ms  1.31%  slopdb/sql.(*Schema).selectPreparedPoint
+         0     0% 99.73%   217.24ms  1.31%  slopdb/storage.(*LSMTree).GetAtForReader
+         0     0% 99.73%   861.02ms  5.21%  slopdb/storage.(*LSMTree).ReleaseSnapshotForReader
+         0     0% 99.73%   388.87ms  2.35%  slopdb/storage.(*LSMTree).SnapshotForReader
+         0     0% 99.73%   217.24ms  1.31%  slopdb/storage.(*LSMTree).acquireViewForReader

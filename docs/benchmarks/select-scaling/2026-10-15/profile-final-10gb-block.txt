@@ -1,0 +1,36 @@
+File: select-final
+Build ID: 7569e03250624a42f63c5a9d6651634c138e1f62
+Type: delay
+Time: Oct 15, 2026 at 3:42am (UTC)
+Showing nodes accounting for 400.85s, 100% of 400.90s total
+Dropped 14 nodes (cum <= 2s)
+      flat  flat%   sum%        cum   cum%
+   336.55s 83.95% 83.95%    336.55s 83.95%  sync.(*RWMutex).RLock (inline)
+    36.45s  9.09% 93.04%     36.45s  9.09%  sync.(*Mutex).Lock (inline)
+       15s  3.74% 96.78%        15s  3.74%  sync.(*WaitGroup).Wait
+    12.85s  3.21%   100%     49.24s 12.28%  sync.(*RWMutex).Lock
+         0     0%   100%     15.03s  3.75%  main.main
+         0     0%   100%     15.03s  3.75%  main.run
+         0     0%   100%    385.86s 96.25%  main.run.func5
+         0     0%   100%    385.86s 96.25%  main.run.gowrap4
+         0     0%   100%     15.03s  3.75%  runtime.main
+         0     0%   100%    385.85s 96.25%  slopdb/db.(*Database).execStatements
+         0     0%   100%    385.85s 96.25%  slopdb/db.(*Session).ExecPrepared (inline)
+         0     0%   100%    385.85s 96.25%  slopdb/db.(*Session).ExecPreparedContext
+         0     0%   100%    385.85s 96.25%  slopdb/db.(*Session).ExecPreparedContextWithOptions (inline)
+         0     0%   100%    385.85s 96.25%  slopdb/db.(*Session).execParsed
+         0     0%   100%    385.85s 96.25%  slopdb/db.(*Session).execPrepared
+         0     0%   100%    385.81s 96.24%  slopdb/db.(*statementExecutor).execStatement
+         0     0%   100%    385.81s 96.24%  slopdb/sql.(*Schema).Select
+         0     0%   100%    385.81s 96.24%  slopdb/sql.(*Schema).committedGet
+         0     0%   100%    385.81s 96.24%  slopdb/sql.(*Schema).schemaGet
+         0     0%   100%    385.81s 96.24%  slopdb/sql.(*Schema).selectPreparedPoint
+         0     0%   100%    385.81s 96.24%  slopdb/storage.(*LSMTree).GetAtForReader
+         0     0%   100%    385.80s 96.23%  slopdb/storage.(*SSTableReader).loadBlockReaderMode
+         0     0%   100%    385.80s 96.23%  slopdb/storage.(*SSTableReader).pointLookup
+         0     0%   100%     49.24s 12.28%  slopdb/storage.(*blockCache).addReader
+         0     0%   100%    336.55s 83.95%  slopdb/storage.(*blockCache).lookupReader
+         0     0%   100%    385.80s 96.23%  slopdb/storage.readPointFromView
+         0     0%   100%    385.80s 96.23%  slopdb/storage.readPointWithWorkspace
+         0     0%   100%    385.80s 96.23%  slopdb/storage.readPointWithWorkspaceMode
+         0     0%   100%    385.80s 96.23%  slopdb/storage.readPointWithWorkspaceMode.func2

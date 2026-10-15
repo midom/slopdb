@@ -22,6 +22,21 @@ type ExecOptions struct {
 	IndexPublicationAbortAfter *time.Duration
 }
 
+// One cancellable context serves session shutdown and transaction aborts. A
+// second nested cancel context otherwise allocates a child map and two Done
+// channels for each statement, even when no deadline or abort ever fires.
+type queryCallContext struct {
+	context.Context
+	abort context.CancelCauseFunc
+}
+
+func managedCancellation(ctx context.Context) (context.Context, context.CancelCauseFunc) {
+	if call, ok := ctx.(*queryCallContext); ok {
+		return ctx, call.abort
+	}
+	return context.WithCancelCause(ctx)
+}
+
 func (db *Database) queryContext(ctx context.Context, options ExecOptions) (context.Context, context.CancelFunc, time.Duration, error) {
 	queryTimeout, lockTimeout := db.opt.QueryTimeout, db.opt.LockTimeout
 	if options.Timeout != nil {
@@ -54,7 +69,10 @@ func (db *Database) queryContext(ctx context.Context, options ExecOptions) (cont
 	if queryTimeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, queryTimeout)
 	} else {
-		ctx, cancel = context.WithCancel(ctx)
+		var abort context.CancelCauseFunc
+		ctx, abort = context.WithCancelCause(ctx)
+		ctx = &queryCallContext{Context: ctx, abort: abort}
+		cancel = func() { abort(nil) }
 	}
 	return ctx, cancel, lockTimeout, nil
 }

@@ -1,0 +1,13 @@
+?   	slopdb	[no test files]
+ok  	slopdb/cmd/select-bench	1.290s
+ok  	slopdb/cmd/storage-snapshot	1.665s
+?   	slopdb/cmd/tpcc	[no test files]
+ok  	slopdb/cmd/storage-sql	1.586s
+ok  	slopdb/cmd/tpch	1.834s
+?   	slopdb/internal/tpcc	[no test files]
+ok  	slopdb/db	70.371s
+ok  	slopdb/internal/benchload	1.318s
+ok  	slopdb/internal/cli	1.221s
+ok  	slopdb/sql	13.932s
+ok  	slopdb/storage	20.136s
+ok  	slopdb/tests/regression	193.267s

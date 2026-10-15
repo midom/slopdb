@@ -15,7 +15,9 @@ type snapshotReaderShard struct {
 // only share bookkeeping; every registered sequence still pins old versions.
 func (l *LSMTree) SnapshotForReader(reader uint64) uint64 {
 	shard := &l.readerSnapshots[reader&(snapshotReaderShards-1)]
-	l.viewMu.RLock()
+	// The cutoff walker locks this bucket too. A pin registered after its
+	// visit reads a watermark at least as new as the cutoff captured before
+	// the walk; a pin with an older watermark is visible to that walk.
 	shard.mu.Lock()
 	if shard.pins == nil {
 		shard.pins = make(map[uint64]int)
@@ -23,7 +25,6 @@ func (l *LSMTree) SnapshotForReader(reader uint64) uint64 {
 	seq := l.published.Load()
 	shard.pins[seq]++
 	shard.mu.Unlock()
-	l.viewMu.RUnlock()
 	return seq
 }
 func (l *LSMTree) ReleaseSnapshotForReader(reader, seq uint64) {

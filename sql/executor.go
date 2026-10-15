@@ -64,7 +64,7 @@ type Schema struct {
 	maxCTEIterations   int64
 	maxCTERows         int64
 	cteScope           map[string]*ResultSet
-	commitMu           sync.RWMutex // protects the committed root catalog and reservations
+	commitMu           catalogGate // protects the committed root catalog and reservations
 	statementSnapshot  uint64
 	snapshotReader     uint64
 	nextSnapshotReader atomic.Uint64
@@ -131,11 +131,9 @@ func (s *Schema) SetContext(ctx context.Context) {
 
 func (s *Schema) checkInterrupt() error {
 	if s.ctx != nil {
-		select {
-		case <-s.ctx.Done():
-			return s.ctx.Err()
-		default:
-		}
+		// Err observes cancellation without creating a Done channel on every
+		// otherwise nonblocking statement. Actual waits still select on Done.
+		return s.ctx.Err()
 	}
 	return nil
 }
@@ -3919,6 +3917,19 @@ func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
 	if s.selectDepth > 100 {
 		return nil, fmt.Errorf("query nesting limit exceeded")
 	}
+	// Prepared physical-table point reads can reuse their validated projection
+	// without a heap-allocated statement copy and general scan/result scaffolding.
+	// All paths still run inside the normal statement snapshot and lifecycle.
+	planUsed := false
+	if stmt.prepared != nil && stmt.FromExpr == nil {
+		if info := s.tables[strings.ToLower(stmt.From)]; info != nil {
+			defer s.restorePreparedPlan(s.usePreparedPlan(stmt.prepared, info))
+			planUsed = true
+			if rs, used, err := s.selectPreparedPoint(stmt, info); used || err != nil {
+				return rs, err
+			}
+		}
+	}
 	copyStmt := *stmt
 	stmt = &copyStmt
 	if err := resolveWindows(stmt); err != nil {
@@ -3965,7 +3976,7 @@ func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
 		}
 	}
 
-	if stmt.prepared != nil && info != nil {
+	if stmt.prepared != nil && info != nil && !planUsed {
 		defer s.restorePreparedPlan(s.usePreparedPlan(stmt.prepared, info))
 	}
 
@@ -3975,7 +3986,7 @@ func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
 		}
 	}
 
-	exprCols := make([]selectExprCol, 0)
+	exprCols := make([]selectExprCol, 0, len(stmt.Columns))
 	if stmt.SelectAll {
 		if info != nil {
 			rs.Columns = append([]ColumnDef(nil), info.Columns...)
@@ -3985,6 +3996,7 @@ func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
 			s.addJoinColumns(rs, jc, base)
 		}
 	} else {
+		rs.Columns = make([]ColumnDef, 0, len(stmt.Columns))
 		exprIdx := 0
 		for _, sc := range stmt.Columns {
 			if sc.Star {
@@ -4016,6 +4028,33 @@ func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
 	stmt.OrderBy = append([]OrderByClause(nil), stmt.OrderBy...)
 	if err := validateGrouping(stmt, info, rs.Columns); err != nil {
 		return nil, err
+	}
+	// A physical row already contains unaliased, unqualified column values.
+	// Keep that caller-owned decoded map through filtering/sorting, then prune
+	// unused fields at the final projection. No expression can overwrite it.
+	// Bound linear membership checks for wide projections; their normal map
+	// projection stays linear in the number of selected fields.
+	identityProjection := len(exprCols) > 0 && len(exprCols) <= 8 && info != nil && stmt.FromExpr == nil && len(stmt.Joins) == 0 &&
+		!windowed && !needQualified && len(stmt.GroupBy) == 0 && stmt.Having == nil && !hasAggregates(stmt)
+	if identityProjection {
+		for _, ec := range exprCols {
+			ref, ok := ec.expr.(*ColumnRefExpr)
+			if !ok || ref.Name != ec.name {
+				identityProjection = false
+				break
+			}
+			found := false
+			for _, col := range info.Columns {
+				if col.Name == ref.Name {
+					found = true
+					break
+				}
+			}
+			if !found {
+				identityProjection = false
+				break
+			}
+		}
 	}
 	if sorted, used, sortErr := s.streamOrderedSelectIfNoWindows(stmt, info, exprCols, rs.Columns); used || sortErr != nil {
 		if sortErr != nil {
@@ -4325,7 +4364,7 @@ func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
 		}
 	}
 
-	if !windowed && len(exprCols) > 0 && !coveringProjection && !streamedGroups && !expressionsReady {
+	if !windowed && len(exprCols) > 0 && !coveringProjection && !streamedGroups && !expressionsReady && !identityProjection {
 		for i := range rows {
 			original := make(map[string]Value)
 			for k, v := range rows[i] {
@@ -4450,6 +4489,21 @@ func (s *Schema) Select(stmt *SelectStmt) (result *ResultSet, err error) {
 		for _, row := range rows {
 			for name := range row {
 				if !selected[name] {
+					delete(row, name)
+				}
+			}
+		}
+	} else if identityProjection && !coveringProjection {
+		for _, row := range rows {
+			for name := range row {
+				selected := false
+				for _, col := range rs.Columns {
+					if name == col.Name {
+						selected = true
+						break
+					}
+				}
+				if !selected {
 					delete(row, name)
 				}
 			}

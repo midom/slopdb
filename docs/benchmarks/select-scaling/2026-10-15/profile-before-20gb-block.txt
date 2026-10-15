@@ -1,0 +1,24 @@
+File: select-before
+Build ID: c1d7f283e2a5bf1253d55f6149315aab9ff2e1bc
+Type: delay
+Time: Oct 15, 2026 at 3:42am (UTC)
+Showing nodes accounting for 19.78s, 99.76% of 19.83s total
+Dropped 4 nodes (cum <= 0.10s)
+      flat  flat%   sum%        cum   cum%
+    15.01s 75.70% 75.70%     15.01s 75.70%  sync.(*WaitGroup).Wait
+     4.77s 24.06% 99.76%      4.77s 24.06%  sync.(*Mutex).Lock (inline)
+         0     0% 99.76%     15.05s 75.86%  main.main
+         0     0% 99.76%     15.05s 75.86%  main.run
+         0     0% 99.76%      4.79s 24.14%  main.run.func5
+         0     0% 99.76%      4.79s 24.14%  main.run.gowrap4
+         0     0% 99.76%     15.05s 75.86%  runtime.main
+         0     0% 99.76%      4.77s 24.06%  slopdb/db.(*Database).execStatements
+         0     0% 99.76%      4.77s 24.06%  slopdb/db.(*Session).ExecPrepared (inline)
+         0     0% 99.76%      4.77s 24.06%  slopdb/db.(*Session).ExecPreparedContext
+         0     0% 99.76%      4.77s 24.06%  slopdb/db.(*Session).ExecPreparedContextWithOptions (inline)
+         0     0% 99.76%      4.77s 24.06%  slopdb/db.(*Session).execParsed
+         0     0% 99.76%      4.77s 24.06%  slopdb/db.(*Session).execPrepared
+         0     0% 99.76%      3.57s 18.02%  slopdb/sql.(*Schema).EndStatement (inline)
+         0     0% 99.76%      1.20s  6.04%  slopdb/sql.(*Schema).StartStatement
+         0     0% 99.76%      3.57s 18.02%  slopdb/storage.(*LSMTree).ReleaseSnapshotForReader
+         0     0% 99.76%      1.20s  6.04%  slopdb/storage.(*LSMTree).SnapshotForReader

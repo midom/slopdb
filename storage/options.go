@@ -11,6 +11,15 @@ import (
 // Readers detect each block's codec independently of this setting.
 type CompressionType string
 
+// BlockCachePolicy selects eviction for decoded SSTable pages. It does not
+// change persisted data or the separate SSTable-reader cache.
+type BlockCachePolicy string
+
+const (
+	BlockCacheLRU   BlockCachePolicy = "lru"
+	BlockCacheCLOCK BlockCachePolicy = "clock"
+)
+
 const (
 	AutoCompression   CompressionType = "auto" // no compression in L0, zstd in L1 and higher
 	NoCompression     CompressionType = "none"
@@ -27,29 +36,30 @@ type Options struct {
 	MaxCTEIterations     int64  // recursive CTE iterations; default 100,000, zero unlimited
 	MaxCTERows           int64  // recursive CTE emitted rows; default 1,000,000, zero unlimited
 	Dir                  string
-	WriteBufferSize      int             // memtable size in bytes before flush (default 4MB)
-	BlockSize            int             // legacy block target; PageSize/stored target take precedence over default 4096
-	PageSize             int64           // uncompressed SSTable data-block target; 0 reuses stored size/default 4096
-	MaxLevels            int             // number of levels (default 7)
-	BloomBitsKey         int             // bits per key for bloom filter (default 10)
-	BlockCacheSize       int             // decoded block-cache byte budget; default 128 MiB
-	VerifySSTableChanges bool            // diagnostic: stat files before cache hits to detect external modification
-	VerifyIndexesOnOpen  bool            // diagnostic: scan rows, validate indexed types and reconcile indexes on every open
-	MaxOpenFiles         int             // SSTable LRU capacity (default 500); active read views/iterators pin additional readers
-	CompactionL0Trigger  int             // number of L0 files to trigger compaction (default 4)
-	BaseLevelSize        int64           // base level size in MB for L1 (default 10)
-	MaxSeekCompaction    int             // seek compaction allowed_seeks threshold (default 100)
-	MaxBackgroundJobs    int             // max disjoint background compactions (default 2); one immutable memtable flush runs separately
-	CompressionType      CompressionType // auto (default), none, gzip, zstd, snappy, or lz4
-	L0CompressionType    CompressionType // override L0 only; unset/auto inherits CompressionType's L0 policy
-	DisableWAL           bool            // skip new WAL writes; unflushed data is lost on crash, Close flushes to SSTables
-	DisableWALSync       bool            // skip WAL fsync, still flush records to OS; SSTables/MANIFEST stay synced; ignored if DisableWAL
-	SyncOnClose          bool            // fsync MANIFEST and files on close
-	CreateIfNotExist     bool            // create database if not exists
-	ErrorIfExists        bool            // return error if database exists
-	QueryTimeout         time.Duration   // default SQL call deadline; zero disables it
-	LockTimeout          time.Duration   // maximum transaction lock wait per SQL call; zero fails immediately on contention
-	DeadlockDetection    bool            // detect wait-for cycles and roll back the requesting transaction
+	WriteBufferSize      int              // memtable size in bytes before flush (default 4MB)
+	BlockSize            int              // legacy block target; PageSize/stored target take precedence over default 4096
+	PageSize             int64            // uncompressed SSTable data-block target; 0 reuses stored size/default 4096
+	MaxLevels            int              // number of levels (default 7)
+	BloomBitsKey         int              // bits per key for bloom filter (default 10)
+	BlockCacheSize       int              // decoded block-cache byte budget; default 128 MiB
+	BlockCachePolicy     BlockCachePolicy // empty/lru (default) or clock
+	VerifySSTableChanges bool             // diagnostic: stat files before cache hits to detect external modification
+	VerifyIndexesOnOpen  bool             // diagnostic: scan rows, validate indexed types and reconcile indexes on every open
+	MaxOpenFiles         int              // SSTable LRU capacity (default 500); active read views/iterators pin additional readers
+	CompactionL0Trigger  int              // number of L0 files to trigger compaction (default 4)
+	BaseLevelSize        int64            // base level size in MB for L1 (default 10)
+	MaxSeekCompaction    int              // seek compaction allowed_seeks threshold (default 100)
+	MaxBackgroundJobs    int              // max disjoint background compactions (default 2); one immutable memtable flush runs separately
+	CompressionType      CompressionType  // auto (default), none, gzip, zstd, snappy, or lz4
+	L0CompressionType    CompressionType  // override L0 only; unset/auto inherits CompressionType's L0 policy
+	DisableWAL           bool             // skip new WAL writes; unflushed data is lost on crash, Close flushes to SSTables
+	DisableWALSync       bool             // skip WAL fsync, still flush records to OS; SSTables/MANIFEST stay synced; ignored if DisableWAL
+	SyncOnClose          bool             // fsync MANIFEST and files on close
+	CreateIfNotExist     bool             // create database if not exists
+	ErrorIfExists        bool             // return error if database exists
+	QueryTimeout         time.Duration    // default SQL call deadline; zero disables it
+	LockTimeout          time.Duration    // maximum transaction lock wait per SQL call; zero fails immediately on contention
+	DeadlockDetection    bool             // detect wait-for cycles and roll back the requesting transaction
 }
 
 func (o *Options) compressionType(level int) (CompressionType, error) {
@@ -92,6 +102,7 @@ func DefaultOptions() *Options {
 		BloomBitsKey:        10,
 		MaxOpenFiles:        500,
 		BlockCacheSize:      defaultBlockCacheBytes,
+		BlockCachePolicy:    BlockCacheLRU,
 		CompactionL0Trigger: 4,
 		BaseLevelSize:       10,
 		MaxSeekCompaction:   100,

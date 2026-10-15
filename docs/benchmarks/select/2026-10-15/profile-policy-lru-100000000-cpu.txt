@@ -1,0 +1,44 @@
+File: select-policies-v1
+Build ID: 5ebfec346c9829d70175e66c88c32051a8433125
+Type: cpu
+Time: Oct 15, 2026 at 2:16am (UTC)
+Duration: 15s, Total samples = 437.31s (2914.72%)
+Showing nodes accounting for 232.60s, 53.19% of 437.31s total
+Dropped 671 nodes (cum <= 2.19s)
+Showing top 35 nodes out of 232
+      flat  flat%   sum%        cum   cum%
+    43.70s  9.99%  9.99%     43.70s  9.99%  internal/runtime/syscall/linux.Syscall6
+    13.12s  3.00% 12.99%     13.12s  3.00%  github.com/klauspost/compress/zstd/internal/xxhash.writeBlocks
+    13.10s  3.00% 15.99%     13.15s  3.01%  encoding/binary.Uvarint (inline)
+    11.25s  2.57% 18.56%     21.23s  4.85%  github.com/klauspost/compress/zstd.(*sequenceDecs).decodeSync
+    10.22s  2.34% 20.90%    316.19s 72.30%  slopdb/sql.(*Schema).Select
+     9.12s  2.09% 22.98%      9.12s  2.09%  cmpbody
+        8s  1.83% 24.81%         8s  1.83%  sync/atomic.(*Int32).Add (inline)
+     7.56s  1.73% 26.54%      7.56s  1.73%  runtime.memclrNoHeapPointers
+     6.57s  1.50% 28.04%      6.57s  1.50%  runtime.memmove
+     5.74s  1.31% 29.36%      5.74s  1.31%  sync/atomic.(*Int64).Add (inline)
+     5.41s  1.24% 30.59%     10.26s  2.35%  runtime.tryDeferToSpanScan
+     5.35s  1.22% 31.82%      6.14s  1.40%  github.com/klauspost/compress/zstd.(*fseDecoder).buildDtable
+     5.31s  1.21% 33.03%      5.31s  1.21%  runtime.nanotime (inline)
+     5.13s  1.17% 34.20%      5.26s  1.20%  slopdb/storage.(*BloomFilter).MayContain
+     5.11s  1.17% 35.37%      5.11s  1.17%  internal/runtime/maps.ctrlGroupMatchH2 (inline)
+     5.11s  1.17% 36.54%     58.63s 13.41%  runtime.mallocgc
+     4.71s  1.08% 37.62%     10.04s  2.30%  internal/sync.(*Mutex).Lock (inline)
+     4.71s  1.08% 38.70%    216.99s 49.62%  slopdb/storage.(*SSTableReader).pointLookup
+     4.58s  1.05% 39.74%      9.90s  2.26%  slopdb/storage.readPointWithWorkspaceMode.func3 (inline)
+     4.34s  0.99% 40.74%     29.93s  6.84%  slopdb/storage.(*blockCache).addReader
+     4.33s  0.99% 41.73%      4.33s  0.99%  internal/runtime/atomic.(*Uint64).Add (inline)
+     4.29s  0.98% 42.71%     14.27s  3.26%  slopdb/storage.(*BlockReader).restartKey
+     4.28s  0.98% 43.69%      7.04s  1.61%  runtime.lock2
+     4.05s  0.93% 44.61%      6.18s  1.41%  slopdb/sql.walkExpression
+     3.94s   0.9% 45.51%      4.76s  1.09%  runtime.findObject
+     3.87s  0.88% 46.40%      3.87s  0.88%  runtime.markBits.setMarked (inline)
+     3.66s  0.84% 47.23%      3.66s  0.84%  runtime.nextFreeFast (inline)
+     3.52s   0.8% 48.04%      3.52s   0.8%  runtime.usleep
+     3.49s   0.8% 48.84%      3.49s   0.8%  runtime.futex
+     3.40s  0.78% 49.61%      7.03s  1.61%  runtime.runqgrab
+     3.35s  0.77% 50.38%     20.38s  4.66%  runtime.mallocgcSmallScanNoHeader
+     3.13s  0.72% 51.10%      3.13s  0.72%  runtime.spanClass.sizeclass (inline)
+     3.12s  0.71% 51.81%      3.12s  0.71%  internal/runtime/atomic.(*Uint32).CompareAndSwap (inline)
+     3.04s   0.7% 52.51%      3.04s   0.7%  internal/runtime/atomic.(*Uint32).Add (inline)
+     2.99s  0.68% 53.19%      8.52s  1.95%  slopdb/storage.(*BlockIterator).Next

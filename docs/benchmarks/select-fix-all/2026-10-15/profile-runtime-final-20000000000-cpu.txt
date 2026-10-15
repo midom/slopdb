@@ -1,0 +1,44 @@
+File: select-runtime-final
+Build ID: 1df2bf68a1421d59b2ded350f1f142278fdd9c14
+Type: cpu
+Time: 2026-10-15 05:30:28 UTC
+Duration: 15.01s, Total samples = 519.44s (3461.68%)
+Showing nodes accounting for 336.75s, 64.83% of 519.44s total
+Dropped 541 nodes (cum <= 2.60s)
+Showing top 35 nodes out of 162
+      flat  flat%   sum%        cum   cum%
+    37.04s  7.13%  7.13%     37.07s  7.14%  slopdb/storage.blockEntryHeader
+    28.37s  5.46% 12.59%     35.18s  6.77%  slopdb/storage.(*SSTableReader).pointIndexSeek
+    19.40s  3.73% 16.33%     19.40s  3.73%  cmpbody
+    18.48s  3.56% 19.88%    185.06s 35.63%  slopdb/storage.(*SSTableReader).pointLookup
+    18.36s  3.53% 23.42%     18.86s  3.63%  slopdb/storage.(*BloomFilter).MayContain
+    15.90s  3.06% 26.48%     64.59s 12.43%  slopdb/storage.(*BlockIterator).Seek
+    15.55s  2.99% 29.47%     15.55s  2.99%  runtime.memmove
+    13.15s  2.53% 32.01%     13.15s  2.53%  internal/runtime/maps.ctrlGroupMatchH2 (inline)
+    12.44s  2.39% 34.40%     12.91s  2.49%  internal/sync.(*Mutex).Lock
+    12.18s  2.34% 36.75%     43.30s  8.34%  slopdb/storage.(*blockCache).lookupReader
+    11.69s  2.25% 39.00%     11.69s  2.25%  runtime.procyieldAsm
+    10.58s  2.04% 41.03%     11.11s  2.14%  sync.(*Pool).pin
+     9.75s  1.88% 42.91%     21.44s  4.13%  slopdb/storage.readPointWithWorkspaceMode.func3
+     9.24s  1.78% 44.69%      9.24s  1.78%  runtime.futex
+     7.79s  1.50% 46.19%      7.80s  1.50%  sync/atomic.(*Uint64).Add
+     6.28s  1.21% 47.40%     67.58s 13.01%  slopdb/sql.decodeRow
+     6.14s  1.18% 48.58%      6.14s  1.18%  runtime.nanotime
+     6.05s  1.16% 49.74%      6.05s  1.16%  runtime.memequal
+     5.71s  1.10% 50.84%    191.45s 36.86%  slopdb/storage.readPointWithWorkspaceMode.func2
+     5.66s  1.09% 51.93%      5.67s  1.09%  internal/sync.(*Mutex).Unlock
+     5.39s  1.04% 52.97%      5.40s  1.04%  sync/atomic.(*Int64).Add (inline)
+     5.21s  1.00% 53.97%     27.26s  5.25%  runtime.mapaccess2
+     4.99s  0.96% 54.93%      4.99s  0.96%  runtime.spanClass.sizeclass (inline)
+     4.87s  0.94% 55.87%     48.85s  9.40%  runtime.mallocgcSmallScanNoHeader
+     4.68s   0.9% 56.77%      4.76s  0.92%  runtime.nextFreeFast (inline)
+     4.62s  0.89% 57.66%      5.08s  0.98%  runtime.findObject
+     4.57s  0.88% 58.54%      4.62s  0.89%  runtime.heapSetTypeSmallHeader (inline)
+     4.52s  0.87% 59.41%      4.52s  0.87%  runtime.memclrNoHeapPointers
+     4.48s  0.86% 60.27%      4.48s  0.86%  internal/runtime/maps.(*Map).directoryAt (inline)
+     4.29s  0.83% 61.10%    104.74s 20.16%  runtime.mallocgc
+     4.12s  0.79% 61.89%      4.12s  0.79%  internal/runtime/atomic.(*Uint64).Add (inline)
+     3.99s  0.77% 62.66%      9.92s  1.91%  runtime.tryDeferToSpanScan
+     3.86s  0.74% 63.40%     46.68s  8.99%  slopdb/storage.(*BlockIterator).Next
+     3.83s  0.74% 64.14%      7.57s  1.46%  internal/sync.(*HashTrieMap[go.shape.interface {},go.shape.interface {}]).Load
+     3.57s  0.69% 64.83%      5.15s  0.99%  internal/runtime/maps.(*Map).getWithoutKeySmallFastStr

@@ -33,25 +33,28 @@ type preparedRangeTerm struct {
 // Catalog objects and physical candidates are immutable; runtime keys, ranges,
 // costs and typed registers stay private. No snapshots or iterators are retained.
 type preparedExecutionPlan struct {
-	owner                        *PreparedQuery
-	where                        Expression
-	fromAlias                    string
-	info                         *TableInfo
-	distribution                 *tableStatistics
-	catalogVersion, stateVersion uint64
-	initialized, validated       bool
-	equalities                   []preparedEquality
-	pointPossible                bool
-	pointKey                     []byte
-	pointKeyReady, pointKeyOK    bool
-	ranges                       []preparedRangeTerm
-	rangeFallback                bool
-	coverage                     map[*IndexInfo]bool
-	candidatesReady              bool
-	pointUpdate                  *PointUpdate
-	pointUpdateReady             bool
-	aggregate                    *typedAggregate
-	aggregateReady               bool
+	owner                              *PreparedQuery
+	where                              Expression
+	fromAlias                          string
+	info                               *TableInfo
+	distribution                       *tableStatistics
+	catalogVersion, stateVersion       uint64
+	initialized, validated             bool
+	equalities                         []preparedEquality
+	pointPossible                      bool
+	pointKey                           []byte
+	pointKeyScratch, pointValueScratch []byte
+	pointKeyReady, pointKeyOK          bool
+	ranges                             []preparedRangeTerm
+	rangeFallback                      bool
+	coverage                           map[*IndexInfo]bool
+	candidatesReady                    bool
+	pointUpdate                        *PointUpdate
+	pointUpdateReady                   bool
+	aggregate                          *typedAggregate
+	aggregateReady                     bool
+	pointProjectionReady               bool
+	pointProjection                    []ColumnDef
 }
 
 func preparedSelectEligible(stmt *SelectStmt) bool {
@@ -186,17 +189,25 @@ func (p *preparedExecutionPlan) primaryKey(table string, info *TableInfo) ([]byt
 	if !p.pointComplete() {
 		return nil, false
 	}
-	values := make(map[string]Value, len(info.PKColumns))
-	for _, binding := range p.equalities {
-		v := binding.literal.Value
-		if preparedExactValue(v, binding.typ) {
-			values[binding.name] = v
+	key := append(p.pointKeyScratch[:0], info.storagePrefix(table)...)
+	for _, name := range info.PKColumns {
+		var value Value
+		found := false
+		for _, binding := range p.equalities {
+			if binding.name == name && preparedExactValue(binding.literal.Value, binding.typ) {
+				value, found = binding.literal.Value, true
+			}
 		}
+		if !found {
+			return nil, false
+		}
+		if value.Type == ColText && !info.binaryColumn(name) {
+			value.Text = info.collation.Key(value.Text)
+		}
+		key = appendClusteredValue(key, value)
 	}
-	if len(values) != len(info.PKColumns) {
-		return nil, false
-	}
-	p.pointKey, p.pointKeyOK = info.encodePK(table, values), true
+	p.pointKeyScratch = key
+	p.pointKey, p.pointKeyOK = key, true
 	return p.pointKey, true
 }
 
@@ -319,6 +330,13 @@ func (p *preparedExecutionPlan) tupleCoverage(s *Schema, stmt *SelectStmt, idx *
 }
 func (p *preparedExecutionPlan) releaseValues() {
 	p.pointKey, p.pointKeyReady, p.pointKeyOK = nil, false, false
+	// Plans are pooled. Retain bounded private scratch, never caller results.
+	if cap(p.pointKeyScratch) > 64<<10 {
+		p.pointKeyScratch = nil
+	}
+	if cap(p.pointValueScratch) > 64<<10 {
+		p.pointValueScratch = nil
+	}
 	if p.aggregate != nil {
 		if p.aggregate.where != nil {
 			clear(p.aggregate.where.registers)

@@ -30,6 +30,7 @@ type Database struct {
 	defaultGate     contextMutex
 	defaultCancel   context.CancelFunc
 	locks           *lockManager
+	executionReader uint64
 }
 
 func Open(dir string, opt *storage.Options) (*Database, error) {
@@ -93,6 +94,7 @@ func Open(dir string, opt *storage.Options) (*Database, error) {
 		locks:    newLockManager(),
 	}
 	database.installLocks(database.schema)
+	database.executionReader = database.locks.state(database.schema).id
 	return database, nil
 }
 
@@ -156,10 +158,10 @@ func (db *Database) ExecContextWithOptions(ctx context.Context, sqlText string, 
 		return nil, err
 	}
 	defer db.defaultGate.Unlock()
-	if err := db.execution.RLockContext(ctx); err != nil {
+	if err := db.execution.RLockContextForReader(ctx, db.executionReader); err != nil {
 		return nil, err
 	}
-	defer db.execution.RUnlock()
+	defer db.execution.RUnlockForReader(db.executionReader)
 	db.mu.Lock()
 	if db.closed.Load() {
 		db.mu.Unlock()
@@ -168,7 +170,7 @@ func (db *Database) ExecContextWithOptions(ctx context.Context, sqlText string, 
 	db.defaultCancel = cancel
 	db.mu.Unlock()
 	defer func() { db.mu.Lock(); db.defaultCancel = nil; db.mu.Unlock() }()
-	ctx, abortCancel := context.WithCancelCause(ctx)
+	ctx, abortCancel := managedCancellation(ctx)
 	defer abortCancel(nil)
 	defer func() { resultErr = db.finishManagedCall(db.schema, ctx, resultErr, false) }()
 	if err := db.beginManagedCall(db.schema, abortCancel); err != nil {
@@ -208,7 +210,7 @@ func (db *Database) execStatements(ctx context.Context, stmts []sql.Statement, s
 	}
 	schema.SetContext(ctx)
 	var err error
-	result := &ExecResult{}
+	var result *ExecResult
 	executor := &statementExecutor{schema: schema, parseOptions: db.ParseOptions()}
 	var lockDeadline time.Time
 	for _, stmt := range stmts {
@@ -318,6 +320,9 @@ func (db *Database) execStatements(ctx context.Context, stmts []sql.Statement, s
 			result.Profile = schema.QueryProfile()
 		}
 		schema.StopQueryProfile()
+	}
+	if result == nil {
+		result = &ExecResult{}
 	}
 	return result, nil
 }

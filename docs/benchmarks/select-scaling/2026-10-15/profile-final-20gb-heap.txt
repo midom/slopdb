@@ -1,0 +1,43 @@
+File: select-pilot-v4
+Build ID: 7569e03250624a42f63c5a9d6651634c138e1f62
+Type: alloc_space
+Time: Oct 15, 2026 at 3:19am (UTC)
+Showing nodes accounting for 86947.27MB, 98.91% of 87906.60MB total
+Dropped 80 nodes (cum <= 439.53MB)
+Showing top 35 nodes out of 38
+      flat  flat%   sum%        cum   cum%
+26909.35MB 30.61% 30.61% 33801.92MB 38.45%  slopdb/sql.decodeRow
+17217.86MB 19.59% 50.20% 73778.90MB 83.93%  slopdb/sql.(*Schema).selectPreparedPoint
+12268.23MB 13.96% 64.15% 12274.76MB 13.96%  github.com/klauspost/compress/zstd.(*Decoder).DecodeAll
+ 8177.25MB  9.30% 73.46% 21364.59MB 24.30%  slopdb/storage.readPointWithWorkspaceMode
+ 6892.58MB  7.84% 81.30%  6892.58MB  7.84%  slopdb/sql.decodeValue
+ 3216.84MB  3.66% 84.96%  3216.84MB  3.66%  context.(*cancelCtx).Done
+ 2544.18MB  2.89% 87.85% 78768.26MB 89.60%  slopdb/db.(*Database).execStatements
+ 2237.67MB  2.55% 90.40% 76016.57MB 86.47%  slopdb/db.(*statementExecutor).execStatement
+ 2228.67MB  2.54% 92.93%  2228.67MB  2.54%  context.withCancel (inline)
+ 1385.06MB  1.58% 94.51%  1385.06MB  1.58%  context.WithValue
+ 1176.52MB  1.34% 95.85%  5256.26MB  5.98%  slopdb/db.(*Database).queryContext
+  925.53MB  1.05% 96.90%   925.53MB  1.05%  encoding/binary.bigEndian.AppendUint64 (inline)
+  578.51MB  0.66% 97.56%   701.01MB   0.8%  slopdb/storage.(*blockCache).addReader
+  469.01MB  0.53% 98.09%  1394.54MB  1.59%  slopdb/sql.(*TableInfo).encodePK
+  466.01MB  0.53% 98.62%  2694.68MB  3.07%  context.WithCancelCause
+     184MB  0.21% 98.83% 62317.99MB 70.89%  main.run.func5
+      67MB 0.076% 98.91% 25395.89MB 28.89%  main.run.func3
+    3.01MB 0.0034% 98.91% 12283.81MB 13.97%  slopdb/storage.(*SSTableReader).readBlockBytes
+         0     0% 98.91% 87461.87MB 99.49%  slopdb/db.(*Session).ExecPrepared (inline)
+         0     0% 98.91% 87461.87MB 99.49%  slopdb/db.(*Session).ExecPreparedContext
+         0     0% 98.91% 87461.87MB 99.49%  slopdb/db.(*Session).ExecPreparedContextWithOptions (inline)
+         0     0% 98.91% 78988.26MB 89.85%  slopdb/db.(*Session).execParsed
+         0     0% 98.91% 87461.87MB 99.49%  slopdb/db.(*Session).execPrepared
+         0     0% 98.91%  3216.84MB  3.66%  slopdb/db.(*contextMutex).LockContext
+         0     0% 98.91% 73778.90MB 83.93%  slopdb/sql.(*Schema).Select
+         0     0% 98.91% 21364.59MB 24.30%  slopdb/sql.(*Schema).committedGet
+         0     0% 98.91% 21364.59MB 24.30%  slopdb/sql.(*Schema).schemaGet
+         0     0% 98.91%  1394.54MB  1.59%  slopdb/sql.(*preparedExecutionPlan).primaryKey
+         0     0% 98.91%  1385.06MB  1.58%  slopdb/sql.WithQueryMemory (inline)
+         0     0% 98.91%   925.53MB  1.05%  slopdb/sql.appendClusteredValue
+         0     0% 98.91% 21364.59MB 24.30%  slopdb/storage.(*LSMTree).GetAtForReader
+         0     0% 98.91% 13187.34MB 15.00%  slopdb/storage.(*SSTableReader).loadBlockReaderMode
+         0     0% 98.91% 13187.34MB 15.00%  slopdb/storage.(*SSTableReader).pointLookup
+         0     0% 98.91% 12275.26MB 13.96%  slopdb/storage.(*SSTableReader).readRawBlock
+         0     0% 98.91% 12275.26MB 13.96%  slopdb/storage.decodeZstdBlock

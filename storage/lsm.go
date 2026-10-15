@@ -115,6 +115,12 @@ func NewLSMTree(dir string, opt *Options) (*LSMTree, error) {
 		return nil, err
 	}
 	opt.Dir = dir
+	if opt.BlockCachePolicy == "" {
+		opt.BlockCachePolicy = BlockCacheLRU
+	}
+	if opt.BlockCachePolicy != BlockCacheLRU && opt.BlockCachePolicy != BlockCacheCLOCK {
+		return nil, fmt.Errorf("invalid block cache policy %q: want lru or clock", opt.BlockCachePolicy)
+	}
 	if _, err := opt.compressionType(0); err != nil {
 		return nil, err
 	}
@@ -154,7 +160,7 @@ func NewLSMTree(dir string, opt *Options) (*LSMTree, error) {
 		mem:        NewMemTable(),
 		seqNum:     0,
 		fileNum:    0,
-		tableCache: newTableCache(dir, opt.MaxOpenFiles, opt.BlockCacheSize),
+		tableCache: newTableCache(dir, opt.MaxOpenFiles, opt.BlockCacheSize, opt.BlockCachePolicy),
 		snapshots:  make(map[uint64]int),
 		closeDone:  make(chan struct{}),
 	}
@@ -470,14 +476,12 @@ func (l *LSMTree) Get(key []byte) ([]byte, bool, error) {
 // Snapshot pins the versions visible at the returned sequence. Call
 // ReleaseSnapshot when it is no longer needed so compaction can reclaim them.
 func (l *LSMTree) Snapshot() uint64 {
-	// Pin the published watermark before leaving its coherent version view.
-	// A compaction cutoff cannot exceed committed sequences in its sealed inputs.
-	l.viewMu.RLock()
+	// Registration and the cutoff walker share snapshotMu. Loading the
+	// watermark under that lock is sufficient; no global view reader is needed.
 	l.snapshotMu.Lock()
 	snapshot := l.published.Load()
 	l.snapshots[snapshot]++
 	l.snapshotMu.Unlock()
-	l.viewMu.RUnlock()
 	return snapshot
 }
 func (l *LSMTree) ReleaseSnapshot(snapshot uint64) {
@@ -577,9 +581,37 @@ func (l *LSMTree) readPointSince(key []byte, snapshot uint64, latest bool, since
 	defer view.release()
 	return readPointFromView(view, key, snapshot, since, versionOnly)
 }
+
+// GetAtForReader uses a stable reader ID to distribute read-view references.
+// As with GetAt, the caller must keep the snapshot pinned for the operation.
+func (l *LSMTree) GetAtForReader(key []byte, snapshot, reader uint64) ([]byte, bool, error) {
+	return l.GetAtForReaderInto(key, snapshot, reader, nil)
+}
+
+// GetAtForReaderInto copies the value into dst[:0], growing it if necessary.
+// The returned slice belongs to the caller and never aliases storage buffers.
+// A stable reader and a pinned snapshot have the same contract as GetAtForReader.
+func (l *LSMTree) GetAtForReaderInto(key []byte, snapshot, reader uint64, dst []byte) ([]byte, bool, error) {
+	view, committed, shard := l.acquireViewForReader(reader)
+	if view == nil {
+		return nil, false, fmt.Errorf("database closed")
+	}
+	defer view.releaseReader(shard)
+	if snapshot > committed {
+		snapshot = committed
+	}
+	workspace := pointWorkspaces.Get().(*pointWorkspace)
+	defer releasePointWorkspace(workspace)
+	value, found, _, err := readPointWithWorkspaceMode(view, key, snapshot, 0, false, workspace, false)
+	if err != nil || !found {
+		return dst[:0], false, err
+	}
+	return append(dst[:0], value...), true, nil
+}
 func readPointFromView(view *readView, key []byte, snapshot, since uint64, versionOnly bool) ([]byte, bool, uint64, error) {
-	var workspace pointWorkspace
-	return readPointWithWorkspace(view, key, snapshot, since, versionOnly, &workspace)
+	workspace := pointWorkspaces.Get().(*pointWorkspace)
+	defer releasePointWorkspace(workspace)
+	return readPointWithWorkspace(view, key, snapshot, since, versionOnly, workspace)
 }
 func readPointWithWorkspace(view *readView, key []byte, snapshot, since uint64, versionOnly bool, workspace *pointWorkspace) ([]byte, bool, uint64, error) {
 	return readPointWithWorkspaceMode(view, key, snapshot, since, versionOnly, workspace, true)
@@ -1201,10 +1233,7 @@ func (l *LSMTree) Close() error {
 		return l.closeErr
 	}
 	l.closed = true
-	l.viewMu.Lock()
-	oldView := l.view
-	l.view = nil
-	l.viewMu.Unlock()
+	oldView := l.replaceView(nil)
 	if oldView != nil {
 		oldView.release()
 	}
@@ -1730,6 +1759,7 @@ func (h *mergeHeap) Pop() interface{} {
 }
 
 type LSMStats struct {
+	BlockCachePolicy      BlockCachePolicy
 	PageSize              int64 // effective uncompressed SSTable data-block target
 	CompletedCompactions  int64 // successfully installed compactions in this open instance
 	CompactionInputBytes  int64 // total input SSTable file sizes, not device I/O
@@ -1747,13 +1777,15 @@ type LSMStats struct {
 	FileNum               uint64
 	Levels                [maxLevels]LevelStats
 
-	BloomHits        int64
-	BloomMisses      int64
-	CacheHits        int64
-	CacheMisses      int64
-	BlockCacheBytes  int64
-	BlockCacheHits   int64
-	BlockCacheMisses int64
+	BloomHits                int64
+	BloomMisses              int64
+	CacheHits                int64
+	CacheMisses              int64
+	BlockCacheBytes          int64
+	BlockCacheHits           int64
+	BlockCacheAdmissionSkips int64
+	BlockCacheMisses         int64
+	PointIndexBytes          int64 // additional decoded index arrays in the current file view; outside the page budget
 }
 
 type LevelStats struct {
@@ -1776,6 +1808,7 @@ func (l *LSMTree) Stats() LSMStats {
 	blockHits, blockMisses := l.tableCache.blocks.statistics()
 
 	s := LSMStats{
+		BlockCachePolicy:      l.opt.BlockCachePolicy,
 		PageSize:              l.PageSize(),
 		CompletedCompactions:  l.completedCompactions.Load(),
 		CompactionInputBytes:  l.compactionInputBytes.Load(),
@@ -1783,22 +1816,28 @@ func (l *LSMTree) Stats() LSMStats {
 		CompletedFlushes:      l.completedFlushes.Load(),
 		FlushOutputBytes:      l.flushOutputBytes.Load(),
 		WriteGroups:           l.writeGroups.Load(), WriteBatches: l.writeBatches.Load(),
-		Dir:              l.dir,
-		MemSize:          l.mem.ApproximateSize(),
-		SeqNum:           l.seqNum,
-		FileNum:          l.fileNum,
-		WALActive:        l.wal != nil,
-		WALSyncDisabled:  l.opt.DisableWALSync && !l.opt.DisableWAL,
-		BloomHits:        l.bloomHits.Load(),
-		BloomMisses:      l.bloomMisses.Load(),
-		CacheHits:        l.tableCache.Hits(),
-		CacheMisses:      l.tableCache.Misses(),
-		BlockCacheBytes:  l.tableCache.blocks.used.Load(),
-		BlockCacheHits:   blockHits,
-		BlockCacheMisses: blockMisses,
+		Dir:                      l.dir,
+		MemSize:                  l.mem.ApproximateSize(),
+		SeqNum:                   l.seqNum,
+		FileNum:                  l.fileNum,
+		WALActive:                l.wal != nil,
+		WALSyncDisabled:          l.opt.DisableWALSync && !l.opt.DisableWAL,
+		BloomHits:                l.bloomHits.Load(),
+		BloomMisses:              l.bloomMisses.Load(),
+		CacheHits:                l.tableCache.Hits(),
+		CacheMisses:              l.tableCache.Misses(),
+		BlockCacheBytes:          l.tableCache.blocks.used.Load(),
+		BlockCacheHits:           blockHits,
+		BlockCacheAdmissionSkips: l.tableCache.blocks.skippedAdmissions(),
+		BlockCacheMisses:         blockMisses,
 	}
 	if l.imm != nil {
 		s.ImmSize = l.imm.ApproximateSize()
+	}
+	if l.view != nil {
+		for _, slot := range l.view.files {
+			s.PointIndexBytes += slot.entry.reader.pointIndexBytes()
+		}
 	}
 	for lv := 0; lv < maxLevels; lv++ {
 		var total int64

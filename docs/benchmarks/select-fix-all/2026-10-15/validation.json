@@ -1,0 +1,18 @@
+{
+  "status": "pass",
+  "go_version": "go1.22.2 linux/arm64",
+  "commands": [
+    "go build -o slopdb .",
+    "go test ./... -count=1 -timeout 10m",
+    "go test -race ./... -count=1 -timeout 10m",
+    "go vet ./...",
+    "git diff --check"
+  ],
+  "logs": {
+    "tests": "7ee9a209433a89d6da97a1faf956133f15695f4a910e8454722671a46283ec9d",
+    "race": "fd9ea32ab75876a565453e1918fad1cd3d534098c8785e5c3e2e1ca43965311a",
+    "vet": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "fuzz": "FuzzBlockEntryHeader: 30s, 1,315,146 executions, pass; header code unchanged by final SQL-context optimization",
+  "fuzz_log_sha256": "62c77b71e36eaf418d5693a8d794a86b9992ca517ac09da931fc294edfc895c0"
+}

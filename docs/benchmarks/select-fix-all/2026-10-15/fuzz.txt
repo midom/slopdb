@@ -1,0 +1,15 @@
+fuzz: elapsed: 0s, gathering baseline coverage: 0/4 completed
+fuzz: elapsed: 0s, gathering baseline coverage: 4/4 completed, now fuzzing with 4 workers
+fuzz: elapsed: 3s, execs: 129615 (43198/sec), new interesting: 18 (total: 22)
+fuzz: elapsed: 6s, execs: 260861 (43747/sec), new interesting: 19 (total: 23)
+fuzz: elapsed: 9s, execs: 390811 (43324/sec), new interesting: 19 (total: 23)
+fuzz: elapsed: 12s, execs: 523145 (44102/sec), new interesting: 19 (total: 23)
+fuzz: elapsed: 15s, execs: 653585 (43478/sec), new interesting: 20 (total: 24)
+fuzz: elapsed: 18s, execs: 785945 (44129/sec), new interesting: 20 (total: 24)
+fuzz: elapsed: 21s, execs: 918196 (44086/sec), new interesting: 20 (total: 24)
+fuzz: elapsed: 24s, execs: 1051839 (44549/sec), new interesting: 20 (total: 24)
+fuzz: elapsed: 27s, execs: 1182423 (43525/sec), new interesting: 20 (total: 24)
+fuzz: elapsed: 30s, execs: 1315146 (44244/sec), new interesting: 20 (total: 24)
+fuzz: elapsed: 30s, execs: 1315146 (0/sec), new interesting: 20 (total: 24)
+PASS
+ok  	slopdb/storage	30.131s

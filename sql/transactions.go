@@ -51,8 +51,8 @@ func (s *Schema) RefreshReadCommitted() error {
 	if s.parent == nil {
 		return nil
 	}
-	s.parent.commitMu.RLock()
-	defer s.parent.commitMu.RUnlock()
+	s.parent.commitMu.RLockForReader(s.snapshotReader)
+	defer s.parent.commitMu.RUnlockForReader(s.snapshotReader)
 	return s.refreshReadCommittedLocked()
 }
 
@@ -64,8 +64,8 @@ func (s *Schema) StartStatement() error {
 	if s.parent != nil {
 		root = s.parent
 	}
-	root.commitMu.RLock()
-	defer root.commitMu.RUnlock()
+	root.commitMu.RLockForReader(s.snapshotReader)
+	defer root.commitMu.RUnlockForReader(s.snapshotReader)
 	if err := s.refreshReadCommittedLocked(); err != nil {
 		return err
 	}
@@ -82,7 +82,7 @@ func (s *Schema) EndStatement() {
 }
 func (s *Schema) committedGet(key []byte) ([]byte, bool, error) {
 	if s.statementActive {
-		return s.lsm.GetAt(key, s.statementSnapshot)
+		return s.lsm.GetAtForReader(key, s.statementSnapshot, s.snapshotReader)
 	}
 	return s.lsm.Get(key)
 }

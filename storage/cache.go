@@ -36,12 +36,12 @@ type cacheEntry struct {
 
 func (tc *tableCache) Hits() int64   { return tc.hits.Load() }
 func (tc *tableCache) Misses() int64 { return tc.misses.Load() }
-func newTableCache(dir string, capacity, blockBytes int) *tableCache {
+func newTableCache(dir string, capacity, blockBytes int, policy BlockCachePolicy) *tableCache {
 	n := 1
 	for n < 16 && n*2 <= capacity {
 		n *= 2
 	}
-	tc := &tableCache{shards: make([]tableCacheShard, n), dir: dir, blocks: newBlockCache(blockBytes)}
+	tc := &tableCache{shards: make([]tableCacheShard, n), dir: dir, blocks: newBlockCacheWithPolicy(blockBytes, policy)}
 	for i := range tc.shards {
 		s := &tc.shards[i]
 		s.capacity = capacity / n

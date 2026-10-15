@@ -87,14 +87,14 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 		cancel()
 		return nil, err
 	}
-	ctx, abortCancel := context.WithCancelCause(ctx)
+	ctx, abortCancel := managedCancellation(ctx)
 	parentCancel := cancel
 	cancel = func() { abortCancel(nil); parentCancel() }
 	if err = s.gate.LockContext(ctx); err != nil {
 		cancel()
 		return nil, err
 	}
-	if err = s.db.execution.RLockContext(ctx); err != nil {
+	if err = s.db.execution.RLockContextForReader(ctx, s.executionReader); err != nil {
 		s.gate.Unlock()
 		cancel()
 		return nil, err
@@ -123,7 +123,7 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 			}
 		}
 		s.clearActive()
-		s.db.execution.RUnlock()
+		s.db.execution.RUnlockForReader(s.executionReader)
 		s.gate.Unlock()
 		cancel()
 		if owned {

@@ -128,10 +128,10 @@ func (s *Stmt) ExecContextWithOptions(ctx context.Context, options ExecOptions, 
 		return nil, err
 	}
 	defer s.db.defaultGate.Unlock()
-	if err := s.db.execution.RLockContext(ctx); err != nil {
+	if err := s.db.execution.RLockContextForReader(ctx, s.db.executionReader); err != nil {
 		return nil, err
 	}
-	defer s.db.execution.RUnlock()
+	defer s.db.execution.RUnlockForReader(s.db.executionReader)
 	s.db.mu.Lock()
 	if s.db.closed.Load() {
 		s.db.mu.Unlock()
@@ -140,7 +140,7 @@ func (s *Stmt) ExecContextWithOptions(ctx context.Context, options ExecOptions, 
 	s.db.defaultCancel = cancel
 	s.db.mu.Unlock()
 	defer func() { s.db.mu.Lock(); s.db.defaultCancel = nil; s.db.mu.Unlock() }()
-	ctx, abortCancel := context.WithCancelCause(ctx)
+	ctx, abortCancel := managedCancellation(ctx)
 	defer abortCancel(nil)
 	defer func() { resultErr = s.db.finishManagedCall(s.db.schema, ctx, resultErr, false) }()
 	if err := s.db.beginManagedCall(s.db.schema, abortCancel); err != nil {

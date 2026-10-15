@@ -37,6 +37,7 @@ type Session struct {
 	activeCancel      context.CancelFunc
 	transactionHandle bool
 	abortError        atomic.Pointer[TransactionAbortedError]
+	executionReader   uint64
 }
 
 func (db *Database) NewSession() (*Session, error) {
@@ -47,6 +48,7 @@ func (db *Database) NewSession() (*Session, error) {
 	// the lifecycle mutex so active queries can register cancellation promptly.
 	session := &Session{db: db, schema: db.schema.NewSession()}
 	db.installLocks(session.schema)
+	session.executionReader = db.locks.state(session.schema).id
 	db.mu.Lock()
 	defer db.mu.Unlock()
 	if db.closed.Load() {
@@ -116,12 +118,12 @@ func (s *Session) execParsed(ctx context.Context, statements []sql.Statement, ca
 	if err := s.terminalTransactionError(); err != nil {
 		return nil, err
 	}
-	ctx, abortCancel := context.WithCancelCause(ctx)
+	ctx, abortCancel := managedCancellation(ctx)
 	defer abortCancel(nil)
-	if err := s.db.execution.RLockContext(ctx); err != nil {
+	if err := s.db.execution.RLockContextForReader(ctx, s.executionReader); err != nil {
 		return nil, err
 	}
-	defer s.db.execution.RUnlock()
+	defer s.db.execution.RUnlockForReader(s.executionReader)
 	if err := s.registerActive(cancel); err != nil {
 		if bound {
 			if aborted := s.terminalTransactionError(); aborted != nil {
@@ -162,8 +164,8 @@ func (s *Session) Close() error {
 	s.cancelActive()
 	s.gate.Lock()
 	defer s.gate.Unlock()
-	_ = s.db.execution.RLockContext(context.Background())
-	defer s.db.execution.RUnlock()
+	_ = s.db.execution.RLockContextForReader(context.Background(), s.executionReader)
+	defer s.db.execution.RUnlockForReader(s.executionReader)
 	s.db.mu.Lock()
 	defer s.db.mu.Unlock()
 	s.closeLocked()
@@ -264,8 +266,8 @@ func (tx *Tx) Rollback() error {
 	s.cancelActive()
 	s.gate.Lock()
 	defer s.gate.Unlock()
-	_ = s.db.execution.RLockContext(context.Background())
-	defer s.db.execution.RUnlock()
+	_ = s.db.execution.RLockContextForReader(context.Background(), s.executionReader)
+	defer s.db.execution.RUnlockForReader(s.executionReader)
 	s.db.mu.Lock()
 	defer s.db.mu.Unlock()
 	if s.closed || !s.schema.InTransaction() {

@@ -13,22 +13,86 @@ type viewFile struct {
 	level int
 }
 type readView struct {
-	refs      atomic.Int64
-	mem, imm  *MemTable
-	tableSeq  uint64
-	files     []viewFile
-	levels    [][]viewFile
-	ordered   []bool
-	hasRanges []bool
-	cache     *tableCache
+	refs       atomic.Int64
+	retired    atomic.Bool
+	closed     atomic.Bool
+	padding    [54]byte // isolate retirement flags from reader reference writes
+	readerRefs [snapshotReaderShards]readerViewRefs
+	mem, imm   *MemTable
+	tableSeq   uint64
+	files      []viewFile
+	levels     [][]viewFile
+	ordered    []bool
+	hasRanges  []bool
+	cache      *tableCache
+}
+
+type readerViewRefs struct {
+	count   atomic.Int64
+	padding [56]byte
 }
 
 func (v *readView) release() {
 	if v.refs.Add(-1) == 0 {
+		v.closeIfUnused()
+	}
+}
+
+func (v *readView) releaseReader(shard uint64) {
+	v.readerRefs[shard].count.Add(-1)
+	if v.retired.Load() {
+		v.closeIfUnused()
+	}
+}
+
+func (v *readView) closeIfUnused() {
+	if v.refs.Load() != 0 {
+		return
+	}
+	for i := range v.readerRefs {
+		if v.readerRefs[i].count.Load() != 0 {
+			return
+		}
+	}
+	if v.closed.CompareAndSwap(false, true) {
 		for _, slot := range v.files {
 			v.cache.release(slot.entry)
 		}
 	}
+}
+
+// Reader IDs select an independent registration lock and reference counter.
+// Publication excludes all registrations, so retirement cannot free a view
+// between loading its pointer and pinning it. Data reads hold no gate lock.
+func (l *LSMTree) acquireViewForReader(reader uint64) (*readView, uint64, uint64) {
+	index := reader & (snapshotReaderShards - 1)
+	shard := &l.readerSnapshots[index]
+	shard.mu.Lock()
+	v, seq := l.view, l.published.Load()
+	if v != nil {
+		v.readerRefs[index].count.Add(1)
+	}
+	shard.mu.Unlock()
+	return v, seq, index
+}
+
+// Callers serialize publishers with l.mu. Lock order agrees with the legacy
+// view gate and snapshot registration; no reader takes viewMu under a shard.
+func (l *LSMTree) replaceView(next *readView) *readView {
+	l.viewMu.Lock()
+	for i := range l.readerSnapshots {
+		l.readerSnapshots[i].mu.Lock()
+	}
+	old := l.view
+	l.view = next
+	if old != nil {
+		old.retired.Store(true)
+	}
+	for i := len(l.readerSnapshots) - 1; i >= 0; i-- {
+		l.readerSnapshots[i].mu.Unlock()
+	}
+	l.viewMu.Unlock()
+	return old
 }
 
 // The small view gate makes incrementing refs atomic with retirement. It never
@@ -75,10 +139,7 @@ func (l *LSMTree) publishViewLocked() error {
 	// Newer tables are more likely to contain the winning point version.
 	// Once it is found, tables whose maximum sequence is older can be skipped.
 	sort.SliceStable(v.levels[0], func(i, j int) bool { return v.levels[0][i].entry.reader.maxSeq > v.levels[0][j].entry.reader.maxSeq })
-	l.viewMu.Lock()
-	old := l.view
-	l.view = v
-	l.viewMu.Unlock()
+	old := l.replaceView(v)
 	if old != nil {
 		old.release()
 	}

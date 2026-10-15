@@ -19,8 +19,25 @@ const defaultQueryMemory = int64(64 << 20)
 
 type queryMemoryKey struct{}
 
+// These immutable roots preserve an explicit zero override (including when the
+// schema has a nonzero default) without allocating a value context per ordinary
+// Background/TODO call. Each execution still gets its own cancellation context.
+var defaultQueryMemoryContext = context.WithValue(context.Background(), queryMemoryKey{}, int64(0))
+var todoQueryMemoryContext = context.WithValue(context.TODO(), queryMemoryKey{}, int64(0))
+
 // WithQueryMemory is used by API execution options; zero selects the default.
 func WithQueryMemory(ctx context.Context, bytes int64) context.Context {
+	if bytes == 0 {
+		if ctx == context.Background() {
+			return defaultQueryMemoryContext
+		}
+		if ctx == context.TODO() {
+			return todoQueryMemoryContext
+		}
+	}
+	if current, ok := ctx.Value(queryMemoryKey{}).(int64); ok && current == bytes {
+		return ctx
+	}
 	return context.WithValue(ctx, queryMemoryKey{}, bytes)
 }
 func (s *Schema) memoryBudget() int64 {

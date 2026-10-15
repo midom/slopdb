@@ -1,0 +1,44 @@
+File: select-policies-v1
+Build ID: 5ebfec346c9829d70175e66c88c32051a8433125
+Type: cpu
+Time: Oct 15, 2026 at 2:17am (UTC)
+Duration: 15s, Total samples = 527.27s (3514.08%)
+Showing nodes accounting for 285.95s, 54.23% of 527.27s total
+Dropped 630 nodes (cum <= 2.64s)
+Showing top 35 nodes out of 217
+      flat  flat%   sum%        cum   cum%
+    31.39s  5.95%  5.95%     31.39s  5.95%  encoding/binary.Uvarint (inline)
+    16.29s  3.09%  9.04%     16.29s  3.09%  sync/atomic.(*Int32).Add (inline)
+    15.65s  2.97% 12.01%    347.17s 65.84%  slopdb/sql.(*Schema).Select
+    14.47s  2.74% 14.76%     14.47s  2.74%  cmpbody
+    12.33s  2.34% 17.09%     41.64s  7.90%  slopdb/storage.(*blockCache).lookupReader
+    12.32s  2.34% 19.43%     29.71s  5.63%  slopdb/storage.(*BlockReader).restartKey
+    10.83s  2.05% 21.48%    166.87s 31.65%  slopdb/storage.(*SSTableReader).pointLookup
+    10.04s  1.90% 23.39%     10.04s  1.90%  sync/atomic.(*Int64).Add (inline)
+     9.99s  1.89% 25.28%      9.99s  1.89%  runtime.procyieldAsm
+     9.27s  1.76% 27.04%     92.24s 17.49%  runtime.mallocgc
+     8.94s  1.70% 28.74%      9.11s  1.73%  slopdb/storage.(*BloomFilter).MayContain
+     8.81s  1.67% 30.41%      8.81s  1.67%  runtime.spanClass.sizeclass (inline)
+     8.47s  1.61% 32.01%      8.47s  1.61%  runtime.memmove
+     8.41s  1.60% 33.61%      8.41s  1.60%  internal/runtime/syscall/linux.Syscall6
+     7.67s  1.45% 35.06%      8.24s  1.56%  runtime.findObject
+     6.65s  1.26% 36.32%      6.65s  1.26%  internal/runtime/maps.ctrlGroupMatchH2 (inline)
+     6.55s  1.24% 37.57%     10.30s  1.95%  slopdb/sql.walkExpression
+     6.48s  1.23% 38.80%      7.80s  1.48%  internal/sync.(*Mutex).Lock (inline)
+     6.33s  1.20% 40.00%     16.60s  3.15%  runtime.tryDeferToSpanScan
+     6.27s  1.19% 41.19%     13.90s  2.64%  slopdb/storage.readPointWithWorkspaceMode.func3 (inline)
+     5.62s  1.07% 42.25%      5.62s  1.07%  runtime.futex
+     5.55s  1.05% 43.30%     15.45s  2.93%  runtime.mapaccess2
+     5.49s  1.04% 44.35%      5.57s  1.06%  runtime.nextFreeFast (inline)
+     5.08s  0.96% 45.31%      5.08s  0.96%  runtime.nanotime (inline)
+     4.88s  0.93% 46.23%     41.25s  7.82%  runtime.mallocgcSmallScanNoHeader
+     4.72s   0.9% 47.13%      7.12s  1.35%  runtime.lock2
+     4.64s  0.88% 48.01%      8.45s  1.60%  runtime.runqgrab
+     4.59s  0.87% 48.88%     25.32s  4.80%  slopdb/storage.(*BlockIterator).Next
+     4.45s  0.84% 49.72%      4.45s  0.84%  runtime.markBits.setMarked (inline)
+     4.42s  0.84% 50.56%      4.42s  0.84%  internal/runtime/atomic.(*Uint64).Add (inline)
+     4.03s  0.76% 51.33%      4.03s  0.76%  runtime.memclrNoHeapPointers
+     4.01s  0.76% 52.09%      4.21s   0.8%  sync/atomic.CompareAndSwapPointer
+     3.83s  0.73% 52.81%     30.90s  5.86%  slopdb/sql.decodeRow
+     3.74s  0.71% 53.52%      4.69s  0.89%  internal/sync.(*Mutex).Unlock
+     3.74s  0.71% 54.23%      3.74s  0.71%  runtime.usleep

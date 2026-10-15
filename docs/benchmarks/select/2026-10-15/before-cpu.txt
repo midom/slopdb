@@ -1,0 +1,44 @@
+File: select-before
+Build ID: d7930fdb61bffc8b10314da9c102937267b7d2c5
+Type: cpu
+Time: Oct 15, 2026 at 1:27am (UTC)
+Duration: 15.01s, Total samples = 375s (2498.37%)
+Showing nodes accounting for 220.75s, 58.87% of 375s total
+Dropped 708 nodes (cum <= 1.88s)
+Showing top 35 nodes out of 202
+      flat  flat%   sum%        cum   cum%
+    40.40s 10.77% 10.77%     40.40s 10.77%  runtime.procyieldAsm
+    26.04s  6.94% 17.72%     26.04s  6.94%  internal/runtime/syscall/linux.Syscall6
+    23.21s  6.19% 23.91%     23.21s  6.19%  internal/runtime/atomic.(*Uint32).CompareAndSwap (inline)
+    10.85s  2.89% 26.80%     10.85s  2.89%  runtime.futex
+     7.17s  1.91% 28.71%      7.17s  1.91%  runtime.memclrNoHeapPointers
+     6.97s  1.86% 30.57%    313.08s 83.49%  slopdb/sql.(*Schema).Select
+     6.77s  1.81% 32.38%      6.77s  1.81%  github.com/klauspost/compress/zstd/internal/xxhash.writeBlocks
+     6.75s  1.80% 34.18%      6.75s  1.80%  encoding/binary.Uvarint (inline)
+     5.79s  1.54% 35.72%     11.54s  3.08%  github.com/klauspost/compress/zstd.(*sequenceDecs).decodeSync
+     5.53s  1.47% 37.19%      5.94s  1.58%  runtime.findObject
+     5.30s  1.41% 38.61%      5.30s  1.41%  cmpbody
+        5s  1.33% 39.94%         5s  1.33%  internal/runtime/atomic.(*Uint64).Add (inline)
+     4.92s  1.31% 41.25%      4.92s  1.31%  runtime.memmove
+     3.58s  0.95% 42.21%      3.58s  0.95%  sync/atomic.(*Int64).Add (inline)
+     3.55s  0.95% 43.15%         4s  1.07%  github.com/klauspost/compress/zstd.(*sequenceDecs).freeDecoders
+     3.45s  0.92% 44.07%      3.45s  0.92%  internal/runtime/atomic.(*Uint32).Add (inline)
+     3.44s  0.92% 44.99%     16.14s  4.30%  runtime.(*activeSweep).end
+     3.42s  0.91% 45.90%      6.59s  1.76%  slopdb/storage.readPointWithWorkspaceMode.func3 (inline)
+     3.36s   0.9% 46.80%      3.36s   0.9%  internal/runtime/atomic.(*Uint64).CompareAndSwap (inline)
+     3.11s  0.83% 47.63%      9.14s  2.44%  github.com/klauspost/compress/zstd.(*fseDecoder).readNCount
+     3.09s  0.82% 48.45%     13.36s  3.56%  runtime.(*activeSweep).begin (inline)
+     3.04s  0.81% 49.26%      3.04s  0.81%  internal/runtime/maps.ctrlGroupMatchH2 (inline)
+     3.02s  0.81% 50.07%      5.31s  1.42%  internal/sync.(*Mutex).Lock (inline)
+     2.97s  0.79% 50.86%      7.88s  2.10%  runtime.lock2
+     2.91s  0.78% 51.64%     15.82s  4.22%  slopdb/storage.(*blockCache).addReader
+     2.89s  0.77% 52.41%      2.89s  0.77%  sync/atomic.(*Int32).Add (inline)
+     2.88s  0.77% 53.18%      2.91s  0.78%  slopdb/storage.(*BloomFilter).MayContain
+     2.80s  0.75% 53.92%      5.89s  1.57%  github.com/klauspost/compress/zstd.(*fseDecoder).buildDtable
+     2.80s  0.75% 54.67%      2.80s  0.75%  runtime.markBits.setMarked (inline)
+     2.76s  0.74% 55.41%      2.76s  0.74%  github.com/klauspost/compress/zstd.(*decSymbol).setAddBits (inline)
+     2.73s  0.73% 56.13%      2.75s  0.73%  runtime.nextFreeFast (inline)
+     2.69s  0.72% 56.85%     83.08s 22.15%  github.com/klauspost/compress/zstd.(*Decoder).DecodeAll
+     2.52s  0.67% 57.52%     48.81s 13.02%  runtime.(*spanSet).pop
+     2.52s  0.67% 58.19%    152.51s 40.67%  runtime.mallocgc
+     2.52s  0.67% 58.87%      4.20s  1.12%  runtime.tryDeferToSpanScan

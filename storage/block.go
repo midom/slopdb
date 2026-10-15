@@ -115,18 +115,8 @@ func (r *BlockReader) restart(i int) int { return int(binary.LittleEndian.Uint32
 // allocating a temporary iterator/key for every binary-search probe.
 func (r *BlockReader) restartKey(i int) ([]byte, error) {
 	data := r.data[r.restart(i) : len(r.data)-4-r.numRestarts*4]
-	shared, n := binary.Uvarint(data)
-	if n <= 0 || shared != 0 {
-		return nil, fmt.Errorf("invalid restart entry")
-	}
-	data = data[n:]
-	size, n := binary.Uvarint(data)
-	if n <= 0 {
-		return nil, fmt.Errorf("invalid restart entry")
-	}
-	data = data[n:]
-	valueSize, n := binary.Uvarint(data)
-	if n <= 0 || size > uint64(len(data)-n) || valueSize > uint64(len(data)-n)-size {
+	shared, size, valueSize, n := blockEntryHeader(data)
+	if n <= 0 || shared != 0 || size > uint64(len(data)-n) || valueSize > uint64(len(data)-n)-size {
 		return nil, fmt.Errorf("invalid restart entry")
 	}
 	return data[n : n+int(size)], nil
@@ -179,21 +169,7 @@ func (it *BlockIterator) Next() {
 		return
 	}
 	start := it.offset
-	shared, n := getVarint(it.block.data[it.offset:end])
-	if n <= 0 {
-		it.err = fmt.Errorf("invalid block varint")
-		it.valid = false
-		return
-	}
-	it.offset += n
-	unshared, n := getVarint(it.block.data[it.offset:end])
-	if n <= 0 {
-		it.err = fmt.Errorf("invalid block varint")
-		it.valid = false
-		return
-	}
-	it.offset += n
-	size, n := getVarint(it.block.data[it.offset:end])
+	shared, unshared, size, n := blockEntryHeader(it.block.data[it.offset:end])
 	if n <= 0 {
 		it.err = fmt.Errorf("invalid block varint")
 		it.valid = false
@@ -325,22 +301,27 @@ func (it *BlockIterator) Seek(key []byte) {
 	}
 	// Choose the restart strictly before the target, preserving older versions
 	// when one user key spans restart points.
-	lo, hi := 0, it.block.numRestarts
-	for lo < hi {
-		mid := (lo + hi) / 2
-		probe, err := it.block.restartKey(mid)
-		if err != nil {
-			it.err = err
-			return
+	if it.block.numRestarts == 1 {
+		// Either outcome of the binary search selects restart zero.
+		it.offset = it.block.restart(0)
+	} else {
+		lo, hi := 0, it.block.numRestarts
+		for lo < hi {
+			mid := (lo + hi) / 2
+			probe, err := it.block.restartKey(mid)
+			if err != nil {
+				it.err = err
+				return
+			}
+			if bytes.Compare(probe, key) < 0 {
+				lo = mid + 1
+			} else {
+				hi = mid
+			}
 		}
-		if bytes.Compare(probe, key) < 0 {
-			lo = mid + 1
-		} else {
-			hi = mid
+		if lo > 0 {
+			it.offset = it.block.restart(lo - 1)
 		}
-	}
-	if lo > 0 {
-		it.offset = it.block.restart(lo - 1)
 	}
 	for it.Next(); it.Valid(); it.Next() {
 		if bytes.Compare(it.key, key) >= 0 {
@@ -373,4 +354,33 @@ func putVarint(buf *[]byte, v uint64) {
 
 func getVarint(data []byte) (uint64, int) {
 	return binary.Uvarint(data)
+}
+
+// Most pages use one-byte prefix lengths and one- or two-byte value lengths.
+// Decode that common header together, retaining the full varint decoder and
+// overflow/truncation checks for long keys and values.
+func blockEntryHeader(data []byte) (shared, unshared, size uint64, n int) {
+	if len(data) >= 3 && data[0] < 128 && data[1] < 128 {
+		if data[2] < 128 {
+			return uint64(data[0]), uint64(data[1]), uint64(data[2]), 3
+		}
+		if len(data) >= 4 && data[3] < 128 {
+			return uint64(data[0]), uint64(data[1]), uint64(data[2]&127) | uint64(data[3])<<7, 4
+		}
+	}
+	shared, n = binary.Uvarint(data)
+	if n <= 0 {
+		return 0, 0, 0, 0
+	}
+	offset := n
+	unshared, n = binary.Uvarint(data[offset:])
+	if n <= 0 {
+		return 0, 0, 0, 0
+	}
+	offset += n
+	size, n = binary.Uvarint(data[offset:])
+	if n <= 0 {
+		return 0, 0, 0, 0
+	}
+	return shared, unshared, size, offset + n
 }

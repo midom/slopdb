@@ -205,11 +205,6 @@ func TestSSTableZstdLegacyWindowsReadable(t *testing.T) {
 			binary.LittleEndian.PutUint32(block[len(payload):], crc32.ChecksumIEEE(payload))
 			block[len(block)-1] = kZstdCompression
 			reader := new(SSTableReader)
-			defer func() {
-				if reader.zstdDecoder != nil {
-					reader.zstdDecoder.Close()
-				}
-			}()
 			decoded, err := reader.readRawBlock(block)
 			if err != nil || !bytes.Equal(decoded, raw) {
 				t.Fatalf("legacy frame did not round-trip: %v", err)

@@ -31,6 +31,17 @@ func (m *contextMutex) LockContext(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	// Most sessions have a single caller. Avoid materializing the context's
+	// cancellation channel unless acquisition actually has to wait.
+	select {
+	case m.gate <- struct{}{}:
+		if err := ctx.Err(); err != nil {
+			m.Unlock()
+			return err
+		}
+		return nil
+	default:
+	}
 	select {
 	case m.gate <- struct{}{}:
 		if err := ctx.Err(); err != nil {
@@ -462,8 +473,9 @@ func (db *Database) waitForLockPolicy(ctx context.Context, owner *sql.Schema, re
 		started := time.Now()
 		defer func() { owner.RecordLockWait(time.Since(started)) }()
 	}
-	db.execution.RUnlock()
-	defer func() { _ = db.execution.RLockContext(context.Background()) }()
+	reader := db.locks.state(owner).id
+	db.execution.RUnlockForReader(reader)
+	defer func() { _ = db.execution.RLockContextForReader(context.Background(), reader) }()
 	root := db.locks
 	shard := root.shards[root.shardIndex(request.Resource)]
 	// Keep both waiter registries coherent with the detector's graph -> shard

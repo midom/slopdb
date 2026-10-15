@@ -1,0 +1,44 @@
+File: select-before
+Build ID: c1d7f283e2a5bf1253d55f6149315aab9ff2e1bc
+Type: cpu
+Time: Oct 15, 2026 at 3:42am (UTC)
+Duration: 15.02s, Total samples = 488.98s (3256.52%)
+Showing nodes accounting for 301.54s, 61.67% of 488.98s total
+Dropped 498 nodes (cum <= 2.44s)
+Showing top 35 nodes out of 182
+      flat  flat%   sum%        cum   cum%
+    50.14s 10.25% 10.25%     50.17s 10.26%  sync/atomic.(*Int32).Add (inline)
+    32.72s  6.69% 16.95%     32.72s  6.69%  encoding/binary.Uvarint (inline)
+    13.29s  2.72% 19.66%     29.68s  6.07%  slopdb/storage.(*blockCache).lookupReader
+    12.69s  2.60% 22.26%     12.69s  2.60%  runtime.procyieldAsm
+    12.57s  2.57% 24.83%     30.24s  6.18%  slopdb/storage.(*BlockReader).restartKey
+    11.91s  2.44% 27.26%     11.91s  2.44%  cmpbody
+    11.39s  2.33% 29.59%    324.27s 66.32%  slopdb/sql.(*Schema).Select
+    11.12s  2.27% 31.87%     11.12s  2.27%  sync/atomic.(*Int64).Add (inline)
+     9.89s  2.02% 33.89%     10.09s  2.06%  slopdb/storage.(*BloomFilter).MayContain
+     9.24s  1.89% 35.78%    122.81s 25.12%  slopdb/storage.(*SSTableReader).pointLookup
+     8.99s  1.84% 37.62%      8.99s  1.84%  runtime.futex
+     7.65s  1.56% 39.18%      9.83s  2.01%  slopdb/storage.(*LSMTree).ReleaseSnapshotForReader
+     7.22s  1.48% 40.66%      7.22s  1.48%  runtime.memmove
+     7.14s  1.46% 42.12%     26.98s  5.52%  slopdb/storage.(*LSMTree).SnapshotForReader
+     6.61s  1.35% 43.47%      6.61s  1.35%  runtime.spanClass.sizeclass (inline)
+     6.42s  1.31% 44.79%      7.07s  1.45%  runtime.findObject
+     6.25s  1.28% 46.06%      9.11s  1.86%  slopdb/sql.walkExpression
+     6.18s  1.26% 47.33%      6.18s  1.26%  internal/runtime/maps.ctrlGroupMatchH2 (inline)
+     5.43s  1.11% 48.44%     13.30s  2.72%  runtime.tryDeferToSpanScan
+     4.91s  1.00% 49.44%     26.56s  5.43%  slopdb/storage.(*BlockIterator).Next
+     4.77s  0.98% 50.42%     11.19s  2.29%  slopdb/storage.readPointWithWorkspaceMode.func3 (inline)
+     4.74s  0.97% 51.39%     53.18s 10.88%  runtime.mallocgcSmallScanNoHeader
+     4.68s  0.96% 52.34%      4.71s  0.96%  runtime.nextFreeFast (inline)
+     4.64s  0.95% 53.29%     14.46s  2.96%  runtime.mapaccess2
+     4.49s  0.92% 54.21%      4.49s  0.92%  runtime.markBits.setMarked (inline)
+     4.42s   0.9% 55.11%      4.42s   0.9%  runtime.memclrNoHeapPointers
+     4.25s  0.87% 55.98%      4.32s  0.88%  internal/sync.(*Mutex).Lock (inline)
+     4.11s  0.84% 56.82%      4.11s  0.84%  internal/runtime/atomic.(*Uint64).Add (inline)
+     3.88s  0.79% 57.62%    108.41s 22.17%  runtime.mallocgc
+     3.69s  0.75% 58.37%      3.69s  0.75%  internal/runtime/atomic.(*Uint32).CompareAndSwap (inline)
+     3.31s  0.68% 59.05%      3.63s  0.74%  sync/atomic.CompareAndSwapPointer
+     3.30s  0.67% 59.72%      3.30s  0.67%  runtime.memequal
+     3.28s  0.67% 60.40%      3.28s  0.67%  runtime.nanotime
+     3.11s  0.64% 61.03%      3.20s  0.65%  runtime.heapSetTypeSmallHeader (inline)
+     3.11s  0.64% 61.67%     25.69s  5.25%  runtime.mallocgcSmallNoscan

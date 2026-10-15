@@ -157,3 +157,100 @@ func TestDeadlockDetectionIgnoresUnrelatedShard(t *testing.T) {
 		t.Fatal("unrelated resource stalled detection")
 	}
 }
+
+func TestExecutionGateShardedReadersAndWriters(t *testing.T) {
+	var g executionGate
+	var active atomic.Int64
+	var exclusive atomic.Bool
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for worker := 0; worker < 256; worker++ {
+		wg.Add(1)
+		go func(reader uint64) {
+			defer wg.Done()
+			<-start
+			for n := 0; n < 40; n++ {
+				if err := g.RLockContextForReader(context.Background(), reader); err != nil {
+					t.Error(err)
+					return
+				}
+				active.Add(1)
+				if exclusive.Load() {
+					t.Error("sharded reader overlapped writer")
+				}
+				runtime.Gosched()
+				active.Add(-1)
+				g.RUnlockForReader(reader)
+			}
+		}(uint64(worker))
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		<-start
+		for n := 0; n < 40; n++ {
+			g.Lock()
+			exclusive.Store(true)
+			if active.Load() != 0 {
+				t.Error("writer ignored a reader shard")
+			}
+			runtime.Gosched()
+			exclusive.Store(false)
+			g.Unlock()
+		}
+	}()
+	close(start)
+	wg.Wait()
+	if g.hasReaders() || g.pending.Load() {
+		t.Fatal("sharded execution ownership leaked")
+	}
+}
+
+func TestExecutionGateShardedWriterPreferenceAndCancellation(t *testing.T) {
+	for _, reader := range []uint64{1, 127, 128, 255} {
+		var g executionGate
+		if err := g.RLockContextForReader(context.Background(), reader); err != nil {
+			t.Fatal(err)
+		}
+		writer := make(chan struct{})
+		releaseWriter := make(chan struct{})
+		go func() { g.Lock(); close(writer); <-releaseWriter; g.Unlock() }()
+		deadline := time.Now().Add(5 * time.Second)
+		for !g.pending.Load() && time.Now().Before(deadline) {
+			runtime.Gosched()
+		}
+		if !g.pending.Load() {
+			t.Fatal("writer intent was not published")
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		waiting := make(chan error, 1)
+		go func() { waiting <- g.RLockContextForReader(ctx, reader+1) }()
+		cancel()
+		if err := <-waiting; err != context.Canceled {
+			t.Fatalf("cancelled sharded waiter: %v", err)
+		}
+		next := make(chan struct{})
+		go func() {
+			_ = g.RLockContextForReader(context.Background(), reader+1)
+			close(next)
+			g.RUnlockForReader(reader + 1)
+		}()
+		g.RUnlockForReader(reader)
+		<-writer
+		select {
+		case <-next:
+			t.Fatal("reader bypassed pending writer")
+		default:
+		}
+		close(releaseWriter)
+		<-next
+		if g.hasReaders() { // next closes while its reader is held; await release.
+			for g.hasReaders() && time.Now().Before(deadline) {
+				runtime.Gosched()
+			}
+			if g.hasReaders() {
+				t.Fatal("reader shard leaked after writer")
+			}
+		}
+	}
+}

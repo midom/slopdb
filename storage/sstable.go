@@ -10,8 +10,8 @@ import (
 	"hash/crc32"
 	"io"
 	"os"
-	"runtime"
 	"sync"
+	"sync/atomic"
 
 	"github.com/klauspost/compress/snappy"
 	"github.com/klauspost/compress/zstd"
@@ -329,22 +329,23 @@ func (w *SSTableWriter) Close() error {
 }
 
 type SSTableReader struct {
-	file          *os.File
-	fileSize      uint64
-	indexHandle   BlockHandle
-	indexData     []byte
-	indexBlock    *BlockReader
-	filterData    []byte
-	meta          FileMetaData
-	maxSeq        uint64
-	rangeDeletes  []KeyValue
-	zstdOnce      sync.Once
-	zstdDecoder   *zstd.Decoder
-	zstdErr       error
-	blocks        *blockCache
-	cacheID       uint64
-	modified      int64
-	verifyChanges bool
+	hasCompressedBlocks atomic.Bool // observed codec hint; mixed blocks remain supported
+	file                *os.File
+	fileSize            uint64
+	indexHandle         BlockHandle
+	indexData           []byte
+	indexBlock          *BlockReader
+	pointIndex          []pointIndexEntry
+	pointIndexKeys      []byte
+	pointIndexPrefix    []byte
+	filterData          []byte
+	meta                FileMetaData
+	maxSeq              uint64
+	rangeDeletes        []KeyValue
+	blocks              *blockCache
+	cacheID             uint64
+	modified            int64
+	verifyChanges       bool
 }
 
 func (r *SSTableReader) loadBlock(offset, size uint64) ([]byte, error) {
@@ -376,11 +377,7 @@ func (r *SSTableReader) loadBlockReaderMode(offset, size uint64, fillCache bool)
 			return reader, nil
 		}
 	}
-	data := make([]byte, size)
-	if _, err := r.file.ReadAt(data, int64(offset)); err != nil {
-		return nil, err
-	}
-	block, err := r.readRawBlock(data)
+	block, err := r.readBlockBytes(offset, size)
 	if err != nil {
 		return nil, err
 	}
@@ -425,14 +422,7 @@ func (r *SSTableReader) readRawBlock(data []byte) ([]byte, error) {
 		return decoded, nil
 	}
 	if compressionType == kZstdCompression {
-		// Reuse a decoder per table. DecodeAll is safe for concurrent readers.
-		r.zstdOnce.Do(func() {
-			r.zstdDecoder, r.zstdErr = zstd.NewReader(nil, zstd.WithDecoderConcurrency(runtime.GOMAXPROCS(0)))
-		})
-		if r.zstdErr != nil {
-			return nil, fmt.Errorf("zstd decoder: %w", r.zstdErr)
-		}
-		decoded, err := r.zstdDecoder.DecodeAll(payload, nil)
+		decoded, err := decodeZstdBlock(payload)
 		if err != nil {
 			return nil, fmt.Errorf("zstd decompress: %w", err)
 		}
@@ -533,6 +523,10 @@ func openSSTable(path string, blocks *blockCache, number uint64) (*SSTableReader
 		r.Close()
 		return nil, r.indexBlock.err
 	}
+	if err := r.buildPointIndex(); err != nil {
+		r.Close()
+		return nil, err
+	}
 	metadataOffset := idxHandle.Offset + idxHandle.Size
 	metadataSize := fileSize - 48 - metadataOffset
 	data := make([]byte, metadataSize)
@@ -586,10 +580,30 @@ func (r *SSTableReader) newIterator(eager, fillCache, reuseKeys bool) *SSTableIt
 }
 
 func (r *SSTableReader) Close() error {
-	if r.zstdDecoder != nil {
-		r.zstdDecoder.Close()
-	}
 	return r.file.Close()
+}
+
+// DecodeAll-only decoders hold Go memory and start no streaming goroutines.
+// Borrow one per concurrent block read, instead of retaining GOMAXPROCS decoder
+// states in every SSTable. Idle states can be reclaimed by the garbage collector.
+// DecodeAll returns its own destination allocation; cached blocks and callers
+// never borrow the decoder's scratch buffers.
+var zstdBlockDecoders sync.Pool
+
+func decodeZstdBlock(payload []byte) ([]byte, error) {
+	var decoder *zstd.Decoder
+	if cached := zstdBlockDecoders.Get(); cached != nil {
+		decoder = cached.(*zstd.Decoder)
+	} else {
+		var err error
+		decoder, err = zstd.NewReader(nil, zstd.WithDecoderConcurrency(1))
+		if err != nil {
+			return nil, err
+		}
+	}
+	decoded, err := decoder.DecodeAll(payload, nil)
+	zstdBlockDecoders.Put(decoder)
+	return decoded, err
 }
 
 type SSTableIterator struct {

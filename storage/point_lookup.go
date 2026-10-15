@@ -2,14 +2,24 @@ package storage
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
+	"sync"
 )
 
 // Point lookup needs no public iterator state. Reusable private buffers decode
 // restart keys without allocating iterator objects or returning borrowed keys.
 // Data blocks still use the shared cache and normal corruption checks.
-type pointWorkspace struct{ indexKey, dataKey []byte }
+type pointWorkspace struct{ dataKey []byte }
+
+var pointWorkspaces = sync.Pool{New: func() any { return new(pointWorkspace) }}
+
+func releasePointWorkspace(workspace *pointWorkspace) {
+	// Large user keys must not turn transient scratch into unbounded retention.
+	if cap(workspace.dataKey) > 64<<10 {
+		*workspace = pointWorkspace{}
+	}
+	pointWorkspaces.Put(workspace)
+}
 
 func (r *SSTableReader) pointLookup(key []byte, snapshot uint64, workspace *pointWorkspace) (KeyValue, bool, uint64, error) {
 	var rd uint64
@@ -22,30 +32,18 @@ func (r *SSTableReader) pointLookup(key []byte, snapshot uint64, workspace *poin
 	if !bf.MayContain(r.filterData, key) {
 		return KeyValue{}, false, rd, nil
 	}
-	if workspace.indexKey == nil {
-		workspace.indexKey = make([]byte, 0, 64)
+	if workspace.dataKey == nil {
 		workspace.dataKey = make([]byte, 0, 64)
 	}
-	index := BlockIterator{block: r.indexBlock, key: workspace.indexKey[:0], reuseKey: true, err: r.indexBlock.err}
 	var data BlockIterator
 	defer func() {
-		workspace.indexKey = index.key
 		if data.key != nil {
 			workspace.dataKey = data.key
 		}
 	}()
-	index.Seek(key)
-	for index.Valid() {
-		handle := index.Value()
-		off, n := binary.Uvarint(handle)
-		if n <= 0 {
-			return KeyValue{}, false, rd, fmt.Errorf("invalid block handle")
-		}
-		size, n := binary.Uvarint(handle[n:])
-		if n <= 0 || off > r.fileSize || size > r.fileSize-off {
-			return KeyValue{}, false, rd, fmt.Errorf("invalid block handle")
-		}
-		reader, err := r.loadBlockReaderMode(off, size, true)
+	for index := r.pointIndexSeek(key); index < len(r.pointIndex); index++ {
+		handle := r.pointIndex[index].handle
+		reader, err := r.loadBlockReaderMode(handle.Offset, handle.Size, true)
 		if err != nil {
 			return KeyValue{}, false, rd, err
 		}
@@ -74,7 +72,6 @@ func (r *SSTableReader) pointLookup(key []byte, snapshot uint64, workspace *poin
 		}
 		workspace.dataKey = data.key
 		// Versions of the same key may span multiple blocks.
-		index.Next()
 	}
-	return KeyValue{}, false, rd, index.Err()
+	return KeyValue{}, false, rd, nil
 }

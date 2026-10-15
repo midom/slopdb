@@ -1,0 +1,28 @@
+goos: linux
+goarch: arm64
+pkg: slopdb/db
+BenchmarkCatalogWorkloads/tables=1/point-update-16         	   53790	      6859 ns/op	    2950 B/op	      28 allocs/op
+BenchmarkCatalogWorkloads/tables=1/point-update-16         	   53128	      7010 ns/op	    2954 B/op	      28 allocs/op
+BenchmarkCatalogWorkloads/tables=1/point-update-16         	   52102	      7290 ns/op	    2962 B/op	      28 allocs/op
+BenchmarkCatalogWorkloads/tables=1/point-update-60         	   55285	      6440 ns/op	    2974 B/op	      27 allocs/op
+BenchmarkCatalogWorkloads/tables=1/point-update-60         	   58568	      6425 ns/op	    2953 B/op	      27 allocs/op
+BenchmarkCatalogWorkloads/tables=1/point-update-60         	   57312	      6388 ns/op	    2960 B/op	      27 allocs/op
+BenchmarkCatalogWorkloads/tables=1/transaction-update-16   	   20343	     18205 ns/op	    5170 B/op	      83 allocs/op
+BenchmarkCatalogWorkloads/tables=1/transaction-update-16   	   20536	     18318 ns/op	    5166 B/op	      83 allocs/op
+BenchmarkCatalogWorkloads/tables=1/transaction-update-16   	   20233	     18232 ns/op	    5168 B/op	      83 allocs/op
+BenchmarkCatalogWorkloads/tables=1/transaction-update-60   	   14058	     25764 ns/op	    5338 B/op	      83 allocs/op
+BenchmarkCatalogWorkloads/tables=1/transaction-update-60   	   14068	     25408 ns/op	    5327 B/op	      83 allocs/op
+BenchmarkCatalogWorkloads/tables=1/transaction-update-60   	   14278	     25520 ns/op	    5331 B/op	      83 allocs/op
+BenchmarkCatalogWorkloads/tables=128/point-update-16       	   54672	      7105 ns/op	    2751 B/op	      28 allocs/op
+BenchmarkCatalogWorkloads/tables=128/point-update-16       	   55276	      7066 ns/op	    2748 B/op	      28 allocs/op
+BenchmarkCatalogWorkloads/tables=128/point-update-16       	   54319	      6991 ns/op	    2752 B/op	      28 allocs/op
+BenchmarkCatalogWorkloads/tables=128/point-update-60       	   62564	      6319 ns/op	    2762 B/op	      27 allocs/op
+BenchmarkCatalogWorkloads/tables=128/point-update-60       	   61177	      6234 ns/op	    2766 B/op	      27 allocs/op
+BenchmarkCatalogWorkloads/tables=128/point-update-60       	   64915	      6331 ns/op	    2756 B/op	      27 allocs/op
+BenchmarkCatalogWorkloads/tables=128/transaction-update-16 	    7390	     49138 ns/op	   15276 B/op	     106 allocs/op
+BenchmarkCatalogWorkloads/tables=128/transaction-update-16 	    7545	     48446 ns/op	   15267 B/op	     105 allocs/op
+BenchmarkCatalogWorkloads/tables=128/transaction-update-16 	    7580	     47058 ns/op	   15271 B/op	     106 allocs/op
+BenchmarkCatalogWorkloads/tables=128/transaction-update-60 	    6178	     59152 ns/op	   15498 B/op	     106 allocs/op
+BenchmarkCatalogWorkloads/tables=128/transaction-update-60 	    5948	     58374 ns/op	   15491 B/op	     106 allocs/op
+BenchmarkCatalogWorkloads/tables=128/transaction-update-60 	    6382	     60150 ns/op	   15495 B/op	     106 allocs/op
+PASS

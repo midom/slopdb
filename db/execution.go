@@ -18,6 +18,25 @@ type executionGate struct {
 	writers      int
 	activeWriter bool
 	changed      chan struct{}
+	padding      [16]byte // separate writer intent from the first reader shard
+	shards       [128]executionReaders
+}
+
+type executionReaders struct {
+	count   atomic.Int64
+	padding [56]byte
+}
+
+func (g *executionGate) hasReaders() bool {
+	if g.readers.Load() != 0 {
+		return true
+	}
+	for i := range g.shards {
+		if g.shards[i].count.Load() != 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func (g *executionGate) init() {
@@ -32,7 +51,7 @@ func (g *executionGate) LockContext(ctx context.Context) error {
 	g.init()
 	g.writers++
 	g.pending.Store(true)
-	for g.activeWriter || g.readers.Load() > 0 {
+	for g.activeWriter || g.hasReaders() {
 		wait := g.changed
 		g.mu.Unlock()
 		select {
@@ -66,6 +85,14 @@ func (g *executionGate) Unlock() {
 	g.mu.Unlock()
 }
 func (g *executionGate) RLockContext(ctx context.Context) error {
+	return g.rLockContext(ctx, &g.readers)
+}
+
+func (g *executionGate) RLockContextForReader(ctx context.Context, reader uint64) error {
+	return g.rLockContext(ctx, &g.shards[reader%uint64(len(g.shards))].count)
+}
+
+func (g *executionGate) rLockContext(ctx context.Context, readers *atomic.Int64) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -73,15 +100,15 @@ func (g *executionGate) RLockContext(ctx context.Context) error {
 	// this reader and waits, or intent is visible and this reader backs out
 	// before touching the database. Slow waiters retain writer preference.
 	if !g.pending.Load() {
-		g.readers.Add(1)
+		readers.Add(1)
 		if !g.pending.Load() {
 			if err := ctx.Err(); err != nil {
-				g.RUnlock()
+				g.rUnlock(readers)
 				return err
 			}
 			return nil
 		}
-		g.RUnlock()
+		g.rUnlock(readers)
 	}
 	g.mu.Lock()
 	g.init()
@@ -99,14 +126,22 @@ func (g *executionGate) RLockContext(ctx context.Context) error {
 		g.mu.Unlock()
 		return err
 	}
-	g.readers.Add(1)
+	readers.Add(1)
 	g.mu.Unlock()
 	return nil
 }
 func (g *executionGate) RUnlock() {
-	if g.readers.Add(-1) == 0 && g.pending.Load() {
+	g.rUnlock(&g.readers)
+}
+
+func (g *executionGate) RUnlockForReader(reader uint64) {
+	g.rUnlock(&g.shards[reader%uint64(len(g.shards))].count)
+}
+
+func (g *executionGate) rUnlock(readers *atomic.Int64) {
+	if readers.Add(-1) == 0 && g.pending.Load() {
 		g.mu.Lock()
-		if g.readers.Load() == 0 && g.writers > 0 {
+		if !g.hasReaders() && g.writers > 0 {
 			g.notify()
 		}
 		g.mu.Unlock()
