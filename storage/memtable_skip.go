@@ -26,28 +26,45 @@ func (m *MemTable) randomHeight() int {
 	return h
 }
 
+// insertSorted owns its input bytes and accounts for one installed node.
 func (m *MemTable) insertSorted(ik InternalKey, value []byte) {
 	var update [maxHeight]*skipNode
 	m.insertWithFinger(ik, value, &update, false)
+	m.accountSorted(int64(len(ik.UserKey)+len(value)+32), 1)
 }
 
-// A sorted atomic batch can reuse predecessors from its previous key rather
-// than restart every skip-list search at the head. Sequence numbers retain
-// their original WAL order; only installation order changes.
+func (m *MemTable) accountSorted(size, count int64) {
+	m.approxSz.Add(size)
+	m.entries.Add(count)
+}
+
+// A private sorted batch can reuse predecessors. Competing insertions only
+// advance links; a saved predecessor remains a safe starting point.
 func (m *MemTable) insertSortedBatch(entries []KeyValue) {
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Key.Compare(entries[j].Key) < 0 })
 	var update [maxHeight]*skipNode
+	var size int64
 	for _, entry := range entries {
 		m.insertWithFinger(entry.Key, entry.Value, &update, true)
+		size += int64(len(entry.Key.UserKey) + len(entry.Value) + 32)
 	}
+	m.accountSorted(size, int64(len(entries)))
 }
 
-// Caller serializes writers with mu; readers follow immutable atomic links.
+// No writer mutex is needed. Publish the bottom link first, then add upper
+// links with CAS. Keys and values are immutable and owned by this memtable.
+// Other inserters can change a predecessor or successor while we search;
+// failed CAS retries advance from a predecessor that is still before the key.
 func (m *MemTable) insertWithFinger(ik InternalKey, value []byte, update *[maxHeight]*skipNode, reuse bool) {
+	h := m.randomHeight()
+	for height := m.height.Load(); int32(h) > height; height = m.height.Load() {
+		if m.height.CompareAndSwap(height, int32(h)) {
+			break
+		}
+	}
 	node := m.head
-
 	for i := int(m.height.Load()) - 1; i >= 0; i-- {
-		if reuse && update[i] != nil && (node == m.head || update[i].key.Compare(node.key) > 0) {
+		if reuse && update[i] != nil && update[i] != m.head && update[i].key.Compare(ik) < 0 && (node == m.head || update[i].key.Compare(node.key) > 0) {
 			node = update[i]
 		}
 		for next := node.next[i].Load(); next != nil && next.key.Compare(ik) < 0; next = node.next[i].Load() {
@@ -55,36 +72,44 @@ func (m *MemTable) insertWithFinger(ik InternalKey, value []byte, update *[maxHe
 		}
 		update[i] = node
 	}
-
-	h := m.randomHeight()
-	height := int(m.height.Load())
-	if h > height {
-		for i := height; i < h; i++ {
-			update[i] = m.head
+	// One owned allocation for key and value rather than two row copies.
+	data := make([]byte, len(ik.UserKey)+len(value))
+	keyEnd := len(ik.UserKey)
+	copy(data, ik.UserKey)
+	copy(data[keyEnd:], value)
+	ik.UserKey = data[:keyEnd:keyEnd]
+	inserted := &skipNode{key: ik, value: data[keyEnd:len(data):len(data)], next: make([]atomic.Pointer[skipNode], h)}
+	for i := 0; i < h; i++ {
+		for {
+			previous := update[i]
+			next := previous.next[i].Load()
+			for next != nil && next.key.Compare(ik) < 0 {
+				previous = next
+				next = previous.next[i].Load()
+			}
+			update[i] = previous
+			inserted.next[i].Store(next)
+			if previous.next[i].CompareAndSwap(next, inserted) {
+				break
+			}
 		}
-	}
-
-	newNode := &skipNode{
-		key:   ik,
-		value: append([]byte{}, value...),
-		next:  make([]atomic.Pointer[skipNode], h),
-	}
-	for i := 0; i < h; i++ {
-		newNode.next[i].Store(update[i].next[i].Load())
-	}
-	// Initialize every link before publishing the immutable node. Writers are
-	// serialized; readers follow atomic links and filter by their sequence.
-	for i := 0; i < h; i++ {
-		update[i].next[i].Store(newNode)
 		if reuse {
-			update[i] = newNode
+			update[i] = inserted
 		}
 	}
-	if h > height {
-		m.height.Store(int32(h))
+}
+
+// Group participants install their own mutations. The leader accounts and
+// publishes the whole group only after every participant has completed.
+func (m *MemTable) installSortedMutations(batch []Mutation, base uint64) {
+	var update [maxHeight]*skipNode
+	for i, w := range batch {
+		typ := uint8(kTypeValue)
+		if w.Delete {
+			typ = kTypeDelete
+		}
+		m.insertWithFinger(InternalKey{UserKey: w.Key, SeqNum: base + uint64(i) + 1, OpType: typ}, w.Value, &update, false)
 	}
-	m.approxSz.Add(int64(len(ik.UserKey) + len(value) + 32))
-	m.entries++
 }
 
 // Keep the successor observed at the bottom search step. Reloading the

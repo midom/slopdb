@@ -63,7 +63,7 @@ type MemTable struct {
 	nodes      []*memNode // mu protects the append log and sorted-cache publication
 	sorted     atomic.Pointer[memSorted]
 	approxSz   atomic.Int64
-	entries    int64
+	entries    atomic.Int64
 	nodeChunk  []memNode
 	nodeOffset int
 	byteChunk  []byte
@@ -108,12 +108,27 @@ func memKeyHash(key []byte) uint64 {
 }
 
 func (m *MemTable) Put(seq uint64, opType uint8, key, value []byte) {
+	ik := InternalKey{UserKey: key, SeqNum: seq, OpType: opType}
+	if m.head != nil {
+		m.insertSorted(ik, value)
+		if opType == kTypeRangeDelete {
+			m.mu.Lock()
+			m.ranges = append(m.ranges, KeyValue{Key: InternalKey{UserKey: bytes.Clone(key), SeqNum: seq, OpType: opType}, Value: bytes.Clone(value)})
+			m.hasRanges.Store(true)
+			m.mu.Unlock()
+		}
+		for previous := m.maxSeq.Load(); seq > previous; previous = m.maxSeq.Load() {
+			if m.maxSeq.CompareAndSwap(previous, seq) {
+				break
+			}
+		}
+		return
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	ik := InternalKey{UserKey: key, SeqNum: seq, OpType: opType}
 	m.insert(ik, value)
 	if opType == kTypeRangeDelete {
-		m.ranges = append(m.ranges, KeyValue{Key: InternalKey{UserKey: append([]byte(nil), key...), SeqNum: seq, OpType: opType}, Value: append([]byte(nil), value...)})
+		m.ranges = append(m.ranges, KeyValue{Key: InternalKey{UserKey: bytes.Clone(key), SeqNum: seq, OpType: opType}, Value: bytes.Clone(value)})
 		m.hasRanges.Store(true)
 	}
 	if seq > m.maxSeq.Load() {
@@ -121,12 +136,11 @@ func (m *MemTable) Put(seq uint64, opType uint8, key, value []byte) {
 	}
 }
 
-// The caller serializes writers with mu. Input bytes are copied into immutable
-// chunks owned by the memtable. Link publication
-// is atomic; readers filter nodes using the committed sequence watermark.
+// Hash writers hold mu and copy inputs into immutable chunks. Skip-list
+// insertion owns its bytes and uses atomic links without a writer mutex.
+// Readers filter nodes using the committed sequence watermark.
 func (m *MemTable) insert(ik InternalKey, value []byte) {
 	if m.head != nil {
-		ik.UserKey = bytes.Clone(ik.UserKey)
 		m.insertSorted(ik, value)
 		return
 	}
@@ -154,12 +168,12 @@ func (m *MemTable) insert(ik InternalKey, value []byte) {
 		m.ordered.Store(false)
 	}
 	m.lastSeq = ik.SeqNum
-	*node = memNode{key: ik, value: ownedValue, next: bucket.Load(), order: uint64(m.entries)}
+	*node = memNode{key: ik, value: ownedValue, next: bucket.Load(), order: uint64(m.entries.Load())}
 	m.nodes = append(m.nodes, node)
 	m.sorted.Store(nil)
 	bucket.Store(node)
 	m.approxSz.Add(int64(len(ik.UserKey) + len(value) + 32))
-	m.entries++
+	m.entries.Add(1)
 }
 
 func (m *MemTable) Get(key []byte) ([]byte, bool) { v, _, ok := m.GetWithSeq(key); return v, ok }

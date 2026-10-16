@@ -352,6 +352,12 @@ func (l *LSMTree) DeleteRange(start, end []byte) error {
 // The writer orders WAL records and rotations. Readers use the committed
 // watermark while installation is in progress; publication exposes a whole batch.
 func (l *LSMTree) writeMutations(batch []Mutation, syncWAL, rangeDelete bool) error {
+	return l.writeMutationsWithInstaller(batch, syncWAL, rangeDelete, nil)
+}
+
+// The optional installer lets queued callers populate the same skip list in
+// parallel. writerMu still orders WAL, rotation, and whole-group publication.
+func (l *LSMTree) writeMutationsWithInstaller(batch []Mutation, syncWAL, rangeDelete bool, install func(*MemTable, uint64)) error {
 	l.writerMu.Lock()
 	defer l.writerMu.Unlock()
 	l.mu.Lock()
@@ -417,31 +423,43 @@ func (l *LSMTree) writeMutations(batch []Mutation, syncWAL, rangeDelete bool) er
 			return err
 		}
 	}
-	// Hash versions retain WAL order; sorted batches reuse skip-list predecessors.
-	// Nodes stay hidden behind the committed watermark until the whole batch is installed.
-	mem.mu.Lock()
-	var sortedBatch []KeyValue
-	if mem.head != nil && len(batch) >= 32 {
-		sortedBatch = make([]KeyValue, 0, len(batch))
-	}
-	for i, w := range batch {
-		ik := InternalKey{UserKey: w.Key, SeqNum: base + uint64(i) + 1, OpType: typ(w)}
+	// Keep all installed nodes behind the old committed watermark. The installer
+	// joins every participant before the group becomes visible or can rotate.
+	if mem.head != nil && install != nil {
+		install(mem, base)
+		var size int64
+		for _, w := range batch {
+			size += int64(len(w.Key) + len(w.Value) + 32)
+		}
+		mem.accountSorted(size, int64(len(batch)))
+	} else {
+		if mem.head == nil || rangeDelete {
+			mem.mu.Lock()
+		}
+		var sortedBatch []KeyValue
+		if mem.head != nil && len(batch) >= 32 {
+			sortedBatch = make([]KeyValue, 0, len(batch))
+		}
+		for i, w := range batch {
+			ik := InternalKey{UserKey: w.Key, SeqNum: base + uint64(i) + 1, OpType: typ(w)}
+			if sortedBatch != nil {
+				sortedBatch = append(sortedBatch, KeyValue{Key: ik, Value: w.Value})
+			} else {
+				mem.insert(ik, w.Value)
+			}
+			if rangeDelete {
+				mem.ranges = append(mem.ranges, KeyValue{Key: InternalKey{UserKey: bytes.Clone(w.Key), SeqNum: ik.SeqNum, OpType: ik.OpType}, Value: bytes.Clone(w.Value)})
+				mem.hasRanges.Store(true)
+			}
+		}
 		if sortedBatch != nil {
-			ik.UserKey = bytes.Clone(ik.UserKey)
-			sortedBatch = append(sortedBatch, KeyValue{Key: ik, Value: w.Value})
-		} else {
-			mem.insert(ik, w.Value)
+			mem.insertSortedBatch(sortedBatch)
 		}
-		if rangeDelete {
-			mem.ranges = append(mem.ranges, KeyValue{Key: InternalKey{UserKey: append([]byte(nil), w.Key...), SeqNum: ik.SeqNum, OpType: ik.OpType}, Value: append([]byte(nil), w.Value...)})
-			mem.hasRanges.Store(true)
+		if mem.head == nil || rangeDelete {
+			mem.mu.Unlock()
 		}
-	}
-	if sortedBatch != nil {
-		mem.insertSortedBatch(sortedBatch)
 	}
 	mem.maxSeq.Store(base + uint64(len(batch)))
-	mem.mu.Unlock()
 	l.mu.Lock()
 	l.seqNum = base + uint64(len(batch))
 	l.published.Store(l.seqNum)

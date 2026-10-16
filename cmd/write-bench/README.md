@@ -21,7 +21,7 @@ the default keeps WAL writes but skips WAL fsync. Add `--no-wal` to disable
 WAL entirely. This mode loses unflushed writes on a crash. The close/reopen
 check tests a clean close. It does not test crash persistence.
 
-The default memtable is a sorted skip list. Add `--hash-memtable` to use the
+The default memtable is a concurrent sorted skip list. Add `--hash-memtable` to use the
 hash memtable for point operations. Scans and range estimates must sort its
 entries. This option does not change the database file format.
 
@@ -39,8 +39,10 @@ Updates change `v` to `v+1` and preserve the entire payload.
 
 The tool writes JSON lines with committed transactions/s, CPU use, sampled
 latency, writer counts, WAL groups, flushes, compactions, and Go allocation/GC
-counts. Time includes completion of transactions that are in progress at the
-stop signal. Warm-up uses phase `-1`. After timing, the tool closes and reopens
+counts. `latency_samples` records the number of measured latencies. Mean and
+p99 latency fields are null when an interval has no latency samples. Time
+includes completion of transactions that are in progress at the stop signal.
+Warm-up uses phase `-1`. After timing, the tool closes and reopens
 the database. It checks every inserted row and payload, or all updated rows and
 the total value increase. These checks include warm-up transactions.
 

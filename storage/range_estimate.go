@@ -428,9 +428,7 @@ func (e *rangeEstimator) sortedMemtable(m *MemTable, lower, upper []byte) (size,
 	// Promotion is independent of record contents, with probability 4^-level.
 	// Choose a level expected to retain 256-1024 nodes over the whole buffer.
 	// Use record count rather than bytes so large values do not undersample.
-	m.mu.RLock()
-	entries := m.entries
-	m.mu.RUnlock()
+	entries := m.entries.Load()
 	level, weight := 0, int64(1)
 	for level < maxHeight-1 && entries/weight > rangeMemSampleEntries {
 		level++

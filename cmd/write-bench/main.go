@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"math"
 	"math/bits"
 	"os"
 	"runtime"
@@ -251,7 +252,7 @@ func main() {
 			}
 		}
 		percentile := func(p float64) uint64 {
-			target := uint64(float64(ln) * p)
+			target := uint64(math.Ceil(float64(ln) * p))
 			var c uint64
 			for i, v := range hist {
 				c += v
@@ -261,7 +262,12 @@ func main() {
 			}
 			return 0
 		}
-		out(map[string]any{"type": "sample", "writer_min_commits": min, "writer_max_commits": max, "active_writers": active, "phase": phase, "engine": "slopdb", "workload": *workload, "writers": *writers, "durable": *durable, "wal_enabled": !*noWAL, "hash_memtable": *hashMemTable, "volatile_ids": *volatileIDs, "mem_mib": *mem, "seconds": elapsed, "commits": n - n0, "tps": float64(n-n0) / elapsed, "retries": r - r0, "cpu_cores": (c1 - c0) / elapsed, "latency_mean_us": float64(ls) / float64(ln) / 1000, "latency_p99_upper_us": float64(percentile(.99)) / 1000, "wal_active": after.WALActive, "wal_sync_disabled": after.WALSyncDisabled, "write_groups": after.WriteGroups - before.WriteGroups, "write_batches": after.WriteBatches - before.WriteBatches, "flushes": after.CompletedFlushes - before.CompletedFlushes, "compactions": after.CompletedCompactions - before.CompletedCompactions, "flush_bytes": after.FlushOutputBytes - before.FlushOutputBytes, "compaction_bytes": after.CompactionOutputBytes - before.CompactionOutputBytes, "alloc_bytes": m1.TotalAlloc - m0.TotalAlloc, "gc_cycles": m1.NumGC - m0.NumGC, "cache_bytes": after.BlockCacheBytes, "mem_bytes": after.MemSize})
+		var latencyMean, latencyP99 any
+		if ln > 0 {
+			latencyMean = float64(ls) / float64(ln) / 1000
+			latencyP99 = float64(percentile(.99)) / 1000
+		}
+		out(map[string]any{"type": "sample", "writer_min_commits": min, "writer_max_commits": max, "active_writers": active, "phase": phase, "engine": "slopdb", "workload": *workload, "writers": *writers, "durable": *durable, "wal_enabled": !*noWAL, "hash_memtable": *hashMemTable, "volatile_ids": *volatileIDs, "mem_mib": *mem, "seconds": elapsed, "commits": n - n0, "tps": float64(n-n0) / elapsed, "retries": r - r0, "cpu_cores": (c1 - c0) / elapsed, "latency_samples": ln, "latency_mean_us": latencyMean, "latency_p99_upper_us": latencyP99, "wal_active": after.WALActive, "wal_sync_disabled": after.WALSyncDisabled, "write_groups": after.WriteGroups - before.WriteGroups, "write_batches": after.WriteBatches - before.WriteBatches, "flushes": after.CompletedFlushes - before.CompletedFlushes, "compactions": after.CompletedCompactions - before.CompletedCompactions, "flush_bytes": after.FlushOutputBytes - before.FlushOutputBytes, "compaction_bytes": after.CompactionOutputBytes - before.CompactionOutputBytes, "alloc_bytes": m1.TotalAlloc - m0.TotalAlloc, "gc_cycles": m1.NumGC - m0.NumGC, "cache_bytes": after.BlockCacheBytes, "mem_bytes": after.MemSize})
 	}
 	out(map[string]any{"type": "config", "engine": "slopdb", "workload": *workload, "writers": *writers, "row_bytes": 80, "transactions_per_row": 1, "durable": *durable, "wal_enabled": !*noWAL, "hash_memtable": *hashMemTable, "volatile_ids": *volatileIDs, "mem_mib": *mem, "go": runtime.Version(), "gomaxprocs": runtime.GOMAXPROCS(0), "gogc": os.Getenv("GOGC"), "cache_bytes": 20 << 30, "background_jobs": 8})
 	if *warm > 0 {

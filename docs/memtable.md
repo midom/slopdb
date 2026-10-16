@@ -1,7 +1,14 @@
 # Memtable options
 
-SlopDB uses a sorted skip list by default. A scan can seek and read its entries
-without copying and sorting the whole memtable.
+SlopDB uses a concurrent sorted skip list by default. Point inserts update
+links with atomic compare-and-swap operations. A scan can seek and read its
+entries without copying and sorting the whole memtable.
+
+Writers in a commit group install their own rows in parallel. The leader first
+orders the WAL records and assigns each writer a sequence span. It waits for
+all rows to be installed before it publishes the group. Readers see the old
+committed snapshot until that publication. Rotation and close also wait for
+the installation to finish. The WAL and publication order remain serial.
 
 To select a hash memtable for an open database:
 

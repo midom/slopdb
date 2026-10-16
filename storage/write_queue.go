@@ -12,11 +12,26 @@ const maxQueuedGroupBytes = 1 << 20
 var batchRequests = sync.Pool{New: func() any { return new(queuedBatch) }}
 
 type queuedBatch struct {
-	mutations []Mutation
-	ready     sync.WaitGroup
-	lead      bool // published by ready.Done, like err
-	err       error
-	bytes     int
+	mutations   []Mutation
+	ready       sync.WaitGroup
+	committed   sync.WaitGroup
+	install     *memtableGroupInstall
+	installBase uint64
+	lead        bool // published by ready.Done, like err
+	err         error
+	bytes       int
+}
+
+// The WAL leader assigns a disjoint sequence span to each participant. One
+// barrier holds publication and rotation until all rows have atomic links.
+type memtableGroupInstall struct {
+	mem       *MemTable
+	remaining sync.WaitGroup
+}
+
+func (r *queuedBatch) installRows() {
+	r.install.mem.installSortedMutations(r.mutations, r.installBase)
+	r.install.remaining.Done()
 }
 
 // Links are not pooled: a producer can retain its predecessor after another
@@ -86,6 +101,7 @@ func (l *LSMTree) WriteBatchWithEnqueue(batch []Mutation, queued func()) error {
 	request.mutations = batch
 	request.lead = false
 	request.ready.Add(1)
+	request.install = nil
 	request.bytes = 0
 	for _, w := range batch {
 		request.bytes += len(w.Key) + len(w.Value) + 64
@@ -93,7 +109,7 @@ func (l *LSMTree) WriteBatchWithEnqueue(batch []Mutation, queued func()) error {
 			break
 		}
 	}
-	defer func() { request.mutations = nil; request.err = nil; batchRequests.Put(request) }()
+	defer func() { request.mutations = nil; request.err = nil; request.install = nil; batchRequests.Put(request) }()
 	q := &l.writeQueue
 	q.init()
 	link := &queuedLink{request: request}
@@ -105,6 +121,10 @@ func (l *LSMTree) WriteBatchWithEnqueue(batch []Mutation, queued func()) error {
 	q.wake()
 	request.ready.Wait()
 	if !request.lead {
+		if request.install != nil {
+			request.installRows()
+			request.committed.Wait()
+		}
 		return request.err
 	}
 	head := q.head.Load()
@@ -135,7 +155,29 @@ func (l *LSMTree) WriteBatchWithEnqueue(batch []Mutation, queued func()) error {
 			mutations = append(mutations, next.mutations...)
 		}
 	}
-	err := l.writeBatchDirect(mutations)
+	var install func(*MemTable, uint64)
+	if n > 1 && !l.opt.HashMemTable {
+		// Copy only the active participants; keep the fixed collection array on
+		// the leader stack and avoid allocating it for hash/isolated writes.
+		participants := append([]*queuedBatch(nil), group[:n]...)
+		install = func(mem *MemTable, base uint64) {
+			work := &memtableGroupInstall{mem: mem}
+			work.remaining.Add(len(participants))
+			offset := base
+			for _, participant := range participants {
+				participant.install = work
+				participant.installBase = offset
+				offset += uint64(len(participant.mutations))
+				if participant != request {
+					participant.committed.Add(1)
+					participant.ready.Done()
+				}
+			}
+			request.installRows()
+			work.remaining.Wait()
+		}
+	}
+	err := l.writeMutationsWithInstaller(mutations, true, false, install)
 	if err == nil {
 		l.writeGroups.Add(1)
 		l.writeBatches.Add(int64(n))
@@ -150,8 +192,14 @@ func (l *LSMTree) WriteBatchWithEnqueue(batch []Mutation, queued func()) error {
 		q.wake()
 	}
 	for _, next := range group[:n] {
-		if next != request {
-			next.err = err
+		if next == request {
+			continue
+		}
+		next.err = err
+		// Do not touch a request after waking its caller: it can return to the pool.
+		if next.install != nil {
+			next.committed.Done()
+		} else {
 			next.ready.Done()
 		}
 	}
