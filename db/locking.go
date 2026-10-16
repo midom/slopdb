@@ -63,6 +63,10 @@ type lockEntry struct {
 	keyed          bool
 }
 
+// Uncontended exclusive entries have no owner map. Reuse them only after the
+// owner's journal has dropped every reference to the removed resource.
+var exclusiveLockEntries = sync.Pool{New: func() any { return new(lockEntry) }}
+
 type lockWait struct{ request sql.LockRequest }
 
 type queuedLock struct {
@@ -77,25 +81,28 @@ func (w *lockWait) Error() string { return "transaction lock is held by another 
 // used only for contended acquisitions; SQL evaluation and storage reads execute
 // outside these locks.
 type lockManager struct {
-	mu            sync.Mutex
-	shards        []*lockManager
-	states        sync.Map
-	graphMu       sync.Mutex
-	order         atomic.Uint64
-	nextSessionID atomic.Uint64
-	resources     map[string]*lockBucket
-	owned         map[*sql.Schema]map[*lockEntry]bool
-	waiting       map[*sql.Schema]queuedLock
-	notifications map[*sql.Schema]chan struct{}
+	mu             sync.Mutex
+	root           *lockManager
+	pointCatalog   *pointCatalogGate
+	shards         []*lockManager
+	states         sync.Map
+	graphMu        sync.Mutex
+	order          atomic.Uint64
+	nextSessionID  atomic.Uint64
+	resources      map[string]*lockBucket
+	emptyResources map[string]*lockEntry
+	waiting        map[*sql.Schema]queuedLock
+	notifications  map[*sql.Schema]chan struct{}
 }
 
 type ownerLocks struct {
-	transaction transactionControl
-	mu          sync.Mutex
-	id          uint64
-	lastChange  [64]int // journal positions encoded as index + 1
-	changes     []lockChange
-	catalogMode int // 0 absent, 1 shared, 2 exclusive; protected by owner.mu
+	pointCatalog atomic.Bool
+	transaction  transactionControl
+	mu           sync.Mutex
+	id           uint64
+	lastChange   [64]int // journal positions encoded as index + 1
+	changes      []lockChange
+	catalogMode  int // 0 absent, 1 shared, 2 exclusive; protected by owner.mu
 }
 
 type lockChange struct {
@@ -106,13 +113,15 @@ type lockChange struct {
 }
 
 func emptyLockManager() *lockManager {
-	return &lockManager{resources: make(map[string]*lockBucket), owned: make(map[*sql.Schema]map[*lockEntry]bool), waiting: make(map[*sql.Schema]queuedLock), notifications: make(map[*sql.Schema]chan struct{})}
+	return &lockManager{resources: make(map[string]*lockBucket), emptyResources: make(map[string]*lockEntry), waiting: make(map[*sql.Schema]queuedLock), notifications: make(map[*sql.Schema]chan struct{})}
 }
 func newLockManager() *lockManager {
 	m := emptyLockManager()
+	m.pointCatalog = &pointCatalogGate{}
 	m.shards = make([]*lockManager, 64)
 	for i := range m.shards {
 		m.shards[i] = emptyLockManager()
+		m.shards[i].root = m
 	}
 	return m
 }
@@ -178,6 +187,9 @@ func sameValues(a, b []sql.Value) bool {
 	return true
 }
 func (m *lockManager) entry(request sql.LockRequest) *lockEntry {
+	if len(request.Values) == 0 {
+		return m.emptyResources[request.Resource]
+	}
 	if bucket := m.resources[request.Resource]; bucket != nil {
 		return bucket.find(request.Values)
 	}
@@ -186,7 +198,7 @@ func (m *lockManager) entry(request sql.LockRequest) *lockEntry {
 func (m *lockManager) blockers(owner *sql.Schema, request sql.LockRequest) []*sql.Schema {
 	var owners []*sql.Schema
 	if entry := m.entry(request); entry != nil {
-		if mode, held := entry.owners[owner]; held && (mode || !request.Exclusive) {
+		if mode, held := entry.ownerMode(owner); held && (mode || !request.Exclusive) {
 			return nil // Existing owners can reuse locks despite queued waiters.
 		}
 		if !request.Exclusive {
@@ -194,12 +206,20 @@ func (m *lockManager) blockers(owner *sql.Schema, request sql.LockRequest) []*sq
 				owners = append(owners, entry.exclusiveOwner)
 			}
 		} else {
-			for other := range entry.owners {
+			entry.eachOwner(func(other *sql.Schema, _ bool) {
 				if other != owner {
 					owners = append(owners, other)
 				}
-			}
+			})
 		}
+	}
+	if request.Resource == "catalog" && request.Exclusive && m.root != nil {
+		m.root.states.Range(func(key, value any) bool {
+			if key != owner && value.(*ownerLocks).pointCatalog.Load() {
+				owners = append(owners, key.(*sql.Schema))
+			}
+			return true
+		})
 	}
 	order := ^uint64(0)
 	if queued, ok := m.waiting[owner]; ok {
@@ -216,7 +236,11 @@ func (m *lockManager) blockers(owner *sql.Schema, request sql.LockRequest) []*sq
 	return owners
 }
 func (m *lockManager) acquireLocked(owner *sql.Schema, request sql.LockRequest) (*lockEntry, bool, bool, error) {
-	if len(m.blockers(owner, request)) > 0 {
+	if request.Resource == "catalog" && request.Exclusive && m.root != nil {
+		m.root.pointCatalog.pending.Store(true)
+		defer m.refreshPointCatalogPendingLocked()
+	}
+	if len(m.blockers(owner, request)) > 0 || m.pointCatalogBlocked(request) {
 		if request.Wait != sql.LockWait {
 			return nil, false, false, ErrLockNotAvailable
 		}
@@ -228,54 +252,89 @@ func (m *lockManager) acquireLocked(owner *sql.Schema, request sql.LockRequest) 
 		for i := range request.Values {
 			request.Values[i].Blob = append([]byte(nil), request.Values[i].Blob...)
 		}
-		entry = &lockEntry{request: request, owners: make(map[*sql.Schema]bool)}
-		bucket := m.resources[request.Resource]
-		if bucket == nil {
-			bucket = &lockBucket{}
-			m.resources[request.Resource] = bucket
+		if request.Exclusive && len(request.Values) == 0 {
+			entry = exclusiveLockEntries.Get().(*lockEntry)
+			entry.request = request
+		} else {
+			entry = &lockEntry{request: request}
 		}
-		bucket.add(entry)
+		if len(request.Values) == 0 {
+			m.emptyResources[request.Resource] = entry
+		} else {
+			bucket := m.resources[request.Resource]
+			if bucket == nil {
+				bucket = &lockBucket{}
+				m.resources[request.Resource] = bucket
+			}
+			bucket.add(entry)
+		}
 	}
-	previous, held := entry.owners[owner]
-	entry.owners[owner] = previous || request.Exclusive
-	if request.Exclusive {
-		entry.exclusiveOwner = owner
-	}
-	if m.owned[owner] == nil {
-		m.owned[owner] = make(map[*lockEntry]bool)
-	}
-	m.owned[owner][entry] = entry.owners[owner]
+	previous, held := entry.ownerMode(owner)
+	entry.setOwner(owner, previous || request.Exclusive)
 	return entry, held, previous, nil
 }
 
 func (m *lockManager) restoreEntryLocked(owner *sql.Schema, entry *lockEntry, held, exclusive bool) {
 	if held {
-		entry.owners[owner] = exclusive
-		m.owned[owner][entry] = exclusive
-		if exclusive {
-			entry.exclusiveOwner = owner
-		} else if entry.exclusiveOwner == owner {
-			entry.exclusiveOwner = nil
-		}
+		entry.setOwner(owner, exclusive)
 	} else {
 		delete(entry.owners, owner)
 		if entry.exclusiveOwner == owner {
 			entry.exclusiveOwner = nil
 		}
-		delete(m.owned[owner], entry)
-		if len(entry.owners) == 0 {
-			bucket := m.resources[entry.request.Resource]
-			bucket.remove(entry)
-			if len(bucket.entries) == 0 {
-				delete(m.resources, entry.request.Resource)
+		if len(entry.owners) == 0 && entry.exclusiveOwner == nil {
+			if len(entry.request.Values) == 0 {
+				delete(m.emptyResources, entry.request.Resource)
+			} else {
+				bucket := m.resources[entry.request.Resource]
+				bucket.remove(entry)
+				if len(bucket.entries) == 0 {
+					delete(m.resources, entry.request.Resource)
+				}
 			}
-		}
-		if len(m.owned[owner]) == 0 {
-			delete(m.owned, owner)
 		}
 	}
 	m.notifyResource(entry.request)
+	if entry.request.Resource == "catalog" {
+		m.refreshPointCatalogPendingLocked()
+	}
 }
+
+// Exclusive ownership needs only one pointer. Shared owners use the map;
+// savepoint downgrades recreate that map while the resource shard is locked.
+func (entry *lockEntry) ownerMode(owner *sql.Schema) (bool, bool) {
+	if entry.exclusiveOwner != nil && entry.exclusiveOwner == owner {
+		return true, true
+	}
+	mode, held := entry.owners[owner]
+	return mode, held
+}
+func (entry *lockEntry) setOwner(owner *sql.Schema, exclusive bool) {
+	if exclusive {
+		entry.exclusiveOwner = owner
+		if entry.owners != nil {
+			entry.owners[owner] = true
+		}
+	} else {
+		if entry.exclusiveOwner == owner {
+			entry.exclusiveOwner = nil
+		}
+		if entry.owners == nil {
+			entry.owners = make(map[*sql.Schema]bool)
+		}
+		entry.owners[owner] = false
+	}
+}
+func (entry *lockEntry) eachOwner(visit func(*sql.Schema, bool)) {
+	if entry.exclusiveOwner != nil && len(entry.owners) == 0 {
+		visit(entry.exclusiveOwner, true)
+		return
+	}
+	for owner, exclusive := range entry.owners {
+		visit(owner, exclusive)
+	}
+}
+
 func (state *ownerLocks) record(entry *lockEntry, shard int, held, previous, exclusive bool) {
 	if !held || (!previous && exclusive) {
 		state.changes = append(state.changes, lockChange{entry: entry, shard: shard, held: held, exclusive: previous, previousShard: state.lastChange[shard]})
@@ -302,6 +361,7 @@ func (m *lockManager) notifyResource(request sql.LockRequest) {
 func (m *lockManager) removeWaiting(owner *sql.Schema) {
 	if q, ok := m.waiting[owner]; ok {
 		delete(m.waiting, owner)
+		m.refreshPointCatalogPendingLocked()
 		delete(m.notifications, owner)
 		m.notifyResource(q.request)
 	}
@@ -393,7 +453,15 @@ func (m *lockManager) acquireAll(owner *sql.Schema, requests []sql.LockRequest) 
 		}
 	}()
 	for _, r := range requests {
-		if len(m.shards[m.shardIndex(r.Resource)].blockers(owner, r)) > 0 {
+		if r.Resource == "catalog" && r.Exclusive {
+			m.pointCatalog.pending.Store(true)
+			defer m.shards[0].refreshPointCatalogPendingLocked()
+			break
+		}
+	}
+	for _, r := range requests {
+		shard := m.shards[m.shardIndex(r.Resource)]
+		if len(shard.blockers(owner, r)) > 0 || shard.pointCatalogBlocked(r) {
 			if r.Wait != sql.LockWait {
 				return ErrLockNotAvailable
 			}
@@ -428,6 +496,7 @@ func (m *lockManager) restore(owner *sql.Schema, mark int) {
 	if mark == len(state.changes) {
 		return
 	}
+	var reclaim []*lockEntry
 	var mask uint64
 	for _, change := range state.changes[mark:] {
 		mask |= uint64(1) << change.shard
@@ -443,6 +512,9 @@ func (m *lockManager) restore(owner *sql.Schema, mark int) {
 		for pos := state.lastChange[i]; pos > mark; pos = state.lastChange[i] {
 			change := state.changes[pos-1]
 			shard.restoreEntryLocked(owner, change.entry, change.held, change.exclusive)
+			if !change.held && change.entry.owners == nil && change.entry.exclusiveOwner == nil && len(change.entry.request.Values) == 0 {
+				reclaim = append(reclaim, change.entry)
+			}
 			state.lastChange[i] = change.previousShard
 			if change.entry.request.Resource == "catalog" && len(change.entry.request.Values) == 0 {
 				state.catalogMode = 0
@@ -458,6 +530,10 @@ func (m *lockManager) restore(owner *sql.Schema, mark int) {
 	}
 	clear(state.changes[mark:])
 	state.changes = state.changes[:mark]
+	for _, entry := range reclaim {
+		*entry = lockEntry{}
+		exclusiveLockEntries.Put(entry)
+	}
 }
 func (m *lockManager) release(owner *sql.Schema) { m.restore(owner, 0) }
 
@@ -485,6 +561,7 @@ func (db *Database) waitForLockPolicy(ctx context.Context, owner *sql.Schema, re
 	queued := queuedLock{request: request, order: root.order.Add(1), started: time.Now()}
 	root.waiting[owner] = queued
 	shard.waiting[owner] = queued
+	shard.refreshPointCatalogPendingLocked()
 	shard.mu.Unlock()
 	root.graphMu.Unlock()
 	defer func() {
@@ -530,7 +607,7 @@ func (db *Database) waitForLockPolicy(ctx context.Context, owner *sql.Schema, re
 			state.mu.Unlock()
 			return errors.New("database closed")
 		}
-		if len(shard.blockers(owner, request)) == 0 {
+		if len(shard.blockers(owner, request)) == 0 && !shard.pointCatalogBlocked(request) {
 			entry, held, previous, err := shard.acquireLocked(owner, request)
 			if err == nil {
 				state.record(entry, root.shardIndex(request.Resource), held, previous, request.Exclusive)

@@ -56,7 +56,7 @@ type ViewInfo struct {
 }
 
 type Schema struct {
-	onlineIndexMu      sync.RWMutex
+	onlineIndexMu      catalogGate
 	onlineIndexBuilds  map[*OnlineIndexBuild]struct{}
 	queryMemoryBytes   int64
 	queryTempDir       string
@@ -64,7 +64,7 @@ type Schema struct {
 	maxCTEIterations   int64
 	maxCTERows         int64
 	cteScope           map[string]*ResultSet
-	commitMu           catalogGate // protects the committed root catalog and reservations
+	commitMu           catalogGate // protects committed catalog publication
 	statementSnapshot  uint64
 	snapshotReader     uint64
 	nextSnapshotReader atomic.Uint64
@@ -82,6 +82,7 @@ type Schema struct {
 	views              map[string]*ViewInfo
 	triggers           map[string]*TriggerInfo
 	autoincMax         map[string]int64
+	autoincQueued      map[string]int64 // high-water snapshots in WAL enqueue order; commitMu protects it
 	rowIDCount         map[string]int64
 
 	ctx              context.Context
@@ -117,12 +118,17 @@ type Schema struct {
 	catalogVersion     uint64
 	readCatalogVersion uint64
 	rowIDReservations  map[string]int64
+	rowIDMu            sync.Mutex // protects shared row-ID reservations
+	rowIDDirty         bool       // explicit IDs need publication to the shared reservations
 	txRowVersions      map[string]uint64
 	txCatalogVersion   uint64
 	txWriteVersion     uint64
 	txDDLVersion       uint64
 	txHasWrites        bool
 	txHasDDL           bool
+
+	disableAutoIncrementPersistence bool
+	enableAutoIncrementGroupCommit  bool
 }
 
 func (s *Schema) SetContext(ctx context.Context) {
@@ -210,6 +216,8 @@ func NewSchemaWithOptions(lsm *storage.LSMTree, pageSize int, opt *storage.Optio
 			return nil, fmt.Errorf("query memory budget must not be negative")
 		}
 		s.queryMemoryBytes, s.queryTempDir = opt.QueryMemoryBytes, opt.QueryTempDir
+		s.disableAutoIncrementPersistence = opt.DisableAutoIncrementPersistence
+		s.enableAutoIncrementGroupCommit = !opt.DisableWAL && !opt.DisableWALSync
 	}
 	if err := s.loadCollation(); err != nil {
 		return nil, err
@@ -350,7 +358,7 @@ func (s *Schema) loadAutoincMax() {
 }
 
 func (s *Schema) saveAutoincMax() error {
-	if s.inTx {
+	if s.inTx || s.disableAutoIncrementPersistence {
 		return nil
 	}
 	data, err := json.Marshal(s.autoincMax)
@@ -361,6 +369,9 @@ func (s *Schema) saveAutoincMax() error {
 }
 
 func (s *Schema) getAutoincMax(tableName string) int64 {
+	if s.disableAutoIncrementPersistence {
+		return 0
+	}
 	if v, ok := s.autoincMax[tableName]; ok {
 		return v
 	}
@@ -368,6 +379,9 @@ func (s *Schema) getAutoincMax(tableName string) int64 {
 }
 
 func (s *Schema) setAutoincMax(tableName string, id int64) {
+	if s.disableAutoIncrementPersistence {
+		return
+	}
 	s.autoincMax[tableName] = id
 }
 
@@ -1747,6 +1761,15 @@ func (s *Schema) Commit() error {
 	}
 	changed := s.catalogChanged()
 	persistent := s.persistentStateChanged()
+	queueAutoinc := s.enableAutoIncrementGroupCommit && s.parent != nil && s.lockHandler != nil && !changed &&
+		!reflect.DeepEqual(s.autoincMax, s.txState.autoinc)
+	if queueAutoinc {
+		// Earlier queued counter snapshots can contain higher IDs than this
+		// transaction. Keep the complete metadata records monotonic in the
+		// same order as their row batches, including across different tables.
+		s.autoincMax = mergeCounter(nil, s.autoincMax, root.autoincQueued)
+		root.autoincQueued = maps.Clone(s.autoincMax)
+	}
 	if len(s.txWrites) == 0 && !persistent {
 		s.endTransaction()
 		return nil
@@ -1792,8 +1815,29 @@ func (s *Schema) Commit() error {
 		}
 		batch = append(batch, storage.Mutation{Key: []byte(collationPrefix), Value: encoded})
 	}
+	if queueAutoinc && s.onlyAutoincMetadataChanged() {
+		// The logical catalog lock remains held until transaction completion.
+		// Release the publication mutex only after queue insertion, so other
+		// automatic-key transactions can join the same WAL group. Publish the
+		// committed counters after WAL success, merging completion order.
+		err := s.writeBatchWithOnlineIndexesQueued(batch, root.commitMu.Unlock)
+		root.commitMu.Lock()
+		if err != nil {
+			return err
+		}
+		root.autoincMax = mergeCounter(nil, s.autoincMax, root.autoincMax)
+		root.stateVersion++
+		root.commitVersion.Add(1)
+		s.endTransaction()
+		return nil
+	}
 	if err := s.writeBatchWithOnlineIndexes(batch); err != nil {
 		return err
+	}
+	if changed {
+		// Exclusive catalog ownership excludes outstanding queued inserts.
+		// Dropped or renamed tables must not inherit old counter snapshots.
+		root.autoincQueued = nil
 	}
 	if s.parent != nil {
 		if persistent {
@@ -1803,6 +1847,7 @@ func (s *Schema) Commit() error {
 			state.rowIDs = s.parent.rowIDCount
 			s.parent.restoreState(state)
 			if changed {
+				s.parent.rowIDMu.Lock()
 				present := make(map[string]bool)
 				for name := range s.tables {
 					present[s.rowCounterKey(name)] = true
@@ -1813,6 +1858,7 @@ func (s *Schema) Commit() error {
 						delete(s.parent.rowIDCount, counter)
 					}
 				}
+				s.parent.rowIDMu.Unlock()
 			}
 			s.parent.stateVersion++
 			s.readStateVersion = s.parent.stateVersion
@@ -3018,6 +3064,7 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 			nextID = row[pkCol.Name].Int
 			if pkCol.AutoIncrement && nextID >= s.rowIDCount[s.rowCounterKey(tableName)] {
 				s.rowIDCount[s.rowCounterKey(tableName)] = nextID + 1
+				s.rowIDDirty = true
 			}
 		}
 		if err := validatePrimaryKey(info, row); err != nil {
@@ -3583,6 +3630,7 @@ func (s *Schema) insertFromSelect(stmt *InsertStmt, info *TableInfo) (int64, *Re
 			nextID = row[pkCol.Name].Int
 			if pkCol.AutoIncrement && nextID >= s.rowIDCount[s.rowCounterKey(tableName)] {
 				s.rowIDCount[s.rowCounterKey(tableName)] = nextID + 1
+				s.rowIDDirty = true
 			}
 		}
 		if err := validatePrimaryKey(info, row); err != nil {
@@ -5550,6 +5598,7 @@ func (s *Schema) applyRowUpdate(table string, info *TableInfo, oldKey []byte, or
 		v := row[info.PKColumns[0]]
 		if col := s.getPKColumn(info); col != nil && col.AutoIncrement && v.Type == ColInteger && v.Int >= s.rowIDCount[s.rowCounterKey(table)] {
 			s.rowIDCount[s.rowCounterKey(table)] = v.Int + 1
+			s.rowIDDirty = true
 		}
 	}
 	if err := s.fireTriggers(table, "UPDATE", "AFTER", original, row); err != nil {

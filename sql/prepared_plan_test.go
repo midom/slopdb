@@ -85,7 +85,8 @@ func TestPreparedPointUpdateBindingsReuse(t *testing.T) {
 	}
 	defer b.Release()
 	stmt := b.statements[0].(*UpdateStmt)
-	if p := s.PreparePointUpdate(stmt); p != nil {
+	var destination PointUpdate
+	if p := s.PreparePointUpdateInto(stmt, &destination); p != nil {
 		t.Fatal("NULL must not produce a key")
 	}
 	compiled := stmt.prepared.pointUpdate
@@ -94,8 +95,8 @@ func TestPreparedPointUpdateBindingsReuse(t *testing.T) {
 	}
 	for _, id := range []int64{1, 2, 999} {
 		b.literals[2].Value = NewIntValue(id)
-		p := s.PreparePointUpdate(stmt)
-		if p == nil || p.schema != s || p.stmt != stmt || len(p.key) == 0 {
+		p := s.PreparePointUpdateInto(stmt, &destination)
+		if p != &destination || p.schema != s || p.stmt != stmt || len(p.key) == 0 {
 			t.Fatal("missing private bound execution")
 		}
 		if stmt.prepared.pointUpdate != compiled {
@@ -115,7 +116,7 @@ func TestPreparedPointUpdateBindingsReuse(t *testing.T) {
 	}
 	// Direct-schema DDL does not publish epochs; import its immutable catalog explicitly.
 	s.restoreState(root.captureState())
-	if p := s.PreparePointUpdate(stmt); p == nil || len(p.indexes) != 0 {
+	if p := s.PreparePointUpdateInto(stmt, &destination); p == nil || len(p.indexes) != 0 {
 		t.Fatal("dropped index retained in update plan")
 	}
 }

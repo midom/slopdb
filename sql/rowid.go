@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -16,8 +17,17 @@ func (s *Schema) nextRowID(table string) (id int64, err error) {
 	if s.parent != nil {
 		root = s.parent
 	}
-	root.commitMu.Lock()
-	defer root.commitMu.Unlock()
+	// A private session changes only its own counter and the shared runtime
+	// reservations. Allocation does not publish a new catalog snapshot.
+	if s.parent != nil {
+		root.commitMu.RLockForReader(s.snapshotReader)
+		defer root.commitMu.RUnlockForReader(s.snapshotReader)
+	} else {
+		root.commitMu.Lock()
+		defer root.commitMu.Unlock()
+	}
+	root.rowIDMu.Lock()
+	defer root.rowIDMu.Unlock()
 	defer func() {
 		if err != nil {
 			return
@@ -25,20 +35,33 @@ func (s *Schema) nextRowID(table string) (id int64, err error) {
 		if root.rowIDReservations == nil {
 			root.rowIDReservations = make(map[string]int64)
 		}
-		if id+1 > root.rowIDReservations[counter] {
+		if id+1 < 0 || root.rowIDReservations[counter] >= 0 && id+1 > root.rowIDReservations[counter] {
 			root.rowIDReservations[counter] = id + 1
 		}
 	}()
+	if root.rowIDReservations[counter] < 0 {
+		return 0, fmt.Errorf("integer primary key exhausted")
+	}
 	if next := root.rowIDReservations[counter]; next > s.rowIDCount[counter] {
 		s.rowIDCount[counter] = next
 	}
 	if next, ok := s.rowIDCount[counter]; ok {
+		if next < 0 {
+			return 0, fmt.Errorf("integer primary key exhausted")
+		}
 		s.rowIDCount[counter] = next + 1
 		return next, nil
 	}
 	maxID, err := s.lastRowID(table, s.tables[table])
 	if err != nil {
 		return 0, err
+	}
+	// Reserve above the durable floor before releasing the allocator lock.
+	// Applying that floor later in INSERT could give two sessions the same ID
+	// when the largest committed IDs were deleted before this open.
+	maxID = max(maxID, s.getAutoincMax(table))
+	if maxID == math.MaxInt64 {
+		return 0, fmt.Errorf("integer primary key exhausted")
 	}
 	id = maxID + 1
 	s.rowIDCount[counter] = id + 1

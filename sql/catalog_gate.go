@@ -11,14 +11,15 @@ import (
 // Legacy metadata readers use a separate counter and participate in the same
 // exclusion. Slow readers yield to queued writers, matching RWMutex preference.
 type catalogGate struct {
-	mu      sync.Mutex
-	changed *sync.Cond
-	pending atomic.Bool
-	readers atomic.Int64
-	writers int
-	active  bool
-	padding [23]byte
-	shards  [128]catalogReaders
+	mu           sync.Mutex
+	readChanged  *sync.Cond
+	writeChanged *sync.Cond
+	pending      atomic.Bool
+	readers      atomic.Int64
+	writers      int
+	active       bool
+	padding      [23]byte
+	shards       [128]catalogReaders
 }
 
 type catalogReaders struct {
@@ -27,8 +28,9 @@ type catalogReaders struct {
 }
 
 func (g *catalogGate) init() {
-	if g.changed == nil {
-		g.changed = sync.NewCond(&g.mu)
+	if g.readChanged == nil {
+		g.readChanged = sync.NewCond(&g.mu)
+		g.writeChanged = sync.NewCond(&g.mu)
 	}
 }
 
@@ -50,7 +52,7 @@ func (g *catalogGate) Lock() {
 	g.writers++
 	g.pending.Store(true)
 	for g.active || g.hasReaders() {
-		g.changed.Wait()
+		g.writeChanged.Wait()
 	}
 	g.writers--
 	g.active = true
@@ -61,7 +63,13 @@ func (g *catalogGate) Unlock() {
 	g.mu.Lock()
 	g.active = false
 	g.pending.Store(g.writers > 0)
-	g.changed.Broadcast()
+	// A queued writer needs one successor. Readers stay asleep until the
+	// writer queue drains, rather than waking for each catalog publication.
+	if g.writers > 0 {
+		g.writeChanged.Signal()
+	} else {
+		g.readChanged.Broadcast()
+	}
 	g.mu.Unlock()
 }
 
@@ -87,7 +95,7 @@ func (g *catalogGate) rLock(readers *atomic.Int64) {
 	g.mu.Lock()
 	g.init()
 	for g.active || g.writers > 0 {
-		g.changed.Wait()
+		g.readChanged.Wait()
 	}
 	readers.Add(1)
 	g.mu.Unlock()
@@ -97,7 +105,7 @@ func (g *catalogGate) rUnlock(readers *atomic.Int64) {
 	if readers.Add(-1) == 0 && g.pending.Load() {
 		g.mu.Lock()
 		if !g.hasReaders() {
-			g.changed.Broadcast()
+			g.writeChanged.Signal()
 		}
 		g.mu.Unlock()
 	}

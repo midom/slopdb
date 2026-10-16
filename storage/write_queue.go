@@ -1,77 +1,159 @@
 package storage
 
-import "sync"
+import (
+	"runtime"
+	"sync"
+	"sync/atomic"
+)
 
-var batchRequests = sync.Pool{New: func() any { return &queuedBatch{lead: make(chan struct{}, 1), done: make(chan error, 1)} }}
+const maxQueuedBatches = 256
+const maxQueuedGroupBytes = 1 << 20
 
-// A queued batch retains its caller's buffers until completion. One caller leads
-// each group; the next queued caller takes over after that group completes.
-// This amortizes WAL writes without delaying isolated writes or keeping a leader
-// waiting for an unbounded stream of later transactions.
+var batchRequests = sync.Pool{New: func() any { return new(queuedBatch) }}
+
 type queuedBatch struct {
 	mutations []Mutation
-	lead      chan struct{}
-	done      chan error
+	ready     sync.WaitGroup
+	lead      bool // published by ready.Done, like err
+	err       error
+	bytes     int
+}
+
+// Links are not pooled: a producer can retain its predecessor after another
+// producer has exchanged tail. Separate queue nodes prevent request reuse/ABA races.
+type queuedLink struct {
+	request *queuedBatch
+	next    atomic.Pointer[queuedLink]
+}
+
+type batchQueue struct {
+	once     sync.Once
+	padding0 [52]byte
+	tail     atomic.Pointer[queuedLink]
+	padding1 [56]byte
+	head     atomic.Pointer[queuedLink] // only the active collector advances head
+	padding2 [56]byte
+	active   atomic.Bool
+	padding3 [63]byte
+}
+
+func (q *batchQueue) init() {
+	q.once.Do(func() { dummy := new(queuedLink); q.head.Store(dummy); q.tail.Store(dummy) })
+}
+func (q *batchQueue) next(head *queuedLink) *queuedLink {
+	next := head.next.Load()
+	// A producer that has exchanged tail owns the next link. Preserve FIFO if
+	// it has not linked yet; no later caller may pass that transaction.
+	for next == nil && q.tail.Load() != head {
+		runtime.Gosched()
+		next = head.next.Load()
+	}
+	return next
+}
+func (q *batchQueue) wake() {
+	// A failed CAS still takes cache-line ownership on common CPUs. Read busy
+	// state first; the collector's empty-queue recheck prevents a missed wake.
+	if q.active.Load() {
+		return
+	}
+	for q.active.CompareAndSwap(false, true) {
+		head := q.head.Load()
+		if next := q.next(head); next != nil {
+			next.request.lead = true
+			next.request.ready.Done()
+			return
+		}
+		q.active.Store(false)
+		// Close the empty-queue race with a producer that saw active before the
+		// store. A producer linking later will perform its own wake check.
+		if head.next.Load() == nil {
+			return
+		}
+	}
 }
 
 // WriteBatch commits atomically. Concurrent batches may share one WAL record and
 // one memtable publication; readers see either the entire group or none of it.
-func (l *LSMTree) WriteBatch(batch []Mutation) error {
+func (l *LSMTree) WriteBatch(batch []Mutation) error { return l.WriteBatchWithEnqueue(batch, nil) }
+
+// WriteBatchWithEnqueue calls queued after the batch joins the ordered commit
+// queue, before waiting for WAL publication. This lets a caller release a
+// metadata lock without letting later metadata records overtake this batch.
+// queued must return promptly and must not issue another storage write.
+// The batch buffers remain owned by this call until it returns.
+func (l *LSMTree) WriteBatchWithEnqueue(batch []Mutation, queued func()) error {
 	request := batchRequests.Get().(*queuedBatch)
 	request.mutations = batch
-	defer func() { request.mutations = nil; batchRequests.Put(request) }()
-	l.writeMu.Lock()
-	l.writeQueue = append(l.writeQueue, request)
-	if !l.writeActive {
-		l.writeActive = true
-		request.lead <- struct{}{}
+	request.lead = false
+	request.ready.Add(1)
+	request.bytes = 0
+	for _, w := range batch {
+		request.bytes += len(w.Key) + len(w.Value) + 64
+		if request.bytes > maxQueuedGroupBytes {
+			break
+		}
 	}
-	l.writeMu.Unlock()
-	select {
-	case err := <-request.done:
-		return err
-	case <-request.lead:
+	defer func() { request.mutations = nil; request.err = nil; batchRequests.Put(request) }()
+	q := &l.writeQueue
+	q.init()
+	link := &queuedLink{request: request}
+	previous := q.tail.Swap(link)
+	previous.next.Store(link)
+	if queued != nil {
+		queued()
 	}
-
-	l.writeMu.Lock()
-	n := len(l.writeQueue)
-	if n > 64 {
-		n = 64
+	q.wake()
+	request.ready.Wait()
+	if !request.lead {
+		return request.err
 	}
-	group := l.writeQueue[:n:n]
-	// Pending arrivals can use only the tail; the detached prefix is immutable.
-	l.writeQueue = l.writeQueue[n:]
-	if len(l.writeQueue) == 0 {
-		l.writeQueue = nil
+	head := q.head.Load()
+	var group [maxQueuedBatches]*queuedBatch
+	n, size := 0, 0
+	for next := q.next(head); next != nil && n < maxQueuedBatches; next = q.next(head) {
+		candidate := next.request
+		if n > 0 && candidate.bytes > maxQueuedGroupBytes-size {
+			break
+		}
+		group[n] = candidate
+		n++
+		size += candidate.bytes
+		head = next
+		// This link becomes the dummy head. Its request is no longer consulted;
+		// clear it before completion can return that request to the pool.
+		next.request = nil
 	}
-	l.writeMu.Unlock()
+	q.head.Store(head)
 	mutations := group[0].mutations
-	if len(group) > 1 {
+	if n > 1 {
 		count := 0
-		for _, next := range group {
+		for _, next := range group[:n] {
 			count += len(next.mutations)
 		}
 		mutations = make([]Mutation, 0, count)
-		for _, next := range group {
+		for _, next := range group[:n] {
 			mutations = append(mutations, next.mutations...)
 		}
 	}
 	err := l.writeBatchDirect(mutations)
 	if err == nil {
 		l.writeGroups.Add(1)
-		l.writeBatches.Add(int64(len(group)))
+		l.writeBatches.Add(int64(n))
 	}
-	// Transfer leadership before notifying completed callers. The next leader
-	// can collect their subsequent calls while its WAL write is in progress.
-	l.writeMu.Lock()
-	if len(l.writeQueue) > 0 {
-		l.writeQueue[0].lead <- struct{}{}
+	// Handoff precedes completed-call wakeups. No collector touches head again
+	// after handoff; the next caller can safely collect its following group.
+	if next := q.next(head); next != nil {
+		next.request.lead = true
+		next.request.ready.Done()
 	} else {
-		l.writeActive = false
+		q.active.Store(false)
+		q.wake()
 	}
-	l.writeMu.Unlock()
-	for _, next := range group {
-		next.done <- err
+	for _, next := range group[:n] {
+		if next != request {
+			next.err = err
+			next.ready.Done()
+		}
 	}
-	return <-request.done
+	return err
 }

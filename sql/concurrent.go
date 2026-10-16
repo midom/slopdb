@@ -3,6 +3,7 @@ package sql
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"strings"
 
@@ -26,12 +27,23 @@ type PointUpdate struct {
 }
 
 func (s *Schema) PreparePointUpdate(stmt *UpdateStmt) *PointUpdate {
+	return s.PreparePointUpdateInto(stmt, nil)
+}
+
+// PreparePointUpdateInto reuses a private execution destination. Its caller
+// must not retain or share that destination across simultaneous executions.
+func (s *Schema) PreparePointUpdateInto(stmt *UpdateStmt, dst *PointUpdate) *PointUpdate {
 	if stmt.With != nil || s.cteScope != nil {
 		return nil
 	}
 	info := s.tables[strings.ToLower(stmt.Table)]
 	if stmt.prepared == nil || info == nil {
-		return s.preparePointUpdateUncached(stmt)
+		plan := s.preparePointUpdateUncached(stmt)
+		if dst != nil && plan != nil {
+			*dst = *plan
+			return dst
+		}
+		return plan
 	}
 	defer s.restorePreparedPlan(s.usePreparedPlan(stmt.prepared, info))
 	cached := stmt.prepared
@@ -53,9 +65,12 @@ func (s *Schema) PreparePointUpdate(stmt *UpdateStmt) *PointUpdate {
 	if !ok {
 		return nil
 	}
-	plan := *cached.pointUpdate
-	plan.schema, plan.stmt, plan.key = s, stmt, key
-	return &plan
+	if dst == nil {
+		dst = new(PointUpdate)
+	}
+	*dst = *cached.pointUpdate
+	dst.schema, dst.stmt, dst.key = s, stmt, key
+	return dst
 }
 func (s *Schema) preparePointUpdateUncached(stmt *UpdateStmt) *PointUpdate {
 	if stmt.With != nil || s.cteScope != nil || s.parent == nil || len(stmt.Returning) > 0 {
@@ -203,8 +218,12 @@ func (p *PointUpdate) Run(ctx context.Context) (int64, error) {
 	var err error
 	if p.schema.inTx {
 		data, found, err = p.schema.schemaGet(p.key)
+	} else if p.stmt.prepared != nil {
+		cached := p.stmt.prepared
+		data, found, err = p.schema.lsm.GetForReaderInto(p.key, p.schema.snapshotReader, cached.pointValueScratch)
+		cached.pointValueScratch = data
 	} else {
-		data, found, err = p.schema.lsm.Get(p.key)
+		data, found, err = p.schema.lsm.GetForReaderInto(p.key, p.schema.snapshotReader, nil)
 	}
 	if err != nil || !found {
 		return 0, err
@@ -224,13 +243,22 @@ func (p *PointUpdate) Run(ctx context.Context) (int64, error) {
 			values[i] = NewNullValue()
 			continue
 		}
-		v, n := decodeValue(data[offset:])
+		v, n := decodePointUpdateValue(data[offset:])
 		v.Binary = p.info.Columns[i].Binary
 		values[i] = v
 		offset += n
 	}
 	offsets[len(p.info.Columns)] = offset
-	row := make(map[string]Value, len(p.bindings))
+	var row map[string]Value
+	if p.stmt.prepared != nil {
+		row = p.stmt.prepared.pointRowScratch
+	}
+	if row == nil {
+		row = make(map[string]Value, len(p.bindings))
+		if p.stmt.prepared != nil {
+			p.stmt.prepared.pointRowScratch = row
+		}
+	}
 	for name, i := range p.bindings {
 		row[name] = values[i]
 	}
@@ -291,13 +319,22 @@ func (p *PointUpdate) Run(ctx context.Context) (int64, error) {
 			return 0, err
 		}
 	}
-	encoded := make([]byte, 0, len(data)+16)
+	var encoded []byte
+	if p.stmt.prepared != nil {
+		encoded = p.stmt.prepared.pointWriteScratch[:0]
+	}
+	if cap(encoded) < len(data)+16 {
+		encoded = make([]byte, 0, len(data)+16)
+	}
 	for i := range p.info.Columns {
 		if changed[i] || offsets[i] == offsets[i+1] {
 			encoded = appendValue(encoded, values[i])
 		} else {
 			encoded = append(encoded, data[offsets[i]:offsets[i+1]]...)
 		}
+	}
+	if p.stmt.prepared != nil {
+		p.stmt.prepared.pointWriteScratch = encoded
 	}
 	if err := ctx.Err(); err != nil {
 		return 0, err
@@ -331,4 +368,17 @@ func (p *PointUpdate) Run(ctx context.Context) (int64, error) {
 	}
 	p.schema.parent.commitVersion.Add(1)
 	return 1, nil
+}
+
+// Point updates keep their input buffer alive through expression evaluation and
+// encoding. Their restricted expressions cannot mutate a BLOB. Borrow it here;
+// public results and transaction write sets continue to own independent bytes.
+func decodePointUpdateValue(data []byte) (Value, int) {
+	if len(data) > 0 && data[0] == binTypeBlob {
+		length, n := binary.Uvarint(data[1:])
+		if n > 0 && length <= uint64(len(data)-1-n) {
+			return Value{Type: ColBlob, Blob: data[1+n : 1+n+int(length)]}, 1 + n + int(length)
+		}
+	}
+	return decodeValue(data)
 }

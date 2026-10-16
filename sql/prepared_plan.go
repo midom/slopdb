@@ -50,6 +50,8 @@ type preparedExecutionPlan struct {
 	pointPossible                      bool
 	pointKey                           []byte
 	pointKeyScratch, pointValueScratch []byte
+	pointWriteScratch                  []byte
+	pointRowScratch                    map[string]Value
 	pointKeyReady, pointKeyOK          bool
 	ranges                             []preparedRangeTerm
 	rangeFallback                      bool
@@ -337,6 +339,14 @@ func (p *preparedExecutionPlan) tupleCoverage(s *Schema, stmt *SelectStmt, idx *
 	return p.coverage[idx]
 }
 func (p *preparedExecutionPlan) releaseValues() {
+	if len(p.pointRowScratch) > 128 {
+		p.pointRowScratch = nil
+	} else {
+		clear(p.pointRowScratch)
+	}
+	if cap(p.pointWriteScratch) > 64<<10 {
+		p.pointWriteScratch = nil
+	}
 	p.pointKey, p.pointKeyReady, p.pointKeyOK = nil, false, false
 	// Plans are pooled. Retain bounded private scratch, never caller results.
 	if cap(p.pointKeyScratch) > 64<<10 {

@@ -26,9 +26,8 @@ type LSMTree struct {
 	view                  *readView
 	published             atomic.Uint64
 	pageSize              atomic.Int64
-	writeMu               sync.Mutex
-	writeQueue            []*queuedBatch
-	writeActive           bool
+	writeQueue            batchQueue
+	walWriteScratch       []byte // writerMu protects encoding scratch
 	writeGroups           atomic.Int64
 	writeBatches          atomic.Int64
 	completedCompactions  atomic.Int64
@@ -163,7 +162,7 @@ func NewLSMTree(dir string, opt *Options) (*LSMTree, error) {
 		opt:        opt,
 		dir:        dir,
 		lockFile:   lockFile,
-		mem:        NewMemTable(),
+		mem:        newMemTableSized(opt.WriteBufferSize, opt.HashMemTable),
 		seqNum:     0,
 		fileNum:    0,
 		tableCache: newTableCache(dir, opt.MaxOpenFiles, opt.BlockCacheSize, opt.BlockCachePolicy, opt.BlockCacheMemory),
@@ -239,7 +238,7 @@ func NewLSMTree(dir string, opt *Options) (*LSMTree, error) {
 	// WAL fsync, checkpoint to SSTables rather than replace them with an unsynced WAL.
 	if lsm.mem.ApproximateSize() > 0 && (opt.DisableWAL || opt.DisableWALSync) {
 		lsm.imm = lsm.mem
-		lsm.mem = NewMemTable()
+		lsm.mem = newMemTableSized(opt.WriteBufferSize, opt.HashMemTable)
 		lsm.mu.Lock()
 		err := lsm.flushMemTableSync()
 		lsm.mu.Unlock()
@@ -390,12 +389,21 @@ func (l *LSMTree) writeMutations(batch []Mutation, syncWAL, rangeDelete bool) er
 		for _, w := range batch {
 			capacity += 9 + 3*binary.MaxVarintLen64 + len(w.Key) + len(w.Value)
 		}
-		data := make([]byte, 1, capacity)
+		data := l.walWriteScratch[:0]
+		if cap(data) < capacity {
+			data = make([]byte, 0, capacity)
+		}
+		data = data[:1]
 		data[0] = 3
 		for i, w := range batch {
 			size := 9 + uvarintSize(uint64(len(w.Key))) + len(w.Key) + uvarintSize(uint64(len(w.Value))) + len(w.Value)
 			data = binary.AppendUvarint(data, uint64(size))
 			data = appendWALRecord(data, typ(w), w.Key, w.Value, base+uint64(i)+1)
+		}
+		if cap(data) <= 4<<20 {
+			l.walWriteScratch = data
+		} else {
+			l.walWriteScratch = nil
 		}
 		err := wal.AddRecord(data)
 		if err == nil && syncWAL && !l.opt.DisableWALSync {
@@ -409,27 +417,28 @@ func (l *LSMTree) writeMutations(batch []Mutation, syncWAL, rangeDelete bool) er
 			return err
 		}
 	}
-	// Keep small writes cheap. Large groups install in key order with one
-	// reusable search finger; all nodes stay hidden until batch publication.
-	var entries []KeyValue
-	if !rangeDelete && len(batch) >= 32 {
-		entries = make([]KeyValue, len(batch))
-		for i, w := range batch {
-			entries[i] = KeyValue{Key: InternalKey{UserKey: append([]byte(nil), w.Key...), SeqNum: base + uint64(i) + 1, OpType: typ(w)}, Value: w.Value}
+	// Hash versions retain WAL order; sorted batches reuse skip-list predecessors.
+	// Nodes stay hidden behind the committed watermark until the whole batch is installed.
+	mem.mu.Lock()
+	var sortedBatch []KeyValue
+	if mem.head != nil && len(batch) >= 32 {
+		sortedBatch = make([]KeyValue, 0, len(batch))
+	}
+	for i, w := range batch {
+		ik := InternalKey{UserKey: w.Key, SeqNum: base + uint64(i) + 1, OpType: typ(w)}
+		if sortedBatch != nil {
+			ik.UserKey = bytes.Clone(ik.UserKey)
+			sortedBatch = append(sortedBatch, KeyValue{Key: ik, Value: w.Value})
+		} else {
+			mem.insert(ik, w.Value)
+		}
+		if rangeDelete {
+			mem.ranges = append(mem.ranges, KeyValue{Key: InternalKey{UserKey: append([]byte(nil), w.Key...), SeqNum: ik.SeqNum, OpType: ik.OpType}, Value: append([]byte(nil), w.Value...)})
+			mem.hasRanges.Store(true)
 		}
 	}
-	mem.mu.Lock()
-	if entries != nil {
-		mem.insertBatch(entries)
-	} else {
-		for i, w := range batch {
-			ik := InternalKey{UserKey: append([]byte(nil), w.Key...), SeqNum: base + uint64(i) + 1, OpType: typ(w)}
-			mem.insert(ik, w.Value)
-			if rangeDelete {
-				mem.ranges = append(mem.ranges, KeyValue{Key: ik, Value: append([]byte(nil), w.Value...)})
-				mem.hasRanges.Store(true)
-			}
-		}
+	if sortedBatch != nil {
+		mem.insertSortedBatch(sortedBatch)
 	}
 	mem.maxSeq.Store(base + uint64(len(batch)))
 	mem.mu.Unlock()
@@ -586,6 +595,13 @@ func (l *LSMTree) readPointSince(key []byte, snapshot uint64, latest bool, since
 	}
 	defer view.release()
 	return readPointFromView(view, key, snapshot, since, versionOnly)
+}
+
+// GetForReaderInto reads the latest committed value with sharded view pins.
+// It captures the watermark together with the view; no caller snapshot pin is
+// needed. The returned value uses caller-owned scratch, as GetAtForReaderInto.
+func (l *LSMTree) GetForReaderInto(key []byte, reader uint64, dst []byte) ([]byte, bool, error) {
+	return l.GetAtForReaderInto(key, ^uint64(0), reader, dst)
 }
 
 // GetAtForReader uses a stable reader ID to distribute read-view references.
@@ -790,7 +806,7 @@ func (l *LSMTree) makeRoomForWrite() error {
 	}
 	l.imm = l.mem
 	l.flushWALNum = l.walFileNum
-	l.mem = NewMemTable()
+	l.mem = newMemTableSized(l.opt.WriteBufferSize, l.opt.HashMemTable)
 	if err := l.publishViewLocked(); err != nil {
 		// Rotation already changed the writer's memtable. Stop writes rather
 		// than accepting commits that the previous reader view cannot see.
@@ -1268,7 +1284,7 @@ func (l *LSMTree) Close() error {
 	if err == nil && l.imm == nil && l.mem.ApproximateSize() > 0 {
 		l.imm = l.mem
 		l.flushWALNum = l.walFileNum
-		l.mem = NewMemTable()
+		l.mem = newMemTableSized(l.opt.WriteBufferSize, l.opt.HashMemTable)
 		err = l.flushMemTableSync()
 	}
 	if err == nil {

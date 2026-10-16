@@ -85,7 +85,9 @@ func (s *Schema) showTableStatus(stmt *ShowStmt) (*ResultSet, error) {
 				root = s.parent
 			}
 			root.commitMu.RLock()
+			root.rowIDMu.Lock()
 			reserved := root.rowIDReservations[s.rowCounterKey(name)]
+			root.rowIDMu.Unlock()
 			root.commitMu.RUnlock()
 			if last < math.MaxInt64 {
 				row["Auto_increment"] = NewIntValue(max(last+1, reserved))

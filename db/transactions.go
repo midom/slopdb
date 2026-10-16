@@ -38,7 +38,8 @@ type Session struct {
 	transactionHandle bool
 	abortError        atomic.Pointer[TransactionAbortedError]
 	executionReader   uint64
-	selectTarget      sql.ResultSet // private destination view; session gate protects it
+	pointTarget       sql.PointUpdate // private prepared execution; session gate protects it
+	selectTarget      sql.ResultSet   // private destination view; session gate protects it
 }
 
 func (db *Database) NewSession() (*Session, error) {
@@ -158,11 +159,8 @@ func (s *Session) execParsedInto(ctx context.Context, statements []sql.Statement
 		return nil, ErrTxDone
 	}
 	if !bound {
-		if result, handled, err := s.tryPointUpdate(ctx, statements); handled {
-			if err == nil && dst != nil {
-				*dst = *result
-				result = dst
-			}
+		if result, handled, err := s.tryPointUpdate(ctx, statements, dst); handled {
+
 			return result, err
 		}
 	}

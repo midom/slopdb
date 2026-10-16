@@ -174,16 +174,20 @@ type transactionVictimID struct {
 // eligibility without reversing the transaction-control -> shard lock order.
 func (db *Database) hasPublicationVictimsLocked(shard *lockManager, publisher *sql.Schema, request sql.LockRequest, processed map[transactionVictimID]bool) bool {
 	if entry := shard.entry(request); entry != nil {
-		for owner, exclusive := range entry.owners {
+		found := false
+		entry.eachOwner(func(owner *sql.Schema, exclusive bool) {
 			if owner == publisher || (!exclusive && !request.Exclusive) {
-				continue
+				return
 			}
 			if raw, exists := db.locks.states.Load(owner); exists {
 				id := raw.(*ownerLocks).transaction.id.Load()
 				if id != 0 && !processed[transactionVictimID{owner, id}] {
-					return true
+					found = true
 				}
 			}
+		})
+		if found {
+			return true
 		}
 	}
 	return false
@@ -197,11 +201,11 @@ func (db *Database) selectPublicationVictims(publisher *sql.Schema, request sql.
 	shard.mu.Lock()
 	var owners []*sql.Schema
 	if entry := shard.entry(request); entry != nil {
-		for owner, exclusive := range entry.owners {
+		entry.eachOwner(func(owner *sql.Schema, exclusive bool) {
 			if owner != publisher && (exclusive || request.Exclusive) {
 				owners = append(owners, owner)
 			}
-		}
+		})
 	}
 	shard.mu.Unlock()
 	var victims []abortVictim
@@ -253,7 +257,7 @@ func (db *Database) abortPublicationBlockers(ctx context.Context, publisher *sql
 		shard.mu.Lock()
 		owns := false
 		if entry := shard.entry(request); entry != nil {
-			mode, held := entry.owners[victim.schema]
+			mode, held := entry.ownerMode(victim.schema)
 			owns = held && (mode || request.Exclusive)
 		}
 		if c.id.Load() == victim.id && owns {

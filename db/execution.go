@@ -150,7 +150,7 @@ func (g *executionGate) rUnlock(readers *atomic.Int64) {
 
 // The session gate remains held across both paths. A failed lock acquisition
 // leaves no locks behind, then uses the full executor's timeout/deadlock retry.
-func (s *Session) tryPointUpdate(ctx context.Context, statements []sql.Statement) (*ExecResult, bool, error) {
+func (s *Session) tryPointUpdate(ctx context.Context, statements []sql.Statement, dst *ExecResult) (*ExecResult, bool, error) {
 	if len(statements) != 1 {
 		return nil, false, nil
 	}
@@ -163,15 +163,18 @@ func (s *Session) tryPointUpdate(ctx context.Context, statements []sql.Statement
 		return nil, false, nil
 	}
 	held := d.locks.snapshot(s.schema)
-	if err := d.locks.acquire(s.schema, sql.LockRequest{Resource: "catalog"}); err != nil {
+	catalog, err := d.locks.acquirePointCatalog(s.schema)
+	if err != nil {
 		return nil, false, nil
 	}
+	defer d.locks.releasePointCatalog(catalog)
 	defer d.locks.restore(s.schema, held)
 	s.schema.SetContext(ctx)
 	if err := s.schema.RefreshReadCommitted(); err != nil {
 		return nil, true, err
 	}
-	plan := s.schema.PreparePointUpdate(stmt)
+	plan := s.schema.PreparePointUpdateInto(stmt, &s.pointTarget)
+	defer func() { s.pointTarget = sql.PointUpdate{} }()
 	if plan == nil {
 		return nil, false, nil
 	}
@@ -185,5 +188,9 @@ func (s *Session) tryPointUpdate(ctx context.Context, statements []sql.Statement
 	if err != nil {
 		return nil, true, err
 	}
-	return &ExecResult{Changes: changes}, true, nil
+	if dst == nil {
+		dst = new(ExecResult)
+	}
+	*dst = ExecResult{Changes: changes}
+	return dst, true, nil
 }

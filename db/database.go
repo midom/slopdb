@@ -252,7 +252,12 @@ func (db *Database) execStatementsInto(ctx context.Context, stmts []sql.Statemen
 				cleanup()
 				return nil, err
 			}
-			err = db.statementCatalogLock(schema, stmt)
+			var catalog *ownerLocks
+			if _, insert := stmt.(*sql.InsertStmt); insert && !schema.InTransaction() {
+				catalog, err = db.locks.acquirePointCatalog(schema)
+			} else {
+				err = db.statementCatalogLock(schema, stmt)
+			}
 			if err == nil {
 				if _, rollback := stmt.(*sql.RollbackStmt); !rollback {
 					err = schema.StartStatement()
@@ -284,6 +289,7 @@ func (db *Database) execStatementsInto(ctx context.Context, stmts []sql.Statemen
 			} else if err != nil {
 				db.locks.restore(schema, held)
 			}
+			db.locks.releasePointCatalog(catalog)
 			var waiting *lockWait
 			if errors.As(err, &waiting) {
 				if lockTimeout == 0 {

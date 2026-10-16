@@ -3,15 +3,12 @@ package storage
 import (
 	"bytes"
 	"encoding/binary"
-	"math/rand"
-	"sort"
+	"slices"
 	"sync"
 	"sync/atomic"
 )
 
 const (
-	maxHeight        = 12
-	branching        = 4
 	kTypeValue       = 1
 	kTypeDelete      = 0
 	kTypeRangeDelete = 2
@@ -45,54 +42,78 @@ type KeyValue struct {
 	Value []byte
 }
 
-type skipNode struct {
+// memNode is immutable after publication. Hash chains can contain several
+// versions of a key; point reads select the greatest visible sequence.
+type memNode struct {
 	key   InternalKey
 	value []byte
-	next  []atomic.Pointer[skipNode]
+	next  *memNode
+	order uint64
 }
 
+const memHashBuckets = 1 << 16
+
+type memSorted struct{ nodes []*memNode }
+
 type MemTable struct {
-	mu        sync.RWMutex
-	head      *skipNode
-	height    atomic.Int32
-	approxSz  atomic.Int64
-	entries   int64 // protected by mu; includes retained versions and tombstones
-	arena     []byte
-	arenaOff  int
-	refs      atomic.Int32
-	ranges    []KeyValue
-	maxSeq    atomic.Uint64
-	hasRanges atomic.Bool
+	mu         sync.RWMutex
+	head       *skipNode
+	height     atomic.Int32
+	buckets    []atomic.Pointer[memNode]
+	nodes      []*memNode // mu protects the append log and sorted-cache publication
+	sorted     atomic.Pointer[memSorted]
+	approxSz   atomic.Int64
+	entries    int64
+	nodeChunk  []memNode
+	nodeOffset int
+	byteChunk  []byte
+	byteOffset int
+	refs       atomic.Int32
+	ranges     []KeyValue
+	maxSeq     atomic.Uint64
+	ordered    atomic.Bool
+	lastSeq    uint64 // mu serializes insertion order
+	hasRanges  atomic.Bool
 }
 
 func NewMemTable() *MemTable {
-	head := &skipNode{
-		next: make([]atomic.Pointer[skipNode], maxHeight),
-	}
-	m := &MemTable{head: head, arena: make([]byte, 1024*1024)}
-	m.height.Store(1)
-	return m
+	return newMemTableSized(0, false)
 }
 
+func newMemTableSized(writeBufferSize int, hash bool) *MemTable {
+	if !hash {
+		m := &MemTable{head: &skipNode{next: make([]atomic.Pointer[skipNode], maxHeight)}}
+		m.height.Store(1)
+		return m
+	}
+	buckets := memHashBuckets
+	for buckets < writeBufferSize/128 && buckets < 1<<20 {
+		buckets *= 2
+	}
+	m := &MemTable{buckets: make([]atomic.Pointer[memNode], buckets)}
+	m.ordered.Store(true)
+	return m
+}
 func (m *MemTable) Ref()   { m.refs.Add(1) }
 func (m *MemTable) Unref() { m.refs.Add(-1) }
 
-func (m *MemTable) randomHeight() int {
-	h := 1
-	for h < maxHeight && rand.Intn(branching) == 0 {
-		h++
+func memKeyHash(key []byte) uint64 {
+	h := uint64(14695981039346656037)
+	for _, b := range key {
+		h = (h ^ uint64(b)) * 1099511628211
 	}
+	// Spread short integer keys across all bucket bits.
+	h ^= h >> 32
 	return h
 }
 
 func (m *MemTable) Put(seq uint64, opType uint8, key, value []byte) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
-	ik := InternalKey{UserKey: append([]byte(nil), key...), SeqNum: seq, OpType: opType}
+	ik := InternalKey{UserKey: key, SeqNum: seq, OpType: opType}
 	m.insert(ik, value)
 	if opType == kTypeRangeDelete {
-		m.ranges = append(m.ranges, KeyValue{Key: ik, Value: append([]byte(nil), value...)})
+		m.ranges = append(m.ranges, KeyValue{Key: InternalKey{UserKey: append([]byte(nil), key...), SeqNum: seq, OpType: opType}, Value: append([]byte(nil), value...)})
 		m.hasRanges.Store(true)
 	}
 	if seq > m.maxSeq.Load() {
@@ -100,93 +121,49 @@ func (m *MemTable) Put(seq uint64, opType uint8, key, value []byte) {
 	}
 }
 
+// The caller serializes writers with mu. Input bytes are copied into immutable
+// chunks owned by the memtable. Link publication
+// is atomic; readers filter nodes using the committed sequence watermark.
 func (m *MemTable) insert(ik InternalKey, value []byte) {
-	var update [maxHeight]*skipNode
-	m.insertWithFinger(ik, value, &update, false)
-}
-
-// A sorted atomic batch can reuse predecessors from its previous key rather
-// than restart every skip-list search at the head. Sequence numbers retain
-// their original WAL order; only installation order changes.
-func (m *MemTable) insertBatch(entries []KeyValue) {
-	sort.Slice(entries, func(i, j int) bool { return entries[i].Key.Compare(entries[j].Key) < 0 })
-	var update [maxHeight]*skipNode
-	for _, entry := range entries {
-		m.insertWithFinger(entry.Key, entry.Value, &update, true)
+	if m.head != nil {
+		ik.UserKey = bytes.Clone(ik.UserKey)
+		m.insertSorted(ik, value)
+		return
 	}
-}
-
-// Caller serializes writers with mu; readers follow immutable atomic links.
-func (m *MemTable) insertWithFinger(ik InternalKey, value []byte, update *[maxHeight]*skipNode, reuse bool) {
-	node := m.head
-
-	for i := int(m.height.Load()) - 1; i >= 0; i-- {
-		if reuse && update[i] != nil && (node == m.head || update[i].key.Compare(node.key) > 0) {
-			node = update[i]
-		}
-		for next := node.next[i].Load(); next != nil && next.key.Compare(ik) < 0; next = node.next[i].Load() {
-			node = next
-		}
-		update[i] = node
+	size := len(ik.UserKey) + len(value)
+	if len(m.byteChunk)-m.byteOffset < size {
+		m.byteChunk = make([]byte, max(64<<10, size))
+		m.byteOffset = 0
 	}
-
-	h := m.randomHeight()
-	height := int(m.height.Load())
-	if h > height {
-		for i := height; i < h; i++ {
-			update[i] = m.head
-		}
+	start := m.byteOffset
+	keyEnd := start + len(ik.UserKey)
+	end := start + size
+	copy(m.byteChunk[start:keyEnd], ik.UserKey)
+	copy(m.byteChunk[keyEnd:end], value)
+	ik.UserKey = m.byteChunk[start:keyEnd:keyEnd]
+	ownedValue := m.byteChunk[keyEnd:end:end]
+	m.byteOffset = end
+	if m.nodeOffset == len(m.nodeChunk) {
+		m.nodeChunk = make([]memNode, 512)
+		m.nodeOffset = 0
 	}
-
-	newNode := &skipNode{
-		key:   ik,
-		value: append([]byte{}, value...),
-		next:  make([]atomic.Pointer[skipNode], h),
+	node := &m.nodeChunk[m.nodeOffset]
+	m.nodeOffset++
+	bucket := &m.buckets[memKeyHash(ik.UserKey)&uint64(len(m.buckets)-1)]
+	if ik.SeqNum < m.lastSeq {
+		m.ordered.Store(false)
 	}
-	for i := 0; i < h; i++ {
-		newNode.next[i].Store(update[i].next[i].Load())
-	}
-	// Initialize every link before publishing the immutable node. Writers are
-	// serialized; readers follow atomic links and filter by their sequence.
-	for i := 0; i < h; i++ {
-		update[i].next[i].Store(newNode)
-		if reuse {
-			update[i] = newNode
-		}
-	}
-	if h > height {
-		m.height.Store(int32(h))
-	}
+	m.lastSeq = ik.SeqNum
+	*node = memNode{key: ik, value: ownedValue, next: bucket.Load(), order: uint64(m.entries)}
+	m.nodes = append(m.nodes, node)
+	m.sorted.Store(nil)
+	bucket.Store(node)
 	m.approxSz.Add(int64(len(ik.UserKey) + len(value) + 32))
 	m.entries++
 }
 
-// Keep the successor observed at the bottom search step. Reloading the
-// predecessor's link after that step could pick up a newly inserted smaller
-// key and incorrectly report the requested key missing.
-func (m *MemTable) findGreaterOrEqual(target InternalKey) *skipNode {
-	node := m.head
-	var next *skipNode
-	for level := int(m.height.Load()) - 1; level >= 0; level-- {
-		for {
-			next = node.next[level].Load()
-			if next == nil || next.key.Compare(target) >= 0 {
-				break
-			}
-			node = next
-		}
-	}
-	return next
-}
-
-func (m *MemTable) Get(key []byte) ([]byte, bool) {
-	v, _, ok := m.GetWithSeq(key)
-	return v, ok
-}
-
+func (m *MemTable) Get(key []byte) ([]byte, bool) { v, _, ok := m.GetWithSeq(key); return v, ok }
 func (m *MemTable) GetWithSeq(key []byte) ([]byte, uint64, bool) {
-	// Capture publication before traversing: installed but unpublished nodes
-	// must not replace the previous committed value.
 	kv, found, _ := m.lookupAt(key, m.maxSeq.Load())
 	if !found {
 		return nil, 0, false
@@ -196,129 +173,171 @@ func (m *MemTable) GetWithSeq(key []byte) ([]byte, uint64, bool) {
 	}
 	return kv.Value, kv.Key.SeqNum, true
 }
-
-func (m *MemTable) IsDeletedByRange(key []byte) bool {
-	_, covered := m.IsDeletedByRangeSeq(key)
-	return covered
-}
-
+func (m *MemTable) IsDeletedByRange(key []byte) bool { _, ok := m.IsDeletedByRangeSeq(key); return ok }
 func (m *MemTable) IsDeletedByRangeSeq(key []byte) (uint64, bool) {
-	snapshot := m.maxSeq.Load()
-	var maxRangeSeq uint64
-	found := false
-	node := m.head.next[0].Load()
-	for node != nil {
-		if node.key.OpType == kTypeRangeDelete && node.key.SeqNum <= snapshot {
-			start := node.key.UserKey
-			end := node.value
-			if bytes.Compare(key, start) >= 0 && bytes.Compare(key, end) < 0 {
-				if node.key.SeqNum > maxRangeSeq {
-					maxRangeSeq = node.key.SeqNum
-					found = true
-				}
-			}
-		}
-		node = node.next[0].Load()
+	if !m.hasRanges.Load() {
+		return 0, false
 	}
-	return maxRangeSeq, found
+	snapshot := m.maxSeq.Load()
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var seq uint64
+	found := false
+	for _, rd := range m.ranges {
+		if rd.Key.SeqNum <= snapshot && bytes.Compare(key, rd.Key.UserKey) >= 0 && bytes.Compare(key, rd.Value) < 0 {
+			if !found || rd.Key.SeqNum > seq {
+				seq = rd.Key.SeqNum
+			}
+			found = true
+		}
+	}
+	return seq, found
 }
-
+func (m *MemTable) rangeSequence(key []byte, snapshot uint64) uint64 {
+	if !m.hasRanges.Load() {
+		return 0
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var seq uint64
+	for _, rd := range m.ranges {
+		if rd.Key.SeqNum <= snapshot && rd.Key.SeqNum > seq && bytes.Compare(key, rd.Key.UserKey) >= 0 && bytes.Compare(key, rd.Value) < 0 {
+			seq = rd.Key.SeqNum
+		}
+	}
+	return seq
+}
 func (m *MemTable) ApproximateSize() int { return int(m.approxSz.Load()) }
 
-// Nodes and values are immutable; links are atomic. Cap the sequence so
-// concurrent inserts never enter an iterator's view.
-func (m *MemTable) NewIterator() *MemTableIterator {
-	return m.NewIteratorAt(^uint64(0))
+// Scans sort a private copy of the append log. Frozen tables reuse that sorted
+// copy. Sorting holds no writer lock, and iterators never observe later nodes.
+func (m *MemTable) sortedNodes() []*memNode {
+	if cached := m.sorted.Load(); cached != nil {
+		return cached.nodes
+	}
+	m.mu.RLock()
+	nodes := append([]*memNode(nil), m.nodes...)
+	m.mu.RUnlock()
+	slices.SortFunc(nodes, func(a, b *memNode) int {
+		if c := a.key.Compare(b.key); c != 0 {
+			return c
+		}
+		if a.order > b.order {
+			return -1
+		}
+		if a.order < b.order {
+			return 1
+		}
+		return 0
+	})
+	m.mu.Lock()
+	if len(m.nodes) == len(nodes) {
+		m.sorted.Store(&memSorted{nodes: nodes})
+	}
+	m.mu.Unlock()
+	return nodes
 }
-
+func (m *MemTable) NewIterator() *MemTableIterator { return m.NewIteratorAt(^uint64(0)) }
 func (m *MemTable) NewIteratorAt(snapshot uint64) *MemTableIterator {
 	if maxSeq := m.maxSeq.Load(); snapshot > maxSeq {
 		snapshot = maxSeq
 	}
-	it := &MemTableIterator{table: m, maxSeq: snapshot}
-	it.current = it.visibleForward(m.head.next[0].Load())
-	it.afterEnd = it.current == nil
+	if m.head != nil {
+		it := &sortedMemTableIterator{table: m, maxSeq: snapshot}
+		it.current = it.visibleForward(m.head.next[0].Load())
+		it.afterEnd = it.current == nil
+		return &MemTableIterator{table: m, maxSeq: snapshot, skip: *it}
+	}
+	it := &MemTableIterator{table: m, nodes: m.sortedNodes(), maxSeq: snapshot}
+	it.skipForward()
 	return it
 }
 
 type MemTableIterator struct {
-	table    *MemTable
-	current  *skipNode
-	maxSeq   uint64
-	afterEnd bool
+	table  *MemTable
+	skip   sortedMemTableIterator
+	nodes  []*memNode
+	pos    int
+	maxSeq uint64
 }
 
-// Concurrent insertion only changes atomic links, never the current node.
-func (it *MemTableIterator) visibleForward(node *skipNode) *skipNode {
-	for node != nil && node.key.SeqNum > it.maxSeq {
-		node = node.next[0].Load()
+func (it *MemTableIterator) skipForward() {
+	for it.pos < len(it.nodes) && it.nodes[it.pos].key.SeqNum > it.maxSeq {
+		it.pos++
 	}
-	return node
 }
-
-func (it *MemTableIterator) Valid() bool { return it.current != nil }
+func (it *MemTableIterator) Valid() bool {
+	if it.table.head != nil {
+		return it.skip.Valid()
+	}
+	return it.pos >= 0 && it.pos < len(it.nodes)
+}
 func (it *MemTableIterator) Next() {
-	if it.current != nil {
-		it.current = it.visibleForward(it.current.next[0].Load())
-		it.afterEnd = it.current == nil
+	if it.table.head != nil {
+		it.skip.Next()
+		return
+	}
+	if it.Valid() {
+		it.pos++
+		it.skipForward()
 	}
 }
 func (it *MemTableIterator) Prev() {
-	if it.current == nil && !it.afterEnd {
+	if it.table.head != nil {
+		it.skip.Prev()
 		return
 	}
-	target := it.current
-	for {
-		node := it.table.head
-		for level := int(it.table.height.Load()) - 1; level >= 0; level-- {
-			for next := node.next[level].Load(); next != nil && (target == nil || next.key.Compare(target.key) < 0); next = node.next[level].Load() {
-				node = next
-			}
-		}
-		if node == it.table.head {
-			it.current = nil
-			it.afterEnd = false
-			return
-		}
-		if node.key.SeqNum <= it.maxSeq {
-			it.current = node
-			it.afterEnd = false
-			return
-		}
-		target = node
+	if it.pos < 0 {
+		return
+	}
+	it.pos--
+	for it.pos >= 0 && it.nodes[it.pos].key.SeqNum > it.maxSeq {
+		it.pos--
 	}
 }
 func (it *MemTableIterator) Key() InternalKey {
+	if it.table.head != nil {
+		return it.skip.Key()
+	}
 	if it.Valid() {
-		return it.current.key
+		return it.nodes[it.pos].key
 	}
 	return InternalKey{}
 }
 func (it *MemTableIterator) Value() []byte {
+	if it.table.head != nil {
+		return it.skip.Value()
+	}
 	if it.Valid() {
-		return it.current.value
+		return it.nodes[it.pos].value
 	}
 	return nil
 }
 func (it *MemTableIterator) Seek(key []byte) {
+	if it.table.head != nil {
+		it.skip.Seek(key)
+		return
+	}
 	target := InternalKey{UserKey: key, SeqNum: it.maxSeq}
-	it.current = it.visibleForward(it.table.findGreaterOrEqual(target))
-	it.afterEnd = it.current == nil
+	it.pos, _ = slices.BinarySearchFunc(it.nodes, target, func(n *memNode, k InternalKey) int { return n.key.Compare(k) })
+	it.skipForward()
 }
 func (it *MemTableIterator) SkipUserKey(key []byte) {
-	node := it.table.head
-	var next *skipNode
-	for level := int(it.table.height.Load()) - 1; level >= 0; level-- {
-		for {
-			next = node.next[level].Load()
-			if next == nil || bytes.Compare(next.key.UserKey, key) > 0 {
-				break
-			}
-			node = next
+	if it.table.head != nil {
+		it.skip.SkipUserKey(key)
+		return
+	}
+	lo, hi := 0, len(it.nodes)
+	for lo < hi {
+		mid := lo + (hi-lo)/2
+		if bytes.Compare(it.nodes[mid].key.UserKey, key) <= 0 {
+			lo = mid + 1
+		} else {
+			hi = mid
 		}
 	}
-	it.current = it.visibleForward(next)
-	it.afterEnd = it.current == nil
+	it.pos = lo
+	it.skipForward()
 }
 func (it *MemTableIterator) RangeTombstones() []KeyValue {
 	if !it.table.hasRanges.Load() {
@@ -334,23 +353,47 @@ func (it *MemTableIterator) RangeTombstones() []KeyValue {
 	}
 	return ranges
 }
-func (it *MemTableIterator) Close() { it.current = nil; it.afterEnd = false }
+func (it *MemTableIterator) Close() {
+	if it.table.head != nil {
+		it.skip.Close()
+	}
+	it.nodes = nil
+	it.pos = -1
+}
+func (it *MemTableIterator) SeekToLast() {
+	if it.table.head != nil {
+		it.skip.SeekToLast()
+		return
+	}
+	it.pos = len(it.nodes)
+	it.Prev()
+}
 
 func (m *MemTable) lookupAt(key []byte, snapshot uint64) (KeyValue, bool, uint64) {
-	var rangeSeq uint64
-	if m.hasRanges.Load() {
-		m.mu.RLock()
-		for _, rd := range m.ranges {
-			if rd.Key.SeqNum <= snapshot && rd.Key.SeqNum > rangeSeq && bytes.Compare(key, rd.Key.UserKey) >= 0 && bytes.Compare(key, rd.Value) < 0 {
-				rangeSeq = rd.Key.SeqNum
+	rangeSeq := m.rangeSequence(key, snapshot)
+	if m.head != nil {
+		for node := m.findGreaterOrEqual(InternalKey{UserKey: key, SeqNum: snapshot}); node != nil && bytes.Equal(node.key.UserKey, key); node = node.next[0].Load() {
+			if node.key.SeqNum <= snapshot && node.key.OpType != kTypeRangeDelete {
+				return KeyValue{Key: node.key, Value: node.value}, true, rangeSeq
 			}
 		}
-		m.mu.RUnlock()
+		return KeyValue{}, false, rangeSeq
 	}
-	for node := m.findGreaterOrEqual(InternalKey{UserKey: key, SeqNum: snapshot}); node != nil && bytes.Equal(node.key.UserKey, key); node = node.next[0].Load() {
-		if node.key.SeqNum <= snapshot && node.key.OpType != kTypeRangeDelete {
-			return KeyValue{Key: node.key, Value: node.value}, true, rangeSeq
+	var best *memNode
+	node := m.buckets[memKeyHash(key)&uint64(len(m.buckets)-1)].Load()
+	ordered := m.ordered.Load()
+	for ; node != nil; node = node.next {
+		if node.key.SeqNum <= snapshot && node.key.OpType != kTypeRangeDelete && bytes.Equal(node.key.UserKey, key) && (best == nil || node.key.SeqNum > best.key.SeqNum) {
+			best = node
+			// WAL installation is in increasing sequence order. The first visible
+			// matching node is therefore newest; direct out-of-order Put falls back.
+			if ordered {
+				break
+			}
 		}
+	}
+	if best != nil {
+		return KeyValue{Key: best.key, Value: best.value}, true, rangeSeq
 	}
 	return KeyValue{}, false, rangeSeq
 }
@@ -375,5 +418,3 @@ func EncodeInternalKey(ik InternalKey) []byte {
 	binary.LittleEndian.PutUint64(buf[len(ik.UserKey):], tag)
 	return buf
 }
-
-func (it *MemTableIterator) SeekToLast() { it.current = nil; it.afterEnd = true; it.Prev() }

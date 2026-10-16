@@ -45,6 +45,7 @@ type Options struct {
 	MaxCTEIterations     int64  // recursive CTE iterations; default 100,000, zero unlimited
 	MaxCTERows           int64  // recursive CTE emitted rows; default 1,000,000, zero unlimited
 	Dir                  string
+	HashMemTable         bool             // opt in to hash memtables; default skip list supports scans without sorting
 	WriteBufferSize      int              // memtable size in bytes before flush (default 4MB)
 	BlockSize            int              // legacy block target; PageSize/stored target take precedence over default 4096
 	PageSize             int64            // uncompressed SSTable data-block target; 0 reuses stored size/default 4096
@@ -70,6 +71,10 @@ type Options struct {
 	QueryTimeout         time.Duration    // default SQL call deadline; zero disables it
 	LockTimeout          time.Duration    // maximum transaction lock wait per SQL call; zero fails immediately on contention
 	DeadlockDetection    bool             // detect wait-for cycles and roll back the requesting transaction
+
+	// Keep automatic-ID reservations in memory. After reopen, allocation starts
+	// above the highest surviving row ID, so deleted high IDs can be reused.
+	DisableAutoIncrementPersistence bool
 }
 
 func (o *Options) compressionType(level int) (CompressionType, error) {

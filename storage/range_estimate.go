@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"slices"
 	"sort"
 )
 
@@ -31,7 +32,8 @@ type RangeEstimate struct {
 // EstimateRange uses index seeks and byte offsets, reading at most two boundary
 // blocks and eight randomly selected interior blocks per overlapping SSTable.
 // It never constructs a disk range iterator. Memtables use an exact short prefix
-// followed by weighted sampling on a skip-list level. Pin an older snapshot for
+// followed by weighted sampling on a skip-list level. Optional hash memtables
+// first sort their append log, then sample the sorted index. Pin an older snapshot for
 // the call's lifetime, as with GetAt; MaxUint64 selects the current watermark.
 func (l *LSMTree) EstimateRange(ctx context.Context, lower, upper []byte, snapshot uint64) (RangeEstimate, error) {
 	return l.estimateRange(ctx, lower, upper, snapshot, true)
@@ -177,55 +179,52 @@ func inEstimateRange(key, lower, upper []byte) bool {
 }
 
 func (e *rangeEstimator) memtable(m *MemTable, lower, upper []byte) (size, rows, values float64, err error) {
-	node := m.findGreaterOrEqual(InternalKey{UserKey: lower, SeqNum: math.MaxUint64})
+	if m.head != nil {
+		return e.sortedMemtable(m, lower, upper)
+	}
+	it := m.NewIteratorAt(e.snapshot)
+	defer it.Close()
+	it.Seek(lower)
 	var exact estimateSample
 	n := 0
-	for ; node != nil && (upper == nil || bytes.Compare(node.key.UserKey, upper) < 0) && n < rangeMemExactEntries; node = node.next[0].Load() {
+	for ; it.Valid() && (upper == nil || bytes.Compare(it.Key().UserKey, upper) < 0) && n < rangeMemExactEntries; it.Next() {
 		if err = e.ctx.Err(); err != nil {
 			return
 		}
 		n++
-		if node.key.SeqNum > e.snapshot {
-			continue
-		}
-		size += float64(len(node.key.UserKey) + 8 + len(node.value))
-		e.add(&exact, node.key, len(node.value))
+		key, value := it.Key(), it.Value()
+		size += float64(len(key.UserKey) + 8 + len(value))
+		e.add(&exact, key, len(value))
 	}
 	rows, values, err = e.visible(&exact)
-	if err != nil || node == nil || upper != nil && bytes.Compare(node.key.UserKey, upper) >= 0 {
+	if err != nil || !it.Valid() || upper != nil && bytes.Compare(it.Key().UserKey, upper) >= 0 {
 		return
 	}
-	// Promotion is independent of record contents, with probability 4^-level.
-	// Choose a level expected to retain 256-1024 nodes over the whole buffer.
-	// Use record count rather than bytes so large values do not undersample.
-	m.mu.RLock()
-	entries := m.entries
-	m.mu.RUnlock()
-	level, weight := 0, int64(1)
-	for level < maxHeight-1 && entries/weight > rangeMemSampleEntries {
-		level++
-		weight *= branching
+	// The immutable sorted copy permits uniform sampling of the remaining
+	// records without walking every entry. Account for snapshot visibility.
+	start := it.pos
+	end := len(it.nodes)
+	if upper != nil {
+		end, _ = slices.BinarySearchFunc(it.nodes, upper, func(n *memNode, k []byte) int { return bytes.Compare(n.key.UserKey, k) })
 	}
-	target := node.key
-	current := m.head
-	for h := int(m.height.Load()) - 1; h >= level; h-- {
-		for next := current.next[h].Load(); next != nil && next.key.Compare(target) < 0; next = current.next[h].Load() {
-			current = next
-		}
+	stride := (end - start + rangeMemSampleEntries - 1) / rangeMemSampleEntries
+	if stride < 1 {
+		stride = 1
 	}
 	var sampled estimateSample
-	for node = current.next[level].Load(); node != nil && (upper == nil || bytes.Compare(node.key.UserKey, upper) < 0); node = node.next[level].Load() {
+	for pos := start; pos < end; pos += stride {
 		if err = e.ctx.Err(); err != nil {
 			return
 		}
+		node := it.nodes[pos]
 		if node.key.SeqNum > e.snapshot {
 			continue
 		}
-		size += float64(weight) * float64(len(node.key.UserKey)+8+len(node.value))
+		size += float64(stride) * float64(len(node.key.UserKey)+8+len(node.value))
 		e.add(&sampled, node.key, len(node.value))
 	}
 	r, v, err := e.visible(&sampled)
-	return size, rows + r*float64(weight), values + v*float64(weight), err
+	return size, rows + r*float64(stride), values + v*float64(stride), err
 }
 
 func estimateHandle(r *SSTableReader, it *BlockIterator) (BlockHandle, error) {
@@ -405,4 +404,56 @@ func (e *rangeEstimator) table(r *SSTableReader, lower, upper []byte) (size, row
 		values += vv * weight
 	}
 	return
+}
+
+func (e *rangeEstimator) sortedMemtable(m *MemTable, lower, upper []byte) (size, rows, values float64, err error) {
+	node := m.findGreaterOrEqual(InternalKey{UserKey: lower, SeqNum: math.MaxUint64})
+	var exact estimateSample
+	n := 0
+	for ; node != nil && (upper == nil || bytes.Compare(node.key.UserKey, upper) < 0) && n < rangeMemExactEntries; node = node.next[0].Load() {
+		if err = e.ctx.Err(); err != nil {
+			return
+		}
+		n++
+		if node.key.SeqNum > e.snapshot {
+			continue
+		}
+		size += float64(len(node.key.UserKey) + 8 + len(node.value))
+		e.add(&exact, node.key, len(node.value))
+	}
+	rows, values, err = e.visible(&exact)
+	if err != nil || node == nil || upper != nil && bytes.Compare(node.key.UserKey, upper) >= 0 {
+		return
+	}
+	// Promotion is independent of record contents, with probability 4^-level.
+	// Choose a level expected to retain 256-1024 nodes over the whole buffer.
+	// Use record count rather than bytes so large values do not undersample.
+	m.mu.RLock()
+	entries := m.entries
+	m.mu.RUnlock()
+	level, weight := 0, int64(1)
+	for level < maxHeight-1 && entries/weight > rangeMemSampleEntries {
+		level++
+		weight *= branching
+	}
+	target := node.key
+	current := m.head
+	for h := int(m.height.Load()) - 1; h >= level; h-- {
+		for next := current.next[h].Load(); next != nil && next.key.Compare(target) < 0; next = current.next[h].Load() {
+			current = next
+		}
+	}
+	var sampled estimateSample
+	for node = current.next[level].Load(); node != nil && (upper == nil || bytes.Compare(node.key.UserKey, upper) < 0); node = node.next[level].Load() {
+		if err = e.ctx.Err(); err != nil {
+			return
+		}
+		if node.key.SeqNum > e.snapshot {
+			continue
+		}
+		size += float64(weight) * float64(len(node.key.UserKey)+8+len(node.value))
+		e.add(&sampled, node.key, len(node.value))
+	}
+	r, v, err := e.visible(&sampled)
+	return size, rows + r*float64(weight), values + v*float64(weight), err
 }

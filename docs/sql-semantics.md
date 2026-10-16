@@ -13,6 +13,17 @@ column to generate an ID; omitting an ordinary primary-key column is an error
 unless its DEFAULT supplies a non-NULL value. Duplicate primary-key declarations
 and invalid AUTOINCREMENT declarations are rejected.
 
+Automatic IDs use persistent counters by default. An ID allocated by a committed
+INSERT remains reserved after its row is deleted and the database is reopened.
+
+Set `storage.Options.DisableAutoIncrementPersistence = true`, or start the CLI
+with `--no-autoincrement-persistence`, to keep these reservations in memory.
+In this mode, reopening the database starts allocation above the highest row ID
+still present. Deleted high IDs can therefore be used again. IDs stay reserved
+within one open instance. Row data still uses the selected WAL and fsync mode.
+The option applies to all automatic-ID columns in that open instance. Previously
+stored counters are ignored for allocation while this option is enabled.
+
 All columns enforce their declared INTEGER, REAL, TEXT, or BLOB type after the
 existing affinity conversions. `VARCHAR(n)` uses TEXT storage and collation,
 but limits the stored value to `n` Unicode code points. `VARBINARY(n)` uses BLOB

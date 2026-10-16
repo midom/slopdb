@@ -40,7 +40,7 @@ func (l *LSMTree) flushWithWriterLocked() error {
 	l.imm = l.mem
 	l.flushWALNum = l.walFileNum
 	l.walFileNum = 0
-	l.mem = NewMemTable()
+	l.mem = newMemTableSized(l.opt.WriteBufferSize, l.opt.HashMemTable)
 	if err := l.publishViewLocked(); err != nil {
 		l.bgErr = err
 		l.cond.Broadcast()

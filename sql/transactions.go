@@ -26,7 +26,9 @@ func (s *Schema) NewSession() *Schema {
 		s.commitMu.RUnlock()
 		s.commitMu.Lock()
 		if s.rowIDReservations == nil {
+			s.rowIDMu.Lock()
 			s.rowIDReservations = maps.Clone(s.rowIDCount)
+			s.rowIDMu.Unlock()
 		}
 		s.catalogShared = true
 		s.commitMu.Unlock()
@@ -37,6 +39,8 @@ func (s *Schema) NewSession() *Schema {
 	// shared state. Row allocation publishes its reservations separately.
 	child := &Schema{maxCTEIterations: s.maxCTEIterations, maxCTERows: s.maxCTERows, snapshotReader: s.nextSnapshotReader.Add(1), lsm: s.lsm, parent: s, readVersion: s.commitVersion.Load(), readStateVersion: s.stateVersion, readCatalogVersion: s.catalogVersion}
 	child.queryMemoryBytes, child.queryTempDir = s.queryMemoryBytes, s.queryTempDir
+	child.disableAutoIncrementPersistence = s.disableAutoIncrementPersistence
+	child.enableAutoIncrementGroupCommit = s.enableAutoIncrementGroupCommit
 	child.restoreState(s.captureState())
 	child.rowIDCount = make(map[string]int64)
 	return child
@@ -103,8 +107,8 @@ func (s *Schema) refreshReadCommittedLocked() error {
 		return fmt.Errorf("%w: data changed during schema modification", ErrConflict)
 	}
 	// A statement retry or commit often sees the same committed catalog. Avoid
-	// copying and rebasing all metadata again, while still importing row-ID
-	// reservations made by other transactions before they commit.
+	// copying and rebasing all metadata again. nextRowID imports shared ID
+	// reservations under the allocator mutex when it actually allocates an ID.
 	if s.readStateVersion != s.parent.stateVersion {
 		latest := s.parent.captureState()
 		if s.inTx {
@@ -121,11 +125,6 @@ func (s *Schema) refreshReadCommittedLocked() error {
 	}
 	s.readVersion = s.parent.commitVersion.Load()
 	s.readCatalogVersion = s.parent.catalogVersion
-	for table, next := range s.rowIDCount {
-		if reserved := s.parent.rowIDReservations[table]; reserved > next {
-			s.rowIDCount[table] = reserved
-		}
-	}
 	return nil
 }
 
@@ -138,6 +137,12 @@ func cloneState(state *schemaState) *schemaState {
 func (s *Schema) persistentStateChanged() bool {
 	return s.catalogChanged() || !reflect.DeepEqual(s.stats, s.txState.stats) || !reflect.DeepEqual(s.distributions, s.txState.distributions) ||
 		!reflect.DeepEqual(s.autoincMax, s.txState.autoinc) || s.userVersion != s.txState.userVersion || s.collation != s.txState.collation
+}
+
+func (s *Schema) onlyAutoincMetadataChanged() bool {
+	return !s.catalogChanged() && reflect.DeepEqual(s.stats, s.txState.stats) &&
+		reflect.DeepEqual(s.distributions, s.txState.distributions) &&
+		s.userVersion == s.txState.userVersion && s.collation == s.txState.collation
 }
 
 func mergeMap[T any](base, local, latest map[string]T) map[string]T {
@@ -246,11 +251,15 @@ func (s *Schema) recordWrites(pos int) error {
 	}
 	// Data-only writers already hold catalog/row/predicate locks. Recording
 	// their statement does not need the catalog publication mutex.
-	if s.parent != nil && s.lockHandler != nil && len(s.rowIDCount) == 0 && !s.catalogChanged() {
+	if s.parent != nil && s.lockHandler != nil && !s.catalogChanged() {
 		if !s.txHasWrites && len(s.txWrites) > 0 {
 			s.txCatalogVersion = s.readCatalogVersion
 			s.txWriteVersion = s.readVersion
 			s.txHasWrites = true
+		}
+		if s.rowIDDirty {
+			s.parent.reserveRowIDs(s.rowIDCount)
+			s.rowIDDirty = false
 		}
 		return nil
 	}
@@ -272,15 +281,24 @@ func (s *Schema) recordWrites(pos int) error {
 			s.txHasDDL = true
 		}
 	}
-	if root.rowIDReservations == nil {
-		root.rowIDReservations = make(map[string]int64)
+	root.reserveRowIDs(s.rowIDCount)
+	s.rowIDDirty = false
+	return nil
+}
+
+// The caller holds the catalog lock or the database's logical catalog lock.
+// Reservations are monotonic and survive transaction rollback in this process.
+func (s *Schema) reserveRowIDs(counters map[string]int64) {
+	s.rowIDMu.Lock()
+	defer s.rowIDMu.Unlock()
+	if s.rowIDReservations == nil {
+		s.rowIDReservations = make(map[string]int64)
 	}
-	for table, next := range s.rowIDCount {
-		if next > root.rowIDReservations[table] {
-			root.rowIDReservations[table] = next
+	for table, next := range counters {
+		if next < 0 || s.rowIDReservations[table] >= 0 && next > s.rowIDReservations[table] {
+			s.rowIDReservations[table] = next
 		}
 	}
-	return nil
 }
 
 func (s *Schema) prepareCommit() error {
@@ -347,6 +365,7 @@ func (s *Schema) prepareCommit() error {
 }
 
 func (s *Schema) endTransaction() {
+	s.rowIDDirty = false
 	if s.parent != nil {
 		s.rowIDCount = make(map[string]int64)
 	}

@@ -46,13 +46,17 @@ type OnlineIndexBuild struct {
 // registration/checkpoints take its exclusive side. A committed row mutation
 // therefore cannot fall between a checkpoint and its corresponding log cut.
 func (s *Schema) writeBatchWithOnlineIndexes(batch []storage.Mutation) error {
+	return s.writeBatchWithOnlineIndexesQueued(batch, nil)
+}
+
+func (s *Schema) writeBatchWithOnlineIndexesQueued(batch []storage.Mutation, queued func()) error {
 	root := s
 	if root.parent != nil {
 		root = root.parent
 	}
-	root.onlineIndexMu.RLock()
-	defer root.onlineIndexMu.RUnlock()
-	if err := s.lsm.WriteBatch(batch); err != nil {
+	root.onlineIndexMu.RLockForReader(s.snapshotReader)
+	defer root.onlineIndexMu.RUnlockForReader(s.snapshotReader)
+	if err := s.lsm.WriteBatchWithEnqueue(batch, queued); err != nil {
 		return err
 	}
 	for b := range root.onlineIndexBuilds {
