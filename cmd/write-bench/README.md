@@ -1,7 +1,8 @@
 # Concurrent write benchmark
 
-This tool runs one committed row change per transaction. Each row has an 8-byte
-integer ID, an 8-byte integer value, and a 64-byte BLOB: 80 logical bytes.
+This tool runs one committed row change per transaction by default. Add
+`--rows-per-tx 100` for one INSERT statement with 100 rows per transaction.
+Each row has an 8-byte integer ID, an 8-byte integer value, and a 64-byte BLOB: 80 logical bytes.
 Each writer owns one session and reuses a prepared statement.
 
 Build and run it from the repository root:
@@ -13,7 +14,10 @@ GOGC=200 /tmp/slopdb-write-bench --db /tmp/fresh-insert-db \
 ```
 
 Use a fresh database directory for each insert run. Available workloads are
-`insert-random`, `insert-auto`, `update-random`, and `update-sequential`.
+`insert-random`, `insert-sequential`, `insert-auto`, `update-random`, and
+`update-sequential`.
+`insert-sequential` uses explicit IDs, with contiguous IDs within each transaction.
+It does not use the automatic ID allocator. `--rows-per-tx` applies only to INSERT.
 `insert-auto` omits the ID column and uses SQL `AUTOINCREMENT` allocation.
 Add `--volatile-ids` to `insert-auto` to keep ID counters in memory. Persistent
 counters are the default. WAL is enabled. Add `--durable` to enable WAL fsync;
@@ -21,8 +25,11 @@ the default keeps WAL writes but skips WAL fsync. Add `--no-wal` to disable
 WAL entirely. This mode loses unflushed writes on a crash. The close/reopen
 check tests a clean close. It does not test crash persistence.
 
-The default memtable is a concurrent sorted skip list. Add `--hash-memtable` to use the
-hash memtable for point operations. Scans and range estimates must sort its
+The default memtable is a sorted skip list with serial group installation.
+Add `--parallel-memtable-writes` to let queued writers install their rows in
+parallel. This option is off by default and can slow multirow transactions.
+It is ignored with `--hash-memtable`. Add `--hash-memtable` to use the hash
+memtable for point operations. Scans and range estimates must sort its
 entries. This option does not change the database file format.
 
 The settings for this machine are 96 Go processors, a 20 GiB mmap block cache,
@@ -37,7 +44,7 @@ IDs 1 through 1,000,000; `--hot` changes that range. The tool fills that cache
 before timing. Sequential updates visit existing IDs in insertion order.
 Updates change `v` to `v+1` and preserve the entire payload.
 
-The tool writes JSON lines with committed transactions/s, CPU use, sampled
+The tool writes JSON lines with committed transactions/s, rows/s, CPU use, sampled
 latency, writer counts, WAL groups, flushes, compactions, and Go allocation/GC
 counts. `latency_samples` records the number of measured latencies. Mean and
 p99 latency fields are null when an interval has no latency samples. Time

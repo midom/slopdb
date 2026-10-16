@@ -72,6 +72,10 @@ type Options struct {
 	LockTimeout          time.Duration    // maximum transaction lock wait per SQL call; zero fails immediately on contention
 	DeadlockDetection    bool             // detect wait-for cycles and roll back the requesting transaction
 
+	// Opt in to parallel sorted memtable installation. Off by default; ignored
+	// with HashMemTable. Each transaction still installs its own rows serially.
+	ParallelMemTableWrites bool
+
 	// Keep automatic-ID reservations in memory. After reopen, allocation starts
 	// above the highest surviving row ID, so deleted high IDs can be reused.
 	DisableAutoIncrementPersistence bool

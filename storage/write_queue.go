@@ -156,7 +156,7 @@ func (l *LSMTree) WriteBatchWithEnqueue(batch []Mutation, queued func()) error {
 		}
 	}
 	var install func(*MemTable, uint64)
-	if n > 1 && !l.opt.HashMemTable {
+	if n > 1 && l.opt.ParallelMemTableWrites && !l.opt.HashMemTable {
 		// Copy only the active participants; keep the fixed collection array on
 		// the leader stack and avoid allocating it for hash/isolated writes.
 		participants := append([]*queuedBatch(nil), group[:n]...)

@@ -1,14 +1,34 @@
 # Memtable options
 
-SlopDB uses a concurrent sorted skip list by default. Point inserts update
-links with atomic compare-and-swap operations. A scan can seek and read its
-entries without copying and sorting the whole memtable.
+SlopDB uses a sorted skip list by default. Commit groups install rows serially.
+Large sorted batches reuse predecessors. Scans seek and read entries without
+copying and sorting the whole memtable.
 
-Writers in a commit group install their own rows in parallel. The leader first
-orders the WAL records and assigns each writer a sequence span. It waits for
-all rows to be installed before it publishes the group. Readers see the old
-committed snapshot until that publication. Rotation and close also wait for
-the installation to finish. The WAL and publication order remain serial.
+## Parallel installation
+
+To let callers in a commit group install their rows in parallel:
+
+```go
+opt := storage.DefaultOptions()
+opt.ParallelMemTableWrites = true
+```
+
+The CLI and write benchmark accept `--parallel-memtable-writes`. This option
+is off by default. It applies to the sorted memtable and is ignored when
+`HashMemTable` is enabled. The skip list uses atomic links in both modes.
+
+With parallel installation, the leader first orders WAL records and assigns
+each writer a sequence span. It waits for all rows before it publishes the
+group. Readers retain the old committed snapshot until publication. Rotation
+and close also wait for installation to finish. WAL and publication remain
+serial. One transaction still installs its own rows serially.
+
+Parallel installation improved the one-row random INSERT and UPDATE tests,
+but reduced median throughput by 8–21% in the 100-row INSERT tests. See
+[the 100-row results](benchmarks/write/2026-10-16/batch100-inserts.md). Select
+the option for workloads that benefit from it.
+
+## Hash memtables
 
 To select a hash memtable for an open database:
 

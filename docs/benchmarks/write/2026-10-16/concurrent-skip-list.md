@@ -87,9 +87,11 @@ Short matched pilots guided the full runs. They are excluded from all primary ta
 GOGC=200 GOMAXPROCS=16 go build -o /tmp/slopdb-write-bench ./cmd/write-bench
 GOGC=200 /tmp/slopdb-write-bench --db /tmp/fresh-concurrent-skip-insert \
   --workload insert-random --writers 200 --procs 96 --mem-mib 8 \
-  --no-wal --warmup 10 --seconds 30 --samples 3
+  --parallel-memtable-writes --no-wal --warmup 10 --seconds 30 --samples 3
 ```
 
-The concurrent skip list is the default; no memtable flag is needed. Use `--workload insert-auto` for persistent automatic IDs and add `--volatile-ids` for restart reuse. For UPDATE, use a new copy of the saved fixture and `--workload update-random --hot 1000000`. Use a new database or copy for each case.
+These runs used parallel installation as the default at commit `10412fc`.
+Parallel installation is now off by default; add `--parallel-memtable-writes`
+to reproduce this mode. Use `--workload insert-auto` for persistent automatic IDs and add `--volatile-ids` for restart reuse. For UPDATE, use a new copy of the saved fixture and `--workload update-random --hot 1000000`. Use a new database or copy for each case.
 
-[Raw results, commands, source hashes, binary hash, and excluded pilots](concurrent-skip-list-results.json). Full database files and artifacts remain under `/tmp/slopdb-write-bench-20261016/concurrent-skip-final-*`. The implementation and reports are uncommitted.
+[Raw results, commands, source hashes, binary hash, and excluded pilots](concurrent-skip-list-results.json). Full database files and artifacts remain under `/tmp/slopdb-write-bench-20261016/concurrent-skip-final-*`.

@@ -38,6 +38,7 @@ func Run() {
 	opt := storage.DefaultOptions()
 	flags := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	flags.BoolVar(&cliCfg.allowDotCommands, "allow-dot-commands", false, "allow CLI dot commands in non-interactive stdin (including shell and file commands)")
+	flags.BoolVar(&opt.ParallelMemTableWrites, "parallel-memtable-writes", false, "install sorted memtable rows in parallel; may slow multirow transactions")
 	flags.BoolVar(&opt.HashMemTable, "hash-memtable", false, "use hash memtables; faster point operations, scans must sort entries")
 	flags.BoolVar(&opt.DisableWAL, "no-wal", false, "disable WAL; persist writes on flush/clean exit, unflushed writes are lost on crash")
 	flags.BoolVar(&opt.MySQLQuoting, "mysql-quoting", false, "use MySQL double-quoted strings and backslash escapes; quote identifiers with backticks")

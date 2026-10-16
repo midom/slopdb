@@ -14,6 +14,7 @@ import (
 	"runtime/pprof"
 	"slopdb/db"
 	"slopdb/storage"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -22,6 +23,7 @@ import (
 
 var dir = flag.String("db", "", "database")
 var workload = flag.String("workload", "insert-random", "workload")
+var rowsPerTx = flag.Int("rows-per-tx", 1, "rows per INSERT transaction")
 var writers = flag.Int("writers", 96, "writers")
 var procs = flag.Int("procs", 96, "Go processors")
 var mem = flag.Int("mem-mib", 8, "memtable")
@@ -30,6 +32,7 @@ var warm = flag.Float64("warmup", 10, "warmup seconds")
 var samples = flag.Int("samples", 3, "samples")
 var hot = flag.Int64("hot", 1000000, "update key count")
 var noWAL = flag.Bool("no-wal", false, "disable WAL entirely; unflushed writes are lost on crash")
+var parallelMemTableWrites = flag.Bool("parallel-memtable-writes", false, "install sorted memtable rows in parallel; may slow multirow transactions")
 var hashMemTable = flag.Bool("hash-memtable", false, "use hash memtable instead of default skip list")
 var durable = flag.Bool("durable", false, "sync WAL")
 var volatileIDs = flag.Bool("volatile-ids", false, "do not persist automatic ID counters")
@@ -70,13 +73,16 @@ func must(err error) {
 func out(v any) { must(json.NewEncoder(os.Stdout).Encode(v)) }
 func main() {
 	flag.Parse()
-	if *dir == "" || *writers < 1 || *procs < 1 || *mem < 1 || *duration <= 0 || *warm < 0 || *samples < 1 || *hot < 1 {
+	if *dir == "" || *writers < 1 || *procs < 1 || *mem < 1 || *duration <= 0 || *warm < 0 || *samples < 1 || *hot < 1 || *rowsPerTx < 1 {
 		panic("require --db, positive writers/mem/seconds/samples/hot, and nonnegative warmup")
 	}
 	switch *workload {
-	case "insert-random", "insert-auto", "update-random", "update-sequential":
+	case "insert-random", "insert-sequential", "insert-auto", "update-random", "update-sequential":
 	default:
 		panic("unknown workload")
+	}
+	if *rowsPerTx != 1 && strings.HasPrefix(*workload, "update-") {
+		panic("--rows-per-tx applies only to INSERT")
 	}
 	if *volatileIDs && *workload != "insert-auto" {
 		panic("--volatile-ids requires insert-auto")
@@ -90,13 +96,14 @@ func main() {
 	o.WriteBufferSize = *mem << 20
 	o.MaxBackgroundJobs = 8
 	o.DisableWAL = *noWAL
+	o.ParallelMemTableWrites = *parallelMemTableWrites
 	o.HashMemTable = *hashMemTable
 	o.DisableWALSync = !*durable
 	o.DisableAutoIncrementPersistence = *volatileIDs
 	o.LockTimeout = time.Second
 	d, e := db.Open(*dir, o)
 	must(e)
-	insert := *workload == "insert-random" || *workload == "insert-auto"
+	insert := strings.HasPrefix(*workload, "insert-")
 	if insert {
 		pk := "INTEGER PRIMARY KEY"
 		if *workload == "insert-auto" {
@@ -106,11 +113,20 @@ func main() {
 		must(e)
 	}
 	query := "UPDATE bench SET v=v+1 WHERE id=?"
-	if *workload == "insert-random" {
+	if *workload == "insert-random" || *workload == "insert-sequential" {
 		query = "INSERT INTO bench(id,v,payload) VALUES(?,?,?)"
 	}
 	if *workload == "insert-auto" {
 		query = "INSERT INTO bench(v,payload) VALUES(?,?)"
+	}
+	if insert && *rowsPerTx > 1 {
+		tuple := "(?,?,?)"
+		prefix := "INSERT INTO bench(id,v,payload) VALUES"
+		if *workload == "insert-auto" {
+			tuple = "(?,?)"
+			prefix = "INSERT INTO bench(v,payload) VALUES"
+		}
+		query = prefix + strings.TrimSuffix(strings.Repeat(tuple+",", *rowsPerTx), ",")
 	}
 	if !insert {
 		r, e := d.Query(fmt.Sprintf("SELECT id FROM bench WHERE id>=1 AND id<=%d", *hot))
@@ -165,12 +181,24 @@ func main() {
 					ticket := w.count*uint64(*writers) + uint64(id) + 1
 					var args []any
 					if insert {
-						b := blob(ticket)
+						columns := 3
 						if *workload == "insert-auto" {
-							args = []any{int64(ticket), b[:]}
-						} else {
-							k := int64(ticket * 6364136223846793005 & ((uint64(1) << 63) - 1))
-							args = []any{k, int64(ticket), b[:]}
+							columns = 2
+						}
+						args = make([]any, 0, columns**rowsPerTx)
+						payloads := make([][64]byte, *rowsPerTx)
+						for row := 0; row < *rowsPerTx; row++ {
+							stamp := (ticket-1)*uint64(*rowsPerTx) + uint64(row) + 1
+							payloads[row] = blob(stamp)
+							if *workload == "insert-auto" {
+								args = append(args, int64(stamp), payloads[row][:])
+							} else {
+								k := int64(stamp)
+								if *workload == "insert-random" {
+									k = int64(stamp * 6364136223846793005 & ((uint64(1) << 63) - 1))
+								}
+								args = append(args, k, int64(stamp), payloads[row][:])
+							}
 						}
 					} else {
 						k := int64(ticket-1)%*hot + 1
@@ -187,7 +215,7 @@ func main() {
 					for {
 						_, err := w.session.ExecPreparedInto(&result, stmt, args...)
 						if err == nil {
-							if result.Changes != 1 {
+							if result.Changes != int64(*rowsPerTx) {
 								w.err = fmt.Errorf("changes=%d", result.Changes)
 								stop.Store(true)
 								return
@@ -267,9 +295,9 @@ func main() {
 			latencyMean = float64(ls) / float64(ln) / 1000
 			latencyP99 = float64(percentile(.99)) / 1000
 		}
-		out(map[string]any{"type": "sample", "writer_min_commits": min, "writer_max_commits": max, "active_writers": active, "phase": phase, "engine": "slopdb", "workload": *workload, "writers": *writers, "durable": *durable, "wal_enabled": !*noWAL, "hash_memtable": *hashMemTable, "volatile_ids": *volatileIDs, "mem_mib": *mem, "seconds": elapsed, "commits": n - n0, "tps": float64(n-n0) / elapsed, "retries": r - r0, "cpu_cores": (c1 - c0) / elapsed, "latency_samples": ln, "latency_mean_us": latencyMean, "latency_p99_upper_us": latencyP99, "wal_active": after.WALActive, "wal_sync_disabled": after.WALSyncDisabled, "write_groups": after.WriteGroups - before.WriteGroups, "write_batches": after.WriteBatches - before.WriteBatches, "flushes": after.CompletedFlushes - before.CompletedFlushes, "compactions": after.CompletedCompactions - before.CompletedCompactions, "flush_bytes": after.FlushOutputBytes - before.FlushOutputBytes, "compaction_bytes": after.CompactionOutputBytes - before.CompactionOutputBytes, "alloc_bytes": m1.TotalAlloc - m0.TotalAlloc, "gc_cycles": m1.NumGC - m0.NumGC, "cache_bytes": after.BlockCacheBytes, "mem_bytes": after.MemSize})
+		out(map[string]any{"type": "sample", "writer_min_commits": min, "writer_max_commits": max, "active_writers": active, "phase": phase, "engine": "slopdb", "workload": *workload, "writers": *writers, "durable": *durable, "wal_enabled": !*noWAL, "hash_memtable": *hashMemTable, "parallel_memtable_writes": *parallelMemTableWrites, "volatile_ids": *volatileIDs, "mem_mib": *mem, "seconds": elapsed, "commits": n - n0, "rows_per_transaction": *rowsPerTx, "rows_per_second": float64(n-n0) * float64(*rowsPerTx) / elapsed, "tps": float64(n-n0) / elapsed, "retries": r - r0, "cpu_cores": (c1 - c0) / elapsed, "latency_samples": ln, "latency_mean_us": latencyMean, "latency_p99_upper_us": latencyP99, "wal_active": after.WALActive, "wal_sync_disabled": after.WALSyncDisabled, "write_groups": after.WriteGroups - before.WriteGroups, "write_batches": after.WriteBatches - before.WriteBatches, "flushes": after.CompletedFlushes - before.CompletedFlushes, "compactions": after.CompletedCompactions - before.CompletedCompactions, "flush_bytes": after.FlushOutputBytes - before.FlushOutputBytes, "compaction_bytes": after.CompactionOutputBytes - before.CompactionOutputBytes, "alloc_bytes": m1.TotalAlloc - m0.TotalAlloc, "gc_cycles": m1.NumGC - m0.NumGC, "cache_bytes": after.BlockCacheBytes, "mem_bytes": after.MemSize})
 	}
-	out(map[string]any{"type": "config", "engine": "slopdb", "workload": *workload, "writers": *writers, "row_bytes": 80, "transactions_per_row": 1, "durable": *durable, "wal_enabled": !*noWAL, "hash_memtable": *hashMemTable, "volatile_ids": *volatileIDs, "mem_mib": *mem, "go": runtime.Version(), "gomaxprocs": runtime.GOMAXPROCS(0), "gogc": os.Getenv("GOGC"), "cache_bytes": 20 << 30, "background_jobs": 8})
+	out(map[string]any{"type": "config", "engine": "slopdb", "workload": *workload, "writers": *writers, "row_bytes": 80, "transactions_per_row": 1 / float64(*rowsPerTx), "rows_per_transaction": *rowsPerTx, "durable": *durable, "wal_enabled": !*noWAL, "hash_memtable": *hashMemTable, "parallel_memtable_writes": *parallelMemTableWrites, "volatile_ids": *volatileIDs, "mem_mib": *mem, "go": runtime.Version(), "gomaxprocs": runtime.GOMAXPROCS(0), "gogc": os.Getenv("GOGC"), "cache_bytes": 20 << 30, "background_jobs": 8})
 	if *warm > 0 {
 		run(*warm, -1)
 	}
@@ -314,7 +342,7 @@ func main() {
 	rows, e := d.Query(q)
 	must(e)
 	var count, delta uint64
-	seen := make([]byte, (maxTickets(ws, *writers)+7)/8)
+	seen := make([]byte, (maxTickets(ws, *writers)*uint64(*rowsPerTx)+7)/8)
 	for rows.Next() {
 		v, e := rows.Values()
 		must(e)
@@ -327,8 +355,9 @@ func main() {
 			if stamp == 0 {
 				panic("bad stamp")
 			}
-			w := (stamp - 1) % uint64(*writers)
-			seq := (stamp-1)/uint64(*writers) + 1
+			transaction := (stamp - 1) / uint64(*rowsPerTx)
+			w := transaction % uint64(*writers)
+			seq := transaction/uint64(*writers) + 1
 			if seq > ws[w].count {
 				panic("unexpected transaction")
 			}
@@ -339,6 +368,9 @@ func main() {
 			seen[ix/8] |= 1 << (ix % 8)
 			if *workload == "insert-random" && uint64(id) != stamp*6364136223846793005&((uint64(1)<<63)-1) {
 				panic("random key mismatch")
+			}
+			if *workload == "insert-sequential" && uint64(id) != stamp {
+				panic("sequential key mismatch")
 			}
 			if id <= 0 {
 				panic("nonpositive key")
@@ -357,14 +389,14 @@ func main() {
 	}
 	must(rows.Err())
 	must(rows.Close())
-	if insert && count != total {
+	if insert && count != total*uint64(*rowsPerTx) {
 		panic("insert count mismatch")
 	}
 	if !insert && (count != uint64(*hot) || delta != total) {
 		panic(fmt.Sprintf("update check count=%d delta=%d total=%d", count, delta, total))
 	}
 	must(d.Close())
-	out(map[string]any{"type": "verify", "rows": count, "commits_including_warmup": total, "update_delta": delta, "ok": true})
+	out(map[string]any{"type": "verify", "rows": count, "commits_including_warmup": total, "rows_per_transaction": *rowsPerTx, "update_delta": delta, "ok": true})
 }
 func maxTickets(ws []worker, n int) uint64 {
 	var max uint64
