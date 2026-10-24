@@ -27,16 +27,14 @@ type client struct {
 }
 
 func (c *client) run() {
+	defer func() {
+		if c.session != nil {
+			_ = c.session.Close()
+		}
+	}()
 	if err := c.handshake(); err != nil {
 		return
 	}
-	session, err := c.server.database.NewSession()
-	if err != nil {
-		_ = c.writeError(err)
-		return
-	}
-	c.session = session
-	defer func() { _ = c.session.Close() }()
 	defer c.closeStatements()
 	// A separate reader detects EOF even while SQL waits on another session's
 	// locks. It cancels execution immediately so disconnects release transactions.

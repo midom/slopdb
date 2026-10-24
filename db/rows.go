@@ -145,6 +145,10 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 		release()
 		return nil, err
 	}
+	if err = s.db.checkReplication(ctx); err != nil {
+		release()
+		return nil, err
+	}
 	if bound && !s.schema.InTransaction() {
 		release()
 		return nil, ErrTxDone

@@ -18,11 +18,12 @@ var ErrStmtClosed = errors.New("prepared statement closed")
 // a Session or Tx instead to bind the statement to that execution context.
 // Close rejects new executions; an execution already started may finish.
 type Stmt struct {
-	db      *Database
-	session *Session
-	bound   bool
-	query   *sql.PreparedQuery
-	closed  atomic.Bool
+	generation uint64
+	db         *Database
+	session    *Session
+	bound      bool
+	query      *sql.PreparedQuery
+	closed     atomic.Bool
 }
 
 func (db *Database) Prepare(query string) (*Stmt, error) {
@@ -53,7 +54,7 @@ func (db *Database) PrepareContext(ctx context.Context, query string) (*Stmt, er
 	if db.closed.Load() {
 		return nil, errors.New("database closed")
 	}
-	return &Stmt{db: db, query: p}, nil
+	return &Stmt{db: db, query: p, generation: db.generation.Load()}, nil
 }
 
 func (s *Session) Prepare(query string) (*Stmt, error) {
@@ -225,6 +226,9 @@ func (s *Session) execPreparedInto(ctx context.Context, stmt *Stmt, options Exec
 func (s *Stmt) bind(database *Database, session *Session, bound bool, args []any) (*sql.BoundQuery, error) {
 	if s == nil {
 		return nil, errors.New("nil prepared statement")
+	}
+	if s.generation != s.db.generation.Load() {
+		return nil, ErrStmtClosed
 	}
 	if s.closed.Load() {
 		return nil, ErrStmtClosed

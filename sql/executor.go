@@ -225,8 +225,10 @@ func NewSchemaWithOptions(lsm *storage.LSMTree, pageSize int, opt *storage.Optio
 	if err := s.loadSchema(); err != nil {
 		return nil, err
 	}
-	if err := s.upgradePrimaryKeys(); err != nil {
-		return nil, err
+	if !opt.Replica {
+		if err := s.upgradePrimaryKeys(); err != nil {
+			return nil, err
+		}
 	}
 	if err := s.loadViews(); err != nil {
 		return nil, err
@@ -250,15 +252,17 @@ func NewSchemaWithOptions(lsm *storage.LSMTree, pageSize int, opt *storage.Optio
 	if err := s.initializeObjectIDs(); err != nil {
 		return nil, err
 	}
-	if err := s.CleanupIndexGarbage(); err != nil {
-		return nil, err
-	}
-	if err := s.normalizeConstraintCatalog(); err != nil {
-		return nil, err
-	}
-	if opt != nil && opt.VerifyIndexesOnOpen {
-		if err := s.repairIndexes(); err != nil {
+	if !opt.Replica {
+		if err := s.CleanupIndexGarbage(); err != nil {
 			return nil, err
+		}
+		if err := s.normalizeConstraintCatalog(); err != nil {
+			return nil, err
+		}
+		if opt != nil && opt.VerifyIndexesOnOpen {
+			if err := s.repairIndexes(); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return s, nil

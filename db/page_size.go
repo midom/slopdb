@@ -6,7 +6,7 @@ import (
 )
 
 // PageSize reports the effective uncompressed SSTable data-block target.
-func (db *Database) PageSize() int64 { return db.lsm.PageSize() }
+func (db *Database) PageSize() int64 { return db.currentStorage.Load().PageSize() }
 
 // SetPageSize changes and persists the target for future flush/compaction
 // writers. Existing SSTables remain readable. VACUUM rewrites existing data.

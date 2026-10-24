@@ -262,7 +262,7 @@ type AnalyzeStmt struct {
 }
 
 type BeginStmt struct{}
-type CommitStmt struct{}
+type CommitStmt struct{ Durability string }
 type RollbackStmt struct{}
 type SavepointStmt struct {
 	Name string

@@ -18,6 +18,8 @@ import (
 
 	"slopdb/db"
 	"slopdb/mysqlserver"
+	"slopdb/postgresserver"
+	"slopdb/replication"
 	sqldb "slopdb/sql"
 	"slopdb/storage"
 )
@@ -28,6 +30,7 @@ var (
 	sigChan          chan os.Signal
 	cancelFunc       func()
 	cancelMu         sync.Mutex
+	currentNode      *replication.Node
 	currentDB        *db.Database
 	currentDBPath    string
 	currentDBOptions *storage.Options
@@ -38,6 +41,8 @@ var (
 func Run() {
 	opt := storage.DefaultOptions()
 	flags := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
+	var raftFlags replicationFlags
+	raftFlags.register(flags)
 	flags.BoolVar(&cliCfg.allowDotCommands, "allow-dot-commands", false, "allow CLI dot commands in non-interactive stdin (including shell and file commands)")
 	flags.BoolVar(&opt.ParallelMemTableWrites, "parallel-memtable-writes", false, "install sorted memtable rows in parallel; may slow multirow transactions")
 	flags.BoolVar(&opt.HashMemTable, "hash-memtable", false, "use hash memtables; faster point operations, scans must sort entries")
@@ -61,6 +66,15 @@ func Run() {
 	mysqlTLSKey := flags.String("mysql-tls-key", "", "PEM private key for the MySQL TLS certificate")
 	mysqlTLSCA := flags.String("mysql-tls-ca", "", "PEM CA bundle; require TLS and a client certificate verified against this CA bundle")
 	mysqlRequireTLS := flags.Bool("mysql-require-tls", false, "reject plaintext MySQL connections (implied by --mysql-tls-ca)")
+	postgresTCP := flags.String("postgres-tcp", "", "serve PostgreSQL protocol on a TCP address, e.g. 127.0.0.1:5432")
+	postgresSocket := flags.String("postgres-socket", "", "serve PostgreSQL protocol on a Unix socket path, e.g. /tmp/slopdb/.s.PGSQL.5432")
+	postgresUser := flags.String("postgres-user", "slopdb", "PostgreSQL login username")
+	postgresDatabase := flags.String("postgres-database", "slopdb", "database name exposed to PostgreSQL clients")
+	postgresPasswordEnv := flags.String("postgres-password-env", "", "environment variable containing the PostgreSQL SCRAM password (default: trust login)")
+	postgresTLSCert := flags.String("postgres-tls-cert", "", "PEM server certificate chain for PostgreSQL TLS")
+	postgresTLSKey := flags.String("postgres-tls-key", "", "PEM private key for PostgreSQL TLS")
+	postgresTLSCA := flags.String("postgres-tls-ca", "", "PEM CA bundle; require TLS and a verified PostgreSQL client certificate")
+	postgresRequireTLS := flags.Bool("postgres-require-tls", false, "reject plaintext PostgreSQL logins (implied by --postgres-tls-ca)")
 	flags.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [--no-wal | --no-wal-fsync] [--compression codec] [--l0-compression codec] [--page-size bytes] <database>\n", os.Args[0])
 		flags.PrintDefaults()
@@ -75,9 +89,59 @@ func Run() {
 		flags.Usage()
 		os.Exit(1)
 	}
+	if raftFlags.recoverTo == "" && (raftFlags.recoverySources != "" || raftFlags.recoveryFenced || raftFlags.recoveryMinimum != "") {
+		fmt.Fprintln(os.Stderr, "recovery options require --raft-recover-to")
+		os.Exit(1)
+	}
 	dbPath := flags.Arg(0)
-	serverMode := *mysqlTCP != "" || *mysqlSocket != ""
-	if !serverMode && (*mysqlTLSCert != "" || *mysqlTLSKey != "" || *mysqlTLSCA != "" || *mysqlRequireTLS) {
+	if raftFlags.recoverTo != "" {
+		if *mysqlTCP != "" || *mysqlSocket != "" || *postgresTCP != "" || *postgresSocket != "" {
+			fmt.Fprintln(os.Stderr, "offline recovery cannot serve SQL listeners")
+			os.Exit(1)
+		}
+		if err := raftFlags.recover(dbPath); err != nil {
+			fmt.Fprintf(os.Stderr, "Stable recovery: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	mysqlMode := *mysqlTCP != "" || *mysqlSocket != ""
+	postgresMode := *postgresTCP != "" || *postgresSocket != ""
+	if mysqlMode && postgresMode {
+		fmt.Fprintln(os.Stderr, "choose either MySQL or PostgreSQL CLI server mode")
+		os.Exit(1)
+	}
+	if postgresMode && opt.MySQLQuoting {
+		fmt.Fprintln(os.Stderr, "PostgreSQL server requires --mysql-quoting=false")
+		os.Exit(1)
+	}
+	if !postgresMode && (*postgresTLSCert != "" || *postgresTLSKey != "" || *postgresTLSCA != "" || *postgresRequireTLS) {
+		fmt.Fprintln(os.Stderr, "PostgreSQL TLS options require --postgres-tcp or --postgres-socket")
+		os.Exit(1)
+	}
+	postgresTLS, err := loadServerTLS("postgres", *postgresTLSCert, *postgresTLSKey, *postgresTLSCA, *postgresRequireTLS)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "PostgreSQL TLS: %v\n", err)
+		os.Exit(1)
+	}
+	if *postgresPasswordEnv != "" && !postgresMode {
+		fmt.Fprintln(os.Stderr, "PostgreSQL password options require --postgres-tcp or --postgres-socket")
+		os.Exit(1)
+	}
+	if *mysqlPasswordEnv != "" && !mysqlMode {
+		fmt.Fprintln(os.Stderr, "MySQL password options require --mysql-tcp or --mysql-socket")
+		os.Exit(1)
+	}
+	postgresPassword := ""
+	if *postgresPasswordEnv != "" {
+		var found bool
+		postgresPassword, found = os.LookupEnv(*postgresPasswordEnv)
+		if !found {
+			fmt.Fprintf(os.Stderr, "PostgreSQL password environment variable %q is not set\n", *postgresPasswordEnv)
+			os.Exit(1)
+		}
+	}
+	if !mysqlMode && (*mysqlTLSCert != "" || *mysqlTLSKey != "" || *mysqlTLSCA != "" || *mysqlRequireTLS) {
 		fmt.Fprintln(os.Stderr, "MySQL TLS options require --mysql-tcp or --mysql-socket")
 		os.Exit(1)
 	}
@@ -86,7 +150,7 @@ func Run() {
 		fmt.Fprintf(os.Stderr, "MySQL TLS: %v\n", err)
 		os.Exit(1)
 	}
-	if serverMode {
+	if mysqlMode {
 		// Protocol clients expect MySQL string quoting unless explicitly overridden.
 		explicitQuoting := false
 		flags.Visit(func(f *flag.Flag) {
@@ -111,7 +175,15 @@ func Run() {
 	opt.L0CompressionType = storage.CompressionType(*l0Compression)
 	currentDBOptions = opt
 
-	database, err := db.Open(dbPath, opt)
+	var database *db.Database
+	if raftFlags.enabled() {
+		currentNode, err = raftFlags.open(dbPath, opt)
+		if err == nil {
+			database = currentNode.Database()
+		}
+	} else {
+		database, err = db.Open(dbPath, opt)
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening database: %v\n", err)
 		os.Exit(1)
@@ -124,7 +196,7 @@ func Run() {
 			os.Exit(1)
 		}
 	}()
-	if serverMode {
+	if mysqlMode {
 		err := runMySQLServer(database, *mysqlTCP, *mysqlSocket, mysqlserver.Config{
 			Username: *mysqlUser, Password: mysqlPassword, Database: *mysqlDatabase,
 			TLSConfig: mysqlTLS, RequireTLS: *mysqlRequireTLS,
@@ -136,6 +208,24 @@ func Run() {
 		return
 	}
 
+	if postgresMode {
+		server, err := postgresserver.New(database, postgresserver.Config{Username: *postgresUser, Password: postgresPassword, Database: *postgresDatabase, TLSConfig: postgresTLS, RequireTLS: *postgresRequireTLS})
+		if err == nil {
+			err = runWireServer(server, "PostgreSQL", *postgresTCP, *postgresSocket, *postgresDatabase, *postgresUser)
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "PostgreSQL server: %v\n", err)
+			exitCLI(1)
+		}
+		return
+	}
+	if currentNode != nil {
+		if err := runReplicationNode(currentNode); err != nil {
+			fmt.Fprintf(os.Stderr, "Replication: %v\n", err)
+			exitCLI(1)
+		}
+		return
+	}
 	sigChan = make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -170,6 +260,9 @@ func Run() {
 func closeCurrentDatabase() error {
 	currentDBMu.Lock()
 	defer currentDBMu.Unlock()
+	if currentNode != nil {
+		return currentNode.Close()
+	}
 	if currentDB != nil {
 		return currentDB.Close()
 	}

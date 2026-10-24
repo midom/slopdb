@@ -18,6 +18,9 @@ import (
 )
 
 type Database struct {
+	currentStorage  atomic.Pointer[storage.LSMTree]
+	replication     atomic.Pointer[ReplicationGuard]
+	generation      atomic.Uint64
 	onlineIndexHook func(string) // instance-local synchronization hook for index concurrency tests
 	mu              sync.Mutex
 	execution       executionGate
@@ -93,6 +96,7 @@ func Open(dir string, opt *storage.Options) (*Database, error) {
 		sessions: make(map[*Session]struct{}),
 		locks:    newLockManager(),
 	}
+	database.currentStorage.Store(lsm)
 	database.installLocks(database.schema)
 	database.executionReader = database.locks.state(database.schema).id
 	return database, nil
@@ -207,6 +211,15 @@ func (db *Database) execStatements(ctx context.Context, stmts []sql.Statement, s
 }
 
 func (db *Database) execStatementsInto(ctx context.Context, stmts []sql.Statement, schema *sql.Schema, transactionBound bool, lockTimeout time.Duration, dst *ExecResult, selectTarget *sql.ResultSet) (*ExecResult, error) {
+	if err := db.checkStatementReplication(ctx, stmts); err != nil {
+		return nil, err
+	}
+	return db.execAdmittedStatementsInto(ctx, stmts, schema, transactionBound, lockTimeout, dst, selectTarget)
+}
+
+// Independent sessions already checked admission before the prepared point
+// update fast path. Do not repeat admission in the shared executor.
+func (db *Database) execAdmittedStatementsInto(ctx context.Context, stmts []sql.Statement, schema *sql.Schema, transactionBound bool, lockTimeout time.Duration, dst *ExecResult, selectTarget *sql.ResultSet) (*ExecResult, error) {
 	defer schema.StopQueryProfile()
 	if db.closed.Load() {
 		return nil, fmt.Errorf("database closed")
@@ -222,6 +235,12 @@ func (db *Database) execStatementsInto(ctx context.Context, stmts []sql.Statemen
 	for _, stmt := range stmts {
 		if stmt == nil {
 			continue
+		}
+		if commit, ok := stmt.(*sql.CommitStmt); ok && commit.Durability == "durable" {
+			guard := db.replication.Load()
+			if (guard == nil || guard.Durable == nil) && (db.opt.DisableWAL || db.opt.DisableWALSync) {
+				return nil, fmt.Errorf("COMMIT DURABLE requires WAL and WAL fsync")
+			}
 		}
 		if _, err := indexPublicationPolicy(ctx, schema, stmt); err != nil {
 			return nil, err
@@ -320,6 +339,13 @@ func (db *Database) execStatementsInto(ctx context.Context, stmts []sql.Statemen
 				case *sql.DropIndexStmt, *sql.AlterTableStmt, *sql.CommitStmt, *sql.ReleaseStmt:
 					if err := schema.CleanupIndexGarbage(); err != nil {
 						return nil, fmt.Errorf("schema change committed; index cleanup pending: %w", err)
+					}
+				}
+			}
+			if commit, ok := stmt.(*sql.CommitStmt); ok && commit.Durability == "durable" {
+				if g := db.replication.Load(); g != nil && g.Durable != nil {
+					if e := g.Durable(ctx); e != nil {
+						return nil, fmt.Errorf("%w: %w", ErrDurabilityUnconfirmed, e)
 					}
 				}
 			}
@@ -621,7 +647,7 @@ func (db *Database) GetIndexSQL(name string) string {
 }
 
 func (db *Database) Stats() storage.LSMStats {
-	return db.lsm.Stats()
+	return db.currentStorage.Load().Stats()
 }
 
 func (db *Database) Dump() string {

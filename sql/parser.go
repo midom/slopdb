@@ -2488,10 +2488,15 @@ func (p *Parser) parseBegin() (Statement, error) {
 
 func (p *Parser) parseCommit() (Statement, error) {
 	p.advance()
-	if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "TRANSACTION" {
+	if p.cur.Type == TokKeyword && strings.EqualFold(p.cur.Value, "TRANSACTION") {
 		p.advance()
 	}
-	return &CommitStmt{}, nil
+	statement := &CommitStmt{}
+	if (p.cur.Type == TokKeyword || (p.cur.Type == TokIdent && p.cur.Start < len(p.tok.input) && p.tok.input[p.cur.Start] != '"' && p.tok.input[p.cur.Start] != '`' && p.tok.input[p.cur.Start] != '[')) && (strings.EqualFold(p.cur.Value, "ASYNC") || strings.EqualFold(p.cur.Value, "DURABLE")) {
+		statement.Durability = strings.ToLower(p.cur.Value)
+		p.advance()
+	}
+	return statement, nil
 }
 
 func (p *Parser) parseRollback() (Statement, error) {

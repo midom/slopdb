@@ -1,20 +1,19 @@
 package cli
 
 import (
-	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"net"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"slopdb/db"
 	"slopdb/mysqlserver"
 )
 
 func loadMySQLTLS(certFile, keyFile, caFile string, requireTLS bool) (*tls.Config, error) {
+	return loadServerTLS("mysql", certFile, keyFile, caFile, requireTLS)
+}
+func loadServerTLS(protocol, certFile, keyFile, caFile string, requireTLS bool) (*tls.Config, error) {
 	if certFile == "" && keyFile == "" {
 		if caFile != "" || requireTLS {
 			return nil, fmt.Errorf("a server certificate and key are required")
@@ -22,7 +21,7 @@ func loadMySQLTLS(certFile, keyFile, caFile string, requireTLS bool) (*tls.Confi
 		return nil, nil
 	}
 	if certFile == "" || keyFile == "" {
-		return nil, fmt.Errorf("--mysql-tls-cert and --mysql-tls-key must be supplied together")
+		return nil, fmt.Errorf("--%s-tls-cert and --%s-tls-key must be supplied together", protocol, protocol)
 	}
 	certificate, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
@@ -49,46 +48,5 @@ func runMySQLServer(database *db.Database, tcp, socket string, config mysqlserve
 	if err != nil {
 		return err
 	}
-	defer server.Close()
-	var listeners []net.Listener
-	defer func() {
-		for _, listener := range listeners {
-			_ = listener.Close()
-		}
-	}()
-	if tcp != "" {
-		listener, err := net.Listen("tcp", tcp)
-		if err != nil {
-			return err
-		}
-		listeners = append(listeners, listener)
-	}
-	if socket != "" {
-		listener, err := net.Listen("unix", socket)
-		if err != nil {
-			return err
-		}
-		listeners = append(listeners, listener)
-		if err := os.Chmod(socket, 0600); err != nil {
-			return err
-		}
-	}
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-	results := make(chan error, len(listeners))
-	for _, listener := range listeners {
-		fmt.Fprintf(os.Stderr, "MySQL listening on %s %s (database %s, user %s)\n", listener.Addr().Network(), listener.Addr(), config.Database, config.Username)
-		go func(listener net.Listener) { results <- server.Serve(listener) }(listener)
-	}
-	remaining := len(listeners)
-	select {
-	case <-ctx.Done():
-	case err = <-results:
-		remaining--
-	}
-	_ = server.Close()
-	for ; remaining > 0; remaining-- {
-		<-results
-	}
-	return err
+	return runWireServer(server, "MySQL", tcp, socket, config.Database, config.Username)
 }

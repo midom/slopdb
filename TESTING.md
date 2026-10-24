@@ -46,6 +46,7 @@ go test ./sql -run '^$' -fuzz FuzzParse -fuzztime 30s
 | CLI formatting, schema planning, atomic CSV import, backup/integrity commands and page-size options | `internal/cli/*_test.go`, `tests/regression/cli_page_size_test.go` | CLI unit tests live with the implementation; process tests build the root entry point |
 | CLI EOF/exit/bail/SIGTERM persistence, `.open` and flush errors | `tests/regression/cli_linux_test.go`, compression CLI tests | `no_wal_cli_review.go` and the current compression review programs |
 | MySQL wire protocol, TCP/Unix driver compatibility, password and TLS/client certificate authentication, transactions, prepared binding, framing, malformed input and CLI shutdown persistence | `mysqlserver/*_test.go`, `tests/regression/mysql_server_linux_test.go` | Standard Go MySQL driver, optional native client and raw protocol checks; isolated databases/sockets and generated temporary CAs/certificates |
+| PostgreSQL emulation, lib/pq and pgx, SCRAM, TLS/mutual TLS, extended queries, portals, cancellation, batch rollback, malformed messages and CLI persistence | `postgresserver/*_test.go`, `tests/regression/postgres_server_linux_test.go` | Independent network drivers, raw protocol messages and temporary certificate fixtures |
 | Malformed parser input and fuzz seeds | `sql/parser_test.go` | `parser_review.go`; also covers the ALTER-column semicolon regression found while migrating |
 | Optional MySQL quoting, string escapes, input splitting, SQL exports and persistence | `sql/mysql_quoting_test.go`, `internal/cli/mysql_quoting_test.go`, `tests/regression/mysql_quoting_test.go` | Tokenizer/parser cases, API sessions/transactions/preparation/streaming, dump restore, CLI import/read/open and default-mode compatibility |
 
@@ -120,3 +121,39 @@ module without installing those drivers.
 Catalog performance benchmarks are in `db/catalog_benchmark_test.go`. See
 [catalog measurements](docs/catalog-performance.md) for isolated point SELECTs,
 profile findings, concurrency settings and saved source fingerprints.
+
+Raft replication tests live in `replication/`: TCP/Unix seed snapshots, nonvoter
+catch-up/promotion, leadership transfer/failover, minority rejection, durable
+restart and duplicate replay, offline snapshot installation, concurrent writes,
+corruption/truncation rejection and mutual TLS.
+`replication/durability_test.go` covers async/durable commit, periodic flushing,
+lag admission, certificate validation, recovering voters and all-cold recovery
+after removing volatile log suffixes and application generations. Wire tests
+cover prepared durable commits and unknown confirmation outcomes on both SQL
+protocols. `tests/regression/replication_async_linux_test.go` uses SIGKILL and
+the offline CLI recovery procedure to check stable-prefix restoration.
+When `strace` is available, `replication/durability_syscall_linux_test.go` checks
+that async commits skip WAL fsync and explicit durable barriers issue it.
+`replication/read_index_test.go` covers reads without log appends and cancellation
+while committed entries await native application. The quorum-flush pipeline
+test holds a remote prepare request and verifies later writes can commit without
+being included in the earlier durable certificate or losing their lag timestamp.
+Application batching tests cover ordered range deletions, configuration and
+page-size boundaries, replay, reopen, oversized atomic commands and failed
+suffixes. Log-codec tests cover mixed legacy/binary records, timestamps, malformed
+framing, history hashes and caller ownership. Transaction-control tests verify
+that data access still checks a quorum and commit cannot succeed without one.
+`replication/command_json_test.go` checks byte-for-byte standard JSON compatibility,
+legacy/malformed representations, ownership and checkpoint integer boundaries.
+`FuzzCommandJSONCompatibility` compares the decoder with Go's standard library.
+Proposal-gate tests cover independent enqueue progress, exclusive flush barriers
+and the limit on unresolved large commands.
+`BenchmarkRaftHotRowTransactions` reuses the transaction-throughput fixture with
+every session updating row 1, measuring write contention through commit. It
+checks the exact shared-row total, untouched rows, replica equality, integrity
+and restart/stable recovery outside timing, as does `BenchmarkRaftTransactions`
+for independent rows.
+`tests/regression/replication_linux_test.go` exercises CLI MySQL/PostgreSQL
+replication through SIGKILL/restart and SIGTERM, plus durability flag validation.
+`internal/wire/listen_test.go` checks stale Unix socket recovery and preservation
+of live sockets and regular files. All artifacts use `t.TempDir()`.

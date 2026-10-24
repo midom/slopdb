@@ -128,6 +128,8 @@ reverse seeks. `VACUUM` flushes writes and compacts SSTables.
 - [x] MySQL 4.1 protocol over TCP and Unix sockets, password authentication, independent sessions, text queries and binary prepared execution; see [MySQL server](docs/mysql-server.md) for compatibility limits
 - [x] MySQL TLS 1.2/1.3 with required transport and CA-verified client certificate authentication on both TCP and Unix sockets
 - [ ] MySQL account/grant management and prepared result metadata before execution
+- [x] PostgreSQL 3.0 emulation over TCP/Unix sockets with SCRAM-SHA-256, TLS/client CA authentication, simple/extended queries, prepared metadata, typed bindings, portals, cancellation and transaction recovery; see [PostgreSQL emulation](docs/postgres-server.md)
+- [ ] PostgreSQL system catalogs/schemas, COPY, newer wire versions and broader PostgreSQL-specific SQL/types
 
 ## Miscellaneous
 
@@ -142,3 +144,13 @@ reverse seeks. `VACUUM` flushes writes and compacts SSTables.
 - [ ] General recursive query shapes beyond the supported single recursive SELECT
 - [ ] Additional window functions and FILTER/EXCLUDE/DISTINCT window extensions
 - [ ] Table-valued functions, including generate_series, and virtual tables
+
+## Replication
+
+- [x] Raft-shipped atomic WAL batches, durable replay checkpoints and leader-only SQL
+- [x] TCP/Unix snapshot clone, asynchronous nonvoter catch-up and checked voting promotion
+- [x] Authenticated control/membership services, TLS and CA-verified client certificates
+- [x] Optional asynchronous commit, quorum-certified stable prefixes, durable barriers and offline recovery into a new cluster incarnation
+- [ ] Automatic SQL routing, follower reads and application request deduplication
+
+See [Raft replication](docs/replication.md) for operational limits.

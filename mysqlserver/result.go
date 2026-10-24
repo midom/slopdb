@@ -49,6 +49,8 @@ func (c *client) writeError(err error) error {
 	var explicit *protocolError
 	var parse *sql.ParseError
 	switch {
+	case errors.Is(err, db.ErrDurabilityUnconfirmed):
+		pErr.state = "40003"
 	case errors.As(err, &explicit):
 		pErr = explicit
 	case errors.Is(err, db.ErrDeadlock), errors.Is(err, db.ErrConflict), errors.Is(err, db.ErrTransactionAborted):

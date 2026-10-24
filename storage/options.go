@@ -39,6 +39,8 @@ const (
 )
 
 type Options struct {
+	// Replica skips catalog maintenance writes; replicated catalogs must already use object IDs.
+	Replica              bool
 	MySQLQuoting         bool   // input SQL: double-quoted strings and MySQL backslash escapes; default false
 	QueryMemoryBytes     int64  // per-operator working budget; zero selects 64 MiB, negative is invalid
 	QueryTempDir         string // temporary operator spills; empty uses the OS temp directory

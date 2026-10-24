@@ -160,6 +160,11 @@ func (c *client) handshake() error {
 		return c.fail(1049, "42000", fmt.Sprintf("unknown database %q", database))
 	}
 	c.selected = database
+	session, err := c.server.database.NewSession()
+	if err != nil {
+		return c.fail(1040, "08004", err.Error())
+	}
+	c.session = session
 	return c.ok(nil)
 }
 func checkPassword(password string, salt, response []byte) bool {

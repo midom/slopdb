@@ -20,6 +20,7 @@ import (
 const maxLevels = 7
 
 type LSMTree struct {
+	replication           atomic.Pointer[ReplicationHooks]
 	mu                    sync.RWMutex
 	writerMu              sync.Mutex
 	viewMu                sync.RWMutex
@@ -338,8 +339,9 @@ func (l *LSMTree) Delete(key []byte) error {
 
 // Mutation is one entry in an atomic write batch.
 type Mutation struct {
-	Key, Value []byte
-	Delete     bool
+	Key, Value  []byte
+	Delete      bool
+	RangeDelete bool // Value is the exclusive end key
 }
 
 func (l *LSMTree) writeBatchDirect(batch []Mutation) error {
@@ -358,6 +360,23 @@ func (l *LSMTree) writeMutations(batch []Mutation, syncWAL, rangeDelete bool) er
 // The optional installer lets queued callers populate the same skip list in
 // parallel. writerMu still orders WAL, rotation, and whole-group publication.
 func (l *LSMTree) writeMutationsWithInstaller(batch []Mutation, syncWAL, rangeDelete bool, install func(*MemTable, uint64)) error {
+	if h := l.replication.Load(); h != nil {
+		if rangeDelete {
+			batch = append([]Mutation(nil), batch...)
+			for i := range batch {
+				batch[i].RangeDelete = true
+			}
+		}
+		return h.Write(batch, nil)
+	}
+	return l.writeMutationsLocal(batch, syncWAL, rangeDelete, install)
+}
+func (l *LSMTree) writeMutationsLocal(batch []Mutation, syncWAL, rangeDelete bool, install func(*MemTable, uint64)) error {
+	hasRanges := rangeDelete
+	for _, w := range batch {
+		hasRanges = hasRanges || w.RangeDelete
+	}
+
 	l.writerMu.Lock()
 	defer l.writerMu.Unlock()
 	l.mu.Lock()
@@ -382,7 +401,7 @@ func (l *LSMTree) writeMutationsWithInstaller(batch []Mutation, syncWAL, rangeDe
 	base, mem, wal := l.seqNum, l.mem, l.wal
 	l.mu.Unlock()
 	typ := func(w Mutation) uint8 {
-		if rangeDelete {
+		if rangeDelete || w.RangeDelete {
 			return kTypeRangeDelete
 		}
 		if w.Delete {
@@ -425,7 +444,7 @@ func (l *LSMTree) writeMutationsWithInstaller(batch []Mutation, syncWAL, rangeDe
 	}
 	// Keep all installed nodes behind the old committed watermark. The installer
 	// joins every participant before the group becomes visible or can rotate.
-	if mem.head != nil && install != nil {
+	if mem.head != nil && install != nil && !hasRanges {
 		install(mem, base)
 		var size int64
 		for _, w := range batch {
@@ -433,7 +452,7 @@ func (l *LSMTree) writeMutationsWithInstaller(batch []Mutation, syncWAL, rangeDe
 		}
 		mem.accountSorted(size, int64(len(batch)))
 	} else {
-		if mem.head == nil || rangeDelete {
+		if mem.head == nil || hasRanges {
 			mem.mu.Lock()
 		}
 		var sortedBatch []KeyValue
@@ -447,7 +466,7 @@ func (l *LSMTree) writeMutationsWithInstaller(batch []Mutation, syncWAL, rangeDe
 			} else {
 				mem.insert(ik, w.Value)
 			}
-			if rangeDelete {
+			if rangeDelete || w.RangeDelete {
 				mem.ranges = append(mem.ranges, KeyValue{Key: InternalKey{UserKey: bytes.Clone(w.Key), SeqNum: ik.SeqNum, OpType: ik.OpType}, Value: bytes.Clone(w.Value)})
 				mem.hasRanges.Store(true)
 			}
@@ -455,7 +474,7 @@ func (l *LSMTree) writeMutationsWithInstaller(batch []Mutation, syncWAL, rangeDe
 		if sortedBatch != nil {
 			mem.insertSortedBatch(sortedBatch)
 		}
-		if mem.head == nil || rangeDelete {
+		if mem.head == nil || hasRanges {
 			mem.mu.Unlock()
 		}
 	}

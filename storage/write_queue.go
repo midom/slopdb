@@ -97,6 +97,9 @@ func (l *LSMTree) WriteBatch(batch []Mutation) error { return l.WriteBatchWithEn
 // queued must return promptly and must not issue another storage write.
 // The batch buffers remain owned by this call until it returns.
 func (l *LSMTree) WriteBatchWithEnqueue(batch []Mutation, queued func()) error {
+	if h := l.replication.Load(); h != nil {
+		return h.Write(batch, queued)
+	}
 	request := batchRequests.Get().(*queuedBatch)
 	request.mutations = batch
 	request.lead = false

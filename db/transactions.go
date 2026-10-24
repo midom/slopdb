@@ -43,6 +43,15 @@ type Session struct {
 }
 
 func (db *Database) NewSession() (*Session, error) {
+	if db.replication.Load() != nil {
+		if err := db.execution.RLockContext(context.Background()); err != nil {
+			return nil, err
+		}
+		defer db.execution.RUnlock()
+		if err := db.checkReplication(context.Background()); err != nil {
+			return nil, err
+		}
+	}
 	if db.closed.Load() {
 		return nil, errors.New("database closed")
 	}
@@ -155,6 +164,9 @@ func (s *Session) execParsedInto(ctx context.Context, statements []sql.Statement
 	if err := s.db.beginManagedCall(s.schema, abortCancel); err != nil {
 		return nil, err
 	}
+	if err := s.db.checkStatementReplication(ctx, statements); err != nil {
+		return nil, err
+	}
 	if bound && !s.schema.InTransaction() {
 		return nil, ErrTxDone
 	}
@@ -164,7 +176,7 @@ func (s *Session) execParsedInto(ctx context.Context, statements []sql.Statement
 			return result, err
 		}
 	}
-	result, err := s.db.execStatementsInto(ctx, statements, s.schema, bound, lockTimeout, dst, &s.selectTarget)
+	result, err := s.db.execAdmittedStatementsInto(ctx, statements, s.schema, bound, lockTimeout, dst, &s.selectTarget)
 	return result, err
 }
 
@@ -288,5 +300,14 @@ func (tx *Tx) Rollback() error {
 	}
 	err := s.schema.Rollback()
 	s.closeLocked()
+	return err
+}
+
+// CommitDurable waits for the committed prefix to be stable on a voting majority
+// when replication is asynchronous. An error may follow an asynchronous commit;
+// it does not imply that the transaction rolled back.
+func (tx *Tx) CommitDurable() error { return tx.CommitDurableContext(context.Background()) }
+func (tx *Tx) CommitDurableContext(ctx context.Context) error {
+	_, err := tx.ExecContext(ctx, "COMMIT DURABLE")
 	return err
 }

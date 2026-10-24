@@ -112,6 +112,12 @@ func (s *Schema) initializeObjectIDs() error {
 	if err != nil {
 		return err
 	}
+	if s.lsm.ReplicaMode() {
+		if legacy || pending {
+			return fmt.Errorf("replica requires an upgraded object-ID catalog")
+		}
+		return nil
+	}
 	if pending {
 		if err = json.Unmarshal(b, &plan); err != nil {
 			return err

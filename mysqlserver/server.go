@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"slopdb/db"
+	"slopdb/internal/wire"
 )
 
 // Config describes a single database and login. Empty Password permits a
@@ -78,37 +79,10 @@ func New(database *db.Database, config Config) (*Server, error) {
 	if config.MaxPacketBytes < 1024 || config.MaxPreparedStatements < 1 || config.HandshakeTimeout < 0 {
 		return nil, errors.New("invalid MySQL server limits")
 	}
-	if config.TLSConfig != nil {
-		tlsConfig := config.TLSConfig.Clone()
-		if len(tlsConfig.Certificates) == 0 && tlsConfig.GetCertificate == nil {
-			return nil, errors.New("MySQL TLS requires a server certificate")
-		}
-		if tlsConfig.GetConfigForClient != nil {
-			return nil, errors.New("MySQL TLS does not support GetConfigForClient; use GetCertificate")
-		}
-		if tlsConfig.MinVersion < tls.VersionTLS12 {
-			tlsConfig.MinVersion = tls.VersionTLS12
-		}
-		if tlsConfig.MaxVersion != 0 && tlsConfig.MaxVersion < tlsConfig.MinVersion {
-			return nil, errors.New("MySQL TLS maximum version is below its minimum version")
-		}
-		switch tlsConfig.ClientAuth {
-		case tls.NoClientCert, tls.RequestClientCert, tls.VerifyClientCertIfGiven:
-		case tls.RequireAndVerifyClientCert:
-			if tlsConfig.ClientCAs == nil {
-				return nil, errors.New("MySQL client certificate authentication requires an explicit CA pool")
-			}
-			config.RequireTLS = true
-		default:
-			return nil, errors.New("MySQL client certificate authentication must verify the client certificate")
-		}
-		if tlsConfig.ClientCAs != nil {
-			tlsConfig.ClientCAs = tlsConfig.ClientCAs.Clone()
-		}
-		config.TLSConfig = tlsConfig
-	}
-	if config.RequireTLS && config.TLSConfig == nil {
-		return nil, errors.New("MySQL RequireTLS requires TLSConfig")
+	var err error
+	config.TLSConfig, config.RequireTLS, err = wire.TLSConfig(config.TLSConfig, config.RequireTLS)
+	if err != nil {
+		return nil, fmt.Errorf("MySQL TLS: %w", err)
 	}
 	return &Server{database: database, config: config, listeners: make(map[net.Listener]struct{}), clients: make(map[net.Conn]context.CancelFunc), done: make(chan struct{})}, nil
 }

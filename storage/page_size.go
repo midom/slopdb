@@ -121,6 +121,14 @@ func (l *LSMTree) PageSize() int64 { return l.pageSize.Load() }
 // CompactRange (SQL VACUUM) to rewrite the current contents with the new target.
 // This is physical database configuration, independent of SQL transactions.
 func (l *LSMTree) SetPageSize(size int64) error {
+	if h := l.replication.Load(); h != nil {
+		return h.PageSize(size)
+	}
+	return l.SetReplicatedPageSize(size)
+}
+
+// SetReplicatedPageSize applies committed physical configuration without proposing it again.
+func (l *LSMTree) SetReplicatedPageSize(size int64) error {
 	if err := ValidatePageSize(size); err != nil {
 		return err
 	}
