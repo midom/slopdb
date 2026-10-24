@@ -25,6 +25,15 @@ func NewBlockBuilder(blockSize int) *BlockBuilder {
 	}
 }
 
+// reset reuses private writer buffers after their bytes have been consumed.
+func (b *BlockBuilder) reset() {
+	b.buf = b.buf[:0]
+	b.restarts = b.restarts[:0]
+	b.counter = 0
+	b.lastKey = b.lastKey[:0]
+	b.finished = false
+}
+
 func (b *BlockBuilder) Add(key, value []byte) {
 	if b.counter == 0 {
 		b.restarts = append(b.restarts, uint32(len(b.buf)))

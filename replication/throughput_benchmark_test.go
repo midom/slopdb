@@ -5,7 +5,9 @@ import (
 	"crypto/sha256"
 	"flag"
 	"fmt"
+	"os"
 	"path/filepath"
+	"runtime/pprof"
 	"sort"
 	"strings"
 	"sync"
@@ -20,6 +22,7 @@ import (
 // option. Replicated no-sync runs require the explicitly labelled build overlay
 // recorded alongside their results; ordinary Open must continue rejecting it.
 var benchmarkNoWALFsync = flag.Bool("raft-bench-no-wal-fsync", false, "diagnostic benchmark only: disable application and Raft WAL fsync; requires isolated build overlay")
+var benchmarkTimedCPU = flag.String("raft-bench-timed-cpu", "", "CPU profile for timed transaction window only; select one benchmark and one sample")
 
 // BenchmarkRaftTransactions measures SQL commits, not Raft append-only
 // throughput. All nodes share one process/host and use TCP loopback. Each worker
@@ -38,7 +41,7 @@ func BenchmarkRaftTransactions(b *testing.B) {
 		{"raft3-async", 3, DurabilityAsync},
 	} {
 		b.Run(mode.name, func(b *testing.B) {
-			for _, workers := range []int{1, 4, 16} {
+			for _, workers := range []int{1, 4, 16, 32, 64, 128} {
 				b.Run(fmt.Sprintf("workers%d", workers), func(b *testing.B) { benchmarkTransactions(b, mode.voters, workers, mode.durability) })
 			}
 		})
@@ -59,7 +62,7 @@ func BenchmarkRaftHotRowTransactions(b *testing.B) {
 		durability Durability
 	}{{"raft3", DurabilitySync}, {"raft3-async", DurabilityAsync}} {
 		b.Run(mode.name, func(b *testing.B) {
-			for _, workers := range []int{1, 4, 16} {
+			for _, workers := range []int{1, 4, 16, 32, 64, 128} {
 				b.Run(fmt.Sprintf("workers%d", workers), func(b *testing.B) {
 					benchmarkTransactionWorkload(b, 3, workers, mode.durability, true)
 				})
@@ -243,12 +246,29 @@ func benchmarkTransactionWorkload(b *testing.B, voters, workers int, durability 
 			}
 		}()
 	}
+	var profile *os.File
+	if *benchmarkTimedCPU != "" {
+		profile, e = os.Create(*benchmarkTimedCPU)
+		if e != nil {
+			b.Fatal(e)
+		}
+		if e = pprof.StartCPUProfile(profile); e != nil {
+			_ = profile.Close()
+			b.Fatal(e)
+		}
+	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	b.StartTimer()
 	close(start)
 	wg.Wait()
 	b.StopTimer()
+	if profile != nil {
+		pprof.StopCPUProfile()
+		if e = profile.Close(); e != nil {
+			b.Fatal(e)
+		}
+	}
 	elapsed := b.Elapsed()
 	close(failures)
 	for e := range failures {

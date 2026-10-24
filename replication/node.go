@@ -71,6 +71,7 @@ type command struct {
 	Peer     *Peer
 }
 type Node struct {
+	walProposals                    walProposalQueue
 	durableReads                    durableReadViews
 	position                        atomic.Pointer[string]
 	replicaReads                    replicaReadState
@@ -497,7 +498,7 @@ func (n *Node) fail(err error) {
 }
 func (n *Node) hooks() *storage.ReplicationHooks {
 	return &storage.ReplicationHooks{Write: func(batch []storage.Mutation, queued func()) error {
-		return n.propose(command{Version: 1, Kind: "wal", Writes: batch}, queued)
+		return n.proposeWAL(batch, queued)
 	}, PageSize: func(size int64) error {
 		if e := storage.ValidatePageSize(size); e != nil {
 			return e
@@ -584,6 +585,10 @@ func (n *Node) wait(ctx context.Context, f raft.Future) error {
 	}
 }
 func (n *Node) propose(c command, queued func()) error {
+	return n.proposeWithGate(c, queued, false)
+}
+
+func (n *Node) proposeWithGate(c command, queued func(), gateHeld bool) error {
 	if (c.Kind == "wal" || c.Kind == "page-size") && n.readyTerm.Load() != 0 {
 		if err := n.checkDurabilityLag(); err != nil {
 			if queued != nil {
@@ -608,7 +613,7 @@ func (n *Node) propose(c command, queued func()) error {
 	// Keep at most one large command unresolved so concurrent enqueues cannot
 	// assemble a Raft batch containing many maximum-size transactions. Small
 	// commands remain concurrent and can join the same natural commit group.
-	largeHeld := len(payload) > 64<<10
+	largeHeld := !gateHeld && len(payload) > 64<<10
 	if largeHeld {
 		n.largeProposalMu.Lock()
 		defer func() {
@@ -621,12 +626,16 @@ func (n *Node) propose(c command, queued func()) error {
 	// dependent writes, and each queued callback runs after its own enqueue.
 	// Exclusive seals wait for both enqueues and callbacks to finish before
 	// capturing their fence. Never enter the local storage writer queue here.
-	n.proposalMu.RLock()
+	if !gateHeld {
+		n.proposalMu.RLock()
+	}
 	finish := func() {
 		if queued != nil {
 			queued()
 		}
-		n.proposalMu.RUnlock()
+		if !gateHeld {
+			n.proposalMu.RUnlock()
+		}
 	}
 	if n.raftNode() == nil || n.raftNode().State() != raft.Leader {
 		finish()

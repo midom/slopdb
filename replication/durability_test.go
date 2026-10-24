@@ -125,6 +125,9 @@ func TestAsyncReplicaReclonesBeforeVoting(t *testing.T) {
 	for _, network := range []string{"tcp", "unix"} {
 		t.Run(network, func(t *testing.T) {
 			config := asyncConfig(t, "first", network)
+			// Keep the production election/transfer budget when other packages are
+			// issuing disk fsyncs concurrently; the ordinary helper uses only 200ms.
+			config.RaftConfig.ElectionTimeout = time.Second
 			config.Bootstrap = true
 			source := openTestNode(t, config)
 			ready(t, source)
@@ -135,6 +138,7 @@ func TestAsyncReplicaReclonesBeforeVoting(t *testing.T) {
 			var configs []Config
 			for i := 2; i <= 3; i++ {
 				c := asyncConfig(t, fmt.Sprintf("node%d", i), network)
+				c.RaftConfig.ElectionTimeout = time.Second
 				c.Join = source.ControlAddress()
 				node := openTestNode(t, c)
 				if e := source.Promote(ctx, c.ID); e != nil {

@@ -96,6 +96,9 @@ func TestDurableReadCandidateRetentionAndNoFallback(t *testing.T) {
 
 func TestDurableReadContextEnablesOwnedStream(t *testing.T) {
 	source, replica := readReplicaPair(t, DurabilityAsync, "tcp", 0)
+	if err := source.FlushDurable(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	waitDurableReadView(t, replica, source.durableIndex())
 	if _, err := replica.Database().Query("SELECT * FROM items"); !errors.Is(err, ErrNotLeader) {
 		t.Fatalf("ordinary SQL admitted without replica policy: %v", err)
@@ -139,6 +142,9 @@ func TestDurableReadSQLProtocols(t *testing.T) {
 	for _, protocol := range []string{"mysql", "postgres"} {
 		t.Run(protocol, func(t *testing.T) {
 			source, replica := readReplicaPair(t, DurabilityAsync, "tcp", time.Second)
+			if err := source.FlushDurable(context.Background()); err != nil {
+				t.Fatal(err)
+			}
 			waitDurableReadView(t, replica, source.durableIndex())
 			client, ctx := openPositionSQLClient(t, replica, protocol)
 			if _, err := client.ExecContext(ctx, "SET READ BARRIER PREVIOUS"); err != nil {

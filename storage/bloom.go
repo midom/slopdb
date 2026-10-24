@@ -26,27 +26,46 @@ func NewBloomFilter(bitsPerKey int) *BloomFilter {
 	return &BloomFilter{numHashes: k, bitsPerKey: bitsPerKey}
 }
 
-func (bf *BloomFilter) Generate(keys [][]byte) []byte {
-	n := len(keys)
+func bloomKeyHash(key []byte) uint32 {
+	h := fnv.New32a()
+	_, _ = h.Write(key)
+	return h.Sum32()
+}
+
+func (bf *BloomFilter) initialize(n int) uint32 {
 	bits := n * bf.bitsPerKey
 	if bits < 64 {
 		bits = 64
 	}
-	bytes := (bits + 7) / 8
-	bf.bits = make([]byte, bytes, bytes+1)
+	size := (bits + 7) / 8
+	bf.bits = make([]byte, size, size+1)
 	bf.bits = append(bf.bits, byte(bf.numHashes|bloomRotatedDelta))
-	numBits := uint32(bytes * 8)
+	return uint32(size * 8)
+}
 
+func (bf *BloomFilter) addHash(hash, numBits uint32) {
+	delta := (hash >> 17) | (hash << 15)
+	for j := 0; j < bf.numHashes; j++ {
+		bitPos := hash % numBits
+		bf.bits[bitPos/8] |= 1 << (bitPos % 8)
+		hash += delta
+	}
+}
+
+func (bf *BloomFilter) Generate(keys [][]byte) []byte {
+	numBits := bf.initialize(len(keys))
 	for _, key := range keys {
-		h := fnv.New32a()
-		h.Write(key)
-		hash := h.Sum32()
-		delta := (hash >> 17) | (hash << 15)
-		for j := 0; j < bf.numHashes; j++ {
-			bitPos := hash % numBits
-			bf.bits[bitPos/8] |= 1 << (bitPos % 8)
-			hash += delta
-		}
+		bf.addHash(bloomKeyHash(key), numBits)
+	}
+	return bf.bits
+}
+
+// Writers retain fixed-size hashes rather than every key's byte slice. This
+// generates exactly the same filter, including duplicate-key probe counts.
+func (bf *BloomFilter) generateHashes(hashes []uint32) []byte {
+	numBits := bf.initialize(len(hashes))
+	for _, hash := range hashes {
+		bf.addHash(hash, numBits)
 	}
 	return bf.bits
 }

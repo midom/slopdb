@@ -67,23 +67,26 @@ func EncodeBlockHandle(h BlockHandle) []byte {
 }
 
 type SSTableWriter struct {
-	file            *os.File
-	writer          *bufio.Writer
-	offset          uint64
-	opt             *Options
-	dataBlocks      []BlockHandle
-	indexBlock      *BlockBuilder
-	keys            [][]byte // for bloom filter
-	prevKey         []byte
-	curBlock        *BlockBuilder
-	compression     CompressionType
-	zstdEncoder     *zstd.Encoder
-	lz4Encoder      *lz4.Writer
-	hasRangeDeletes bool
-	maxSeq          uint64
-	firstKey        InternalKey
-	lastKey         InternalKey
-	rangeDeletes    []KeyValue
+	file             *os.File
+	writer           *bufio.Writer
+	offset           uint64
+	opt              *Options
+	dataBlocks       []BlockHandle
+	indexBlock       *BlockBuilder
+	keyHashes        []uint32 // same Bloom encoding, without retaining every key
+	prevKey          []byte
+	curBlock         *BlockBuilder
+	compression      CompressionType
+	zstdEncoder      *zstd.Encoder
+	lz4Encoder       *lz4.Writer
+	compressedBlock  []byte
+	checksummedBlock []byte
+	encodedKey       []byte
+	hasRangeDeletes  bool
+	maxSeq           uint64
+	firstKey         InternalKey
+	lastKey          InternalKey
+	rangeDeletes     []KeyValue
 }
 
 // NewSSTableWriter uses L0 compression for auto; the LSM resolves the destination
@@ -147,26 +150,30 @@ func NewSSTableWriter(path string, opt *Options) (*SSTableWriter, error) {
 }
 
 func (w *SSTableWriter) Add(key InternalKey, value []byte) error {
-	ownedKey := key
-	ownedKey.UserKey = append([]byte(nil), key.UserKey...)
-	if len(w.keys) == 0 {
-		w.firstKey = ownedKey
+	if len(w.keyHashes) == 0 {
+		w.firstKey = key
+		w.firstKey.UserKey = bytes.Clone(key.UserKey)
 	}
-	w.lastKey = ownedKey
+	lastUserKey := append(w.lastKey.UserKey[:0], key.UserKey...)
+	w.lastKey = key
+	w.lastKey.UserKey = lastUserKey
 	if key.SeqNum > w.maxSeq {
 		w.maxSeq = key.SeqNum
 	}
 	if key.OpType == kTypeRangeDelete {
-		w.rangeDeletes = append(w.rangeDeletes, KeyValue{Key: ownedKey, Value: append([]byte(nil), value...)})
+		ownedKey := key
+		ownedKey.UserKey = bytes.Clone(key.UserKey)
+		w.rangeDeletes = append(w.rangeDeletes, KeyValue{Key: ownedKey, Value: bytes.Clone(value)})
 	}
 	w.hasRangeDeletes = w.hasRangeDeletes || key.OpType == kTypeRangeDelete
 	if w.curBlock == nil {
 		w.curBlock = NewBlockBuilder(w.opt.BlockSize)
 	}
 
-	ek := EncodeInternalKey(key)
-	w.curBlock.Add(ek, value)
-	w.keys = append(w.keys, ownedKey.UserKey)
+	w.encodedKey = append(w.encodedKey[:0], key.UserKey...)
+	w.encodedKey = binary.LittleEndian.AppendUint64(w.encodedKey, (key.SeqNum<<8)|uint64(key.OpType))
+	w.curBlock.Add(w.encodedKey, value)
+	w.keyHashes = append(w.keyHashes, bloomKeyHash(key.UserKey))
 	w.prevKey = append(w.prevKey[:0], key.UserKey...)
 
 	if len(w.curBlock.buf) >= w.opt.BlockSize {
@@ -207,13 +214,15 @@ func (w *SSTableWriter) flushBlock() error {
 			compressionType = kGzipCompression
 		}
 	case ZstdCompression:
-		compressed := w.zstdEncoder.EncodeAll(rawBlock, nil)
+		compressed := w.zstdEncoder.EncodeAll(rawBlock, w.compressedBlock[:0])
+		w.compressedBlock = compressed
 		if len(compressed) < len(rawBlock) {
 			blockData = compressed
 			compressionType = kZstdCompression
 		}
 	case SnappyCompression:
-		compressed := snappy.Encode(nil, rawBlock)
+		compressed := snappy.Encode(w.compressedBlock[:cap(w.compressedBlock)], rawBlock)
+		w.compressedBlock = compressed
 		if len(compressed) < len(rawBlock) {
 			blockData = compressed
 			compressionType = kSnappyCompression
@@ -235,8 +244,9 @@ func (w *SSTableWriter) flushBlock() error {
 	}
 
 	crc := crc32.ChecksumIEEE(blockData)
-	dataWithChecksum := make([]byte, len(blockData)+5)
-	copy(dataWithChecksum, blockData)
+	w.checksummedBlock = append(w.checksummedBlock[:0], blockData...)
+	w.checksummedBlock = append(w.checksummedBlock, 0, 0, 0, 0, 0)
+	dataWithChecksum := w.checksummedBlock
 	binary.LittleEndian.PutUint32(dataWithChecksum[len(blockData):], crc)
 	dataWithChecksum[len(blockData)+4] = compressionType
 
@@ -254,7 +264,9 @@ func (w *SSTableWriter) flushBlock() error {
 	// into the preceding block and miss the next block.
 	w.indexBlock.Add(sepKey, EncodeBlockHandle(handle))
 
-	w.curBlock = NewBlockBuilder(w.opt.BlockSize)
+	// bufio.Writer.Write has copied or synchronously written the page. No
+	// table metadata retains its encoding buffers.
+	w.curBlock.reset()
 	return nil
 }
 
@@ -264,7 +276,7 @@ func (w *SSTableWriter) Finish() (FileMetaData, error) {
 	}
 
 	bf := NewBloomFilter(w.opt.BloomBitsKey)
-	filterBlock := bf.Generate(w.keys)
+	filterBlock := bf.generateHashes(w.keyHashes)
 
 	filterHandle := BlockHandle{Offset: w.offset, Size: uint64(len(filterBlock))}
 	if _, err := w.writer.Write(filterBlock); err != nil {
