@@ -3,6 +3,7 @@ package replication
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hashicorp/raft"
 	"slopdb/db"
 	"slopdb/storage"
 )
@@ -52,6 +54,23 @@ func benchmarkTransactions(b *testing.B, voters, workers int, durability Durabil
 	benchmarkTransactionWorkload(b, voters, workers, durability, false)
 }
 
+// BenchmarkRaftLogsOnlyTransactions uses one full leader and two journal voters
+// with the same fixture, SQL transactions and validation as the full-node run.
+func BenchmarkRaftLogsOnlyTransactions(b *testing.B) {
+	for _, mode := range []struct {
+		name       string
+		durability Durability
+	}{{"raft3", DurabilitySync}, {"raft3-async", DurabilityAsync}} {
+		b.Run(mode.name, func(b *testing.B) {
+			for _, workers := range []int{1, 4, 16, 32, 64, 128} {
+				b.Run(fmt.Sprintf("workers%d", workers), func(b *testing.B) {
+					benchmarkTransactionTopology(b, 3, workers, mode.durability, false, 2)
+				})
+			}
+		})
+	}
+}
+
 // BenchmarkRaftHotRowTransactions uses the same fixture and checks as the
 // disjoint-row benchmark, but every independent session updates row 1. Row
 // locks are held through commit, so this measures contention and cannot rely on
@@ -72,7 +91,14 @@ func BenchmarkRaftHotRowTransactions(b *testing.B) {
 }
 
 func benchmarkTransactionWorkload(b *testing.B, voters, workers int, durability Durability, hotRow bool) {
+	benchmarkTransactionTopology(b, voters, workers, durability, hotRow, 0)
+}
+
+func benchmarkTransactionTopology(b *testing.B, voters, workers int, durability Durability, hotRow bool, logsOnly int) {
 	b.StopTimer()
+	if logsOnly < 0 || logsOnly >= voters && logsOnly != 0 {
+		b.Fatal("benchmark requires at least one full voter")
+	}
 	rowID := func(worker int) int64 {
 		if hotRow {
 			return 1
@@ -106,7 +132,7 @@ func benchmarkTransactionWorkload(b *testing.B, voters, workers int, durability 
 	if e = seed.Close(); e != nil {
 		b.Fatal(e)
 	}
-	b.Logf("fixture_sha256=%x voters=%d workers=%d shared_row=%t durability=%s WAL=on WAL_fsync_capability=%t TCP=loopback TLS=off one prepared point update/explicit transaction", sha256.Sum256([]byte(fixture.String())), voters, workers, hotRow, durability, !*benchmarkNoWALFsync)
+	b.Logf("fixture_sha256=%x voters=%d logs_only=%d workers=%d shared_row=%t durability=%s WAL=on WAL_fsync_capability=%t TCP=loopback TLS=off one prepared point update/explicit transaction", sha256.Sum256([]byte(fixture.String())), voters, logsOnly, workers, hotRow, durability, !*benchmarkNoWALFsync)
 	var database *db.Database
 	var nodes []*Node
 	var configurations []Config
@@ -140,6 +166,7 @@ func benchmarkTransactionWorkload(b *testing.B, voters, workers int, durability 
 	} else {
 		for i := 0; i < voters; i++ {
 			c := Config{ID: fmt.Sprintf("bench-%d", i+1), Directory: filepath.Join(root, fmt.Sprintf("node-%d", i+1)), Listen: "tcp://127.0.0.1:0", ControlListen: "tcp://127.0.0.1:0", Token: "local-throughput-benchmark-token", StorageOptions: options, Durability: durability}
+			c.LogsOnly = i >= voters-logsOnly
 			if i == 0 {
 				c.Bootstrap = true
 				c.SeedDirectory = seedPath
@@ -169,13 +196,17 @@ func benchmarkTransactionWorkload(b *testing.B, voters, workers int, durability 
 		}
 		status := nodes[0].Status()
 		count := 0
+		journals := 0
 		for _, m := range status.Members {
 			if m.Suffrage == "Voter" {
 				count++
+				if m.LogsOnly {
+					journals++
+				}
 			}
 		}
-		if count != voters {
-			b.Fatalf("voters=%d want=%d", count, voters)
+		if count != voters || journals != logsOnly {
+			b.Fatalf("voters=%d logs_only=%d want=%d/%d", count, journals, voters, logsOnly)
 		}
 		database = nodes[0].Database()
 	}
@@ -211,6 +242,7 @@ func benchmarkTransactionWorkload(b *testing.B, voters, workers int, durability 
 		}
 	}
 	latencies := make([]int64, b.N)
+	diagnostics := newBenchmarkLatencyDiagnostics(b, b.N)
 	completed := make([]int64, workers)
 	failures := make(chan error, workers)
 	var wg sync.WaitGroup
@@ -226,7 +258,19 @@ func benchmarkTransactionWorkload(b *testing.B, voters, workers int, durability 
 			defer wg.Done()
 			<-start
 			session := sessions[worker]
+			workerContext, finishWorker := diagnostics.worker(worker)
+			defer finishWorker()
 			for operation := worker; operation < b.N; operation += workers {
+				if diagnostics != nil {
+					latency, err := diagnostics.transaction(workerContext, operation, worker, session, statement, rowID(worker))
+					if err != nil {
+						failures <- err
+						return
+					}
+					latencies[operation] = latency
+					completed[worker]++
+					continue
+				}
 				began := time.Now()
 				if _, e := session.Exec("BEGIN"); e != nil {
 					failures <- e
@@ -258,17 +302,21 @@ func benchmarkTransactionWorkload(b *testing.B, voters, workers int, durability 
 		}
 	}
 	b.ReportAllocs()
+	diagnostics.start()
 	b.ResetTimer()
 	b.StartTimer()
+	diagnostics.markStart()
 	close(start)
 	wg.Wait()
 	b.StopTimer()
+	diagnostics.endWindow()
 	if profile != nil {
 		pprof.StopCPUProfile()
 		if e = profile.Close(); e != nil {
 			b.Fatal(e)
 		}
 	}
+	diagnostics.stop()
 	elapsed := b.Elapsed()
 	close(failures)
 	for e := range failures {
@@ -321,7 +369,7 @@ func benchmarkTransactionWorkload(b *testing.B, voters, workers int, durability 
 		}
 	}
 	if voters > 0 {
-		// Drain asynchronous application, then compare raw state on every replica.
+		// Drain application, then compare full state or reconstruct each journal.
 		if e = nodes[0].propose(command{Version: 1, Kind: "fence"}, nil); e != nil {
 			b.Fatal(e)
 		}
@@ -368,6 +416,10 @@ func benchmarkTransactionWorkload(b *testing.B, voters, workers int, durability 
 		}
 		expected := digest(nodes[0])
 		for _, node := range nodes[1:] {
+			if node.config.LogsOnly {
+				benchmarkValidateJournal(b, node, checkpoint{nodes[0].cluster, index, nodes[0].appliedTerm.Load()}, validate)
+				continue
+			}
 			if got := digest(node); got != expected {
 				b.Fatal("replica state differs")
 			}
@@ -443,4 +495,108 @@ func benchmarkTransactionWorkload(b *testing.B, voters, workers int, durability 
 		validate(leader.Database())
 		closeAll()
 	}
+}
+
+// Validate every journal independently by restoring its opaque base and replaying
+// its own committed WAL. Never compare its metadata-only native state with a
+// full SQL database or substitute a fresh leader clone for missing journal data.
+func benchmarkValidateJournal(b *testing.B, node *Node, target checkpoint, validate func(*db.Database)) {
+	b.Helper()
+	assertLogsOnlyStore(b, node)
+	list, err := node.snapshots.List()
+	if err != nil {
+		b.Fatal(err)
+	}
+	var meta *raft.SnapshotMeta
+	for _, candidate := range list {
+		if candidate.Index <= target.Index {
+			meta = candidate
+			break
+		}
+	}
+	if meta == nil {
+		b.Fatal("journal has no recovery base")
+	}
+	_, reader, err := node.snapshots.Open(meta.ID)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer reader.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	owner := &Node{config: Config{Directory: b.TempDir(), Token: node.config.Token, Durability: node.config.Durability}, cluster: node.cluster, ctx: ctx}
+	directory, header, err := owner.decodeSnapshot(reader)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if header.Checkpoint.Index != meta.Index || header.Checkpoint.Term != meta.Term {
+		b.Fatal("journal recovery base metadata mismatch")
+	}
+	tree, err := storage.NewLSMTree(directory, storage.DefaultOptions())
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = tree.Close() })
+	var hash [32]byte
+	if node.async() {
+		hash = header.Certificate.Body.Hash
+	}
+	for index := meta.Index + 1; index <= target.Index; index++ {
+		if err = ctx.Err(); err != nil {
+			b.Fatal(err)
+		}
+		var log raft.Log
+		if err = node.store.GetLog(index, &log); err != nil {
+			b.Fatal(err)
+		}
+		if node.async() {
+			hash = chainedLogHash(hash, &log)
+			expected, err := node.store.historyHash(index)
+			if err != nil || hash != expected {
+				b.Fatalf("journal hash mismatch at %d: %v", index, err)
+			}
+		}
+		var writes []storage.Mutation
+		switch log.Type {
+		case raft.LogCommand:
+			var c command
+			if err = unmarshalCommand(log.Data, &c); err == nil {
+				writes, err = physicalMutations(tree, c)
+			}
+		case raft.LogConfiguration, raft.LogNoop, raft.LogBarrier:
+		default:
+			err = fmt.Errorf("unsupported journal log type %d", log.Type)
+		}
+		if err != nil {
+			b.Fatal(err)
+		}
+		value, _ := json.Marshal(checkpoint{node.cluster, index, log.Term})
+		writes = append(writes, storage.Mutation{Key: appliedKey, Value: value})
+		if err = tree.ApplyReplicatedDeferred(writes); err != nil {
+			b.Fatal(err)
+		}
+	}
+	got, err := readCheckpoint(tree, node.cluster)
+	if err != nil || got != target {
+		b.Fatalf("journal checkpoint %+v want %+v: %v", got, target, err)
+	}
+	if node.async() {
+		certificate := node.currentCertificate()
+		if certificate == nil || certificate.Body.Index != target.Index || certificate.Body.Hash != hash {
+			b.Fatal("journal recovery did not reach certified prefix")
+		}
+	}
+	if err = tree.Close(); err != nil {
+		b.Fatal(err)
+	}
+	restored, err := db.Open(directory, nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = restored.Close() })
+	validate(restored)
+	if err = restored.Close(); err != nil {
+		b.Fatal(err)
+	}
+	b.Logf("journal=%s restored base=%d through=%d; exact rows and integrity verified", node.config.ID, meta.Index, target.Index)
 }

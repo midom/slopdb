@@ -55,6 +55,8 @@ type LSMTree struct {
 	bgErr                 error
 	tableCache            *tableCache
 	flushWg               sync.WaitGroup
+	walSyncWg             sync.WaitGroup
+	walSyncTail           *walSyncTask // writerMu protects the ordered completion chain
 	compactionWg          sync.WaitGroup
 	compactionScheduled   bool
 	compactions           int
@@ -432,7 +434,7 @@ func (l *LSMTree) writeMutationsLocal(batch []Mutation, syncWAL, rangeDelete boo
 		}
 		err := wal.AddRecord(data)
 		if err == nil && syncWAL && !l.opt.DisableWALSync {
-			err = wal.Sync()
+			err = l.syncWAL()
 		}
 		if err != nil {
 			l.mu.Lock()
@@ -509,15 +511,6 @@ func (l *LSMTree) ensureWAL() error {
 	}
 	l.wal = wal
 	return nil
-}
-
-// AddRecord flushes records to the OS in every WAL mode. This controls only
-// the additional durability barrier, including on rotation and shutdown.
-func (l *LSMTree) syncWAL() error {
-	if l.wal == nil || l.opt.DisableWALSync {
-		return nil
-	}
-	return l.wal.Sync()
 }
 
 func (l *LSMTree) Get(key []byte) ([]byte, bool, error) {
@@ -833,13 +826,9 @@ func (l *LSMTree) makeRoomForWrite() error {
 		return nil
 	}
 	if l.wal != nil {
-		if err := l.syncWAL(); err != nil {
+		if err := l.sealWAL(); err != nil {
 			return err
 		}
-		if err := l.wal.Close(); err != nil {
-			return err
-		}
-		l.wal = nil
 	}
 	l.imm = l.mem
 	l.flushWALNum = l.walFileNum
@@ -1305,6 +1294,7 @@ func (l *LSMTree) Close() error {
 	l.mu.Unlock()
 	l.flushWg.Wait()
 	l.compactionWg.Wait()
+	l.walSyncWg.Wait()
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	defer close(l.closeDone)

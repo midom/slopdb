@@ -32,6 +32,7 @@
 
 - [x] VARCHAR/VARBINARY limits and catalog-only length increases; `ALLOW EXISTING` shrinking
 - [x] Online standalone index additions and catalog-only index drops, with atomic publication and recovery cleanup
+- [x] Conditional post-commit index cleanup; ordinary DML commits skip cleanup scans and the catalog writer lock
 - [x] Optional publication policy that rolls back blocking transactions after a configurable grace period
 
 See [online indexes](docs/online-indexes.md) and
@@ -156,5 +157,6 @@ reverse seeks. `VACUUM` flushes writes and compacts SSTables.
 - [x] Signed logical commit positions in native/MySQL/PostgreSQL commit responses, master/session position queries, explicit visibility waits and per-call minimum positions
 - [x] Previous/next durable read barriers, exact historical catalog/data views, per-session and per-call policies, compaction-safe retention and cancellable certification waits
 - [ ] Automatic SQL routing and application request deduplication
+- [x] Background WAL rotation fsync outside storage locks, with durable barriers covering all earlier generations, error propagation and shutdown joins
 
 See [Raft replication](docs/replication.md) for operational limits.

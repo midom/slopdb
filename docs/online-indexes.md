@@ -141,6 +141,13 @@ change committed and index cleanup is pending. Reopening retries durable
 cleanup; later index cleanup operations can also reclaim pending prefixes.
 The committed catalog is authoritative when checking whether an index exists.
 
+Post-commit cleanup runs only for sessions that staged an index drop. Ordinary
+DML `COMMIT` and outermost `RELEASE` skip both the cleanup metadata scan and its
+exclusive catalog lock. Transactional drops are reclaimed after commit; a
+cleanup failure retains the session's request so a subsequent commit can retry.
+Rolling back a drop may cause one harmless empty cleanup on that session's next
+commit. Startup and online-build cleanup continue checking persisted markers.
+
 ## Transactions and multi-action ALTER
 
 Inside explicit transactions and savepoints, index creation retains the

@@ -23,20 +23,27 @@ func (l *LSMTree) ReplicaMode() bool { return l.opt.Replica }
 
 // ApplyReplicatedDeferred records an atomic batch without a per-call WAL fsync.
 // Only a replication owner with a separate durable-frontier/recovery protocol
-// may use it. Normal rotation, SSTable and MANIFEST durability is unchanged.
+// may use it. Rotation syncs sealed WALs in the background; a subsequent
+// ApplyReplicated or SyncReplicationWAL waits for the complete preceding prefix.
+// SSTable and MANIFEST publication remain durable.
 func (l *LSMTree) ApplyReplicatedDeferred(batch []Mutation) error {
 	return l.writeMutationsLocal(batch, false, false, nil)
 }
 
-// SyncReplicationWAL synchronizes all WAL records ordered before this call.
+// SyncReplicationWAL synchronizes all WAL records ordered before this call,
+// including sealed generations whose background fsync has not yet completed.
 func (l *LSMTree) SyncReplicationWAL() error {
 	l.writerMu.Lock()
 	defer l.writerMu.Unlock()
 	l.mu.RLock()
 	closed := l.closed
+	backgroundErr := l.bgErr
 	l.mu.RUnlock()
 	if closed {
 		return fmt.Errorf("database closed")
+	}
+	if backgroundErr != nil {
+		return backgroundErr
 	}
 	if l.opt.DisableWAL || l.opt.DisableWALSync {
 		return fmt.Errorf("replication sync requires enabled WAL fsync")

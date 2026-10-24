@@ -29,13 +29,21 @@ func (l *LSMTree) flushWithWriterLocked() error {
 		return nil
 	}
 	if l.wal != nil {
-		if err := l.syncWAL(); err != nil {
-			return err
+		// writerMu pins the active WAL while background jobs remain free to
+		// publish errors and readers can acquire their views during fsync.
+		l.mu.Unlock()
+		err := l.syncWAL()
+		if err == nil {
+			err = l.wal.Close()
 		}
-		if err := l.wal.Close(); err != nil {
+		l.mu.Lock()
+		if err != nil {
 			return err
 		}
 		l.wal = nil
+		if l.bgErr != nil {
+			return l.bgErr
+		}
 	}
 	l.imm = l.mem
 	l.flushWALNum = l.walFileNum

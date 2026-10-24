@@ -28,7 +28,30 @@ func (s *Schema) markIndexCleanup(idx *IndexInfo) error {
 	if err != nil {
 		return err
 	}
-	return s.write(indexCleanupKey(idx.ID), data)
+	if err := s.write(indexCleanupKey(idx.ID), data); err != nil {
+		return err
+	}
+	s.indexCleanupPending = true
+	return nil
+}
+
+// CleanupPendingIndexGarbage performs post-commit cleanup only for sessions that
+// staged an index drop. Ordinary DML commits neither lock the catalog nor inspect
+// cleanup metadata. Callers must serialize this with the session's execution.
+//
+// The hint deliberately survives statement/savepoint rollback: an extra empty
+// cleanup is harmless, and committed markers must remain retryable after errors.
+// Startup and online-build cleanup use CleanupIndexGarbage directly; they must
+// not consume another session's hint for a still-private transaction.
+func (s *Schema) CleanupPendingIndexGarbage() error {
+	if s.inTx || !s.indexCleanupPending {
+		return nil
+	}
+	if err := s.CleanupIndexGarbage(); err != nil {
+		return err
+	}
+	s.indexCleanupPending = false
+	return nil
 }
 
 func (s *Schema) reserveOnlineIndexID(b *OnlineIndexBuild) (uint64, error) {

@@ -93,6 +93,8 @@ type Schema struct {
 	lockHandler           func(LockRequest) error
 	lockGroupHandler      func([]LockRequest) error
 
+	indexCleanupPending bool // session hint; survives rollback and cleanup failures
+
 	inTx             bool
 	txWrites         []txWrite
 	txLatest         map[string]int

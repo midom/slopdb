@@ -524,6 +524,20 @@ log records remain synchronously durable. WAL and its synchronization capability
 must stay enabled; the ordinary
 `--no-wal-fsync` and `--no-wal` flags remain invalid for replication.
 
+Memtable rotation hands the sealed WAL to a background job for fsync and close,
+outside the storage writer and publication locks. Deferred writes can continue
+in the new WAL while that job runs. Durable writes used by receipts and
+certificates, `storage.LSMTree.SyncReplicationWAL`, and explicit storage flushes wait for
+the active WAL and every preceding sealed generation. Completion remains ordered
+even when individual file syncs finish out of order. Each generation's first sync
+also persists its directory entry. Background failures reject later writes and
+durability barriers, and shutdown joins all jobs and reports failures.
+
+SSTable and manifest publication still synchronize before retiring WAL files.
+Background WAL fsync alone does not advance D or create a quorum certificate;
+ordinary async commits retain their existing recovery semantics. Sync commits
+continue waiting for the durable log prefix.
+
 The default group-flush interval is 100 ms. The default maximum durability lag
 is the greater of one second and ten flush intervals. Once an unstable prefix
 exceeds that age, new writes are rejected until flushing succeeds. This limits

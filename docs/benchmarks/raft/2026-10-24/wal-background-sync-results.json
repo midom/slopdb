@@ -1,0 +1,496 @@
+{
+  "production_base": "11b39400f6631d46fe7d9f6357e66b9f4f9f0a4b",
+  "host": "test",
+  "workers": 128,
+  "GOMAXPROCS": 60,
+  "GOGC": 100,
+  "topology": "one full leader and two logs-only voters; one process; TCP loopback; TLS off",
+  "filesystem": "disk-backed ext4 /dev/sda1; TMPDIR=/var/tmp/sdb-rj24-check",
+  "storage_options": "defaults; WAL on; fsync enabled; 4 MiB write buffers",
+  "async_durability": "normal periodic certification, 100 ms interval, 1 s maximum lag",
+  "diagnostic_flags": false,
+  "source_sha256": {
+    "storage/lsm.go": "3cdf49f8509a9584436d848735eb14c8bf6dfc7c6a247d97e11ad19b1f5f1c06",
+    "storage/wal.go": "979cc709d9d9ae5a99ebf0bd39f512a45e7a9f48b19975b16250eedc603767ae",
+    "storage/flush.go": "f6888a6af0fa12f45bc50d9f39bb770b22e76f6ffb3804da6c6b7657c032e972",
+    "storage/replication.go": "55ea22d51e818a287666d86b1eb00b770e908a0de3e57b5bb93f49fd20f06ec6",
+    "storage/wal_sync.go": "e46f872154819d5ac66a886c41afc1890f3751981443e8759d27daf6cd3bd5ad",
+    "storage/wal_sync_test.go": "601704aa779daadb7db2058412b5d9d6a1008e6314cdc6fdc4438c384f51e570",
+    "storage/wal_sync_linux_test.go": "03dcfea086fe29aec93b79ff685e924a55d3f4772985f1fdcdbb4dae755cc37e",
+    "replication/wal_rotation_test.go": "9cd607d0262e6c7429db0987131375cb6d4872669981ee46f76e5dbab0b1d6a4",
+    "db/database.go": "bc45a829258cb549674719070e659c796f69d31588257fe377e1fe7a13804362",
+    "sql/executor.go": "7fd5591e906413294cb826c4fc8454c3ede6fcbbc5149b78725ded07bd1d024b",
+    "sql/index_cleanup.go": "11938ac2a724acab56dd8b8c9b9f052bf850017962eabdee9b2f81ee022a013d",
+    "replication/throughput_benchmark_test.go": "4c7d615ddcf881e2405779b0bd2309e2c55fb19d186588160dacc0f0c34e8c88",
+    "replication/latency_benchmark_test.go": "ad739ff746d108b2f68323ee3ed9c5e7b52152211ab827f1e791e9707462d93a",
+    "replication/roles_test.go": "ff8b0cc97960e76b6b68f5aad9a52a0352c02a908cc0f1ed4c388a65e9ef4af0"
+  },
+  "binary_sha256": {
+    "baseline": "f86f54eb63e7015018e2bf9170d0973825764972d71a12673b93be39ca63d875",
+    "fixed": "784372031a72b6ffe07fe900fc7322b4bcb6d142dccfd4166158ddd486eff341"
+  },
+  "baseline_description": "previous conditional COMMIT cleanup fix with foreground WAL rotation fsync; unchanged benchmark harness",
+  "fixed_description": "same cleanup fix plus background WAL rotation fsync, prefix durability barriers and initial WAL directory-entry sync",
+  "baseline_source_sha256": {
+    "db/database.go": "bc45a829258cb549674719070e659c796f69d31588257fe377e1fe7a13804362",
+    "sql/executor.go": "7fd5591e906413294cb826c4fc8454c3ede6fcbbc5149b78725ded07bd1d024b",
+    "sql/index_cleanup.go": "11938ac2a724acab56dd8b8c9b9f052bf850017962eabdee9b2f81ee022a013d",
+    "replication/throughput_benchmark_test.go": "4c7d615ddcf881e2405779b0bd2309e2c55fb19d186588160dacc0f0c34e8c88",
+    "replication/latency_benchmark_test.go": "ad739ff746d108b2f68323ee3ed9c5e7b52152211ab827f1e791e9707462d93a",
+    "replication/roles_test.go": "ff8b0cc97960e76b6b68f5aad9a52a0352c02a908cc0f1ed4c388a65e9ef4af0",
+    "storage/lsm.go": "77c8e24ec1f2ea569101cbdefc8cdc4eeb70e398b1fb23a5bd3ed4f503304bf0",
+    "storage/wal.go": "35bd9ad1c599d7457cf63fac86889414f69ec8b5babdb35a79f2f375c708d6be",
+    "storage/flush.go": "daa2a64fbb2ae5bf29ede09e01fc40bc525b1f76603d4e493e4d86680e82748f",
+    "storage/replication.go": "2b45d3c5a32615c8ff035f14a59c4a205a1acac0e63bc52eff7140d9702b7c86"
+  },
+  "samples": [
+    {
+      "durability": "async",
+      "version": "baseline",
+      "repeat": 1,
+      "iterations": 250000,
+      "metrics": {
+        "ns/op": 13037.0,
+        "p50-ms": 1.163,
+        "p95-ms": 4.189,
+        "p99-ms": 10.08,
+        "raft-entries/tx": 0.1206,
+        "tx/s": 76706.0,
+        "B/op": 8213.0,
+        "allocs/op": 103.0
+      },
+      "elapsed_seconds": 11.766956567764282,
+      "command": [
+        "/tmp/slopdb-bench/wal-background-sync-20261024/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3-async$/^workers128$",
+        "-test.benchtime=250000x",
+        "-test.count=1",
+        "-test.timeout=10m"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "journal_checks": 4,
+      "fixture_sha256": "57ab9123236ce31f14760188a24f04221dfd4506d4f2fe371911a441503d946a",
+      "raw_log": "/tmp/slopdb-bench/wal-background-sync-20261024/async-baseline-1.txt"
+    },
+    {
+      "durability": "async",
+      "version": "fixed",
+      "repeat": 1,
+      "iterations": 250000,
+      "metrics": {
+        "ns/op": 12751.0,
+        "p50-ms": 1.165,
+        "p95-ms": 3.888,
+        "p99-ms": 10.55,
+        "raft-entries/tx": 0.121,
+        "tx/s": 78425.0,
+        "B/op": 8167.0,
+        "allocs/op": 103.0
+      },
+      "elapsed_seconds": 10.516934871673584,
+      "command": [
+        "/tmp/slopdb-bench/wal-background-sync-20261024/fixed.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3-async$/^workers128$",
+        "-test.benchtime=250000x",
+        "-test.count=1",
+        "-test.timeout=10m"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "journal_checks": 4,
+      "fixture_sha256": "57ab9123236ce31f14760188a24f04221dfd4506d4f2fe371911a441503d946a",
+      "raw_log": "/tmp/slopdb-bench/wal-background-sync-20261024/async-fixed-1.txt"
+    },
+    {
+      "durability": "sync",
+      "version": "baseline",
+      "repeat": 1,
+      "iterations": 25000,
+      "metrics": {
+        "ns/op": 216044.0,
+        "p50-ms": 24.45,
+        "p95-ms": 46.93,
+        "p99-ms": 70.88,
+        "raft-entries/tx": 1.0,
+        "tx/s": 4629.0,
+        "B/op": 11043.0,
+        "allocs/op": 157.0
+      },
+      "elapsed_seconds": 15.178056240081787,
+      "command": [
+        "/tmp/slopdb-bench/wal-background-sync-20261024/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3$/^workers128$",
+        "-test.benchtime=25000x",
+        "-test.count=1",
+        "-test.timeout=10m"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "journal_checks": 4,
+      "fixture_sha256": "57ab9123236ce31f14760188a24f04221dfd4506d4f2fe371911a441503d946a",
+      "raw_log": "/tmp/slopdb-bench/wal-background-sync-20261024/sync-baseline-1.txt"
+    },
+    {
+      "durability": "sync",
+      "version": "fixed",
+      "repeat": 1,
+      "iterations": 25000,
+      "metrics": {
+        "ns/op": 225367.0,
+        "p50-ms": 25.94,
+        "p95-ms": 46.61,
+        "p99-ms": 62.6,
+        "raft-entries/tx": 1.0,
+        "tx/s": 4437.0,
+        "B/op": 11035.0,
+        "allocs/op": 157.0
+      },
+      "elapsed_seconds": 15.35603666305542,
+      "command": [
+        "/tmp/slopdb-bench/wal-background-sync-20261024/fixed.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3$/^workers128$",
+        "-test.benchtime=25000x",
+        "-test.count=1",
+        "-test.timeout=10m"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "journal_checks": 4,
+      "fixture_sha256": "57ab9123236ce31f14760188a24f04221dfd4506d4f2fe371911a441503d946a",
+      "raw_log": "/tmp/slopdb-bench/wal-background-sync-20261024/sync-fixed-1.txt"
+    },
+    {
+      "durability": "sync",
+      "version": "fixed",
+      "repeat": 2,
+      "iterations": 25000,
+      "metrics": {
+        "ns/op": 224717.0,
+        "p50-ms": 25.7,
+        "p95-ms": 47.43,
+        "p99-ms": 59.2,
+        "raft-entries/tx": 1.0,
+        "tx/s": 4450.0,
+        "B/op": 11054.0,
+        "allocs/op": 157.0
+      },
+      "elapsed_seconds": 15.248366355895996,
+      "command": [
+        "/tmp/slopdb-bench/wal-background-sync-20261024/fixed.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3$/^workers128$",
+        "-test.benchtime=25000x",
+        "-test.count=1",
+        "-test.timeout=10m"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "journal_checks": 4,
+      "fixture_sha256": "57ab9123236ce31f14760188a24f04221dfd4506d4f2fe371911a441503d946a",
+      "raw_log": "/tmp/slopdb-bench/wal-background-sync-20261024/sync-fixed-2.txt"
+    },
+    {
+      "durability": "sync",
+      "version": "baseline",
+      "repeat": 2,
+      "iterations": 25000,
+      "metrics": {
+        "ns/op": 226570.0,
+        "p50-ms": 26.23,
+        "p95-ms": 48.68,
+        "p99-ms": 59.63,
+        "raft-entries/tx": 1.0,
+        "tx/s": 4414.0,
+        "B/op": 11043.0,
+        "allocs/op": 157.0
+      },
+      "elapsed_seconds": 14.554454565048218,
+      "command": [
+        "/tmp/slopdb-bench/wal-background-sync-20261024/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3$/^workers128$",
+        "-test.benchtime=25000x",
+        "-test.count=1",
+        "-test.timeout=10m"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "journal_checks": 4,
+      "fixture_sha256": "57ab9123236ce31f14760188a24f04221dfd4506d4f2fe371911a441503d946a",
+      "raw_log": "/tmp/slopdb-bench/wal-background-sync-20261024/sync-baseline-2.txt"
+    },
+    {
+      "durability": "async",
+      "version": "fixed",
+      "repeat": 2,
+      "iterations": 250000,
+      "metrics": {
+        "ns/op": 13435.0,
+        "p50-ms": 1.241,
+        "p95-ms": 4.144,
+        "p99-ms": 10.12,
+        "raft-entries/tx": 0.1247,
+        "tx/s": 74432.0,
+        "B/op": 8248.0,
+        "allocs/op": 104.0
+      },
+      "elapsed_seconds": 10.792364597320557,
+      "command": [
+        "/tmp/slopdb-bench/wal-background-sync-20261024/fixed.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3-async$/^workers128$",
+        "-test.benchtime=250000x",
+        "-test.count=1",
+        "-test.timeout=10m"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "journal_checks": 4,
+      "fixture_sha256": "57ab9123236ce31f14760188a24f04221dfd4506d4f2fe371911a441503d946a",
+      "raw_log": "/tmp/slopdb-bench/wal-background-sync-20261024/async-fixed-2.txt"
+    },
+    {
+      "durability": "async",
+      "version": "baseline",
+      "repeat": 2,
+      "iterations": 250000,
+      "metrics": {
+        "ns/op": 13460.0,
+        "p50-ms": 1.171,
+        "p95-ms": 4.338,
+        "p99-ms": 10.75,
+        "raft-entries/tx": 0.1211,
+        "tx/s": 74293.0,
+        "B/op": 8174.0,
+        "allocs/op": 104.0
+      },
+      "elapsed_seconds": 10.449875116348267,
+      "command": [
+        "/tmp/slopdb-bench/wal-background-sync-20261024/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3-async$/^workers128$",
+        "-test.benchtime=250000x",
+        "-test.count=1",
+        "-test.timeout=10m"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "journal_checks": 4,
+      "fixture_sha256": "57ab9123236ce31f14760188a24f04221dfd4506d4f2fe371911a441503d946a",
+      "raw_log": "/tmp/slopdb-bench/wal-background-sync-20261024/async-baseline-2.txt"
+    },
+    {
+      "durability": "async",
+      "version": "baseline",
+      "repeat": 3,
+      "iterations": 250000,
+      "metrics": {
+        "ns/op": 13326.0,
+        "p50-ms": 1.178,
+        "p95-ms": 4.175,
+        "p99-ms": 10.31,
+        "raft-entries/tx": 0.1226,
+        "tx/s": 75042.0,
+        "B/op": 8242.0,
+        "allocs/op": 104.0
+      },
+      "elapsed_seconds": 11.195851802825928,
+      "command": [
+        "/tmp/slopdb-bench/wal-background-sync-20261024/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3-async$/^workers128$",
+        "-test.benchtime=250000x",
+        "-test.count=1",
+        "-test.timeout=10m"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "journal_checks": 4,
+      "fixture_sha256": "57ab9123236ce31f14760188a24f04221dfd4506d4f2fe371911a441503d946a",
+      "raw_log": "/tmp/slopdb-bench/wal-background-sync-20261024/async-baseline-3.txt"
+    },
+    {
+      "durability": "async",
+      "version": "fixed",
+      "repeat": 3,
+      "iterations": 250000,
+      "metrics": {
+        "ns/op": 13422.0,
+        "p50-ms": 1.212,
+        "p95-ms": 4.085,
+        "p99-ms": 10.43,
+        "raft-entries/tx": 0.1238,
+        "tx/s": 74503.0,
+        "B/op": 8294.0,
+        "allocs/op": 104.0
+      },
+      "elapsed_seconds": 11.499850273132324,
+      "command": [
+        "/tmp/slopdb-bench/wal-background-sync-20261024/fixed.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3-async$/^workers128$",
+        "-test.benchtime=250000x",
+        "-test.count=1",
+        "-test.timeout=10m"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "journal_checks": 4,
+      "fixture_sha256": "57ab9123236ce31f14760188a24f04221dfd4506d4f2fe371911a441503d946a",
+      "raw_log": "/tmp/slopdb-bench/wal-background-sync-20261024/async-fixed-3.txt"
+    },
+    {
+      "durability": "sync",
+      "version": "baseline",
+      "repeat": 3,
+      "iterations": 25000,
+      "metrics": {
+        "ns/op": 214793.0,
+        "p50-ms": 23.97,
+        "p95-ms": 45.96,
+        "p99-ms": 58.25,
+        "raft-entries/tx": 1.0,
+        "tx/s": 4656.0,
+        "B/op": 11036.0,
+        "allocs/op": 157.0
+      },
+      "elapsed_seconds": 13.7466139793396,
+      "command": [
+        "/tmp/slopdb-bench/wal-background-sync-20261024/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3$/^workers128$",
+        "-test.benchtime=25000x",
+        "-test.count=1",
+        "-test.timeout=10m"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "journal_checks": 4,
+      "fixture_sha256": "57ab9123236ce31f14760188a24f04221dfd4506d4f2fe371911a441503d946a",
+      "raw_log": "/tmp/slopdb-bench/wal-background-sync-20261024/sync-baseline-3.txt"
+    },
+    {
+      "durability": "sync",
+      "version": "fixed",
+      "repeat": 3,
+      "iterations": 25000,
+      "metrics": {
+        "ns/op": 212177.0,
+        "p50-ms": 24.73,
+        "p95-ms": 44.2,
+        "p99-ms": 57.1,
+        "raft-entries/tx": 1.0,
+        "tx/s": 4713.0,
+        "B/op": 11044.0,
+        "allocs/op": 157.0
+      },
+      "elapsed_seconds": 14.305711030960083,
+      "command": [
+        "/tmp/slopdb-bench/wal-background-sync-20261024/fixed.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3$/^workers128$",
+        "-test.benchtime=25000x",
+        "-test.count=1",
+        "-test.timeout=10m"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "journal_checks": 4,
+      "fixture_sha256": "57ab9123236ce31f14760188a24f04221dfd4506d4f2fe371911a441503d946a",
+      "raw_log": "/tmp/slopdb-bench/wal-background-sync-20261024/sync-fixed-3.txt"
+    }
+  ],
+  "summary": [
+    {
+      "durability": "sync",
+      "version": "baseline",
+      "samples": 3,
+      "iterations_per_sample": 25000,
+      "median_metrics": {
+        "ns/op": 216044.0,
+        "p50-ms": 24.45,
+        "p95-ms": 46.93,
+        "p99-ms": 59.63,
+        "raft-entries/tx": 1.0,
+        "tx/s": 4629.0,
+        "B/op": 11043.0,
+        "allocs/op": 157.0
+      },
+      "min_tps": 4414.0,
+      "max_tps": 4656.0
+    },
+    {
+      "durability": "sync",
+      "version": "fixed",
+      "samples": 3,
+      "iterations_per_sample": 25000,
+      "median_metrics": {
+        "ns/op": 224717.0,
+        "p50-ms": 25.7,
+        "p95-ms": 46.61,
+        "p99-ms": 59.2,
+        "raft-entries/tx": 1.0,
+        "tx/s": 4450.0,
+        "B/op": 11044.0,
+        "allocs/op": 157.0
+      },
+      "min_tps": 4437.0,
+      "max_tps": 4713.0
+    },
+    {
+      "durability": "async",
+      "version": "baseline",
+      "samples": 3,
+      "iterations_per_sample": 250000,
+      "median_metrics": {
+        "ns/op": 13326.0,
+        "p50-ms": 1.171,
+        "p95-ms": 4.189,
+        "p99-ms": 10.31,
+        "raft-entries/tx": 0.1211,
+        "tx/s": 75042.0,
+        "B/op": 8213.0,
+        "allocs/op": 104.0
+      },
+      "min_tps": 74293.0,
+      "max_tps": 76706.0
+    },
+    {
+      "durability": "async",
+      "version": "fixed",
+      "samples": 3,
+      "iterations_per_sample": 250000,
+      "median_metrics": {
+        "ns/op": 13422.0,
+        "p50-ms": 1.212,
+        "p95-ms": 4.085,
+        "p99-ms": 10.43,
+        "raft-entries/tx": 0.1238,
+        "tx/s": 74503.0,
+        "B/op": 8248.0,
+        "allocs/op": 104.0
+      },
+      "min_tps": 74432.0,
+      "max_tps": 78425.0
+    }
+  ],
+  "validation": {
+    "build": true,
+    "full_normal_suite": true,
+    "full_race_suite": true,
+    "vet_all": true,
+    "diff_check": true,
+    "targeted_rotated_wal_race_repetitions": 3,
+    "directory_syscall_test_normal_and_race": true,
+    "rotated_journal_recovery_race": true,
+    "benchmark_exact_sql_totals_integrity_journal_reconstruction_and_recovery": true,
+    "measured_journal_reconstructions": 24,
+    "calibration_journal_reconstructions": 24,
+    "failed_samples": 0
+  }
+}

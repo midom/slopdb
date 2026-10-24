@@ -7,6 +7,7 @@ import (
 	"hash/crc32"
 	"io"
 	"os"
+	"path/filepath"
 )
 
 const (
@@ -18,11 +19,19 @@ const (
 	kLastType   = 4
 )
 
+type walFile interface {
+	io.WriteCloser
+	Sync() error
+}
+
 type WalWriter struct {
-	file   *os.File
+	file   walFile
 	writer *bufio.Writer
 	block  []byte
 	offset int
+
+	directory       string
+	directorySynced bool
 }
 
 func NewWalWriter(path string) (*WalWriter, error) {
@@ -31,10 +40,11 @@ func NewWalWriter(path string) (*WalWriter, error) {
 		return nil, err
 	}
 	return &WalWriter{
-		file:   f,
-		writer: bufio.NewWriterSize(f, kBlockSize*2),
-		block:  make([]byte, kBlockSize),
-		offset: 0,
+		file:      f,
+		writer:    bufio.NewWriterSize(f, kBlockSize*2),
+		block:     make([]byte, kBlockSize),
+		offset:    0,
+		directory: filepath.Dir(path),
 	}, nil
 }
 
@@ -88,7 +98,26 @@ func (w *WalWriter) Sync() error {
 	if err := w.writer.Flush(); err != nil {
 		return err
 	}
-	return w.file.Sync()
+	if err := w.file.Sync(); err != nil {
+		return err
+	}
+	if !w.directorySynced {
+		// A durable WAL must survive loss of its newly created directory entry,
+		// too. Later syncs of this generation need only synchronize the file.
+		dir, err := os.Open(w.directory)
+		if err != nil {
+			return err
+		}
+		err = dir.Sync()
+		if e := dir.Close(); err == nil {
+			err = e
+		}
+		if err != nil {
+			return err
+		}
+		w.directorySynced = true
+	}
+	return nil
 }
 
 func (w *WalWriter) Close() error {

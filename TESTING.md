@@ -34,6 +34,7 @@ go test ./sql -run '^$' -fuzz FuzzParse -fuzztime 30s
 | Inline/composite indexes, uniqueness, ALTER, dump/restore and diagnostic repair | `tests/regression/inline_indexes_test.go` | `standard_inline_indexes_review.go` |
 | Stable object IDs, catalog-only renames, rollback/name reuse and interrupted legacy migration | `db/object_ids_test.go`, `sql/object_ids_test.go` | Compares physical keys, values and sequence numbers; verifies reopen and migration phases |
 | Concurrent renames, prepared-plan name reuse, pinned point readers, gate exclusion and narrow deadlock detection | `db/catalog_concurrency_test.go`, `db/execution_gate_test.go` | Exact update totals, explicit waiter barriers and unrelated-shard isolation |
+| Conditional index cleanup after COMMIT/RELEASE, rollback, cleanup-error retry and recovery | `db/index_cleanup_test.go`, `sql/index_cleanup_test.go` | Ordinary commits skip metadata scans and the catalog writer lock; committed drops reclaim entries and retain retry requests after errors |
 | Extended ALTER, named constraints, type conversion, dependency cascade and crash atomicity | `tests/regression/alter_extended_test.go` | Column/index/view actions, failed multi-action rollback, SQL dump roundtrip and committed/uncommitted WAL recovery |
 | SHOW/DESCRIBE, catalog metadata, table-status estimates and persistence | `tests/regression/show_and_describe_test.go`, `show_table_status_test.go`, `storage/range_estimate_test.go` | `show_test_runner.go`; bounded block sampling, compression, MVCC and concurrent estimates |
 | API concurrency, context cancellation and read corruption | `tests/regression/database_api_test.go` | `api_cache_diagnostics_review.go` |
@@ -43,6 +44,7 @@ go test ./sql -run '^$' -fuzz FuzzParse -fuzztime 30s
 | Concurrent memtables, atomic bulk/group commits, flush and shutdown | `tests/regression/atomic_memtable_test.go`, `bulk_memtable_test.go`, `group_commit_test.go`, `flush_test.go`, `db/shutdown_concurrency_test.go` | Corresponding review programs |
 | SSTable metadata, filters, checksums, compressed blocks, corruption and compression policy | `tests/regression/sstable_metadata_test.go`, `compression_codecs_test.go`, `level_compression_test.go`, `bloom_quality_test.go`, `storage/bloom_test.go` | `current_metadata_review.go`, `current_codecs_review.go`, `current_level_compression_review.go`, `bloom_quality_review.go`; conservative unknown-filter checks from `bloom_compatibility_review.go` |
 | WAL/no-fsync/no-WAL modes, abrupt-exit recovery, rollback, damaged files, write/Close errors | `tests/regression/recovery_test.go`, `durability_test.go` | `recovery_review.go`, `no_wal_review.go`, `no_wal_fsync_review.go` |
+| Background rotation fsync, durable barriers across generations, out-of-order completion, write/flush/shutdown errors and certified journal recovery | `storage/wal_sync*_test.go`, `replication/wal_rotation_test.go` | Gates real WAL syncs to verify foreground progress and barrier waits; syscall checks of directory-entry persistence, abrupt-exit recovery and full reconstruction from logs-only voters |
 | CLI formatting, schema planning, atomic CSV import, backup/integrity commands and page-size options | `internal/cli/*_test.go`, `tests/regression/cli_page_size_test.go` | CLI unit tests live with the implementation; process tests build the root entry point |
 | CLI EOF/exit/bail/SIGTERM persistence, `.open` and flush errors | `tests/regression/cli_linux_test.go`, compression CLI tests | `no_wal_cli_review.go` and the current compression review programs |
 | MySQL wire protocol, TCP/Unix driver compatibility, password and TLS/client certificate authentication, transactions, prepared binding, framing, malformed input and CLI shutdown persistence | `mysqlserver/*_test.go`, `tests/regression/mysql_server_linux_test.go` | Standard Go MySQL driver, optional native client and raw protocol checks; isolated databases/sockets and generated temporary CAs/certificates |
@@ -179,6 +181,22 @@ every session updating row 1, measuring write contention through commit. It
 checks the exact shared-row total, untouched rows, replica equality, integrity
 and restart/stable recovery outside timing, as does `BenchmarkRaftTransactions`
 for independent rows.
+`BenchmarkRaftLogsOnlyTransactions` uses the same fixture and explicit prepared
+transactions with one full node and two logs-only voters. It checks membership,
+exact totals, and independently rebuilds each journal's snapshot plus WAL into
+a full SQL database for integrity checks, then verifies cold restart/stable
+recovery outside timing. Select matching `raft3`/`raft3-async` worker counts in
+`BenchmarkRaftTransactions` for the three-full-node baseline. Put `TMPDIR` on a
+disk filesystem for fsync measurements; `test` has a RAM-backed `/tmp`. Use a
+short temporary path when also running Unix socket tests.
+See the [disk-backed journal-voter measurements](docs/benchmarks/raft/2026-10-24/logs-only.md)
+for a matched matrix with source fingerprints and per-run results.
+For one-case diagnostics, `-raft-bench-latencies` writes per-transaction stage
+timings, `-raft-bench-trace` records the timed execution window, and
+`-raft-bench-contention` writes timed block/mutex profiles. Keep their paths
+outside the repository and use one sample per invocation. See the
+[tail-latency investigation](docs/benchmarks/raft/2026-10-24/latency-investigation.md)
+for measured waits, syscall evidence and isolated diagnostic controls.
 `tests/regression/replication_linux_test.go` exercises CLI MySQL/PostgreSQL
 replication through SIGKILL/restart and SIGTERM, plus durability flag validation.
 `internal/wire/listen_test.go` checks stale Unix socket recovery and preservation

@@ -1,0 +1,478 @@
+{
+  "production_base": "11b39400f6631d46fe7d9f6357e66b9f4f9f0a4b",
+  "host": "test",
+  "workers": 128,
+  "GOMAXPROCS": 60,
+  "GOGC": 100,
+  "topology": "one full leader and two logs-only voters; one process; TCP loopback; TLS off",
+  "filesystem": "disk-backed ext4 /dev/sda1; TMPDIR=/var/tmp/sdb-rj24-check",
+  "storage_options": "defaults; WAL on; fsync enabled; 4 MiB write buffers",
+  "async_durability": "normal periodic certification, 100 ms interval, 1 s maximum lag",
+  "diagnostic_flags": false,
+  "source_sha256": {
+    "db/database.go": "bc45a829258cb549674719070e659c796f69d31588257fe377e1fe7a13804362",
+    "sql/executor.go": "7fd5591e906413294cb826c4fc8454c3ede6fcbbc5149b78725ded07bd1d024b",
+    "sql/index_cleanup.go": "11938ac2a724acab56dd8b8c9b9f052bf850017962eabdee9b2f81ee022a013d",
+    "replication/throughput_benchmark_test.go": "4c7d615ddcf881e2405779b0bd2309e2c55fb19d186588160dacc0f0c34e8c88",
+    "replication/latency_benchmark_test.go": "ad739ff746d108b2f68323ee3ed9c5e7b52152211ab827f1e791e9707462d93a",
+    "replication/roles_test.go": "ff8b0cc97960e76b6b68f5aad9a52a0352c02a908cc0f1ed4c388a65e9ef4af0"
+  },
+  "binary_sha256": {
+    "baseline": "fdc5eac73a217fc2605575896ce3676657e8d09a391ab207cfc2e5a215183eec",
+    "fixed": "f86f54eb63e7015018e2bf9170d0973825764972d71a12673b93be39ca63d875"
+  },
+  "baseline_overlay": {
+    "Replace": {
+      "/home/ubuntu/branches/slopdb-raft-journals-20261024/src/db/database.go": "/tmp/slopdb-bench/commit-index-cleanup-20261024/baseline/db/database.go",
+      "/home/ubuntu/branches/slopdb-raft-journals-20261024/src/sql/executor.go": "/tmp/slopdb-bench/commit-index-cleanup-20261024/baseline/sql/executor.go",
+      "/home/ubuntu/branches/slopdb-raft-journals-20261024/src/sql/index_cleanup.go": "/tmp/slopdb-bench/commit-index-cleanup-20261024/baseline/sql/index_cleanup.go"
+    }
+  },
+  "samples": [
+    {
+      "durability": "async",
+      "version": "baseline",
+      "repeat": 1,
+      "iterations": 250000,
+      "metrics": {
+        "ns/op": 31022.0,
+        "p50-ms": 3.571,
+        "p95-ms": 7.363,
+        "p99-ms": 11.69,
+        "raft-entries/tx": 0.0934,
+        "tx/s": 32235.0,
+        "B/op": 9606.0,
+        "allocs/op": 125.0
+      },
+      "elapsed_seconds": 14.96962022781372,
+      "command": [
+        "/tmp/slopdb-bench/commit-index-cleanup-20261024/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3-async$/^workers128$",
+        "-test.benchtime=250000x",
+        "-test.count=1",
+        "-test.timeout=10m"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "journal_checks": 4,
+      "fixture_sha256": "57ab9123236ce31f14760188a24f04221dfd4506d4f2fe371911a441503d946a",
+      "raw_log": "/tmp/slopdb-bench/commit-index-cleanup-20261024/async-baseline-1.txt"
+    },
+    {
+      "durability": "async",
+      "version": "fixed",
+      "repeat": 1,
+      "iterations": 250000,
+      "metrics": {
+        "ns/op": 13253.0,
+        "p50-ms": 1.182,
+        "p95-ms": 4.249,
+        "p99-ms": 10.03,
+        "raft-entries/tx": 0.1206,
+        "tx/s": 75455.0,
+        "B/op": 8164.0,
+        "allocs/op": 103.0
+      },
+      "elapsed_seconds": 10.491504669189453,
+      "command": [
+        "/tmp/slopdb-bench/commit-index-cleanup-20261024/fixed.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3-async$/^workers128$",
+        "-test.benchtime=250000x",
+        "-test.count=1",
+        "-test.timeout=10m"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "journal_checks": 4,
+      "fixture_sha256": "57ab9123236ce31f14760188a24f04221dfd4506d4f2fe371911a441503d946a",
+      "raw_log": "/tmp/slopdb-bench/commit-index-cleanup-20261024/async-fixed-1.txt"
+    },
+    {
+      "durability": "sync",
+      "version": "baseline",
+      "repeat": 1,
+      "iterations": 25000,
+      "metrics": {
+        "ns/op": 201357.0,
+        "p50-ms": 23.39,
+        "p95-ms": 40.37,
+        "p99-ms": 53.91,
+        "raft-entries/tx": 1.0,
+        "tx/s": 4966.0,
+        "B/op": 12287.0,
+        "allocs/op": 177.0
+      },
+      "elapsed_seconds": 13.556043863296509,
+      "command": [
+        "/tmp/slopdb-bench/commit-index-cleanup-20261024/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3$/^workers128$",
+        "-test.benchtime=25000x",
+        "-test.count=1",
+        "-test.timeout=10m"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "journal_checks": 4,
+      "fixture_sha256": "57ab9123236ce31f14760188a24f04221dfd4506d4f2fe371911a441503d946a",
+      "raw_log": "/tmp/slopdb-bench/commit-index-cleanup-20261024/sync-baseline-1.txt"
+    },
+    {
+      "durability": "sync",
+      "version": "fixed",
+      "repeat": 1,
+      "iterations": 25000,
+      "metrics": {
+        "ns/op": 215117.0,
+        "p50-ms": 25.54,
+        "p95-ms": 43.45,
+        "p99-ms": 58.58,
+        "raft-entries/tx": 1.0,
+        "tx/s": 4649.0,
+        "B/op": 11048.0,
+        "allocs/op": 157.0
+      },
+      "elapsed_seconds": 14.055539608001709,
+      "command": [
+        "/tmp/slopdb-bench/commit-index-cleanup-20261024/fixed.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3$/^workers128$",
+        "-test.benchtime=25000x",
+        "-test.count=1",
+        "-test.timeout=10m"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "journal_checks": 4,
+      "fixture_sha256": "57ab9123236ce31f14760188a24f04221dfd4506d4f2fe371911a441503d946a",
+      "raw_log": "/tmp/slopdb-bench/commit-index-cleanup-20261024/sync-fixed-1.txt"
+    },
+    {
+      "durability": "sync",
+      "version": "fixed",
+      "repeat": 2,
+      "iterations": 25000,
+      "metrics": {
+        "ns/op": 216165.0,
+        "p50-ms": 25.37,
+        "p95-ms": 43.94,
+        "p99-ms": 59.13,
+        "raft-entries/tx": 1.0,
+        "tx/s": 4626.0,
+        "B/op": 11054.0,
+        "allocs/op": 157.0
+      },
+      "elapsed_seconds": 13.594717025756836,
+      "command": [
+        "/tmp/slopdb-bench/commit-index-cleanup-20261024/fixed.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3$/^workers128$",
+        "-test.benchtime=25000x",
+        "-test.count=1",
+        "-test.timeout=10m"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "journal_checks": 4,
+      "fixture_sha256": "57ab9123236ce31f14760188a24f04221dfd4506d4f2fe371911a441503d946a",
+      "raw_log": "/tmp/slopdb-bench/commit-index-cleanup-20261024/sync-fixed-2.txt"
+    },
+    {
+      "durability": "sync",
+      "version": "baseline",
+      "repeat": 2,
+      "iterations": 25000,
+      "metrics": {
+        "ns/op": 209743.0,
+        "p50-ms": 24.91,
+        "p95-ms": 41.11,
+        "p99-ms": 50.2,
+        "raft-entries/tx": 1.0,
+        "tx/s": 4768.0,
+        "B/op": 12289.0,
+        "allocs/op": 177.0
+      },
+      "elapsed_seconds": 14.121235609054565,
+      "command": [
+        "/tmp/slopdb-bench/commit-index-cleanup-20261024/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3$/^workers128$",
+        "-test.benchtime=25000x",
+        "-test.count=1",
+        "-test.timeout=10m"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "journal_checks": 4,
+      "fixture_sha256": "57ab9123236ce31f14760188a24f04221dfd4506d4f2fe371911a441503d946a",
+      "raw_log": "/tmp/slopdb-bench/commit-index-cleanup-20261024/sync-baseline-2.txt"
+    },
+    {
+      "durability": "async",
+      "version": "fixed",
+      "repeat": 2,
+      "iterations": 250000,
+      "metrics": {
+        "ns/op": 13243.0,
+        "p50-ms": 1.167,
+        "p95-ms": 4.304,
+        "p99-ms": 9.796,
+        "raft-entries/tx": 0.1196,
+        "tx/s": 75512.0,
+        "B/op": 8169.0,
+        "allocs/op": 103.0
+      },
+      "elapsed_seconds": 10.888180255889893,
+      "command": [
+        "/tmp/slopdb-bench/commit-index-cleanup-20261024/fixed.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3-async$/^workers128$",
+        "-test.benchtime=250000x",
+        "-test.count=1",
+        "-test.timeout=10m"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "journal_checks": 4,
+      "fixture_sha256": "57ab9123236ce31f14760188a24f04221dfd4506d4f2fe371911a441503d946a",
+      "raw_log": "/tmp/slopdb-bench/commit-index-cleanup-20261024/async-fixed-2.txt"
+    },
+    {
+      "durability": "async",
+      "version": "baseline",
+      "repeat": 2,
+      "iterations": 250000,
+      "metrics": {
+        "ns/op": 30719.0,
+        "p50-ms": 3.526,
+        "p95-ms": 7.351,
+        "p99-ms": 11.62,
+        "raft-entries/tx": 0.09232,
+        "tx/s": 32553.0,
+        "B/op": 9613.0,
+        "allocs/op": 125.0
+      },
+      "elapsed_seconds": 14.968651056289673,
+      "command": [
+        "/tmp/slopdb-bench/commit-index-cleanup-20261024/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3-async$/^workers128$",
+        "-test.benchtime=250000x",
+        "-test.count=1",
+        "-test.timeout=10m"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "journal_checks": 4,
+      "fixture_sha256": "57ab9123236ce31f14760188a24f04221dfd4506d4f2fe371911a441503d946a",
+      "raw_log": "/tmp/slopdb-bench/commit-index-cleanup-20261024/async-baseline-2.txt"
+    },
+    {
+      "durability": "async",
+      "version": "baseline",
+      "repeat": 3,
+      "iterations": 250000,
+      "metrics": {
+        "ns/op": 31092.0,
+        "p50-ms": 3.591,
+        "p95-ms": 7.263,
+        "p99-ms": 11.95,
+        "raft-entries/tx": 0.0935,
+        "tx/s": 32162.0,
+        "B/op": 9617.0,
+        "allocs/op": 125.0
+      },
+      "elapsed_seconds": 15.13688039779663,
+      "command": [
+        "/tmp/slopdb-bench/commit-index-cleanup-20261024/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3-async$/^workers128$",
+        "-test.benchtime=250000x",
+        "-test.count=1",
+        "-test.timeout=10m"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "journal_checks": 4,
+      "fixture_sha256": "57ab9123236ce31f14760188a24f04221dfd4506d4f2fe371911a441503d946a",
+      "raw_log": "/tmp/slopdb-bench/commit-index-cleanup-20261024/async-baseline-3.txt"
+    },
+    {
+      "durability": "async",
+      "version": "fixed",
+      "repeat": 3,
+      "iterations": 250000,
+      "metrics": {
+        "ns/op": 13471.0,
+        "p50-ms": 1.182,
+        "p95-ms": 4.432,
+        "p99-ms": 10.36,
+        "raft-entries/tx": 0.1206,
+        "tx/s": 74234.0,
+        "B/op": 8231.0,
+        "allocs/op": 103.0
+      },
+      "elapsed_seconds": 11.702027559280396,
+      "command": [
+        "/tmp/slopdb-bench/commit-index-cleanup-20261024/fixed.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3-async$/^workers128$",
+        "-test.benchtime=250000x",
+        "-test.count=1",
+        "-test.timeout=10m"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "journal_checks": 4,
+      "fixture_sha256": "57ab9123236ce31f14760188a24f04221dfd4506d4f2fe371911a441503d946a",
+      "raw_log": "/tmp/slopdb-bench/commit-index-cleanup-20261024/async-fixed-3.txt"
+    },
+    {
+      "durability": "sync",
+      "version": "baseline",
+      "repeat": 3,
+      "iterations": 25000,
+      "metrics": {
+        "ns/op": 205926.0,
+        "p50-ms": 23.81,
+        "p95-ms": 41.66,
+        "p99-ms": 57.31,
+        "raft-entries/tx": 1.0,
+        "tx/s": 4856.0,
+        "B/op": 12270.0,
+        "allocs/op": 177.0
+      },
+      "elapsed_seconds": 14.099451780319214,
+      "command": [
+        "/tmp/slopdb-bench/commit-index-cleanup-20261024/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3$/^workers128$",
+        "-test.benchtime=25000x",
+        "-test.count=1",
+        "-test.timeout=10m"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "journal_checks": 4,
+      "fixture_sha256": "57ab9123236ce31f14760188a24f04221dfd4506d4f2fe371911a441503d946a",
+      "raw_log": "/tmp/slopdb-bench/commit-index-cleanup-20261024/sync-baseline-3.txt"
+    },
+    {
+      "durability": "sync",
+      "version": "fixed",
+      "repeat": 3,
+      "iterations": 25000,
+      "metrics": {
+        "ns/op": 219009.0,
+        "p50-ms": 25.05,
+        "p95-ms": 48.65,
+        "p99-ms": 62.67,
+        "raft-entries/tx": 1.0,
+        "tx/s": 4566.0,
+        "B/op": 11033.0,
+        "allocs/op": 157.0
+      },
+      "elapsed_seconds": 15.247705936431885,
+      "command": [
+        "/tmp/slopdb-bench/commit-index-cleanup-20261024/fixed.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3$/^workers128$",
+        "-test.benchtime=25000x",
+        "-test.count=1",
+        "-test.timeout=10m"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "journal_checks": 4,
+      "fixture_sha256": "57ab9123236ce31f14760188a24f04221dfd4506d4f2fe371911a441503d946a",
+      "raw_log": "/tmp/slopdb-bench/commit-index-cleanup-20261024/sync-fixed-3.txt"
+    }
+  ],
+  "summary": [
+    {
+      "durability": "sync",
+      "version": "baseline",
+      "samples": 3,
+      "iterations_per_sample": 25000,
+      "median_metrics": {
+        "ns/op": 205926.0,
+        "p50-ms": 23.81,
+        "p95-ms": 41.11,
+        "p99-ms": 53.91,
+        "raft-entries/tx": 1.0,
+        "tx/s": 4856.0,
+        "B/op": 12287.0,
+        "allocs/op": 177.0
+      },
+      "min_tps": 4768.0,
+      "max_tps": 4966.0
+    },
+    {
+      "durability": "sync",
+      "version": "fixed",
+      "samples": 3,
+      "iterations_per_sample": 25000,
+      "median_metrics": {
+        "ns/op": 216165.0,
+        "p50-ms": 25.37,
+        "p95-ms": 43.94,
+        "p99-ms": 59.13,
+        "raft-entries/tx": 1.0,
+        "tx/s": 4626.0,
+        "B/op": 11048.0,
+        "allocs/op": 157.0
+      },
+      "min_tps": 4566.0,
+      "max_tps": 4649.0
+    },
+    {
+      "durability": "async",
+      "version": "baseline",
+      "samples": 3,
+      "iterations_per_sample": 250000,
+      "median_metrics": {
+        "ns/op": 31022.0,
+        "p50-ms": 3.571,
+        "p95-ms": 7.351,
+        "p99-ms": 11.69,
+        "raft-entries/tx": 0.0934,
+        "tx/s": 32235.0,
+        "B/op": 9613.0,
+        "allocs/op": 125.0
+      },
+      "min_tps": 32162.0,
+      "max_tps": 32553.0
+    },
+    {
+      "durability": "async",
+      "version": "fixed",
+      "samples": 3,
+      "iterations_per_sample": 250000,
+      "median_metrics": {
+        "ns/op": 13253.0,
+        "p50-ms": 1.182,
+        "p95-ms": 4.304,
+        "p99-ms": 10.03,
+        "raft-entries/tx": 0.1206,
+        "tx/s": 75455.0,
+        "B/op": 8169.0,
+        "allocs/op": 103.0
+      },
+      "min_tps": 74234.0,
+      "max_tps": 75512.0
+    }
+  ],
+  "validation": {
+    "build": true,
+    "full_test_suite": true,
+    "full_race_suite": true,
+    "vet_all": true,
+    "diff_check": true,
+    "benchmark_exact_row_totals_integrity_and_recovery": true,
+    "measured_journal_reconstructions": 24,
+    "calibration_journal_reconstructions": 24,
+    "failed_samples": 0
+  }
+}

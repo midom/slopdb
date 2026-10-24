@@ -14,7 +14,7 @@ import (
 	"slopdb/storage"
 )
 
-func assertLogsOnlyStore(t *testing.T, n *Node) {
+func assertLogsOnlyStore(t testing.TB, n *Node) {
 	t.Helper()
 	n.fsmMu.Lock()
 	defer n.fsmMu.Unlock()

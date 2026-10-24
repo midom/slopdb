@@ -1,0 +1,994 @@
+{
+  "title": "Raft transaction tail latency investigation",
+  "host": "test",
+  "production_base": "11b39400f6631d46fe7d9f6357e66b9f4f9f0a4b",
+  "topology": "one full leader and two logs-only voters; one process; TCP loopback; ext4; TLS off",
+  "workers": 128,
+  "GOMAXPROCS": 60,
+  "default_GOGC": 100,
+  "measured_diagnostic_source_sha256": {
+    "replication/latency_benchmark_test.go": "6fe8d8d978985edc41a9ab1672ef999e6859f9ca1d735e079dad266457d24fc8",
+    "replication/throughput_benchmark_test.go": "c6cde8aec9dd56590892460aafeb02763aee8d6406eee865eea665ada8cb61ab",
+    "replication/roles_test.go": "ff8b0cc97960e76b6b68f5aad9a52a0352c02a908cc0f1ed4c388a65e9ef4af0"
+  },
+  "current_diagnostic_source_sha256": {
+    "replication/latency_benchmark_test.go": "ad739ff746d108b2f68323ee3ed9c5e7b52152211ab827f1e791e9707462d93a",
+    "replication/throughput_benchmark_test.go": "4c7d615ddcf881e2405779b0bd2309e2c55fb19d186588160dacc0f0c34e8c88",
+    "replication/roles_test.go": "ff8b0cc97960e76b6b68f5aad9a52a0352c02a908cc0f1ed4c388a65e9ef4af0"
+  },
+  "measured_binary_sha256": "beabd7c081ae35e9e6fb68f8c6670451b9aa0b7feacaeb5b0f8a3171409ec69d",
+  "overlay_sha256": {
+    "no-periodic.json": "2ac520c20674fb1ecadea2da24d34dfd8c1ce8c62b9629c720ee767f4e6960e5",
+    "large-buffers.json": "040f798c27e51aabafbe3f52c78b1c135de048c025e7fea11d1ae36dbae4c4e0",
+    "no-empty-cleanup.json": "f8e6ef07a4ad64658e7e3c83e541e2e9749c15841bfe371eafd9db4930fc399d",
+    "bench-large-buffers.go": "a566de58fb6f7be1a6506fac0433ee914bd8fe8e9bfd65ad37d1b8924b97ff5b",
+    "no-cleanup-no-periodic.json": "2d3e973de83567f62321b92765d41a0ee36eaeb169ae3d6bf8eeeb89366160bc",
+    "node-without-extra-read-quorum.go": "0a5b955a7e9983c46edd682ee32f76a3cc01ede1ff3052668e1ae120d86d8bd0",
+    "node-large-buffers.go": "c983b4deb80ccf5dfad779b889effd743464abf8ed002a9bc1a8abe2c73a7874",
+    "database-no-empty-cleanup.go": "3876f231567894a3d3986c8e5c834548aa796b2ab32c610fa1e69f2d58e9d432",
+    "no-read-quorum.json": "9878b897cd9075f87b8deccf560381ee9d79e9ccf2d2e59d5cf1af174fdbfb0a",
+    "bench-no-periodic.go": "91697dfc84732f43281ddea62a85bc873b71cc5a39022248f137ea2a0ad19ae6"
+  },
+  "cases": {
+    "sync-stages": {
+      "transactions": 25000,
+      "tps": 5031.0,
+      "stages": {
+        "TotalNS": {
+          "p50_ms": 23.426776,
+          "p99_ms": 51.54409,
+          "slowest_1pct_mean_ms": 63.769412207171314,
+          "slowest_1pct_time_share": 1.0
+        },
+        "BeginNS": {
+          "p50_ms": 0.252801,
+          "p99_ms": 0.832644,
+          "slowest_1pct_mean_ms": 0.232039406374502,
+          "slowest_1pct_time_share": 0.0036387258145121736
+        },
+        "UpdateNS": {
+          "p50_ms": 10.474722,
+          "p99_ms": 32.951774,
+          "slowest_1pct_mean_ms": 42.37797379282868,
+          "slowest_1pct_time_share": 0.6645501710938303
+        },
+        "CommitNS": {
+          "p50_ms": 12.30589,
+          "p99_ms": 28.597037,
+          "slowest_1pct_mean_ms": 21.159399007968126,
+          "slowest_1pct_time_share": 0.33181110309165757
+        }
+      },
+      "passed": true,
+      "start_unix_ns": 1792873174031816956,
+      "end_unix_ns": 1792873179000778672,
+      "raw_timings": "/tmp/slopdb-bench/raft-latency-20261024/test-machine/sync-stages.json",
+      "raw_log": "/tmp/slopdb-bench/raft-latency-20261024/test-machine/sync-stages.txt"
+    },
+    "sync-no-cleanup": {
+      "transactions": 25000,
+      "tps": 4519.0,
+      "stages": {
+        "TotalNS": {
+          "p50_ms": 24.53606,
+          "p99_ms": 66.597551,
+          "slowest_1pct_mean_ms": 72.80126529880478,
+          "slowest_1pct_time_share": 1.0
+        },
+        "BeginNS": {
+          "p50_ms": 0.00476,
+          "p99_ms": 0.02292,
+          "slowest_1pct_mean_ms": 0.007500454183266932,
+          "slowest_1pct_time_share": 0.00010302642615457498
+        },
+        "UpdateNS": {
+          "p50_ms": 11.627167,
+          "p99_ms": 45.121784,
+          "slowest_1pct_mean_ms": 48.36865509163347,
+          "slowest_1pct_time_share": 0.6643930554381114
+        },
+        "CommitNS": {
+          "p50_ms": 12.323451,
+          "p99_ms": 36.165628,
+          "slowest_1pct_mean_ms": 24.42510975298805,
+          "slowest_1pct_time_share": 0.33550391813573394
+        }
+      },
+      "passed": true,
+      "start_unix_ns": 1792873601088517309,
+      "end_unix_ns": 1792873606620615638,
+      "raw_timings": "/tmp/slopdb-bench/raft-latency-20261024/test-machine/sync-no-cleanup.json",
+      "raw_log": "/tmp/slopdb-bench/raft-latency-20261024/test-machine/sync-no-cleanup.txt"
+    },
+    "sync-no-read-quorum": {
+      "transactions": 25000,
+      "tps": 9203.0,
+      "stages": {
+        "TotalNS": {
+          "p50_ms": 13.566695,
+          "p99_ms": 19.574999,
+          "slowest_1pct_mean_ms": 27.124839410358568,
+          "slowest_1pct_time_share": 1.0
+        },
+        "BeginNS": {
+          "p50_ms": 0.499642,
+          "p99_ms": 1.451685,
+          "slowest_1pct_mean_ms": 0.5605691235059761,
+          "slowest_1pct_time_share": 0.020666265153699057
+        },
+        "UpdateNS": {
+          "p50_ms": 1.438046,
+          "p99_ms": 5.119261,
+          "slowest_1pct_mean_ms": 4.074236358565737,
+          "slowest_1pct_time_share": 0.15020315132298434
+        },
+        "CommitNS": {
+          "p50_ms": 11.447886,
+          "p99_ms": 16.563267,
+          "slowest_1pct_mean_ms": 22.490033928286856,
+          "slowest_1pct_time_share": 0.8291305835233166
+        }
+      },
+      "passed": true,
+      "start_unix_ns": 1792873652873266878,
+      "end_unix_ns": 1792873655590168262,
+      "raw_timings": "/tmp/slopdb-bench/raft-latency-20261024/test-machine/sync-no-read-quorum.json",
+      "raw_log": "/tmp/slopdb-bench/raft-latency-20261024/test-machine/sync-no-read-quorum.txt"
+    },
+    "async-stages": {
+      "transactions": 250000,
+      "tps": 32472.0,
+      "stages": {
+        "TotalNS": {
+          "p50_ms": 3.556094,
+          "p99_ms": 11.346846,
+          "slowest_1pct_mean_ms": 14.919841534986006,
+          "slowest_1pct_time_share": 1.0
+        },
+        "BeginNS": {
+          "p50_ms": 0.833003,
+          "p99_ms": 2.52285,
+          "slowest_1pct_mean_ms": 1.0593183990403838,
+          "slowest_1pct_time_share": 0.07100064679349005
+        },
+        "UpdateNS": {
+          "p50_ms": 1.201485,
+          "p99_ms": 5.247821,
+          "slowest_1pct_mean_ms": 5.697259021591363,
+          "slowest_1pct_time_share": 0.3818578775271628
+        },
+        "CommitNS": {
+          "p50_ms": 1.450086,
+          "p99_ms": 7.19567,
+          "slowest_1pct_mean_ms": 8.16326411435426,
+          "slowest_1pct_time_share": 0.5471414756793471
+        }
+      },
+      "passed": true,
+      "start_unix_ns": 1792873186875654101,
+      "end_unix_ns": 1792873194574845576,
+      "raw_timings": "/tmp/slopdb-bench/raft-latency-20261024/test-machine/async-stages.json",
+      "raw_log": "/tmp/slopdb-bench/raft-latency-20261024/test-machine/async-stages.txt"
+    },
+    "async-no-cleanup": {
+      "transactions": 250000,
+      "tps": 76436.0,
+      "stages": {
+        "TotalNS": {
+          "p50_ms": 1.156885,
+          "p99_ms": 10.750404,
+          "slowest_1pct_mean_ms": 15.286870089964014,
+          "slowest_1pct_time_share": 1.0
+        },
+        "BeginNS": {
+          "p50_ms": 0.00496,
+          "p99_ms": 0.01828,
+          "slowest_1pct_mean_ms": 0.007471988004798081,
+          "slowest_1pct_time_share": 0.0004887846865201999
+        },
+        "UpdateNS": {
+          "p50_ms": 0.400922,
+          "p99_ms": 5.458542,
+          "slowest_1pct_mean_ms": 5.069402037185126,
+          "slowest_1pct_time_share": 0.3316180491723574
+        },
+        "CommitNS": {
+          "p50_ms": 0.710923,
+          "p99_ms": 8.673915,
+          "slowest_1pct_mean_ms": 10.20999606477409,
+          "slowest_1pct_time_share": 0.6678931661411224
+        }
+      },
+      "passed": true,
+      "start_unix_ns": 1792873613780629916,
+      "end_unix_ns": 1792873617051850598,
+      "raw_timings": "/tmp/slopdb-bench/raft-latency-20261024/test-machine/async-no-cleanup.json",
+      "raw_log": "/tmp/slopdb-bench/raft-latency-20261024/test-machine/async-no-cleanup.txt"
+    },
+    "async-no-gc": {
+      "transactions": 250000,
+      "tps": 33273.0,
+      "stages": {
+        "TotalNS": {
+          "p50_ms": 3.556974,
+          "p99_ms": 11.162606,
+          "slowest_1pct_mean_ms": 14.819707886445421,
+          "slowest_1pct_time_share": 1.0
+        },
+        "BeginNS": {
+          "p50_ms": 0.831843,
+          "p99_ms": 2.017928,
+          "slowest_1pct_mean_ms": 1.069919549780088,
+          "slowest_1pct_time_share": 0.07219572463764083
+        },
+        "UpdateNS": {
+          "p50_ms": 1.193445,
+          "p99_ms": 4.214417,
+          "slowest_1pct_mean_ms": 3.627734735705718,
+          "slowest_1pct_time_share": 0.2447912444363198
+        },
+        "CommitNS": {
+          "p50_ms": 1.475846,
+          "p99_ms": 7.47891,
+          "slowest_1pct_mean_ms": 10.122053600959616,
+          "slowest_1pct_time_share": 0.6830130309260394
+        }
+      },
+      "passed": true,
+      "start_unix_ns": 1792873624999446604,
+      "end_unix_ns": 1792873632513961446,
+      "raw_timings": "/tmp/slopdb-bench/raft-latency-20261024/test-machine/async-no-gc.json",
+      "raw_log": "/tmp/slopdb-bench/raft-latency-20261024/test-machine/async-no-gc.txt"
+    },
+    "async-no-cleanup-no-gc": {
+      "transactions": 250000,
+      "tps": 81562.0,
+      "stages": {
+        "TotalNS": {
+          "p50_ms": 1.159445,
+          "p99_ms": 10.434762,
+          "slowest_1pct_mean_ms": 14.765947261095562,
+          "slowest_1pct_time_share": 1.0
+        },
+        "BeginNS": {
+          "p50_ms": 0.00456,
+          "p99_ms": 0.02096,
+          "slowest_1pct_mean_ms": 0.006095315473810476,
+          "slowest_1pct_time_share": 0.0004127954249078249
+        },
+        "UpdateNS": {
+          "p50_ms": 0.404002,
+          "p99_ms": 4.529178,
+          "slowest_1pct_mean_ms": 5.007520181527389,
+          "slowest_1pct_time_share": 0.33912624046280493
+        },
+        "CommitNS": {
+          "p50_ms": 0.711802,
+          "p99_ms": 8.845796,
+          "slowest_1pct_mean_ms": 9.752331764094363,
+          "slowest_1pct_time_share": 0.6604609641122873
+        }
+      },
+      "passed": true,
+      "start_unix_ns": 1792873640296273539,
+      "end_unix_ns": 1792873643362499866,
+      "raw_timings": "/tmp/slopdb-bench/raft-latency-20261024/test-machine/async-no-cleanup-no-gc.json",
+      "raw_log": "/tmp/slopdb-bench/raft-latency-20261024/test-machine/async-no-cleanup-no-gc.txt"
+    },
+    "async-no-read-quorum": {
+      "transactions": 250000,
+      "tps": 37855.0,
+      "stages": {
+        "TotalNS": {
+          "p50_ms": 3.086133,
+          "p99_ms": 9.80812,
+          "slowest_1pct_mean_ms": 13.86995155897641,
+          "slowest_1pct_time_share": 1.0
+        },
+        "BeginNS": {
+          "p50_ms": 1.001285,
+          "p99_ms": 2.54881,
+          "slowest_1pct_mean_ms": 1.1725218404638145,
+          "slowest_1pct_time_share": 0.08453683745600231
+        },
+        "UpdateNS": {
+          "p50_ms": 0.02016,
+          "p99_ms": 2.178208,
+          "slowest_1pct_mean_ms": 1.1373328040783688,
+          "slowest_1pct_time_share": 0.08199976757253381
+        },
+        "CommitNS": {
+          "p50_ms": 1.971328,
+          "p99_ms": 8.019872,
+          "slowest_1pct_mean_ms": 11.560096914434226,
+          "slowest_1pct_time_share": 0.8334633949714639
+        }
+      },
+      "passed": true,
+      "start_unix_ns": 1792873663431893837,
+      "end_unix_ns": 1792873670036272413,
+      "raw_timings": "/tmp/slopdb-bench/raft-latency-20261024/test-machine/async-no-read-quorum.json",
+      "raw_log": "/tmp/slopdb-bench/raft-latency-20261024/test-machine/async-no-read-quorum.txt"
+    },
+    "async-no-periodic": {
+      "transactions": 250000,
+      "tps": 33849.0,
+      "stages": {
+        "TotalNS": {
+          "p50_ms": 3.546135,
+          "p99_ms": 10.756444,
+          "slowest_1pct_mean_ms": 15.55431074690124,
+          "slowest_1pct_time_share": 1.0
+        },
+        "BeginNS": {
+          "p50_ms": 0.853603,
+          "p99_ms": 2.553371,
+          "slowest_1pct_mean_ms": 0.9879063198720511,
+          "slowest_1pct_time_share": 0.06351334597509335
+        },
+        "UpdateNS": {
+          "p50_ms": 1.219325,
+          "p99_ms": 3.511135,
+          "slowest_1pct_mean_ms": 3.409291883246701,
+          "slowest_1pct_time_share": 0.2191863039592357
+        },
+        "CommitNS": {
+          "p50_ms": 1.431606,
+          "p99_ms": 6.134745,
+          "slowest_1pct_mean_ms": 11.157112543782487,
+          "slowest_1pct_time_share": 0.7173003500656709
+        }
+      },
+      "passed": true,
+      "start_unix_ns": 1792873816572863211,
+      "end_unix_ns": 1792873823958945450,
+      "raw_timings": "/tmp/slopdb-bench/raft-latency-20261024/test-machine/async-no-periodic.json",
+      "raw_log": "/tmp/slopdb-bench/raft-latency-20261024/test-machine/async-no-periodic.txt"
+    },
+    "async-no-cleanup-no-periodic": {
+      "transactions": 250000,
+      "tps": 80383.0,
+      "stages": {
+        "TotalNS": {
+          "p50_ms": 1.172205,
+          "p99_ms": 10.328282,
+          "slowest_1pct_mean_ms": 17.016739335465815,
+          "slowest_1pct_time_share": 1.0
+        },
+        "BeginNS": {
+          "p50_ms": 0.00504,
+          "p99_ms": 0.01948,
+          "slowest_1pct_mean_ms": 0.009250764894042382,
+          "slowest_1pct_time_share": 0.0005436273490281535
+        },
+        "UpdateNS": {
+          "p50_ms": 0.399681,
+          "p99_ms": 3.392294,
+          "slowest_1pct_mean_ms": 4.435147138344663,
+          "slowest_1pct_time_share": 0.26063437012877383
+        },
+        "CommitNS": {
+          "p50_ms": 0.728323,
+          "p99_ms": 7.046788,
+          "slowest_1pct_mean_ms": 12.572341432227109,
+          "slowest_1pct_time_share": 0.738822002522198
+        }
+      },
+      "passed": true,
+      "start_unix_ns": 1792873832830773346,
+      "end_unix_ns": 1792873835941316677,
+      "raw_timings": "/tmp/slopdb-bench/raft-latency-20261024/test-machine/async-no-cleanup-no-periodic.json",
+      "raw_log": "/tmp/slopdb-bench/raft-latency-20261024/test-machine/async-no-cleanup-no-periodic.txt"
+    },
+    "async-triple-control": {
+      "transactions": 250000,
+      "tps": 84468.0,
+      "stages": {
+        "TotalNS": {
+          "p50_ms": 1.149084,
+          "p99_ms": 9.84608,
+          "slowest_1pct_mean_ms": 20.12476543902439,
+          "slowest_1pct_time_share": 1.0
+        },
+        "BeginNS": {
+          "p50_ms": 0.00468,
+          "p99_ms": 0.02156,
+          "slowest_1pct_mean_ms": 0.006526329468212715,
+          "slowest_1pct_time_share": 0.0003242934427229329
+        },
+        "UpdateNS": {
+          "p50_ms": 0.395162,
+          "p99_ms": 1.655087,
+          "slowest_1pct_mean_ms": 3.570706605357857,
+          "slowest_1pct_time_share": 0.1774284831381845
+        },
+        "CommitNS": {
+          "p50_ms": 0.710283,
+          "p99_ms": 5.433342,
+          "slowest_1pct_mean_ms": 16.54753250419832,
+          "slowest_1pct_time_share": 0.8222472234190926
+        }
+      },
+      "passed": true,
+      "start_unix_ns": 1792874306426544235,
+      "end_unix_ns": 1792874309387303915,
+      "raw_timings": "/tmp/slopdb-bench/raft-latency-20261024/test-machine/async-triple-control.json",
+      "raw_log": "/tmp/slopdb-bench/raft-latency-20261024/test-machine/async-triple-control.txt"
+    },
+    "async-large-buffers": {
+      "transactions": 250000,
+      "tps": 97440.0,
+      "stages": {
+        "TotalNS": {
+          "p50_ms": 1.220685,
+          "p99_ms": 2.49777,
+          "slowest_1pct_mean_ms": 2.7002919044382248,
+          "slowest_1pct_time_share": 1.0
+        },
+        "BeginNS": {
+          "p50_ms": 0.0046,
+          "p99_ms": 0.02084,
+          "slowest_1pct_mean_ms": 0.006344203118752499,
+          "slowest_1pct_time_share": 0.0023494508531929858
+        },
+        "UpdateNS": {
+          "p50_ms": 0.386121,
+          "p99_ms": 1.433286,
+          "slowest_1pct_mean_ms": 1.4444929672131148,
+          "slowest_1pct_time_share": 0.5349395614744217
+        },
+        "CommitNS": {
+          "p50_ms": 0.798803,
+          "p99_ms": 1.404805,
+          "slowest_1pct_mean_ms": 1.2494547341063575,
+          "slowest_1pct_time_share": 0.4627109876723854
+        }
+      },
+      "passed": true,
+      "start_unix_ns": 1792874318251095919,
+      "end_unix_ns": 1792874320817680190,
+      "raw_timings": "/tmp/slopdb-bench/raft-latency-20261024/test-machine/async-large-buffers.json",
+      "raw_log": "/tmp/slopdb-bench/raft-latency-20261024/test-machine/async-large-buffers.txt"
+    }
+  },
+  "trace_region_summary": {
+    "sync": {
+      "all": {
+        "count": 6000,
+        "time_ns": {
+          "Total": 128786527212.0,
+          "Execution time": 1025578209.0,
+          "Block time ()": 0.0,
+          "Block time (preempted)": 38528.0,
+          "Block time (select)": 121289227875.0,
+          "Block time (sync)": 131242192.0,
+          "Block time (sync.(*Cond).Wait)": 3799151779.0,
+          "Block time (syscall)": 0.0,
+          "Sched wait time": 2541288629.0,
+          "Syscall execution time": 0.0,
+          "Unknown time": 0.0
+        },
+        "shares": {
+          "Total": 1.0,
+          "Execution time": 0.007963396724812371,
+          "Block time ()": 0.0,
+          "Block time (preempted)": 2.9916172781472484e-07,
+          "Block time (select)": 0.9417850647944064,
+          "Block time (sync)": 0.0010190677149323054,
+          "Block time (sync.(*Cond).Wait)": 0.02949960575259618,
+          "Block time (syscall)": 0.0,
+          "Sched wait time": 0.019732565851524952,
+          "Syscall execution time": 0.0,
+          "Unknown time": 0.0
+        }
+      },
+      "tail": {
+        "count": 61,
+        "time_ns": {
+          "Total": 2299459904.0,
+          "Execution time": 10856257.0,
+          "Block time ()": 0.0,
+          "Block time (preempted)": 0.0,
+          "Block time (select)": 2222695349.0,
+          "Block time (sync)": 219457.0,
+          "Block time (sync.(*Cond).Wait)": 36157633.0,
+          "Block time (syscall)": 0.0,
+          "Sched wait time": 29531208.0,
+          "Syscall execution time": 0.0,
+          "Unknown time": 0.0
+        },
+        "shares": {
+          "Total": 1.0,
+          "Execution time": 0.004721220396631017,
+          "Block time ()": 0.0,
+          "Block time (preempted)": 0.0,
+          "Block time (select)": 0.9666162672084584,
+          "Block time (sync)": 9.543849823962836e-05,
+          "Block time (sync.(*Cond).Wait)": 0.015724402472555573,
+          "Block time (syscall)": 0.0,
+          "Sched wait time": 0.012842671424115425,
+          "Syscall execution time": 0.0,
+          "Unknown time": 0.0
+        }
+      }
+    },
+    "async": {
+      "all": {
+        "count": 50000,
+        "time_ns": {
+          "Total": 229726042321.0,
+          "Execution time": 8254352927.0,
+          "Block time ()": 0.0,
+          "Block time (preempted)": 315071.0,
+          "Block time (select)": 58047220553.0,
+          "Block time (sync)": 56247961286.0,
+          "Block time (sync.(*Cond).Wait)": 87702479343.0,
+          "Block time (syscall)": 0.0,
+          "Sched wait time": 19473713141.0,
+          "Syscall execution time": 0.0,
+          "Unknown time": 0.0
+        },
+        "shares": {
+          "Total": 1.0,
+          "Execution time": 0.03593128947681977,
+          "Block time ()": 0.0,
+          "Block time (preempted)": 1.3715075435798701e-06,
+          "Block time (select)": 0.25268019231311034,
+          "Block time (sync)": 0.24484799684749625,
+          "Block time (sync.(*Cond).Wait)": 0.38176986142673314,
+          "Block time (syscall)": 0.0,
+          "Sched wait time": 0.08476928842829695,
+          "Syscall execution time": 0.0,
+          "Unknown time": 0.0
+        }
+      },
+      "tail": {
+        "count": 501,
+        "time_ns": {
+          "Total": 8466899971.0,
+          "Execution time": 137536368.0,
+          "Block time ()": 0.0,
+          "Block time (preempted)": 22272.0,
+          "Block time (select)": 2463256341.0,
+          "Block time (sync)": 4050121372.0,
+          "Block time (sync.(*Cond).Wait)": 1429631268.0,
+          "Block time (syscall)": 0.0,
+          "Sched wait time": 386332350.0,
+          "Syscall execution time": 0.0,
+          "Unknown time": 0.0
+        },
+        "shares": {
+          "Total": 1.0,
+          "Execution time": 0.016244005299587354,
+          "Block time ()": 0.0,
+          "Block time (preempted)": 2.6304786966048826e-06,
+          "Block time (select)": 0.29092777160907834,
+          "Block time (sync)": 0.47834761079876703,
+          "Block time (sync.(*Cond).Wait)": 0.1688494340191373,
+          "Block time (syscall)": 0.0,
+          "Sched wait time": 0.04562854779473336,
+          "Syscall execution time": 0.0,
+          "Unknown time": 0.0
+        }
+      }
+    }
+  },
+  "fsync_control": {
+    "key": "async-no-cleanup-no-periodic-no-gc-strace",
+    "timed_calls": 116,
+    "summary": [
+      {
+        "node": "1",
+        "store": "application",
+        "kind": "SST",
+        "count": 6,
+        "p50_ms": 6.2955000000000005,
+        "p99_ms": 6.608,
+        "max_ms": 7.643
+      },
+      {
+        "node": "1",
+        "store": "application",
+        "kind": "WAL",
+        "count": 4,
+        "p50_ms": 7.9915,
+        "p99_ms": 8.285,
+        "max_ms": 8.565
+      },
+      {
+        "node": "1",
+        "store": "application",
+        "kind": "metadata",
+        "count": 18,
+        "p50_ms": 1.1795,
+        "p99_ms": 3.184,
+        "max_ms": 4.98
+      },
+      {
+        "node": "1",
+        "store": "raft",
+        "kind": "SST",
+        "count": 9,
+        "p50_ms": 12.713,
+        "p99_ms": 13.316,
+        "max_ms": 15.45
+      },
+      {
+        "node": "1",
+        "store": "raft",
+        "kind": "WAL",
+        "count": 7,
+        "p50_ms": 9.119,
+        "p99_ms": 10.957,
+        "max_ms": 11.188
+      },
+      {
+        "node": "1",
+        "store": "raft",
+        "kind": "metadata",
+        "count": 8,
+        "p50_ms": 1.7885,
+        "p99_ms": 2.129,
+        "max_ms": 3.68
+      },
+      {
+        "node": "2",
+        "store": "application",
+        "kind": "metadata",
+        "count": 8,
+        "p50_ms": 1.219,
+        "p99_ms": 1.426,
+        "max_ms": 1.685
+      },
+      {
+        "node": "2",
+        "store": "raft",
+        "kind": "SST",
+        "count": 9,
+        "p50_ms": 11.253,
+        "p99_ms": 13.286,
+        "max_ms": 13.56
+      },
+      {
+        "node": "2",
+        "store": "raft",
+        "kind": "WAL",
+        "count": 7,
+        "p50_ms": 14.076,
+        "p99_ms": 17.294,
+        "max_ms": 18.025
+      },
+      {
+        "node": "2",
+        "store": "raft",
+        "kind": "metadata",
+        "count": 8,
+        "p50_ms": 2.0325,
+        "p99_ms": 6.777,
+        "max_ms": 6.911
+      },
+      {
+        "node": "3",
+        "store": "application",
+        "kind": "metadata",
+        "count": 8,
+        "p50_ms": 1.2974999999999999,
+        "p99_ms": 1.392,
+        "max_ms": 1.454
+      },
+      {
+        "node": "3",
+        "store": "raft",
+        "kind": "SST",
+        "count": 9,
+        "p50_ms": 9.301,
+        "p99_ms": 13.291,
+        "max_ms": 17.178
+      },
+      {
+        "node": "3",
+        "store": "raft",
+        "kind": "WAL",
+        "count": 7,
+        "p50_ms": 16.302,
+        "p99_ms": 17.317,
+        "max_ms": 21.899
+      },
+      {
+        "node": "3",
+        "store": "raft",
+        "kind": "metadata",
+        "count": 8,
+        "p50_ms": 2.1345,
+        "p99_ms": 2.548,
+        "max_ms": 2.816
+      }
+    ],
+    "tail_transactions_overlapping_fsync": 2250,
+    "tail_transactions": 2501,
+    "all_transactions_overlapping_fsync": 10307,
+    "all_transactions": 250000,
+    "large_buffer_timed_calls": 0
+  },
+  "commands": {
+    "runs.json": [
+      {
+        "key": "sync-stages",
+        "command": [
+          "/tmp/slopdb-bench/slopdb-raft-latency-20261024/replication.test",
+          "-test.run=^$",
+          "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3$/^workers128$",
+          "-test.benchtime=25000x",
+          "-test.count=1",
+          "-test.timeout=10m",
+          "-raft-bench-latencies=/tmp/slopdb-bench/slopdb-raft-latency-20261024/sync-stages.json"
+        ],
+        "returncode": 0,
+        "wall_seconds": 13.284903300999758
+      },
+      {
+        "key": "async-stages",
+        "command": [
+          "/tmp/slopdb-bench/slopdb-raft-latency-20261024/replication.test",
+          "-test.run=^$",
+          "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3-async$/^workers128$",
+          "-test.benchtime=250000x",
+          "-test.count=1",
+          "-test.timeout=10m",
+          "-raft-bench-latencies=/tmp/slopdb-bench/slopdb-raft-latency-20261024/async-stages.json"
+        ],
+        "returncode": 0,
+        "wall_seconds": 15.342117119999784
+      },
+      {
+        "key": "sync-trace",
+        "command": [
+          "/tmp/slopdb-bench/slopdb-raft-latency-20261024/replication.test",
+          "-test.run=^$",
+          "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3$/^workers128$",
+          "-test.benchtime=6000x",
+          "-test.count=1",
+          "-test.timeout=10m",
+          "-raft-bench-latencies=/tmp/slopdb-bench/slopdb-raft-latency-20261024/sync-trace.json",
+          "-raft-bench-trace=/tmp/slopdb-bench/slopdb-raft-latency-20261024/sync-trace.trace",
+          "-raft-bench-contention=/tmp/slopdb-bench/slopdb-raft-latency-20261024/sync-trace",
+          "-raft-bench-timed-cpu=/tmp/slopdb-bench/slopdb-raft-latency-20261024/sync-trace.cpu.pprof"
+        ],
+        "returncode": 0,
+        "wall_seconds": 9.328543829999944
+      },
+      {
+        "key": "async-trace",
+        "command": [
+          "/tmp/slopdb-bench/slopdb-raft-latency-20261024/replication.test",
+          "-test.run=^$",
+          "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3-async$/^workers128$",
+          "-test.benchtime=50000x",
+          "-test.count=1",
+          "-test.timeout=10m",
+          "-raft-bench-latencies=/tmp/slopdb-bench/slopdb-raft-latency-20261024/async-trace.json",
+          "-raft-bench-trace=/tmp/slopdb-bench/slopdb-raft-latency-20261024/async-trace.trace",
+          "-raft-bench-contention=/tmp/slopdb-bench/slopdb-raft-latency-20261024/async-trace",
+          "-raft-bench-timed-cpu=/tmp/slopdb-bench/slopdb-raft-latency-20261024/async-trace.cpu.pprof"
+        ],
+        "returncode": 0,
+        "wall_seconds": 8.478128486999594
+      }
+    ],
+    "ab-runs.json": [
+      {
+        "key": "sync-no-cleanup",
+        "command": [
+          "/tmp/slopdb-bench/slopdb-raft-latency-20261024/no-cleanup.test",
+          "-test.run=^$",
+          "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3$/^workers128$",
+          "-test.benchtime=25000x",
+          "-test.count=1",
+          "-test.timeout=10m",
+          "-raft-bench-latencies=/tmp/slopdb-bench/slopdb-raft-latency-20261024/sync-no-cleanup.json"
+        ],
+        "GOGC": "100",
+        "returncode": 0,
+        "wall_seconds": 14.587227805999646
+      },
+      {
+        "key": "async-no-cleanup",
+        "command": [
+          "/tmp/slopdb-bench/slopdb-raft-latency-20261024/no-cleanup.test",
+          "-test.run=^$",
+          "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3-async$/^workers128$",
+          "-test.benchtime=250000x",
+          "-test.count=1",
+          "-test.timeout=10m",
+          "-raft-bench-latencies=/tmp/slopdb-bench/slopdb-raft-latency-20261024/async-no-cleanup.json"
+        ],
+        "GOGC": "100",
+        "returncode": 0,
+        "wall_seconds": 10.482377528000143
+      },
+      {
+        "key": "async-no-gc",
+        "command": [
+          "/tmp/slopdb-bench/slopdb-raft-latency-20261024/replication.test",
+          "-test.run=^$",
+          "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3-async$/^workers128$",
+          "-test.benchtime=250000x",
+          "-test.count=1",
+          "-test.timeout=10m",
+          "-raft-bench-latencies=/tmp/slopdb-bench/slopdb-raft-latency-20261024/async-no-gc.json"
+        ],
+        "GOGC": "off",
+        "returncode": 0,
+        "wall_seconds": 15.288169820001713
+      },
+      {
+        "key": "async-no-cleanup-no-gc",
+        "command": [
+          "/tmp/slopdb-bench/slopdb-raft-latency-20261024/no-cleanup.test",
+          "-test.run=^$",
+          "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3-async$/^workers128$",
+          "-test.benchtime=250000x",
+          "-test.count=1",
+          "-test.timeout=10m",
+          "-raft-bench-latencies=/tmp/slopdb-bench/slopdb-raft-latency-20261024/async-no-cleanup-no-gc.json"
+        ],
+        "GOGC": "off",
+        "returncode": 0,
+        "wall_seconds": 10.98297596699922
+      },
+      {
+        "key": "sync-no-read-quorum",
+        "command": [
+          "/tmp/slopdb-bench/slopdb-raft-latency-20261024/no-read-quorum.test",
+          "-test.run=^$",
+          "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3$/^workers128$",
+          "-test.benchtime=25000x",
+          "-test.count=1",
+          "-test.timeout=10m",
+          "-raft-bench-latencies=/tmp/slopdb-bench/slopdb-raft-latency-20261024/sync-no-read-quorum.json"
+        ],
+        "GOGC": "100",
+        "returncode": 0,
+        "wall_seconds": 12.484314841000014
+      },
+      {
+        "key": "async-no-read-quorum",
+        "command": [
+          "/tmp/slopdb-bench/slopdb-raft-latency-20261024/no-read-quorum.test",
+          "-test.run=^$",
+          "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3-async$/^workers128$",
+          "-test.benchtime=250000x",
+          "-test.count=1",
+          "-test.timeout=10m",
+          "-raft-bench-latencies=/tmp/slopdb-bench/slopdb-raft-latency-20261024/async-no-read-quorum.json"
+        ],
+        "GOGC": "100",
+        "returncode": 0,
+        "wall_seconds": 13.83848071600005
+      }
+    ],
+    "periodic-ab-runs.json": [
+      {
+        "key": "async-no-periodic",
+        "command": [
+          "/tmp/slopdb-bench/slopdb-raft-latency-20261024/no-periodic.test",
+          "-test.run=^$",
+          "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3-async$/^workers128$",
+          "-test.benchtime=250000x",
+          "-test.count=1",
+          "-test.timeout=10m",
+          "-raft-bench-latencies=/tmp/slopdb-bench/slopdb-raft-latency-20261024/async-no-periodic.json"
+        ],
+        "returncode": 0,
+        "wall_seconds": 15.690080697999292
+      },
+      {
+        "key": "async-no-cleanup-no-periodic",
+        "command": [
+          "/tmp/slopdb-bench/slopdb-raft-latency-20261024/no-cleanup-no-periodic.test",
+          "-test.run=^$",
+          "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3-async$/^workers128$",
+          "-test.benchtime=250000x",
+          "-test.count=1",
+          "-test.timeout=10m",
+          "-raft-bench-latencies=/tmp/slopdb-bench/slopdb-raft-latency-20261024/async-no-cleanup-no-periodic.json"
+        ],
+        "returncode": 0,
+        "wall_seconds": 12.287280292001014
+      }
+    ],
+    "buffer-ab-runs.json": [
+      {
+        "key": "async-triple-control",
+        "command": [
+          "/tmp/slopdb-bench/slopdb-raft-latency-20261024/no-cleanup-no-periodic.test",
+          "-test.run=^$",
+          "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3-async$/^workers128$",
+          "-test.benchtime=250000x",
+          "-test.count=1",
+          "-test.timeout=10m",
+          "-raft-bench-latencies=/tmp/slopdb-bench/slopdb-raft-latency-20261024/async-triple-control.json"
+        ],
+        "GOGC": "off",
+        "returncode": 0,
+        "wall_seconds": 11.04009408300044
+      },
+      {
+        "key": "async-large-buffers",
+        "command": [
+          "/tmp/slopdb-bench/slopdb-raft-latency-20261024/large-buffers.test",
+          "-test.run=^$",
+          "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3-async$/^workers128$",
+          "-test.benchtime=250000x",
+          "-test.count=1",
+          "-test.timeout=10m",
+          "-raft-bench-latencies=/tmp/slopdb-bench/slopdb-raft-latency-20261024/async-large-buffers.json"
+        ],
+        "GOGC": "off",
+        "returncode": 0,
+        "wall_seconds": 12.032607973000268
+      }
+    ],
+    "strace-run.json": {
+      "command": [
+        "strace",
+        "-f",
+        "-ttt",
+        "-T",
+        "-yy",
+        "-e",
+        "trace=fsync,fdatasync",
+        "-o",
+        "/tmp/slopdb-bench/slopdb-raft-latency-20261024/async-no-cleanup-no-periodic-no-gc-strace.strace",
+        "/tmp/slopdb-bench/slopdb-raft-latency-20261024/no-cleanup-no-periodic.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3-async$/^workers128$",
+        "-test.benchtime=250000x",
+        "-test.count=1",
+        "-test.timeout=10m",
+        "-raft-bench-latencies=/tmp/slopdb-bench/slopdb-raft-latency-20261024/async-no-cleanup-no-periodic-no-gc-strace.json"
+      ],
+      "GOGC": "off",
+      "returncode": 0
+    },
+    "large-buffer-strace-run.json": {
+      "command": [
+        "strace",
+        "--seccomp-bpf",
+        "-f",
+        "-ttt",
+        "-T",
+        "-yy",
+        "-e",
+        "trace=fsync,fdatasync",
+        "-o",
+        "/tmp/slopdb-bench/slopdb-raft-latency-20261024/async-large-buffers-strace.strace",
+        "/tmp/slopdb-bench/slopdb-raft-latency-20261024/large-buffers.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkRaftLogsOnlyTransactions$/^raft3-async$/^workers128$",
+        "-test.benchtime=250000x",
+        "-test.count=1",
+        "-test.timeout=10m",
+        "-raft-bench-latencies=/tmp/slopdb-bench/slopdb-raft-latency-20261024/async-large-buffers-strace.json"
+      ],
+      "GOGC": "off",
+      "returncode": 0
+    }
+  },
+  "validation": {
+    "race_all_replication_tests": true,
+    "race_diagnostics_smoke": true,
+    "stage_record_invariants": true,
+    "trace_and_profiles_written": true,
+    "vet_replication": true,
+    "diff_check": true
+  },
+  "notes": [
+    "Ablations are single diagnostic probes, not repeated performance scores.",
+    "No-read-quorum probe bypasses statement-admission verification only; actual Raft write quorum and sync fsync remain. It is not a production-safe read policy.",
+    "No-periodic probe sets interval=1h and max lag=2h; bootstrap/final explicit durable barriers remain.",
+    "Triple control: skip empty cleanup, periodic loop outside measured window, GOGC=off; large-buffer case changes only application and consensus write buffers from 4 MiB to 128 MiB.",
+    "Strace affects runtime; syscall counts and causal overlap are separate from untraced latency estimates.",
+    "Trace Go 1.22.2 v2 region summaries were extracted through the trace HTTP viewer; ready-to-run delay is distinct from synchronization blocking."
+  ]
+}

@@ -380,7 +380,7 @@ func (db *Database) execAdmittedStatementsInto(ctx context.Context, stmts []sql.
 			if !schema.InTransaction() {
 				switch stmt.(type) {
 				case *sql.DropIndexStmt, *sql.AlterTableStmt, *sql.CommitStmt, *sql.ReleaseStmt:
-					if err := schema.CleanupIndexGarbage(); err != nil {
+					if err := schema.CleanupPendingIndexGarbage(); err != nil {
 						return nil, fmt.Errorf("schema change committed; index cleanup pending: %w", err)
 					}
 				}
