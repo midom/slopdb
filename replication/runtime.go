@@ -12,7 +12,7 @@ import (
 
 func (n *Node) raftNode() *raft.Raft { return n.raftPointer.Load() }
 func (n *Node) startRaft(config *raft.Config) error {
-	runtime, err := raft.NewRaft(config, n, n.store, n.store, n.snapshots, n.transport)
+	runtime, err := raft.NewRaft(config, n, n.store, n.store, n.snapshots, n.raftTransport())
 	if err != nil {
 		return err
 	}

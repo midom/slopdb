@@ -20,9 +20,14 @@ import (
 type Peer struct {
 	ID, Address, Control, Cluster string
 	AutoPromote                   bool
+	NonVoting, LogsOnly           bool `json:",omitempty"`
 }
-type Member struct{ ID, Address, Suffrage string }
+type Member struct {
+	ID, Address, Suffrage string
+	NonVoting, LogsOnly   bool
+}
 type Status struct {
+	NonVoting, LogsOnly                                           bool
 	ReadBarrier                                                   db.ReadBarrier
 	DurableReadIndex                                              uint64
 	DurableReadReady                                              bool
@@ -44,7 +49,7 @@ type Status struct {
 func peerKey(id string) []byte { return []byte("\x00\xffslopdb:raft:peer:" + id) }
 func (n *Node) Status() Status {
 	if n.raftNode() == nil {
-		return Status{ID: n.config.ID, Cluster: n.cluster, Address: n.Address(), Control: n.ControlAddress(), State: "Recovering", Durability: n.config.Durability, DurableIndex: n.durableIndex(), Recovering: true, ReplicatedToken: n.CurrentToken(), DurableToken: n.DurableToken(), ReplicaReadMaxStaleness: n.config.ReplicaReadMaxStaleness}
+		return Status{ID: n.config.ID, Cluster: n.cluster, Address: n.Address(), Control: n.ControlAddress(), State: "Recovering", Durability: n.config.Durability, DurableIndex: n.durableIndex(), Recovering: true, ReplicatedToken: n.CurrentToken(), DurableToken: n.DurableToken(), ReplicaReadMaxStaleness: n.config.ReplicaReadMaxStaleness, NonVoting: n.config.NonVoting, LogsOnly: n.config.LogsOnly}
 	}
 	address, id := n.raftNode().LeaderWithID()
 	s := Status{ID: n.config.ID, Cluster: n.cluster, Address: n.Address(), Control: n.ControlAddress(), State: n.raftNode().State().String(), LeaderID: string(id), LeaderAddress: string(address), Ready: n.readyTerm.Load() != 0 && n.raftNode().State() == raft.Leader, AppliedIndex: n.applied.Load(), AppliedTerm: n.appliedTerm.Load(), Term: n.raftNode().CurrentTerm()}
@@ -53,6 +58,7 @@ func (n *Node) Status() Status {
 	s.Durability = n.config.Durability
 	s.DurableIndex = n.durableIndex()
 	s.ReadBarrier = n.config.ReadBarrier
+	s.NonVoting, s.LogsOnly = n.config.NonVoting, n.config.LogsOnly
 	n.durableReads.mu.Lock()
 	if view := n.durableReads.latest; view != nil {
 		s.DurableReadIndex = view.index
@@ -74,7 +80,16 @@ func (n *Node) Status() Status {
 	future := n.raftNode().GetConfiguration()
 	if e := future.Error(); e == nil {
 		for _, m := range future.Configuration().Servers {
-			s.Members = append(s.Members, Member{string(m.ID), string(m.Address), m.Suffrage.String()})
+			member := Member{ID: string(m.ID), Address: string(m.Address), Suffrage: m.Suffrage.String()}
+			if member.ID == n.config.ID {
+				member.NonVoting, member.LogsOnly = n.config.NonVoting, n.config.LogsOnly
+			} else if data, found, err := n.database.ReplicationStorage().Get(peerKey(member.ID)); err == nil && found {
+				var p Peer
+				if json.Unmarshal(data, &p) == nil {
+					member.NonVoting, member.LogsOnly = p.NonVoting, p.LogsOnly
+				}
+			}
+			s.Members = append(s.Members, member)
 		}
 	} else {
 		s.Error = e.Error()
@@ -126,6 +141,9 @@ func (n *Node) validatePeer(ctx context.Context, p Peer) (Status, error) {
 	if status.Durability != n.config.Durability {
 		return status, fmt.Errorf("peer durability mode mismatch")
 	}
+	if status.NonVoting != p.NonVoting || status.LogsOnly != p.LogsOnly || p.NonVoting && p.AutoPromote {
+		return status, fmt.Errorf("peer replica role mismatch")
+	}
 	if status.ID != p.ID || status.Cluster != p.Cluster || status.Address != p.Address || status.Control != p.Control || status.Error != "" {
 		return status, fmt.Errorf("peer status identity mismatch or failure")
 	}
@@ -159,6 +177,10 @@ func (n *Node) Join(ctx context.Context, p Peer) (resultErr error) {
 				return fmt.Errorf("node ID is already bound to another address")
 			}
 			exists = true
+			old, err := n.peer(p.ID)
+			if err != nil || old.NonVoting != p.NonVoting || old.LogsOnly != p.LogsOnly {
+				return fmt.Errorf("existing peer replica role cannot change")
+			}
 		}
 		if string(member.Address) == p.Address && string(member.ID) != p.ID {
 			return fmt.Errorf("Raft address already belongs to another ID")
@@ -201,6 +223,9 @@ func (n *Node) Promote(ctx context.Context, id string) (resultErr error) {
 	p, e := n.peer(id)
 	if e != nil {
 		return e
+	}
+	if p.NonVoting {
+		return ErrNonVoting
 	}
 	term := n.raftNode().CurrentTerm()
 	if e = n.propose(command{Version: 1, Kind: "fence"}, nil); e != nil {
@@ -268,7 +293,7 @@ func (n *Node) Promote(ctx context.Context, id string) (resultErr error) {
 func (n *Node) startPromotion(p Peer) {
 	n.workMu.Lock()
 	defer n.workMu.Unlock()
-	if n.closing.Load() || n.promoting[p.ID] {
+	if n.closing.Load() || n.promoting[p.ID] || p.NonVoting {
 		return
 	}
 	n.promoting[p.ID] = true
@@ -350,6 +375,15 @@ func (n *Node) TransferLeadership(ctx context.Context, id string) error {
 	}
 	for _, member := range future.Configuration().Servers {
 		if string(member.ID) == id && member.Suffrage == raft.Voter {
+			if id != n.config.ID {
+				p, err := n.peer(id)
+				if err != nil {
+					return err
+				}
+				if p.LogsOnly {
+					return ErrLogsOnly
+				}
+			}
 			return n.wait(ctx, n.raftNode().LeadershipTransferToServer(member.ID, member.Address))
 		}
 	}

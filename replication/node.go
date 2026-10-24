@@ -31,6 +31,11 @@ var ErrClosed = errors.New("replication node closed")
 // Config uses canonical tcp://host:port or unix:///absolute/path endpoints.
 // Directory is a node directory, distinct from a standalone database directory.
 type Config struct {
+	// NonVoting keeps a replica outside the quorum, including manual promotion.
+	NonVoting bool
+	// LogsOnly retains consensus logs/snapshots without materializing SQL data.
+	// It can vote, but cannot lead or serve SQL.
+	LogsOnly           bool
 	ReadBarrier        db.ReadBarrier // default policy for SELECTs: previous, next, or committed
 	Durability         Durability
 	DurabilityInterval time.Duration
@@ -52,6 +57,7 @@ type Config struct {
 	OperationTimeout                time.Duration
 }
 type nodeMetadata struct {
+	NonVoting, LogsOnly           bool `json:",omitempty"`
 	Durability                    Durability
 	Version                       int
 	ID, Cluster, Address, Control string
@@ -130,6 +136,15 @@ func Open(ctx context.Context, config Config) (node *Node, err error) {
 	}
 	if config.Bootstrap && config.Join != "" {
 		return nil, fmt.Errorf("bootstrap and join are mutually exclusive")
+	}
+	if config.Bootstrap && (config.NonVoting || config.LogsOnly) {
+		return nil, fmt.Errorf("bootstrap requires a full voting replica")
+	}
+	if config.NonVoting {
+		config.AutoPromote = false
+	}
+	if config.LogsOnly && (config.ReplicaReadMaxStaleness != 0 || config.ReadBarrier != db.ReadBarrierDefault) {
+		return nil, fmt.Errorf("logs-only replicas cannot enable SQL reads")
 	}
 	if config.SeedDirectory != "" && !config.Bootstrap {
 		return nil, fmt.Errorf("seed database requires bootstrap")
@@ -247,8 +262,11 @@ func Open(ctx context.Context, config Config) (node *Node, err error) {
 		if e = json.Unmarshal(metadata, &meta); e != nil {
 			return nil, e
 		}
-		if meta.Version != 1 || meta.ID != config.ID {
+		if !validNodeMetadata(meta) || meta.ID != config.ID {
 			return nil, fmt.Errorf("node directory identity/version mismatch")
+		}
+		if config.NonVoting != meta.NonVoting || config.LogsOnly != meta.LogsOnly {
+			return nil, fmt.Errorf("replica role differs from persisted node identity")
 		}
 		n.cluster = meta.Cluster
 		mode := meta.Durability
@@ -309,7 +327,12 @@ func Open(ctx context.Context, config Config) (node *Node, err error) {
 		return nil, fmt.Errorf("restart must retain the persisted Raft and control endpoints")
 	}
 	if fresh {
-		meta = nodeMetadata{Version: 1, ID: config.ID, Cluster: n.cluster, Address: address.String(), Control: control.String(), Durability: config.Durability}
+		meta = nodeMetadata{Version: 1, ID: config.ID, Cluster: n.cluster, Address: address.String(), Control: control.String(), Durability: config.Durability, NonVoting: config.NonVoting, LogsOnly: config.LogsOnly}
+		if config.NonVoting || config.LogsOnly {
+			// Older binaries must reject identities whose voting/application
+			// restrictions they do not understand.
+			meta.Version = 2
+		}
 		b, _ := json.Marshal(meta)
 		if err = atomicFile(metadataPath, b); err != nil {
 			return nil, err
@@ -407,6 +430,11 @@ func Open(ctx context.Context, config Config) (node *Node, err error) {
 	raftConfig.Logger = logger
 	raftConfig.TrailingLogs = 0
 	raftConfig.NoSnapshotRestoreOnStart = false
+	if config.LogsOnly {
+		// Pre-vote keeps failed local campaigns from increasing the term.
+		// The logs-only transport refuses both election RPCs and TimeoutNow.
+		raftConfig.PreVoteDisabled = false
+	}
 	existing, e := raft.HasExistingState(n.store, n.store, n.snapshots)
 	if e != nil {
 		return nil, e
@@ -442,7 +470,7 @@ func Open(ctx context.Context, config Config) (node *Node, err error) {
 		go n.rejoinLoop(raftConfig)
 	}
 	if config.Join != "" && !n.recovering.Load() {
-		peer := Peer{ID: config.ID, Address: address.String(), Control: control.String(), Cluster: n.cluster, AutoPromote: config.AutoPromote}
+		peer := Peer{ID: config.ID, Address: address.String(), Control: control.String(), Cluster: n.cluster, AutoPromote: config.AutoPromote, NonVoting: config.NonVoting, LogsOnly: config.LogsOnly}
 		if e = n.postJSON(ctx, config.Join, "/v1/join", peer, nil); e != nil {
 			return nil, e
 		}
@@ -485,6 +513,9 @@ func (n *Node) notLeader() error {
 	return fmt.Errorf("%w (leader %s at %s)", ErrNotLeader, id, address)
 }
 func (n *Node) checkReadyLeader(ctx context.Context) (uint64, error) {
+	if n.config.LogsOnly {
+		return 0, ErrLogsOnly
+	}
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
@@ -668,7 +699,7 @@ func (n *Node) Apply(log *raft.Log) interface{} {
 		n.fail(e)
 		return e
 	}
-	batch, err := physicalMutations(n.database.ReplicationStorage(), c)
+	batch, err := n.commandMutations(c)
 	if err != nil {
 		n.fail(err)
 		return err

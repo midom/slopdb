@@ -36,7 +36,7 @@ type durableReadBarrierReply struct {
 // Keep one published view and a bounded set of in-flight certificates. Failed
 // seals or delayed old finalize requests cannot grow the candidate set forever.
 func (n *Node) captureDurableView(index, term uint64, published bool) {
-	if index == 0 {
+	if index == 0 || n.config.LogsOnly {
 		return
 	}
 	views := &n.durableReads
@@ -126,6 +126,9 @@ func durableBarrier(mode db.ReadBarrier) bool {
 }
 
 func (n *Node) checkDurableReadHealth(ctx context.Context) error {
+	if n.config.LogsOnly {
+		return ErrLogsOnly
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}

@@ -107,6 +107,10 @@ func Run() {
 	}
 	mysqlMode := *mysqlTCP != "" || *mysqlSocket != ""
 	postgresMode := *postgresTCP != "" || *postgresSocket != ""
+	if raftFlags.config.LogsOnly && (mysqlMode || postgresMode) {
+		fmt.Fprintln(os.Stderr, "logs-only replicas cannot serve SQL listeners")
+		os.Exit(1)
+	}
 	if mysqlMode && postgresMode {
 		fmt.Fprintln(os.Stderr, "choose either MySQL or PostgreSQL CLI server mode")
 		os.Exit(1)

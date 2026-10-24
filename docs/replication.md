@@ -87,6 +87,78 @@ PostgreSQL emulation or Unix SQL connections. With no SQL listener flags the
 process runs only the Raft/control services until SIGINT or SIGTERM; replicated
 mode does not run the stdin CLI or dot commands.
 
+## Replica roles
+
+Full nodes join as temporary non-voting learners and can become voters after
+catch-up. Two additional persistent settings control voting and SQL storage:
+
+| Setting | SQL tables and indexes | Votes in quorum | Can become leader |
+| --- | --- | --- | --- |
+| Default full replica | Applied locally | After promotion | After promotion |
+| `--raft-non-voting` | Applied locally | No | No |
+| `--raft-logs-only` | Not materialized | After promotion | No |
+| Both flags | Not materialized | No | No |
+
+`--raft-non-voting` keeps a replica outside the quorum permanently. It overrides
+`--raft-auto-promote` and rejects explicit promotion. Full non-voting replicas
+can serve bounded-staleness or durable-barrier reads with the usual read flags.
+Their unavailability does not change the number of acknowledgments needed to
+commit. The existing `--raft-auto-promote=false` still creates a learner that an
+administrator can promote later.
+
+For two materialized data copies and a third journal voter, start two ordinary
+full voting nodes as above, then start the third without SQL listener flags:
+
+```sh
+./slopdb --raft-id journal --raft-logs-only \
+  --raft-listen tcp://127.0.0.1:9420 \
+  --raft-control tcp://127.0.0.1:9421 \
+  --raft-join tcp://127.0.0.1:9401 \
+  --raft-token-env SLOPDB_RAFT_TOKEN ./node-journal
+```
+
+The journal joins as a learner and is promoted after validated catch-up, just
+like a full voter. Once all three are voters, a majority is two. Either full
+leader can commit with the journal while the other full voter is unavailable.
+The journal participates in sync WAL acknowledgments and async durability
+certification, but SQL reads/writes, SQL visibility waits and leadership
+transfers to it are rejected. Local election attempts cannot send pre-votes or
+votes; incoming votes from full candidates remain enabled. Direct Raft
+leadership-transfer requests are rejected as well.
+
+A logs-only node retains complete consensus WAL payloads and **opaque full
+recovery snapshots** on disk. It validates snapshot checksums and every WAL
+command, but applies only replication metadata and checkpoints to its native
+store. It does not maintain SQL rows, indexes, catalogs or durable read views,
+and cannot generate an incomplete SQL snapshot. This saves application/LSM work;
+it is not a zero-data arbiter or a guarantee of smaller total disk usage. Full
+snapshot transfers still carry the recovery base. Journals do not generate
+application checkpoints or independently compact the retained WAL into SQL
+state; history after the last received full snapshot is retained. Plan disk
+capacity accordingly, or replace/re-clone the journal to refresh its base.
+Offline stable-point recovery can reconstruct SQL data from the journal's
+snapshot and retained WAL, even
+when full-node payloads are damaged; normal fencing/all-voter-source requirements
+still apply.
+
+Raft's log freshness rule is unchanged. A full replica must have a sufficiently
+current log to win the journal's vote. If both full nodes are unavailable, or
+the only surviving full node is behind the journal and cannot catch up from
+the previous leader, the journal cannot become a temporary SQL leader. Restore
+a current full member or use the documented fenced recovery procedure. Ordinary
+commits promise a voting majority, not application to both full SQL copies.
+Async restarted voters, including journals, still require a live quorum for a
+fresh certified clone: restore quorum before taking another voter offline.
+
+Native callers use `Config.NonVoting` and `Config.LogsOnly`. Node status and
+member status expose `NonVoting` and `LogsOnly` in addition to actual Raft
+`Suffrage`. These roles are persisted in the node identity; repeat the flags on
+restart. Changing roles requires a new node directory and membership replacement.
+Only a full voting node can bootstrap a cluster. Upgrade all nodes before using
+these roles; restricted-role directories use identity version 2 so older binaries
+cannot reopen them while ignoring their restrictions. Existing ordinary node
+identities and SQL/WAL formats remain compatible.
+
 ## Bounded-staleness replica reads
 
 Enable read-only SQL on a follower or learner by setting a local time bound:

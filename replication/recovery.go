@@ -152,7 +152,7 @@ func RecoverStable(ctx context.Context, config RecoveryConfig) (result RecoveryR
 		if e = json.Unmarshal(value, &source.metadata); e != nil {
 			return result, e
 		}
-		if source.metadata.Version != 1 || source.metadata.ID == "" || source.metadata.Durability != DurabilityAsync {
+		if !validNodeMetadata(source.metadata) || source.metadata.ID == "" || source.metadata.Durability != DurabilityAsync {
 			return result, fmt.Errorf("source is not an asynchronous node")
 		}
 		if seen[source.metadata.ID] {

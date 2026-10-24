@@ -39,6 +39,9 @@ type replicaReadState struct {
 }
 
 func (n *Node) checkReplicaReadRole(ctx context.Context) error {
+	if n.config.LogsOnly {
+		return ErrLogsOnly
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}

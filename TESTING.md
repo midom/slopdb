@@ -126,6 +126,11 @@ Raft replication tests live in `replication/`: TCP/Unix seed snapshots, nonvoter
 catch-up/promotion, leadership transfer/failover, minority rejection, durable
 restart and duplicate replay, offline snapshot installation, concurrent writes,
 corruption/truncation rejection and mutual TLS.
+`replication/roles_test.go` covers permanent nonvoters, rejected promotion,
+nonvoter reads and restart, two full copies plus a logs-only voter over TCP/Unix
+in sync/async modes, failover, quorum writes, restart, role identity, election
+and direct-transfer exclusion, metadata-only application and recovery from a
+journal after full-node payload loss.
 `replication/durability_test.go` covers async/durable commit, periodic flushing,
 lag admission, certificate validation, recovering voters and all-cold recovery
 after removing volatile log suffixes and application generations. Wire tests

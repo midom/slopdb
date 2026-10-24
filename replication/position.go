@@ -16,7 +16,7 @@ import (
 // Signing lets a member validate old tokens even after log compaction, without
 // accepting a client's invented index/term as evidence of committed history.
 func (n *Node) publishPosition(index, term uint64) {
-	if index == 0 || term == 0 {
+	if index == 0 || term == 0 || n.config.LogsOnly {
 		n.position.Store(nil)
 		return
 	}
@@ -76,6 +76,9 @@ func (n *Node) AckedPosition(ctx context.Context) (string, error) {
 // reads still obey leader/bounded-staleness admission. Without a caller deadline
 // the node's OperationTimeout bounds the wait.
 func (n *Node) WaitPosition(ctx context.Context, position string) error {
+	if n.config.LogsOnly {
+		return ErrLogsOnly
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}

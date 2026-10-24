@@ -42,6 +42,11 @@ type stateSnapshot struct {
 }
 
 func (n *Node) Snapshot() (raft.FSMSnapshot, error) {
+	// Only full replicas may produce a SQL recovery base. Incoming Raft
+	// snapshots remain opaque full bases on disk, paired with retained logs.
+	if n.config.LogsOnly {
+		return nil, ErrLogsOnly
+	}
 	n.fsmMu.Lock()
 	defer n.fsmMu.Unlock()
 	if err := n.failure(); err != nil {
@@ -248,6 +253,9 @@ func (n *Node) decodeSnapshot(src io.Reader) (directory string, h snapshotHeader
 		previous = k
 		if bytes.Equal(k, appliedKey) {
 			marker = bytes.Clone(v)
+		}
+		if n.config.LogsOnly && !replicationMetadata(k) {
+			continue
 		}
 		batch = append(batch, storage.Mutation{Key: k, Value: v})
 		size += len(k) + len(v)

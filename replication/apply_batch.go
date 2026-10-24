@@ -65,7 +65,7 @@ func (n *Node) ApplyBatch(logs []*raft.Log) []interface{} {
 			}
 			var writes []storage.Mutation
 			if log.Type == raft.LogCommand {
-				writes, err = physicalMutations(n.database.ReplicationStorage(), c)
+				writes, err = n.commandMutations(c)
 			}
 			if err == nil {
 				err = n.applyCheckpointWithBarrier(log.Index, log.Term, writes, c.Kind == "fence")
@@ -78,7 +78,7 @@ func (n *Node) ApplyBatch(logs []*raft.Log) []interface{} {
 			}
 			continue
 		}
-		writes, err := physicalMutations(n.database.ReplicationStorage(), c)
+		writes, err := n.commandMutations(c)
 		if err != nil {
 			if flushErr := flush(); flushErr != nil {
 				return fail(start, flushErr)

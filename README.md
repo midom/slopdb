@@ -34,6 +34,7 @@ database server.
 - Durable writes and crash recovery enabled by default.
 - Online backups, integrity checks and storage maintenance.
 - Raft replication with TCP/Unix snapshot cloning, asynchronous learner catch-up, voting promotion and optional bounded-staleness replica reads.
+- Permanent non-voting replicas and logs-only quorum voters for two materialized data copies plus a journal.
 - Durable replica reads from the previous certified barrier or a newly requested barrier.
 - Logical commit-position tokens in commit responses, replica visibility waits and per-query minimum positions.
 - Optional async Raft durability with periodic quorum flushes, `COMMIT DURABLE` barriers and explicit recovery to a certified stable prefix.

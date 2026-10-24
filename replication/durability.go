@@ -108,6 +108,9 @@ func validateCertificate(c *durableCertificate, token, cluster string) error {
 			return ErrHistory
 		}
 		if s.Suffrage == raft.Voter {
+			if p.NonVoting {
+				return ErrHistory
+			}
 			if voters[string(s.ID)] {
 				return ErrHistory
 			}
@@ -115,6 +118,9 @@ func validateCertificate(c *durableCertificate, token, cluster string) error {
 		}
 	}
 	if len(voters) == 0 || !voters[c.Body.Leader] || len(peers) != len(ids) {
+		return ErrHistory
+	}
+	if peers[c.Body.Leader].LogsOnly {
 		return ErrHistory
 	}
 	seen := map[string]bool{}

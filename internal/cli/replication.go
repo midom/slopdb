@@ -25,6 +25,8 @@ type replicationFlags struct {
 }
 
 func (f *replicationFlags) register(flags *flag.FlagSet) {
+	flags.BoolVar(&f.config.NonVoting, "raft-non-voting", false, "permanent non-voting replica; disable automatic and manual promotion")
+	flags.BoolVar(&f.config.LogsOnly, "raft-logs-only", false, "retain Raft logs and recovery snapshots without SQL tables; vote but never lead")
 	flags.Func("raft-read-barrier", "default SELECT policy: previous, next, or committed (default: normal reads)", func(s string) error { f.config.ReadBarrier = db.ReadBarrier(s); return nil })
 	flags.Func("raft-durability", "replication commit mode: sync or async (default: inherit, sync for a new cluster)", func(s string) error { f.config.Durability = replication.Durability(s); return nil })
 	flags.DurationVar(&f.config.DurabilityInterval, "raft-durability-interval", 0, "async WAL group-flush interval (default 100ms)")
@@ -50,7 +52,7 @@ func (f *replicationFlags) register(flags *flag.FlagSet) {
 	flags.StringVar(&f.serverName, "raft-tls-server-name", "", "TLS peer DNS name override, including for Unix sockets")
 }
 func (f *replicationFlags) enabled() bool {
-	return f.config.ReadBarrier != db.ReadBarrierDefault || f.config.ReplicaReadMaxStaleness != 0 || f.config.Durability != "" || f.config.DurabilityInterval != 0 || f.config.MaxDurabilityLag != 0 || f.config.ID != "" || f.config.Listen != "" || f.config.ControlListen != "" || f.config.Advertise != "" || f.config.ControlAdvertise != "" || f.config.Bootstrap || f.config.Join != "" || f.config.SeedDirectory != "" || f.tokenEnv != "" || f.cert != "" || f.key != "" || f.ca != "" || f.serverName != ""
+	return f.config.NonVoting || f.config.LogsOnly || f.config.ReadBarrier != db.ReadBarrierDefault || f.config.ReplicaReadMaxStaleness != 0 || f.config.Durability != "" || f.config.DurabilityInterval != 0 || f.config.MaxDurabilityLag != 0 || f.config.ID != "" || f.config.Listen != "" || f.config.ControlListen != "" || f.config.Advertise != "" || f.config.ControlAdvertise != "" || f.config.Bootstrap || f.config.Join != "" || f.config.SeedDirectory != "" || f.tokenEnv != "" || f.cert != "" || f.key != "" || f.ca != "" || f.serverName != ""
 }
 func (f *replicationFlags) open(directory string, options *storage.Options) (*replication.Node, error) {
 	token, ok := os.LookupEnv(f.tokenEnv)

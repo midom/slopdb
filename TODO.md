@@ -149,6 +149,7 @@ reverse seeks. `VACUUM` flushes writes and compacts SSTables.
 
 - [x] Raft-shipped atomic WAL batches, durable replay checkpoints and linearizable leader SQL
 - [x] TCP/Unix snapshot clone, asynchronous nonvoter catch-up and checked voting promotion
+- [x] Persistent non-voting replicas and logs-only voters with leadership exclusion, metadata-only application and journal-backed recovery
 - [x] Authenticated control/membership services, TLS and CA-verified client certificates
 - [x] Optional asynchronous commit, quorum-certified stable prefixes, durable barriers and offline recovery into a new cluster incarnation
 - [x] Opt-in bounded-staleness follower/learner reads with quorum-confirmed progress, read-only transactions and consistent catalog/data snapshots
