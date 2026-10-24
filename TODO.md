@@ -123,6 +123,12 @@ and reconcile indexes on every open for diagnostics. Ordinary writes continue
 to enforce strict indexed types. Row-ID counters initialize lazily with bounded
 reverse seeks. `VACUUM` flushes writes and compacts SSTables.
 
+## Client protocols
+
+- [x] MySQL 4.1 protocol over TCP and Unix sockets, password authentication, independent sessions, text queries and binary prepared execution; see [MySQL server](docs/mysql-server.md) for compatibility limits
+- [x] MySQL TLS 1.2/1.3 with required transport and CA-verified client certificate authentication on both TCP and Unix sockets
+- [ ] MySQL account/grant management and prepared result metadata before execution
+
 ## Miscellaneous
 
 - [x] SQL comments (-- and /* */)

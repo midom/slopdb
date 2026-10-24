@@ -2,7 +2,8 @@
 
 SlopDB is an embedded SQL database written in Go. It provides a SQLite-like SQL
 dialect, concurrent transactions, a Go API and an interactive command-line
-interface. Each database lives in a directory and runs without an external
+interface, plus an optional MySQL protocol server over TCP and Unix sockets.
+Each database lives in a directory and runs without an external
 database server.
 
 ## Features
@@ -39,6 +40,7 @@ database server.
 
 - An embedded Go API with no external database server.
 - An interactive command-line interface and script execution.
+- A MySQL protocol server with TCP and Unix sockets, TLS and client certificate authentication, independent sessions and prepared statements.
 - Guides for application development, troubleshooting and database operations.
 
 See the [documentation](#documentation) for feature details and restrictions.
@@ -54,6 +56,10 @@ go build -o slopdb .
 
 The [getting started guide](docs/getting-started.md) walks through creating a
 table, querying data and running scripts.
+
+To connect using MySQL clients, run `./slopdb --mysql-tcp 127.0.0.1:3306 ./example-db`
+or use `--mysql-socket /tmp/slopdb.sock`. See [MySQL server](docs/mysql-server.md)
+for authentication, both-listener operation and compatibility limits.
 
 ## Using SlopDB from Go
 
@@ -72,6 +78,7 @@ for working with results, loading data, backups and integrity checks.
 | Getting started | [First database and scripts](docs/getting-started.md) |
 | Working with data | [Supported behavior](docs/sql-semantics.md), [SQL quoting](docs/sql-quoting.md), [International text](docs/text-collation.md), [Unexpected query results](docs/sql-surprises.md) |
 | Changing a database | [Schema changes](docs/alter-table.md), [Online changes](docs/online-indexes.md), [Planning changes](docs/schema-change-planning.md) |
+| MySQL clients | [TCP and Unix socket server](docs/mysql-server.md) |
 | Applications and operations | [Application queries](docs/prepared-statements.md), [Operations](docs/application-operations.md), [Table status](docs/table-status.md), [Troubleshooting](docs/diagnostics.md) |
 | Performance | [Profiling](docs/query-profiling.md), [Resource use](docs/query-memory.md), [Measurements](docs/catalog-performance.md) |
 

@@ -17,6 +17,7 @@ import (
 	"github.com/chzyer/readline"
 
 	"slopdb/db"
+	"slopdb/mysqlserver"
 	sqldb "slopdb/sql"
 	"slopdb/storage"
 )
@@ -51,6 +52,15 @@ func Run() {
 	flags.BoolVar(&opt.DeadlockDetection, "deadlock-detection", false, "detect transaction deadlocks and roll back one victim")
 	compression := flags.String("compression", "auto", "SSTable data block compression: auto (none in L0, zstd in L1-L6), none, gzip, zstd, snappy, or lz4")
 	l0Compression := flags.String("l0-compression", "auto", "override L0 compression: none, gzip, zstd, snappy, or lz4; auto inherits --compression")
+	mysqlTCP := flags.String("mysql-tcp", "", "serve MySQL protocol on a TCP address, e.g. 127.0.0.1:3306")
+	mysqlSocket := flags.String("mysql-socket", "", "serve MySQL protocol on a Unix socket path (may be combined with --mysql-tcp)")
+	mysqlUser := flags.String("mysql-user", "slopdb", "MySQL login username")
+	mysqlDatabase := flags.String("mysql-database", "slopdb", "database name exposed to MySQL clients")
+	mysqlPasswordEnv := flags.String("mysql-password-env", "", "environment variable containing the MySQL password (default: empty password)")
+	mysqlTLSCert := flags.String("mysql-tls-cert", "", "PEM server certificate chain for MySQL TLS")
+	mysqlTLSKey := flags.String("mysql-tls-key", "", "PEM private key for the MySQL TLS certificate")
+	mysqlTLSCA := flags.String("mysql-tls-ca", "", "PEM CA bundle; require TLS and a client certificate verified against this CA bundle")
+	mysqlRequireTLS := flags.Bool("mysql-require-tls", false, "reject plaintext MySQL connections (implied by --mysql-tls-ca)")
 	flags.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [--no-wal | --no-wal-fsync] [--compression codec] [--l0-compression codec] [--page-size bytes] <database>\n", os.Args[0])
 		flags.PrintDefaults()
@@ -66,6 +76,37 @@ func Run() {
 		os.Exit(1)
 	}
 	dbPath := flags.Arg(0)
+	serverMode := *mysqlTCP != "" || *mysqlSocket != ""
+	if !serverMode && (*mysqlTLSCert != "" || *mysqlTLSKey != "" || *mysqlTLSCA != "" || *mysqlRequireTLS) {
+		fmt.Fprintln(os.Stderr, "MySQL TLS options require --mysql-tcp or --mysql-socket")
+		os.Exit(1)
+	}
+	mysqlTLS, err := loadMySQLTLS(*mysqlTLSCert, *mysqlTLSKey, *mysqlTLSCA, *mysqlRequireTLS)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "MySQL TLS: %v\n", err)
+		os.Exit(1)
+	}
+	if serverMode {
+		// Protocol clients expect MySQL string quoting unless explicitly overridden.
+		explicitQuoting := false
+		flags.Visit(func(f *flag.Flag) {
+			if f.Name == "mysql-quoting" {
+				explicitQuoting = true
+			}
+		})
+		if !explicitQuoting {
+			opt.MySQLQuoting = true
+		}
+	}
+	mysqlPassword := ""
+	if *mysqlPasswordEnv != "" {
+		var found bool
+		mysqlPassword, found = os.LookupEnv(*mysqlPasswordEnv)
+		if !found {
+			fmt.Fprintf(os.Stderr, "MySQL password environment variable %q is not set\n", *mysqlPasswordEnv)
+			os.Exit(1)
+		}
+	}
 	opt.CompressionType = storage.CompressionType(*compression)
 	opt.L0CompressionType = storage.CompressionType(*l0Compression)
 	currentDBOptions = opt
@@ -83,6 +124,17 @@ func Run() {
 			os.Exit(1)
 		}
 	}()
+	if serverMode {
+		err := runMySQLServer(database, *mysqlTCP, *mysqlSocket, mysqlserver.Config{
+			Username: *mysqlUser, Password: mysqlPassword, Database: *mysqlDatabase,
+			TLSConfig: mysqlTLS, RequireTLS: *mysqlRequireTLS,
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "MySQL server: %v\n", err)
+			exitCLI(1)
+		}
+		return
+	}
 
 	sigChan = make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
