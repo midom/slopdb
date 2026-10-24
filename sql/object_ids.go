@@ -77,7 +77,7 @@ func (s *Schema) objectCatalogHash() ([32]byte, error) {
 // Legacy names are copied in bounded batches before publishing the ID catalog.
 // Originals remain intact throughout copying, so a crash simply resumes it.
 func (s *Schema) initializeObjectIDs() error {
-	b, found, err := s.lsm.Get([]byte(objectIDPrefix))
+	b, found, err := s.schemaGet([]byte(objectIDPrefix))
 	if err != nil {
 		return err
 	}
@@ -108,7 +108,7 @@ func (s *Schema) initializeObjectIDs() error {
 		}
 	}
 	var plan objectMigration
-	b, pending, err := s.lsm.Get([]byte(objectMigrationPrefix))
+	b, pending, err := s.schemaGet([]byte(objectMigrationPrefix))
 	if err != nil {
 		return err
 	}

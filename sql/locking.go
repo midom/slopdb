@@ -2,6 +2,7 @@ package sql
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 )
 
@@ -62,6 +63,9 @@ func (s *Schema) SetLockHandler(handler func(LockRequest) error) { s.lockHandler
 func (s *Schema) SetLockGroupHandler(handler func([]LockRequest) error) { s.lockGroupHandler = handler }
 
 func (s *Schema) requestRowLocks(keys []string, lock *SelectLock) error {
+	if s.replicaReadOnly {
+		return fmt.Errorf("locking reads require the Raft leader")
+	}
 	requests := make([]LockRequest, len(keys))
 	for i, key := range keys {
 		requests[i] = LockRequest{Resource: "row:" + key, Exclusive: lock.Exclusive, Wait: lock.Wait}

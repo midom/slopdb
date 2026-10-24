@@ -14,9 +14,12 @@ import (
 // timeout for Timeout, or fails immediately on contention for LockTimeout.
 // A caller's context deadline always applies, even when Timeout is overridden.
 type ExecOptions struct {
-	MemoryBytes *int64 // per-operator budget; nil inherits, zero selects 64 MiB
-	Timeout     *time.Duration
-	LockTimeout *time.Duration
+	ReadBarrier ReadBarrier // durable snapshot policy for read statements
+	// MinimumPosition waits for this committed prefix before taking a snapshot.
+	MinimumPosition string
+	MemoryBytes     *int64 // per-operator budget; nil inherits, zero selects 64 MiB
+	Timeout         *time.Duration
+	LockTimeout     *time.Duration
 	// IndexPublicationAbortAfter enables rollback of blocking explicit
 	// transactions after this publication wait. Nil disables; zero is immediate.
 	IndexPublicationAbortAfter *time.Duration
@@ -60,6 +63,18 @@ func (db *Database) queryContext(ctx context.Context, options ExecOptions) (cont
 	}
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if options.MinimumPosition != "" {
+		ctx = WithMinimumPosition(ctx, options.MinimumPosition)
+	}
+	if !ValidReadBarrier(options.ReadBarrier) {
+		return nil, nil, 0, fmt.Errorf("invalid read barrier")
+	}
+	if options.ReadBarrier != ReadBarrierDefault {
+		ctx = WithReadBarrier(ctx, options.ReadBarrier)
+	}
+	if !ValidReadBarrier(ReadBarrierFromContext(ctx)) {
+		return nil, nil, 0, fmt.Errorf("invalid read barrier")
 	}
 	ctx = sql.WithQueryMemory(ctx, budget)
 	if options.IndexPublicationAbortAfter != nil {

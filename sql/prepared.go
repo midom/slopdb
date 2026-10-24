@@ -68,7 +68,7 @@ func PrepareWithOptions(query string, options ParseOptions) (*PreparedQuery, err
 
 func reusableStatement(stmt Statement) bool {
 	switch s := stmt.(type) {
-	case *SelectStmt, *InsertStmt, *UpdateStmt, *DeleteStmt, *UnionStmt,
+	case *SelectStmt, *InsertStmt, *UpdateStmt, *DeleteStmt, *UnionStmt, *ReplicationPositionStmt, *ReadBarrierStmt,
 		*ShowStmt, *PragmaStmt, *BeginStmt, *CommitStmt, *RollbackStmt,
 		*SavepointStmt, *ReleaseStmt:
 		return true

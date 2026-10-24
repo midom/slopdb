@@ -85,9 +85,13 @@ type Schema struct {
 	autoincQueued      map[string]int64 // high-water snapshots in WAL enqueue order; commitMu protects it
 	rowIDCount         map[string]int64
 
-	ctx              context.Context
-	lockHandler      func(LockRequest) error
-	lockGroupHandler func([]LockRequest) error
+	ctx                   context.Context
+	statementSnapshotHook func(context.Context, *Schema) (bool, error)
+	replicaReadOnly       bool
+	lastCommitPosition    string
+	readBarrier           string // private session setting; not catalog state
+	lockHandler           func(LockRequest) error
+	lockGroupHandler      func([]LockRequest) error
 
 	inTx             bool
 	txWrites         []txWrite
@@ -192,6 +196,24 @@ func NewSchema(lsm *storage.LSMTree, pageSize int) (*Schema, error) {
 // NewSchemaWithOptions optionally checks indexes for diagnostics. Normal opens
 // trust atomically maintained indexes.
 func NewSchemaWithOptions(lsm *storage.LSMTree, pageSize int, opt *storage.Options) (*Schema, error) {
+	return newSchemaWithOptions(lsm, pageSize, opt, nil)
+}
+
+// NewReplicaSchemaAtSnapshot loads metadata from an externally pinned native
+// snapshot without migrations, repair or any other storage writes.
+func NewReplicaSchemaAtSnapshot(lsm *storage.LSMTree, snapshot uint64, opt *storage.Options) (*Schema, error) {
+	if !lsm.ReplicaMode() {
+		return nil, fmt.Errorf("historical catalog loading requires replica storage")
+	}
+	options := *storage.DefaultOptions()
+	if opt != nil {
+		options = *opt
+	}
+	options.Replica = true
+	return newSchemaWithOptions(lsm, int(lsm.PageSize()), &options, &snapshot)
+}
+
+func newSchemaWithOptions(lsm *storage.LSMTree, pageSize int, opt *storage.Options, snapshot *uint64) (*Schema, error) {
 	if opt == nil {
 		opt = storage.DefaultOptions()
 	}
@@ -210,6 +232,10 @@ func NewSchemaWithOptions(lsm *storage.LSMTree, pageSize int, opt *storage.Optio
 		triggers:         make(map[string]*TriggerInfo),
 		autoincMax:       make(map[string]int64),
 		rowIDCount:       make(map[string]int64),
+	}
+	if snapshot != nil {
+		s.statementSnapshot, s.statementActive = *snapshot, true
+		defer func() { s.statementActive = false }()
 	}
 	if opt != nil {
 		if opt.QueryMemoryBytes < 0 {
@@ -3950,6 +3976,9 @@ func (s *Schema) SelectInto(stmt *SelectStmt, dst *ResultSet) (*ResultSet, error
 }
 
 func (s *Schema) selectInto(stmt *SelectStmt, dst *ResultSet) (result *ResultSet, err error) {
+	if s.replicaReadOnly && !IsReplicaReadStatement(stmt) {
+		return nil, fmt.Errorf("locking reads require the Raft leader")
+	}
 	if stmt.With != nil {
 		restore, err := s.enterCTEs(stmt.With)
 		if err != nil {

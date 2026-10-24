@@ -34,7 +34,7 @@ func (db *Database) Query(query string) (*Rows, error) {
 	return db.QueryContext(context.Background(), query)
 }
 func (db *Database) QueryContext(ctx context.Context, query string) (*Rows, error) {
-	s, err := db.NewSession()
+	s, err := db.newSessionContext(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +68,7 @@ func (s *Stmt) QueryContext(ctx context.Context, args ...any) (*Rows, error) {
 	if s.session != nil {
 		return s.session.queryRows(ctx, "", s, args, s.bound, false)
 	}
-	session, err := s.db.NewSession()
+	session, err := s.db.newSessionContext(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -145,10 +145,6 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 		release()
 		return nil, err
 	}
-	if err = s.db.checkReplication(ctx); err != nil {
-		release()
-		return nil, err
-	}
 	if bound && !s.schema.InTransaction() {
 		release()
 		return nil, ErrTxDone
@@ -176,7 +172,12 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 		release()
 		return nil, errors.New("Query requires a SELECT statement")
 	}
-	s.schema.SetContext(ctx)
+	ctx = withSessionReadBarrier(ctx, s.schema)
+	if err = s.db.checkStatementReplication(ctx, statements); err != nil {
+		release()
+		return nil, err
+	}
+	s.schema.SetContext(readStatementContext(ctx, s.schema, statements[0]))
 	deadline := time.Now().Add(lockTimeout)
 	for {
 		err = s.db.statementCatalogLock(s.schema, statements[0])
@@ -217,7 +218,7 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 		}
 	}
 	if rows.cursor == nil {
-		result, execErr := s.db.execStatements(ctx, statements, s.schema, bound, lockTimeout)
+		result, execErr := s.db.execStatements(context.WithValue(ctx, reuseReadSnapshotKey{}, true), statements, s.schema, bound, lockTimeout)
 		if execErr != nil {
 			release()
 			return nil, execErr

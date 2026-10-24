@@ -89,6 +89,22 @@ func (p *Parser) parseShow() (Statement, error) {
 		return nil, fmt.Errorf("FULL is only supported for SHOW TABLES and SHOW COLUMNS")
 	}
 	switch kind {
+	case "REPLICATION":
+		if !p.showWord("POSITION") {
+			return nil, fmt.Errorf("expected POSITION after SHOW REPLICATION")
+		}
+		p.advance()
+		return &ReplicationPositionStmt{Operation: "current"}, nil
+	case "LAST":
+		if !p.showWord("COMMIT") {
+			return nil, fmt.Errorf("expected COMMIT after SHOW LAST")
+		}
+		p.advance()
+		if !p.showWord("POSITION") {
+			return nil, fmt.Errorf("expected POSITION after SHOW LAST COMMIT")
+		}
+		p.advance()
+		return &ReplicationPositionStmt{Operation: "last"}, nil
 	case "TABLE":
 		if !p.showWord("STATUS") {
 			return nil, fmt.Errorf("expected STATUS after SHOW TABLE")

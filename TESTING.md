@@ -135,7 +135,28 @@ the offline CLI recovery procedure to check stable-prefix restoration.
 When `strace` is available, `replication/durability_syscall_linux_test.go` checks
 that async commits skip WAL fsync and explicit durable barriers issue it.
 `replication/read_index_test.go` covers reads without log appends and cancellation
-while committed entries await native application. The quorum-flush pipeline
+while committed entries await native application. Replica-read tests cover
+TCP/Unix and sync/async modes, prepared/streamed reads, catalog changes during
+pinned streams, read-only transactions, rejected writes/locks, proof expiry,
+application backlog/cancellation, restart discovery, leadership transitions and
+lost quorum. The same read-index flow runs over mutual TLS, and wire tests
+exercise MySQL/PostgreSQL prepared reads and stale-read failures. SQL tests check
+conservative classification of nested queries, CTEs and windows.
+Durable-read tests exercise PREVIOUS/NEXT over TCP/Unix, sync/async modes,
+MySQL/PostgreSQL prepared execution and mutual TLS. A held remote prepare proves
+that later rows/catalog changes are excluded from a captured fence, including
+after VACUUM. Tests cover idle NEXT requests, streaming/materialized snapshots,
+minimum-position conflicts, private-write rejection, missing-view errors,
+bounded candidate retention, cancellation after Raft enqueue, replica re-cloning,
+and returning to live prepared writes. Storage tests transfer a global snapshot
+pin to a statement reader and verify survival through full compaction.
+Position tests check master/session queries, commit responses, concurrent-commit
+coverage, delayed native application, explicit/prepared waits, deadline/cancel
+handling, minimum-position Exec/streaming reads, full-width indexes, tampered
+and wrong-incarnation tokens, log compaction and stable-point recovery. Raw wire
+tests decode MySQL plain/session-tracked OK metadata and PostgreSQL simple and
+extended implicit-commit ParameterStatus; integration tests use both drivers.
+The quorum-flush pipeline
 test holds a remote prepare request and verifies later writes can commit without
 being included in the earlier durable certificate or losing their lag timestamp.
 Application batching tests cover ordered range deletions, configuration and

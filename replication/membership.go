@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/raft"
+	"slopdb/db"
 	"slopdb/storage"
 )
 
@@ -22,6 +23,12 @@ type Peer struct {
 }
 type Member struct{ ID, Address, Suffrage string }
 type Status struct {
+	ReadBarrier                                                   db.ReadBarrier
+	DurableReadIndex                                              uint64
+	DurableReadReady                                              bool
+	ReplicaReadMaxStaleness, ReplicaReadProofAge                  time.Duration
+	ReplicaReadIndex                                              uint64
+	ReplicaReadReady                                              bool
 	ReplicatedToken, DurableToken                                 DurabilityToken
 	Durability                                                    Durability
 	DurableIndex                                                  uint64
@@ -37,7 +44,7 @@ type Status struct {
 func peerKey(id string) []byte { return []byte("\x00\xffslopdb:raft:peer:" + id) }
 func (n *Node) Status() Status {
 	if n.raftNode() == nil {
-		return Status{ID: n.config.ID, Cluster: n.cluster, Address: n.Address(), Control: n.ControlAddress(), State: "Recovering", Durability: n.config.Durability, DurableIndex: n.durableIndex(), Recovering: true, ReplicatedToken: n.CurrentToken(), DurableToken: n.DurableToken()}
+		return Status{ID: n.config.ID, Cluster: n.cluster, Address: n.Address(), Control: n.ControlAddress(), State: "Recovering", Durability: n.config.Durability, DurableIndex: n.durableIndex(), Recovering: true, ReplicatedToken: n.CurrentToken(), DurableToken: n.DurableToken(), ReplicaReadMaxStaleness: n.config.ReplicaReadMaxStaleness}
 	}
 	address, id := n.raftNode().LeaderWithID()
 	s := Status{ID: n.config.ID, Cluster: n.cluster, Address: n.Address(), Control: n.ControlAddress(), State: n.raftNode().State().String(), LeaderID: string(id), LeaderAddress: string(address), Ready: n.readyTerm.Load() != 0 && n.raftNode().State() == raft.Leader, AppliedIndex: n.applied.Load(), AppliedTerm: n.appliedTerm.Load(), Term: n.raftNode().CurrentTerm()}
@@ -45,6 +52,22 @@ func (n *Node) Status() Status {
 	s.DurableToken = n.DurableToken()
 	s.Durability = n.config.Durability
 	s.DurableIndex = n.durableIndex()
+	s.ReadBarrier = n.config.ReadBarrier
+	n.durableReads.mu.Lock()
+	if view := n.durableReads.latest; view != nil {
+		s.DurableReadIndex = view.index
+		s.DurableReadReady = view.tree == n.database.ReplicationStorage() && view.index >= s.DurableIndex && n.checkDurableReadHealth(context.Background()) == nil
+	}
+	n.durableReads.mu.Unlock()
+	s.ReplicaReadMaxStaleness = n.config.ReplicaReadMaxStaleness
+	n.replicaReads.mu.Lock()
+	proof := n.replicaReads.proof
+	s.ReplicaReadIndex = proof.fence.Index
+	if !proof.since.IsZero() {
+		s.ReplicaReadProofAge = time.Since(proof.since)
+	}
+	s.ReplicaReadReady = n.checkReplicaReadRole(context.Background()) == nil && n.usableReadProof(proof)
+	n.replicaReads.mu.Unlock()
 	n.durability.publication.Lock()
 	s.DurabilityError = n.durability.lastError
 	n.durability.publication.Unlock()
@@ -335,6 +358,8 @@ func (n *Node) TransferLeadership(ctx context.Context, id string) error {
 func (n *Node) handler() http.Handler {
 	mux := http.NewServeMux()
 	n.durabilityHandlers(mux)
+	n.durableReadHandlers(mux)
+	n.replicaReadHandlers(mux)
 	mux.HandleFunc("/v1/status", func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodGet) {
 			return

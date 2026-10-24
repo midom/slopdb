@@ -339,6 +339,9 @@ func (n *Node) Restore(reader io.ReadCloser) (err error) {
 		n.dataDirectory = directory
 		n.applied.Store(h.Checkpoint.Index)
 		n.appliedTerm.Store(h.Checkpoint.Term)
+		n.publishPosition(h.Checkpoint.Index, h.Checkpoint.Term)
+		n.clearDurableViews()
+		n.captureDurableView(h.Checkpoint.Index, h.Checkpoint.Term, true)
 	}
 	n.fsmMu.Unlock()
 	if adopted {

@@ -121,6 +121,17 @@ Setting autocommit back to `1` commits pending work. The default is autocommit.
 isolation levels and unsupported settings return errors. DDL follows SlopDB's
 transactional behavior and does not implicitly commit an explicit transaction.
 
+Replicated commits include `slopdb_commit_position` in the OK packet's info
+field and, when `CLIENT_SESSION_TRACK` is negotiated, its system-variable state
+block. `SHOW LAST COMMIT POSITION`, `SHOW REPLICATION POSITION` and prepared
+`WAIT FOR POSITION ? TIMEOUT ?` expose the same logical-position workflow.
+See [logical commit positions](replication.md#logical-commit-positions-and-causal-waits).
+The framing follows the [MySQL OK packet specification](https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_basic_ok_packet.html).
+
+`SET READ BARRIER PREVIOUS` / `NEXT` select certified historical data for reads;
+`DEFAULT` restores the node default and `COMMITTED` restores ordinary admission.
+See [durable read barriers](replication.md#reading-durable-barriers).
+
 Basic client helpers include `SHOW DATABASES`, `SELECT DATABASE()`,
 `SELECT VERSION()`, `SELECT CONNECTION_ID()`, `SELECT @@autocommit`, and
 `SET NAMES utf8` / `utf8mb3` / `utf8mb4`. Other queries run through the SlopDB SQL

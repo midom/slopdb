@@ -95,6 +95,9 @@ func (n *Node) rejoinLoop(config *raft.Config) {
 									if e == nil {
 										n.applied.Store(cp.Index)
 										n.appliedTerm.Store(cp.Term)
+										n.publishPosition(cp.Index, cp.Term)
+										n.clearDurableViews()
+										n.captureDurableView(cp.Index, cp.Term, true)
 									}
 								}
 								n.retireTree(oldTree, old)

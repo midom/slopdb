@@ -29,7 +29,9 @@ func (c *client) status() uint16 {
 }
 func (c *client) ok(result *db.ExecResult) error {
 	var changes, id uint64
+	position := ""
 	if result != nil {
+		position = result.CommitPosition
 		if result.Changes > 0 {
 			changes = uint64(result.Changes)
 		}
@@ -39,8 +41,27 @@ func (c *client) ok(result *db.ExecResult) error {
 	}
 	p := appendLen([]byte{0}, changes)
 	p = appendLen(p, id)
-	p = append16(p, c.status())
+	status := c.status()
+	if position != "" && c.capabilities&clientSessionTrack != 0 {
+		status |= 1 << 14
+	}
+	p = append16(p, status)
 	p = append16(p, 0)
+	info := ""
+	if position != "" {
+		info = "slopdb_commit_position=" + position
+	}
+	if c.capabilities&clientSessionTrack != 0 {
+		p = appendString(p, []byte(info))
+		if position != "" {
+			variables := appendString(nil, []byte("slopdb_commit_position"))
+			variables = appendString(variables, []byte(position))
+			state := appendString([]byte{0}, variables) // SESSION_TRACK_SYSTEM_VARIABLES
+			p = appendString(p, state)
+		}
+	} else {
+		p = append(p, info...)
+	}
 	return c.writer.write(p)
 }
 func (c *client) eof() error { return c.writer.write(append16([]byte{0xfe, 0, 0}, c.status())) }

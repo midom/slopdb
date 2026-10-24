@@ -149,6 +149,17 @@ and read-only transaction requests fail. DDL uses SlopDB's transactional semanti
 Extended cycles build indexes transactionally; a standalone simple Query uses
 the native online-index build path.
 
+Replicated commits report `slopdb_commit_position` using ParameterStatus, after
+an implicit commit or with explicit COMMIT completion. Command tags remain
+unchanged. `SHOW LAST COMMIT POSITION`, `SHOW REPLICATION POSITION` and prepared
+`WAIT FOR POSITION $1 TIMEOUT $2` provide logical positions and local visibility
+waits. See [logical commit positions](replication.md#logical-commit-positions-and-causal-waits).
+Parameter reporting uses the [PostgreSQL ParameterStatus format](https://www.postgresql.org/docs/18/protocol-message-formats.html#PROTOCOL-MESSAGE-FORMATS-PARAMETERSTATUS).
+
+`SET READ BARRIER PREVIOUS` / `NEXT` select certified historical data for simple
+and prepared reads; `DEFAULT` restores the node default and `COMMITTED` restores
+ordinary admission. See [durable read barriers](replication.md#reading-durable-barriers).
+
 CancelRequest authenticates with the random backend key and interrupts only the
 current operation, leaving the session reusable. When TLS is required,
 cancellation requests must also negotiate TLS (and present a client certificate

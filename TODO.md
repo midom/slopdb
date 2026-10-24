@@ -147,10 +147,13 @@ reverse seeks. `VACUUM` flushes writes and compacts SSTables.
 
 ## Replication
 
-- [x] Raft-shipped atomic WAL batches, durable replay checkpoints and leader-only SQL
+- [x] Raft-shipped atomic WAL batches, durable replay checkpoints and linearizable leader SQL
 - [x] TCP/Unix snapshot clone, asynchronous nonvoter catch-up and checked voting promotion
 - [x] Authenticated control/membership services, TLS and CA-verified client certificates
 - [x] Optional asynchronous commit, quorum-certified stable prefixes, durable barriers and offline recovery into a new cluster incarnation
-- [ ] Automatic SQL routing, follower reads and application request deduplication
+- [x] Opt-in bounded-staleness follower/learner reads with quorum-confirmed progress, read-only transactions and consistent catalog/data snapshots
+- [x] Signed logical commit positions in native/MySQL/PostgreSQL commit responses, master/session position queries, explicit visibility waits and per-call minimum positions
+- [x] Previous/next durable read barriers, exact historical catalog/data views, per-session and per-call policies, compaction-safe retention and cancellable certification waits
+- [ ] Automatic SQL routing and application request deduplication
 
 See [Raft replication](docs/replication.md) for operational limits.

@@ -19,6 +19,10 @@ type rawClient struct {
 }
 
 func connectRaw(t *testing.T, s *testServer) *rawClient {
+	return connectRawWithFlags(t, s, 0)
+}
+
+func connectRawWithFlags(t *testing.T, s *testServer, extraFlags uint32) *rawClient {
 	t.Helper()
 	conn, err := net.Dial(s.network, s.address)
 	if err != nil {
@@ -32,7 +36,7 @@ func connectRaw(t *testing.T, s *testServer) *rawClient {
 		t.Fatal(err)
 	}
 	c := &rawClient{conn: conn, writer: packetWriter{conn: conn, sequence: 1}}
-	flags := clientProtocol41 | clientSecureConnection | clientPluginAuth
+	flags := clientProtocol41 | clientSecureConnection | clientPluginAuth | extraFlags
 	p := append32(nil, flags)
 	p = append32(p, 1<<20)
 	p = append(p, 45)

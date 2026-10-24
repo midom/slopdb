@@ -31,9 +31,13 @@ var ErrClosed = errors.New("replication node closed")
 // Config uses canonical tcp://host:port or unix:///absolute/path endpoints.
 // Directory is a node directory, distinct from a standalone database directory.
 type Config struct {
-	Durability                      Durability
-	DurabilityInterval              time.Duration
-	MaxDurabilityLag                time.Duration
+	ReadBarrier        db.ReadBarrier // default policy for SELECTs: previous, next, or committed
+	Durability         Durability
+	DurabilityInterval time.Duration
+	MaxDurabilityLag   time.Duration
+	// ReplicaReadMaxStaleness enables bounded-staleness, read-only SQL on
+	// followers and learners. Zero retains leader-only SQL admission.
+	ReplicaReadMaxStaleness         time.Duration
 	Directory, ID                   string
 	Listen, Advertise               string
 	ControlListen, ControlAdvertise string
@@ -61,6 +65,9 @@ type command struct {
 	Peer     *Peer
 }
 type Node struct {
+	durableReads                    durableReadViews
+	position                        atomic.Pointer[string]
+	replicaReads                    replicaReadState
 	configurationIndex              atomic.Uint64
 	checkpointJSONPrefix            []byte // protected by fsmMu; cluster identity is immutable
 	applyNotice                     atomic.Pointer[applyNotice]
@@ -150,6 +157,12 @@ func Open(ctx context.Context, config Config) (node *Node, err error) {
 	}
 	if config.OperationTimeout < 0 {
 		return nil, fmt.Errorf("operation timeout must be positive")
+	}
+	if config.ReplicaReadMaxStaleness < 0 {
+		return nil, fmt.Errorf("replica read maximum staleness must not be negative")
+	}
+	if !db.ValidReadBarrier(config.ReadBarrier) {
+		return nil, fmt.Errorf("invalid read barrier")
 	}
 	if config.StorageOptions != nil {
 		copy := *config.StorageOptions
@@ -376,7 +389,14 @@ func Open(ctx context.Context, config Config) (node *Node, err error) {
 	}
 	n.applied.Store(cp.Index)
 	n.appliedTerm.Store(cp.Term)
-	n.database.SetReplicationGuard(&db.ReplicationGuard{Check: n.checkSQL, CheckControl: n.checkSQLControl, Durable: n.FlushDurable})
+	n.publishPosition(cp.Index, cp.Term)
+	if cp.Index > 0 && (!n.async() || cp.Index == n.durableIndex()) {
+		n.captureDurableView(cp.Index, cp.Term, true)
+	}
+	guard := &db.ReplicationGuard{Check: n.checkSQL, CheckControl: n.checkSQLControl, Durable: n.FlushDurable}
+	guard.Position, guard.AckedPosition, guard.WaitPosition = n.currentPosition, n.AckedPosition, n.WaitPosition
+	guard.CheckRead, guard.CheckSession, guard.ReadSnapshot = n.checkReadSQL, n.checkReadSQL, n.captureReadSnapshot
+	n.database.SetReplicationGuard(guard)
 	n.database.ReplicationStorage().SetReplicationHooks(n.hooks())
 	raftConfig := raft.DefaultConfig()
 	if config.RaftConfig != nil {
@@ -487,7 +507,13 @@ func (n *Node) checkReadyLeader(ctx context.Context) (uint64, error) {
 // Transaction control observes no database rows. Its commit writes still pass
 // through propose, which waits for quorum replication and native application.
 func (n *Node) checkSQLControl(ctx context.Context) error {
+	if durableBarrier(n.readBarrier(ctx)) || durableBarrier(n.config.ReadBarrier) {
+		return n.checkDurableReadHealth(ctx)
+	}
 	_, err := n.checkReadyLeader(ctx)
+	if err != nil && n.config.ReplicaReadMaxStaleness > 0 {
+		return n.checkReplicaReadRole(ctx)
+	}
 	return err
 }
 
@@ -647,9 +673,12 @@ func (n *Node) Apply(log *raft.Log) interface{} {
 		n.fail(err)
 		return err
 	}
-	return n.applyCheckpoint(log.Index, log.Term, batch)
+	return n.applyCheckpointWithBarrier(log.Index, log.Term, batch, c.Kind == "fence")
 }
 func (n *Node) applyCheckpoint(index, term uint64, batch []storage.Mutation) error {
+	return n.applyCheckpointWithBarrier(index, term, batch, false)
+}
+func (n *Node) applyCheckpointWithBarrier(index, term uint64, batch []storage.Mutation, barrier bool) error {
 	if n.checkpointJSONPrefix == nil {
 		n.checkpointJSONPrefix = checkpointPrefix(n.cluster)
 	}
@@ -663,8 +692,14 @@ func (n *Node) applyCheckpoint(index, term uint64, batch []storage.Mutation) err
 		n.fail(e)
 		return e
 	}
+	// Register exact historical versions before exposing the application
+	// checkpoint to certificate receivers and waiters.
+	if !n.async() || barrier {
+		n.captureDurableView(index, term, !n.async())
+	}
 	n.appliedTerm.Store(term)
 	n.applied.Store(index)
+	n.publishPosition(index, term)
 	n.notifyApplied()
 	n.noteUnstable(index)
 	return nil
@@ -740,6 +775,12 @@ func (n *Node) monitor() {
 			}
 			continue
 		}
+		// Publish every leader's control endpoint for discovery after restart.
+		self := Peer{ID: n.config.ID, Address: n.Address(), Control: n.ControlAddress(), Cluster: n.cluster}
+		if e = n.propose(command{Version: 1, Kind: "peer", Peer: &self}, nil); e != nil {
+			n.writeTerm.Store(0)
+			continue
+		}
 		// Snapshot the complete seed and any abandoned index cleanup before admitting SQL.
 		if e := n.takeStableSnapshot(n.ctx); e != nil {
 			n.durability.publication.Lock()
@@ -792,6 +833,7 @@ func (n *Node) Close() error {
 			n.closeErr = errors.Join(n.closeErr, n.transport.Close())
 		}
 		n.workers.Wait()
+		n.clearDurableViews()
 		n.generationMu.Lock()
 		n.closeErr = errors.Join(n.closeErr, n.retirementErr)
 		n.generationMu.Unlock()

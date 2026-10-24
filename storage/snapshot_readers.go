@@ -1,6 +1,9 @@
 package storage
 
-import "sync"
+import (
+	"fmt"
+	"sync"
+)
 
 const snapshotReaderShards = 64
 
@@ -36,4 +39,22 @@ func (l *LSMTree) ReleaseSnapshotForReader(reader, seq uint64) {
 		delete(shard.pins, seq)
 	}
 	shard.mu.Unlock()
+}
+
+// RetainSnapshotForReader copies an existing global Snapshot pin into a
+// statement reader's bucket. Keep the global pin until this call returns.
+func (l *LSMTree) RetainSnapshotForReader(reader, seq uint64) error {
+	l.snapshotMu.Lock()
+	defer l.snapshotMu.Unlock()
+	if l.snapshots[seq] == 0 {
+		return fmt.Errorf("snapshot is no longer pinned")
+	}
+	shard := &l.readerSnapshots[reader&(snapshotReaderShards-1)]
+	shard.mu.Lock()
+	defer shard.mu.Unlock()
+	if shard.pins == nil {
+		shard.pins = make(map[uint64]int)
+	}
+	shard.pins[seq]++
+	return nil
 }

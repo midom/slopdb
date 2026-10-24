@@ -147,7 +147,9 @@ func TestAsyncReplicaReclonesBeforeVoting(t *testing.T) {
 				replicas = append(replicas, node)
 			}
 			target := replicas[0]
+			target.fsmMu.Lock()
 			old := target.dataDirectory
+			target.fsmMu.Unlock()
 			if e := target.Close(); e != nil {
 				t.Fatal(e)
 			}
@@ -155,15 +157,31 @@ func TestAsyncReplicaReclonesBeforeVoting(t *testing.T) {
 			restarted := openTestNode(t, configs[0])
 			deadline := time.NewTimer(15 * time.Second)
 			defer deadline.Stop()
-			for restarted.raftNode() == nil {
+			for restarted.raftNode() == nil || restarted.recovering.Load() {
 				select {
 				case <-deadline.C:
 					t.Fatalf("rejoin failed: source=%+v target=%+v", source.Status(), restarted.Status())
 				case <-time.After(10 * time.Millisecond):
 				}
 			}
-			if restarted.dataDirectory == old {
+			restarted.fsmMu.Lock()
+			reused := restarted.dataDirectory == old
+			restarted.fsmMu.Unlock()
+			if reused {
 				t.Fatal("recovered node reused its volatile application state")
+			}
+			// Raft can still install a snapshot after the out-of-band clone has
+			// published its generation. Replacement cancels active SQL by design;
+			// retry that transition without masking other read failures.
+			for {
+				result, err := restarted.Database().ExecContextWithOptions(ctx, "SELECT COUNT(*) AS n FROM items", db.ExecOptions{ReadBarrier: db.ReadBarrierPrevious})
+				if errors.Is(err, context.Canceled) && ctx.Err() == nil {
+					continue
+				}
+				if err != nil || len(result.Rows) != 1 || result.Rows[0]["n"].Int != 2 {
+					t.Fatalf("re-clone did not retain certified view: %+v %v", result, err)
+				}
+				break
 			}
 			if e := source.TransferLeadership(ctx, configs[0].ID); e != nil {
 				t.Fatal(e)
@@ -198,6 +216,10 @@ func TestStableRecoveryDropsOnlyUnstableSuffix(t *testing.T) {
 	}
 	exec(t, leader, "CREATE TABLE items(id INTEGER PRIMARY KEY,v TEXT); CREATE INDEX item_values ON items(v); BEGIN; INSERT INTO items VALUES(1,'stable'); COMMIT DURABLE")
 	stable := leader.CurrentToken()
+	ackedPosition, e := leader.AckedPosition(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
 	if stable.Index != leader.durableIndex() {
 		t.Fatal("durable commit did not seal its prefix")
 	}
@@ -326,6 +348,9 @@ func TestStableRecoveryDropsOnlyUnstableSuffix(t *testing.T) {
 	assertCount(t, next, 1)
 	if next.cluster == stable.Cluster {
 		t.Fatal("recovery reused old consensus epoch")
+	}
+	if e = next.WaitPosition(ctx, ackedPosition); !errors.Is(e, db.ErrInvalidPosition) {
+		t.Fatalf("old commit position accepted after recovery: %v", e)
 	}
 	if e = next.WaitDurable(ctx, stable); !errors.Is(e, ErrHistory) {
 		t.Fatalf("old epoch token accepted: %v", e)

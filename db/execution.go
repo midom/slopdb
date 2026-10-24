@@ -162,6 +162,9 @@ func (s *Session) tryPointUpdate(ctx context.Context, statements []sql.Statement
 	if s.schema.InTransaction() {
 		return nil, false, nil
 	}
+	if s.schema.HasReplicaReadSnapshot() {
+		return nil, false, nil
+	}
 	held := d.locks.snapshot(s.schema)
 	catalog, err := d.locks.acquirePointCatalog(s.schema)
 	if err != nil {
@@ -192,5 +195,8 @@ func (s *Session) tryPointUpdate(ctx context.Context, statements []sql.Statement
 		dst = new(ExecResult)
 	}
 	*dst = ExecResult{Changes: changes}
+	if err == nil {
+		d.recordCommitPosition(s.schema, dst)
+	}
 	return dst, true, nil
 }

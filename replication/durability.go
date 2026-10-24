@@ -144,12 +144,15 @@ func (n *Node) durableIndex() uint64 {
 }
 func (n *Node) advanceDurable(certificate *durableCertificate) {
 	index := certificate.Body.Index
+	n.durableReads.mu.Lock()
+	defer n.durableReads.mu.Unlock()
 	n.durability.publication.Lock()
 	defer n.durability.publication.Unlock()
 	if index > n.durability.committed {
 		n.durability.committed = index
 		n.durability.publishedCertificate = certificate
 	}
+	n.durableReads.publish(certificate)
 	if n.applied.Load() <= index {
 		n.durability.pendingSince = time.Time{}
 	} else if n.durability.sealingIndex != 0 && index >= n.durability.sealingIndex {
@@ -374,6 +377,10 @@ func (n *Node) receiveCertificate(ctx context.Context, c *durableCertificate) er
 // snapshot seals also freeze proposals until the snapshot is complete. It never
 // takes SQL catalog locks, because SQL commit hooks may be waiting here.
 func (n *Node) flushDurable(ctx context.Context, snapshot bool) error {
+	return n.sealDurable(ctx, snapshot, false)
+}
+
+func (n *Node) sealDurable(ctx context.Context, snapshot, force bool) error {
 	if !n.async() {
 		if snapshot {
 			return n.wait(ctx, n.raftNode().Snapshot())
@@ -400,7 +407,7 @@ func (n *Node) flushDurable(ctx context.Context, snapshot bool) error {
 	if n.raftNode() == nil || n.raftNode().State() != raft.Leader {
 		return n.notLeader()
 	}
-	if !snapshot && n.applied.Load() <= n.durableIndex() {
+	if !snapshot && !force && n.applied.Load() <= n.durableIndex() {
 		return nil
 	}
 	n.membershipMu.Lock()
@@ -576,6 +583,15 @@ func (n *Node) flushDurable(ctx context.Context, snapshot bool) error {
 		return n.notLeader()
 	}
 	n.advanceDurable(certificate)
+	for _, member := range body.Configuration.Servers {
+		if member.Suffrage == raft.Nonvoter {
+			for _, p := range body.Peers {
+				if p.ID == string(member.ID) {
+					n.notifyLearnerDurable(p, certificate)
+				}
+			}
+		}
+	}
 	finalized := make(chan error, len(body.Peers))
 	finalVoters := 0
 	for _, member := range body.Configuration.Servers {

@@ -96,6 +96,13 @@ func (m *metadata) statement(stmt sql.Statement, outer map[string][]field, depth
 	}
 	var with *sql.WithClause
 	switch s := stmt.(type) {
+	case *sql.ReplicationPositionStmt:
+		if s.Operation == "wait" {
+			m.hint(s.Position, oidText)
+			m.hint(s.Timeout, oidText)
+			return nil, nil
+		}
+		return []field{{"Position", oidText}}, nil
 	case *sql.SelectStmt:
 		with = s.With
 	case *sql.UnionStmt:

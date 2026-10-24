@@ -192,6 +192,12 @@ func (p *Parser) parseLimit(limit, offset *int64, limitParam, offsetParam *int) 
 }
 
 func (p *Parser) parseStatement() (Statement, error) {
+	if p.showWord("SET") {
+		return p.parseReadBarrierSetting()
+	}
+	if p.showWord("WAIT") {
+		return p.parseWaitPosition()
+	}
 	if p.showWord("RENAME") {
 		return p.parseRenameTables()
 	}

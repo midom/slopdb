@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 
+	"slopdb/db"
 	"slopdb/replication"
 	"slopdb/storage"
 )
@@ -24,9 +25,11 @@ type replicationFlags struct {
 }
 
 func (f *replicationFlags) register(flags *flag.FlagSet) {
+	flags.Func("raft-read-barrier", "default SELECT policy: previous, next, or committed (default: normal reads)", func(s string) error { f.config.ReadBarrier = db.ReadBarrier(s); return nil })
 	flags.Func("raft-durability", "replication commit mode: sync or async (default: inherit, sync for a new cluster)", func(s string) error { f.config.Durability = replication.Durability(s); return nil })
 	flags.DurationVar(&f.config.DurabilityInterval, "raft-durability-interval", 0, "async WAL group-flush interval (default 100ms)")
 	flags.DurationVar(&f.config.MaxDurabilityLag, "raft-max-durability-lag", 0, "reject new writes when the oldest unstable prefix exceeds this age (default max(1s, 10 intervals))")
+	flags.DurationVar(&f.config.ReplicaReadMaxStaleness, "raft-replica-read-max-staleness", 0, "allow read-only SQL on replicas within this time bound (default 0: leader only)")
 	flags.StringVar(&f.recoveryMinimum, "raft-recovery-minimum-token", "", "JSON durability token that offline recovery must preserve")
 	flags.StringVar(&f.recoverTo, "raft-recover-to", "", "offline disaster recovery: export the latest certified prefix to a new standalone seed")
 	flags.StringVar(&f.recoverySources, "raft-recovery-sources", "", "comma-separated additional offline voter node directories; positional path is the first source")
@@ -47,7 +50,7 @@ func (f *replicationFlags) register(flags *flag.FlagSet) {
 	flags.StringVar(&f.serverName, "raft-tls-server-name", "", "TLS peer DNS name override, including for Unix sockets")
 }
 func (f *replicationFlags) enabled() bool {
-	return f.config.Durability != "" || f.config.DurabilityInterval != 0 || f.config.MaxDurabilityLag != 0 || f.config.ID != "" || f.config.Listen != "" || f.config.ControlListen != "" || f.config.Advertise != "" || f.config.ControlAdvertise != "" || f.config.Bootstrap || f.config.Join != "" || f.config.SeedDirectory != "" || f.tokenEnv != "" || f.cert != "" || f.key != "" || f.ca != "" || f.serverName != ""
+	return f.config.ReadBarrier != db.ReadBarrierDefault || f.config.ReplicaReadMaxStaleness != 0 || f.config.Durability != "" || f.config.DurabilityInterval != 0 || f.config.MaxDurabilityLag != 0 || f.config.ID != "" || f.config.Listen != "" || f.config.ControlListen != "" || f.config.Advertise != "" || f.config.ControlAdvertise != "" || f.config.Bootstrap || f.config.Join != "" || f.config.SeedDirectory != "" || f.tokenEnv != "" || f.cert != "" || f.key != "" || f.ca != "" || f.serverName != ""
 }
 func (f *replicationFlags) open(directory string, options *storage.Options) (*replication.Node, error) {
 	token, ok := os.LookupEnv(f.tokenEnv)

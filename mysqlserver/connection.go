@@ -13,17 +13,18 @@ import (
 )
 
 type client struct {
-	server     *Server
-	conn       net.Conn
-	writer     packetWriter
-	ctx        context.Context
-	cancel     context.CancelFunc
-	session    *db.Session
-	id         uint32
-	selected   string
-	autocommit bool
-	statements map[uint32]*prepared
-	nextStmt   uint32
+	capabilities uint32
+	server       *Server
+	conn         net.Conn
+	writer       packetWriter
+	ctx          context.Context
+	cancel       context.CancelFunc
+	session      *db.Session
+	id           uint32
+	selected     string
+	autocommit   bool
+	statements   map[uint32]*prepared
+	nextStmt     uint32
 }
 
 func (c *client) run() {
@@ -173,7 +174,7 @@ func (c *client) query(query string, stmt *db.Stmt, args []any) (*db.ExecResult,
 		}
 	}
 	first := strings.ToUpper(sql.NewTokenizerWithOptions(query, c.server.database.ParseOptions()).Next().Value)
-	if !c.autocommit && !c.session.InTransaction() && first != "BEGIN" && first != "START" && first != "COMMIT" && first != "ROLLBACK" {
+	if !c.autocommit && !c.session.InTransaction() && first != "BEGIN" && first != "START" && first != "COMMIT" && first != "ROLLBACK" && first != "WAIT" {
 		if _, err := c.session.ExecContext(c.ctx, "BEGIN"); err != nil {
 			return nil, err
 		}
@@ -241,9 +242,12 @@ func (c *client) control(query string) (*db.ExecResult, bool, error) {
 				return nil, true, errors.New("autocommit must be 0, 1, ON or OFF")
 			}
 			if enabled && !c.autocommit && c.session.InTransaction() {
-				if _, err := c.session.ExecContext(c.ctx, "COMMIT"); err != nil {
+				result, err := c.session.ExecContext(c.ctx, "COMMIT")
+				if err != nil {
 					return nil, true, err
 				}
+				c.autocommit = enabled
+				return result, true, nil
 			}
 			c.autocommit = enabled
 			return nil, true, nil

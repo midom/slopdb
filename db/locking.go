@@ -146,6 +146,7 @@ func (m *lockManager) forget(owner *sql.Schema) { m.states.Delete(owner) }
 
 func (db *Database) installLocks(schema *sql.Schema) {
 	db.locks.state(schema)
+	db.installReplicaSnapshotHook(schema)
 	schema.SetLockHandler(func(request sql.LockRequest) error { return db.locks.acquire(schema, request) })
 	schema.SetLockGroupHandler(func(requests []sql.LockRequest) error { return db.locks.acquireAll(schema, requests) })
 }

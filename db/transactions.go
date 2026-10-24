@@ -43,12 +43,19 @@ type Session struct {
 }
 
 func (db *Database) NewSession() (*Session, error) {
+	return db.newSessionContext(context.Background())
+}
+
+func (db *Database) newSessionContext(ctx context.Context) (*Session, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if db.replication.Load() != nil {
-		if err := db.execution.RLockContext(context.Background()); err != nil {
+		if err := db.execution.RLockContext(ctx); err != nil {
 			return nil, err
 		}
 		defer db.execution.RUnlock()
-		if err := db.checkReplication(context.Background()); err != nil {
+		if err := db.checkReplicationSession(ctx); err != nil {
 			return nil, err
 		}
 	}
@@ -164,8 +171,10 @@ func (s *Session) execParsedInto(ctx context.Context, statements []sql.Statement
 	if err := s.db.beginManagedCall(s.schema, abortCancel); err != nil {
 		return nil, err
 	}
-	if err := s.db.checkStatementReplication(ctx, statements); err != nil {
-		return nil, err
+	if !hasReadBarrierSetting(statements) {
+		if err := s.db.checkStatementReplication(withSessionReadBarrier(ctx, s.schema), statements); err != nil {
+			return nil, err
+		}
 	}
 	if bound && !s.schema.InTransaction() {
 		return nil, ErrTxDone

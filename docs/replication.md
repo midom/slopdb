@@ -6,9 +6,9 @@ changes. The default `sync` mode acknowledges after a voting majority has durabl
 stored its Raft entry and the leader has durably applied it to the native database.
 The optional `async` mode acknowledges after replication and application, then
 flushes a certified prefix periodically. It can lose recent acknowledged writes
-after a whole-cluster failure. Followers apply asynchronously. SQL is served by the ready leader; followers and learners
-reject SQL with a leader hint. There is no automatic SQL proxy or follower-read
-mode.
+after a whole-cluster failure. Followers apply asynchronously. By default SQL is
+served by the ready leader. Followers and learners can opt into bounded-staleness or durable-barrier
+read-only SQL; writes still require the leader. There is no automatic SQL proxy.
 
 Replication and clone/control connections support TCP and Unix sockets. They
 use separate listeners from the MySQL/PostgreSQL SQL listeners. A shared cluster
@@ -87,6 +87,238 @@ PostgreSQL emulation or Unix SQL connections. With no SQL listener flags the
 process runs only the Raft/control services until SIGINT or SIGTERM; replicated
 mode does not run the stdin CLI or dot commands.
 
+## Bounded-staleness replica reads
+
+Enable read-only SQL on a follower or learner by setting a local time bound:
+
+```sh
+--raft-replica-read-max-staleness 500ms
+```
+
+The Go equivalent sets `Config.ReplicaReadMaxStaleness` to `500*time.Millisecond`. Zero, the default, keeps leader-only SQL. Negative values
+are rejected. Set the option on each replica that should serve reads, including
+on restart; it is a local admission setting, independent of the cluster's sync
+or async durability mode. Use the existing MySQL/PostgreSQL listeners or
+`node.Database()` SQL APIs. Applications connect to the chosen member directly.
+The option leaves reads on the ready leader linearizable.
+
+Before serving a replica read, SlopDB asks the ready leader for a committed
+index, verifies leadership against a live voting quorum, and waits until the
+replica has actually applied that prefix to its native database. Concurrent
+readers share a refresh. The replica caches the proof for at most the configured
+bound, measured from the **local start of the request**, including RPC and
+catch-up time. This requires no synchronized clocks and appends no Raft entry.
+Leader control endpoints are replicated for discovery after restart or election.
+The authenticated `POST /v1/read-index` control endpoint accepts a member's
+`ID`, `Address` and `Cluster`; it rejects nonmembers and unavailable quorums.
+Internal token authentication and TLS/mTLS also protect these requests.
+
+At statement snapshot acquisition, a successful read includes all transactions
+acknowledged before the proof request started. Thus it includes every commit
+older than the configured bound at that point, and may include newer commits.
+Freshness is checked again after waiting for snapshot access and loading the
+catalog. SQL metadata and data are captured together while FSM application is
+briefly excluded; execution and idle streaming cursors do not block replication.
+A long query, a stream's later rows, or a PostgreSQL portal's later fetches
+continue using that initial snapshot: the bound does not describe response age.
+
+Ordinary SELECTs, compounds, CTEs, views, prepared/streaming queries, SHOW,
+read-only supported PRAGMAs and EXPLAIN of read queries are supported.
+Transactions and savepoints are read-only and retain READ COMMITTED semantics:
+every data statement takes a new bounded snapshot. DML, DDL, setting PRAGMAs,
+maintenance, locking reads (including nested queries/views) and COMMIT DURABLE
+require the ready leader. A normal replica COMMIT completes its read-only
+transaction; it does not confirm quorum health or durability. ROLLBACK remains
+available when a proof expires. Leadership changes and snapshot replacement
+invalidate sessions/prepared statements as before; reconnect and prepare again.
+
+A cached proof may permit reads briefly during a partition. Once it expires,
+SlopDB refuses reads unless it can obtain a fresh quorum proof and apply its
+prefix within the bound. A changed term/leader, candidate role, recovering node,
+or fatal error also prevents using the old proof. Reads never fall back to
+unbounded staleness. The Go API returns `replication.ErrReplicaTooStale` when it
+cannot refresh/catch up within the bound; errors also preserve context
+cancellation/deadline causes. Role changes may instead return a leadership or
+recovery error. SQL clients receive an error with the same explanation.
+
+Status keeps `Ready` reserved for writable leader admission and adds
+`ReplicaReadMaxStaleness`, `ReplicaReadIndex`, `ReplicaReadProofAge` and
+`ReplicaReadReady`. Duration fields are JSON nanoseconds. Read readiness reports
+a currently usable cached proof and can be false before the first read or
+after expiry; a subsequent read can refresh it on demand. Bounded reads use the
+live applied prefix, not necessarily a certified durable prefix in async mode.
+
+## Reading durable barriers
+
+Choose a session policy before SELECTs:
+
+```sql
+SET READ BARRIER PREVIOUS;
+SELECT * FROM accounts;
+
+SET READ BARRIER NEXT;
+SELECT * FROM accounts;
+
+SET READ BARRIER DEFAULT;
+```
+
+`PREVIOUS` reads the most recent locally known, retained **certified durable
+barrier**. It does not contact the leader or wait for another flush. A replica
+can lag the leader's durable frontier; this policy promises durability rather
+than a wall-clock freshness bound. Rows and catalog metadata come from the same
+native MVCC snapshot, so an uncertified UPDATE, DELETE, new table, rename or
+ALTER cannot leak into the result even if already committed and applied.
+
+`NEXT` requests a new barrier from the ready leader, waits for quorum durability
+certification and local application, and captures that certified snapshot (or a
+newer certified barrier if concurrent requests advance it). A new fence is
+created even when the cluster is idle. It includes writes committed before the
+request; later applied writes remain excluded until their own certification.
+The leader continues accepting writes while the captured prefix is being
+certified. There is one barrier request per SELECT, including streaming queries
+that need materialization. Open streams retain their original snapshot across
+subsequent barriers and compaction.
+
+`DEFAULT` restores the node's configured default. `COMMITTED` explicitly selects
+the ordinary leader/bounded-staleness policy. On followers, COMMITTED still
+requires a configured positive `--raft-replica-read-max-staleness`; it does not
+turn on unrestricted local reads. The setting is private to the SQL session,
+works with MySQL and PostgreSQL (including prepared queries), and is not a
+transactional catalog change. Each statement in a read-only transaction takes
+its own selected barrier. Durable snapshot reads reject transactions with private
+writes, and locking reads require the normal leader execution path.
+
+To make every read statement on a replica use a durable barrier by default,
+start it with one of:
+
+```sh
+--raft-read-barrier previous
+--raft-read-barrier next
+```
+
+The Go equivalent is `replication.Config{ReadBarrier: db.ReadBarrierPrevious}`
+or `db.ReadBarrierNext`. This is a local admission policy, supplied again on
+restart. It enables read-only replica SQL without a staleness bound and also
+applies to reads on a node that becomes leader. Writes continue through the
+ordinary ready-leader path. With neither option, existing read behavior is
+unchanged. The policies work in both durability modes: sync-mode applied data is
+already durable, while async-mode reads exclude the applied suffix beyond D.
+
+Go callers can override the policy for one execution with
+`db.ExecOptions{ReadBarrier: db.ReadBarrierPrevious}` / `db.ReadBarrierNext`, or
+use `db.WithReadBarrier(ctx, mode)` for streaming and prepared calls. An explicit
+minimum position must also be satisfied by the selected durable barrier:
+PREVIOUS fails if that position is newer; NEXT seals a prefix covering it.
+Logical commit-position responses continue to describe committed prefixes, not
+the historical snapshot selected by a read.
+
+NEXT uses the authenticated internal TCP/Unix control service, including
+TLS/mTLS, and obeys query cancellation and deadlines. It fails if the leader or
+quorum is unavailable; it never falls back to PREVIOUS or the live applied state.
+PREVIOUS fails with `replication.ErrDurableReadUnavailable` if its exact view is
+not retained. Recovering async members remain fenced until re-cloning succeeds;
+the freshly certified clone supplies their initial durable view. READ COMMITTED
+session semantics and volatile/session expressions retain their normal behavior;
+these policies select the stored table/catalog view, not historical clock or
+physical configuration values such as PRAGMA page_size.
+
+Raft fences are separate native publication boundaries. Each node retains its
+last published durable view plus at most eight in-flight fence candidates.
+Snapshots pin old row, index and catalog versions through compaction; a long
+interval between successful barriers can therefore retain more storage. A new
+certificate retires superseded pins, while open readers keep their own pins.
+Snapshot replacement, re-cloning and close release the generation's retained
+views. If a very late certificate's candidate was evicted, PREVIOUS reports an
+unavailable view; NEXT can establish a fresh one. Fence command encoding remains
+unchanged.
+
+Status adds `ReadBarrier`, `DurableReadIndex` and `DurableReadReady` for the local
+retained view. The authenticated `POST /v1/durability/read-barrier` endpoint asks
+the ready leader to establish a new barrier and returns its token and, in async
+mode, its published certificate. Replica readers verify and install that
+certificate before using the corresponding native snapshot.
+
+## Logical commit positions and causal waits
+
+A position is an opaque, signed token identifying a committed/applied Raft
+prefix in one cluster incarnation. It preserves full-width log indexes and
+terms. Treat the token as a string: do not order tokens lexicographically or
+construct them yourself. The same token is valid on every member sharing that
+incarnation and cluster key, including after snapshots/log compaction. Tokens
+from a cluster replaced by stable-point recovery are rejected.
+
+Fetch the current position from the ready leader:
+
+```sql
+SHOW REPLICATION POSITION;
+```
+
+This returns one TEXT column, `Position`, after a fresh quorum check. It appends
+no log entry. The position includes previously acknowledged commits and may
+also include committed transactions whose responses are still in flight.
+It describes an applied prefix, not a count of replies received by clients.
+
+Successful commits and autocommit writes return a position covering their
+transaction, possibly including concurrent commits published in the same or a
+later native batch. Buffered writes inside a transaction do not return a commit
+position. Native `db.ExecResult.CommitPosition` contains the token, and
+`Tx.CommitWithPosition(ctx)` returns it directly. Standalone databases leave
+that field empty. For wire clients:
+
+- PostgreSQL sends `ParameterStatus(slopdb_commit_position, token)` with explicit
+  commit completion, or after an implicit commit and before `ReadyForQuery`.
+  Existing command tags stay compatible. For pgx, use
+  `conn.PgConn().ParameterStatus("slopdb_commit_position")` after commit/Sync.
+- MySQL includes `slopdb_commit_position=<token>` in the commit OK packet's info
+  field. Clients negotiating `CLIENT_SESSION_TRACK` also receive the variable
+  in the OK packet's system-variable state block. MySQL result sets using EOF
+  framing, such as DML RETURNING, use the session lookup below instead.
+- `SHOW LAST COMMIT POSITION` retrieves the connection/session's last committed
+  position, including when a driver hides wire metadata. It returns NULL before
+  the first commit on that session. Use the same pinned connection; a pool can
+  otherwise choose a different session. Rollback does not advance this value.
+
+After receiving the token, connect to a replica with SQL reads enabled and wait
+before issuing the dependent read:
+
+```sql
+WAIT FOR POSITION 'token-returned-by-the-commit' TIMEOUT '5s';
+SELECT * FROM accounts WHERE id = 1;
+```
+
+WAIT returns successful command completion with no result rows once the native
+application checkpoint covers the token. Receipt of logs alone is insufficient.
+The token and timeout accept prepared text parameters (`?` for MySQL/native,
+`$1` and `$2` for PostgreSQL). Timeout uses Go duration syntax and must be
+nonnegative; `0s` polls without waiting. An omitted timeout uses the query's
+existing deadline, or the node's OperationTimeout (default 10s) when none exists.
+Query cancellation, connection/session shutdown and fatal node errors terminate
+waits. Invalid, modified or wrong-incarnation tokens fail with
+`db.ErrInvalidPosition` in Go. A wait timeout returns a deadline error rather
+than a successful timing result.
+
+Waiting only proves **local visibility**. It neither appends a fence nor requires
+a new quorum, so an existing replica SQL session can finish a wait even if its
+bounded-read proof has expired. Subsequent data reads still follow the configured
+leader/bounded-staleness policy. A wait does not relax that policy or turn an old
+open cursor into a fresh snapshot. In async mode it does not fsync or certify D;
+use COMMIT DURABLE / WaitDurable for durable confirmation.
+
+Go callers can use `Node.AckedPosition(ctx)` / `Database.AckedPosition(ctx)` and
+`Node.WaitPosition(ctx, token)` / `Database.WaitPosition(ctx, token)`. To combine
+the wait with snapshot acquisition, attach the minimum to one call:
+
+```go
+result, err := replica.Database().ExecContextWithOptions(ctx, query, db.ExecOptions{
+    MinimumPosition: commitResult.CommitPosition,
+})
+```
+
+`db.WithMinimumPosition(ctx, token)` supplies the same requirement to streaming
+QueryContext and prepared calls. The wait precedes the statement snapshot and
+normal consistency admission; failure prevents execution. These options require
+replication rather than silently ignoring a position on a standalone database.
+
 ## Unix sockets
 
 All internal endpoint flags accept `unix:///absolute/path`:
@@ -144,11 +376,13 @@ Membership changes and snapshot exports must be sent to the ready leader.
 | Method and path | Body / response |
 | --- | --- |
 | `GET /v1/status` | Identity, cluster ID, role, leader, readiness, applied index/term, durability mode, durable index/term, recovery state and membership. Available on learners and followers. |
+| `POST /v1/read-index` | `{"ID":"n2","Address":"tcp://host:9410","Cluster":"<cluster-ID>"}`; quorum-confirmed committed index for a current member. Send to the ready leader. |
 | `GET /v1/snapshot` | Stream of Raft snapshot metadata and checksummed native state, used by clone bootstrap. |
 | `POST /v1/join` | `{"ID":"n2","Address":"tcp://host:9410","Control":"tcp://host:9411","Cluster":"<cluster-ID>","AutoPromote":true}`; target must already be running with matching identity. Normally called by `--raft-join`. |
 | `POST /v1/promote` | `{"ID":"n2"}`; waits for durable catch-up, then requests voting membership. |
 | `POST /v1/transfer` | `{"ID":"n2"}`; transfers leadership to an existing voter. |
 | `POST /v1/remove` | `{"ID":"n2"}`; removes a member. Transfer leadership before removing the current leader. |
+| `POST /v1/durability/read-barrier` | Request a new certified read barrier; returns its position and async certificate. Send to the ready leader. |
 | `POST /v1/durability/wait` | `{"Cluster":"<cluster-ID>","Index":123,"Term":4}`; waits for a certified durable prefix covering the token. Send to the ready leader. |
 
 For example, explicitly promote a learner:
@@ -297,17 +531,19 @@ Followers do not run local catalog migrations or index cleanup. A new leader
 first drains old SQL, commits a fence, reloads the persisted catalog and performs
 abandoned index cleanup through Raft before admitting clients. Existing sessions,
 open transactions and prepared plans are invalidated by leadership transitions;
-clients should reconnect and prepare again. Statements that access data capture
+clients should reconnect and prepare again. On the leader, statements that access data capture
 Raft's committed index, verify leadership with a fresh quorum, and wait for actual
 native application of that prefix before execution. Read-only statements do not
-append log entries. Each data-access admission checks a quorum; no time-based leadership
-lease is used. Initial leader admission still commits a fence in the current term.
+append log entries. Each leader data-access admission checks a quorum; no time-based
+leadership lease is used. Initial leader admission still commits a fence in the
+current term. Replica reads use the bounded proof mechanism described above.
 
 Transaction control (`BEGIN`, `COMMIT`, `ROLLBACK` and savepoints) checks the ready
-leader role and operates on session state. Every commit write still waits for
+leader role (or an enabled read replica role) and operates on session state.
+Every commit write still waits for
 Raft quorum replication and native application through the storage hook. A
 successful transaction-control response alone does not confirm quorum health;
-data-access statements and write acknowledgments continue to require a quorum.
+leader data-access statements and write acknowledgments continue to require a quorum.
 
 Already committed WAL commands can share one native WAL record and, in sync mode,
 one fsync. The group's final checkpoint is published atomically with all its
@@ -331,7 +567,9 @@ records remain readable and can coexist with new records in the same directory;
 the Raft transport, command payloads and history hash are unchanged. Older
 binaries cannot read newly written binary log records.
 
-A lost-quorum node cannot acknowledge a write or serve SQL reads. A client that
+A lost-quorum node cannot acknowledge a write or serve linearizable reads.
+An opted-in replica can use an unexpired bounded-read proof or a retained
+PREVIOUS durable barrier as described above. A client that
 loses its connection or receives a leadership error during a commit can have an
 **unknown commit outcome**: the entry may still commit. Reconnect to the leader
 and reconcile using an application transaction/request identifier rather than

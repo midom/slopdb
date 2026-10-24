@@ -33,7 +33,9 @@ database server.
 
 - Durable writes and crash recovery enabled by default.
 - Online backups, integrity checks and storage maintenance.
-- Raft replication with TCP/Unix snapshot cloning, asynchronous learner catch-up and voting promotion.
+- Raft replication with TCP/Unix snapshot cloning, asynchronous learner catch-up, voting promotion and optional bounded-staleness replica reads.
+- Durable replica reads from the previous certified barrier or a newly requested barrier.
+- Logical commit-position tokens in commit responses, replica visibility waits and per-query minimum positions.
 - Optional async Raft durability with periodic quorum flushes, `COMMIT DURABLE` barriers and explicit recovery to a certified stable prefix.
 - Schema inspection, database status and live lock diagnostics.
 - Actionable errors and tools for planning database changes.
@@ -69,7 +71,7 @@ or `--postgres-socket /tmp/slopdb-postgres/.s.PGSQL.5432`. See
 [PostgreSQL emulation](docs/postgres-server.md) for TLS, client certificates and SQL compatibility limits.
 
 For replicated clusters, see [Raft replication](docs/replication.md) for bootstrap,
-clone/join, TLS, membership management and leader-only SQL behavior.
+clone/join, TLS, membership management and SQL read consistency options.
 
 ## Using SlopDB from Go
 

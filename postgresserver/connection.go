@@ -337,6 +337,9 @@ func (c *client) executeSQL(ctx context.Context, p *prepared, args []any) (*db.E
 	if c.session.InTransaction() && !c.extendedImplicit && (p.kind == "BEGIN" || p.kind == "START" || p.kind == "SAVEPOINT") {
 		c.explicitTransaction = true
 	}
+	if err := c.reportCommitPosition(result); err != nil {
+		return nil, "", err
+	}
 	if !c.session.InTransaction() {
 		c.extendedImplicit = false
 		c.explicitTransaction = false
@@ -351,6 +354,9 @@ func (c *client) executeSQL(ctx context.Context, p *prepared, args []any) (*db.E
 		c.failed = false
 	}
 	kind := p.kind
+	if kind == "POSITION" {
+		kind = "SELECT"
+	}
 	if p.helper {
 		if kind == "PID" {
 			kind = "SELECT"
@@ -515,7 +521,11 @@ func (c *client) simple(ctx context.Context, query string) error {
 		}
 	}
 	if implicit {
-		if _, err := c.session.ExecContext(ctx, "COMMIT"); err != nil {
+		result, err := c.session.ExecContext(ctx, "COMMIT")
+		if err != nil {
+			return err
+		}
+		if err := c.reportCommitPosition(result); err != nil {
 			return err
 		}
 	}
@@ -524,6 +534,15 @@ func (c *client) simple(ctx context.Context, query string) error {
 }
 
 func kindOf(stmt sql.Statement, fallback string) string {
+	if _, ok := stmt.(*sql.ReadBarrierStmt); ok {
+		return "SET"
+	}
+	if position, ok := stmt.(*sql.ReplicationPositionStmt); ok {
+		if position.Operation == "wait" {
+			return "WAIT"
+		}
+		return "POSITION"
+	}
 	switch stmt.(type) {
 	case *sql.SelectStmt, *sql.UnionStmt:
 		return "SELECT"
@@ -539,7 +558,7 @@ func kindOf(stmt sql.Statement, fallback string) string {
 
 func transactionCommand(kind string) bool {
 	switch kind {
-	case "BEGIN", "START", "COMMIT", "END", "ROLLBACK", "SAVEPOINT", "RELEASE":
+	case "BEGIN", "START", "COMMIT", "END", "ROLLBACK", "SAVEPOINT", "RELEASE", "WAIT", "POSITION":
 		return true
 	}
 	return false
@@ -558,11 +577,21 @@ func (c *client) finishImplicit(ctx context.Context) error {
 	if c.failed {
 		command = "ROLLBACK"
 	}
-	_, err := c.session.ExecContext(ctx, command)
+	result, err := c.session.ExecContext(ctx, command)
+	if err == nil {
+		err = c.reportCommitPosition(result)
+	}
 	if err != nil {
 		_, _ = c.session.Exec("ROLLBACK")
 	}
 	c.failed = false
 	c.clearPortals()
 	return err
+}
+
+func (c *client) reportCommitPosition(result *db.ExecResult) error {
+	if result != nil && result.CommitPosition != "" {
+		return c.send(&pgproto3.ParameterStatus{Name: "slopdb_commit_position", Value: result.CommitPosition})
+	}
+	return nil
 }

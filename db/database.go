@@ -128,11 +128,14 @@ func (db *Database) Close() error {
 }
 
 type ExecResult struct {
-	Profile *sql.QueryProfile
-	Columns []sql.ColumnDef
-	Rows    []map[string]sql.Value
-	LastID  int64
-	Changes int64
+	// CommitPosition covers this committed transaction and possibly concurrent
+	// commits in the same applied prefix. Empty for uncommitted work/standalone DBs.
+	CommitPosition string
+	Profile        *sql.QueryProfile
+	Columns        []sql.ColumnDef
+	Rows           []map[string]sql.Value
+	LastID         int64
+	Changes        int64
 }
 
 type statementExecutor struct {
@@ -211,8 +214,10 @@ func (db *Database) execStatements(ctx context.Context, stmts []sql.Statement, s
 }
 
 func (db *Database) execStatementsInto(ctx context.Context, stmts []sql.Statement, schema *sql.Schema, transactionBound bool, lockTimeout time.Duration, dst *ExecResult, selectTarget *sql.ResultSet) (*ExecResult, error) {
-	if err := db.checkStatementReplication(ctx, stmts); err != nil {
-		return nil, err
+	if !hasReadBarrierSetting(stmts) {
+		if err := db.checkStatementReplication(withSessionReadBarrier(ctx, schema), stmts); err != nil {
+			return nil, err
+		}
 	}
 	return db.execAdmittedStatementsInto(ctx, stmts, schema, transactionBound, lockTimeout, dst, selectTarget)
 }
@@ -232,8 +237,39 @@ func (db *Database) execAdmittedStatementsInto(ctx context.Context, stmts []sql.
 	var result *ExecResult
 	executor := &statementExecutor{schema: schema, parseOptions: db.ParseOptions(), resultTarget: dst, selectTarget: selectTarget}
 	var lockDeadline time.Time
+	admitEach := hasReadBarrierSetting(stmts)
 	for _, stmt := range stmts {
 		if stmt == nil {
+			continue
+		}
+		statementCtx := ctx
+		if guard := db.replication.Load(); guard != nil && guard.ReadSnapshot != nil {
+			statementCtx = readStatementContext(ctx, schema, stmt)
+		}
+		schema.SetContext(statementCtx)
+		if admitEach {
+			if err := db.checkStatementReplication(statementCtx, []sql.Statement{stmt}); err != nil {
+				return nil, err
+			}
+		}
+		if setting, ok := stmt.(*sql.ReadBarrierStmt); ok {
+			if transactionBound && !schema.InTransaction() {
+				return nil, ErrTxDone
+			}
+			if err := db.setReadBarrier(schema, setting); err != nil {
+				return nil, err
+			}
+			result = &ExecResult{}
+			continue
+		}
+		if position, ok := stmt.(*sql.ReplicationPositionStmt); ok {
+			if transactionBound && !schema.InTransaction() {
+				return nil, ErrTxDone
+			}
+			result, err = db.execPosition(ctx, schema, position)
+			if err != nil {
+				return nil, err
+			}
 			continue
 		}
 		if commit, ok := stmt.(*sql.CommitStmt); ok && commit.Durability == "durable" {
@@ -279,7 +315,13 @@ func (db *Database) execAdmittedStatementsInto(ctx context.Context, stmts []sql.
 			}
 			if err == nil {
 				if _, rollback := stmt.(*sql.RollbackStmt); !rollback {
-					err = schema.StartStatement()
+					reuse, _ := ctx.Value(reuseReadSnapshotKey{}).(bool)
+					if !reuse {
+						err = schema.StartStatement()
+					}
+					if reuse {
+						ctx = context.WithValue(ctx, reuseReadSnapshotKey{}, false)
+					}
 					if err != nil {
 						_ = schema.Rollback()
 					}
@@ -334,6 +376,7 @@ func (db *Database) execAdmittedStatementsInto(ctx context.Context, stmts []sql.
 			if err != nil {
 				return nil, err
 			}
+			result = db.commitPositionResult(schema, stmt, result)
 			if !schema.InTransaction() {
 				switch stmt.(type) {
 				case *sql.DropIndexStmt, *sql.AlterTableStmt, *sql.CommitStmt, *sql.ReleaseStmt:

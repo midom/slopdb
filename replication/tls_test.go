@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"slopdb/db"
 	"testing"
 	"time"
 )
@@ -70,7 +71,13 @@ func TestMutualTLSReplicationTCPAndUnix(t *testing.T) {
 			targetConfig.Join = source.ControlAddress()
 			targetConfig.TLSConfig = server
 			targetConfig.ClientTLSConfig = client
+			targetConfig.ReplicaReadMaxStaleness = 2 * time.Second
 			target := openTestNode(t, targetConfig)
+			waitApplied(t, target, source.applied.Load())
+			assertCount(t, target, 1)
+			if _, e := target.Database().ExecWithOptions("SELECT * FROM items", db.ExecOptions{ReadBarrier: db.ReadBarrierNext}); e != nil {
+				t.Fatalf("durable read over mutual TLS: %v", e)
+			}
 			if e := source.Promote(ctx, "tls-target"); e != nil {
 				t.Fatal(e)
 			}

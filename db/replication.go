@@ -12,12 +12,22 @@ import (
 // ErrDurabilityUnconfirmed means SQL committed but stable-quorum confirmation
 // failed. Retrying the transaction can duplicate its effects.
 var ErrDurabilityUnconfirmed = errors.New("transaction committed asynchronously; durable confirmation failed")
+var ErrInvalidPosition = errors.New("invalid replication position or cluster incarnation")
 
-// ReplicationGuard admits SQL only while a node can provide leader consistency.
+// ReplicationGuard controls admission and statement snapshots on replicated data.
 // Install before exposing the database to clients. Storage access below is for
 // a replication owner; applications must continue to use SQL APIs.
 type ReplicationGuard struct {
-	Check func(context.Context) error
+	Position      func() string
+	AckedPosition func(context.Context) (string, error)
+	WaitPosition  func(context.Context, string) error
+	Check         func(context.Context) error
+	// Optional read/session admission. Nil retains leader-only admission.
+	CheckRead    func(context.Context) error
+	CheckSession func(context.Context) error
+	// ReadSnapshot may capture an owner-coordinated catalog/data snapshot.
+	// Return false to use the ordinary leader statement snapshot.
+	ReadSnapshot func(context.Context, *sql.Schema) (bool, error)
 	// CheckControl may admit transaction-control statements that access only
 	// session state. Storage hooks must still obtain consensus for every write
 	// before a commit can succeed. Nil retains Check for every statement.
@@ -25,7 +35,29 @@ type ReplicationGuard struct {
 	Durable      func(context.Context) error
 }
 
-func (d *Database) SetReplicationGuard(g *ReplicationGuard) { d.replication.Store(g) }
+func (d *Database) checkReplicationSession(ctx context.Context) error {
+	if g := d.replication.Load(); g != nil && g.CheckSession != nil {
+		return g.CheckSession(ctx)
+	}
+	return d.checkReplication(ctx)
+}
+
+func (d *Database) SetReplicationGuard(g *ReplicationGuard) {
+	d.replication.Store(g)
+	d.installReplicaSnapshotHook(d.schema)
+}
+
+func (d *Database) installReplicaSnapshotHook(schema *sql.Schema) {
+	if g := d.replication.Load(); g == nil || g.ReadSnapshot == nil {
+		return
+	}
+	schema.SetStatementSnapshotHook(func(ctx context.Context, s *sql.Schema) (bool, error) {
+		if g := d.replication.Load(); g != nil && g.ReadSnapshot != nil {
+			return g.ReadSnapshot(ctx, s)
+		}
+		return false, nil
+	})
+}
 func (d *Database) checkReplication(ctx context.Context) error {
 	if g := d.replication.Load(); g != nil {
 		return g.Check(ctx)
@@ -34,21 +66,53 @@ func (d *Database) checkReplication(ctx context.Context) error {
 }
 
 func (d *Database) checkStatementReplication(ctx context.Context, statements []sql.Statement) error {
+	if err := d.waitMinimumPosition(ctx); err != nil {
+		return err
+	}
 	g := d.replication.Load()
+	mode := ReadBarrierFromContext(ctx)
+	if (mode == ReadBarrierPrevious || mode == ReadBarrierNext) && (g == nil || g.ReadSnapshot == nil) {
+		return fmt.Errorf("durable read barriers require replication")
+	}
 	if g == nil {
+		return nil
+	}
+	allPosition := len(statements) > 0
+	for _, statement := range statements {
+		switch statement.(type) {
+		case *sql.ReplicationPositionStmt, *sql.ReadBarrierStmt:
+		default:
+			allPosition = false
+			break
+		}
+	}
+	if allPosition {
 		return nil
 	}
 	if g.CheckControl != nil {
 		local := len(statements) > 0
 		for _, statement := range statements {
-			switch statement.(type) {
-			case *sql.BeginStmt, *sql.CommitStmt, *sql.RollbackStmt, *sql.SavepointStmt, *sql.ReleaseStmt:
+			switch s := statement.(type) {
+			case *sql.BeginStmt, *sql.RollbackStmt, *sql.SavepointStmt, *sql.ReleaseStmt:
+			case *sql.CommitStmt:
+				if s.Durability == "durable" {
+					local = false
+				}
 			default:
 				local = false
 			}
 		}
 		if local {
 			return g.CheckControl(ctx)
+		}
+	}
+	if g.CheckRead != nil && len(statements) > 0 {
+		readOnly := true
+		for _, statement := range statements {
+			readOnly = readOnly && sql.IsReplicaReadStatement(statement)
+		}
+		if readOnly {
+			return g.CheckRead(ctx)
 		}
 	}
 	return g.Check(ctx)

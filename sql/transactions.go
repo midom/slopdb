@@ -64,6 +64,15 @@ func (s *Schema) RefreshReadCommitted() error {
 // A new snapshot for each statement gives READ COMMITTED, including in a tx.
 func (s *Schema) StartStatement() error {
 	s.EndStatement()
+	if s.replicaReadOnly {
+		s.replicaReadOnly = false
+		s.readStateVersion = ^uint64(0)
+	}
+	if s.statementSnapshotHook != nil {
+		if handled, err := s.statementSnapshotHook(s.ctx, s); handled || err != nil {
+			return err
+		}
+	}
 	root := s
 	if s.parent != nil {
 		root = s.parent
@@ -97,6 +106,11 @@ func (s *Schema) committedIterator() storage.Iterator {
 	return s.lsm.NewIterator()
 }
 func (s *Schema) refreshReadCommittedLocked() error {
+	// A physical replica imports catalog and data together in the owner's
+	// snapshot hook. Its ordinary SQL parent does not receive WAL catalogs.
+	if s.replicaReadOnly {
+		return nil
+	}
 	if s.parent == nil {
 		return nil
 	}
