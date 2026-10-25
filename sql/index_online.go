@@ -131,7 +131,8 @@ func (s *Schema) OnlineCreateIndex(stmt Statement) (*CreateIndexStmt, bool, erro
 
 func (s *Schema) StartOnlineIndex(stmt *CreateIndexStmt) (*OnlineIndexBuild, error) {
 	name, table := strings.ToLower(stmt.Index), strings.ToLower(stmt.Table)
-	if _, exists := s.indexes[name]; exists {
+	name, displayName := s.indexIdentity(table, name, "")
+	if _, exists := s.indexes[name]; exists || (s.MySQLMode() && s.findTableIndex(table, displayName) != nil) {
 		if stmt.IfNotExists {
 			return nil, nil
 		}
@@ -159,6 +160,7 @@ func (s *Schema) StartOnlineIndex(stmt *CreateIndexStmt) (*OnlineIndexBuild, err
 		root = root.parent
 	}
 	idx := newIndexInfo(name, table, columns, stmt.Unique)
+	idx.DisplayName = displayName
 	idx.Fulltext = stmt.Fulltext
 	if idx.Fulltext {
 		idx.FulltextVersion = fulltextIndexVersion

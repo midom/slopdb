@@ -19,8 +19,13 @@ func (s *Schema) renameTable(table, name string) error {
 	info.Name = name
 	s.tables[name] = info
 	delete(s.tables, table)
-	for _, idx := range s.indexes {
+	for key, idx := range s.indexes {
 		if idx.Table == table {
+			if strings.HasPrefix(idx.Name, "\x00mysql-index:") {
+				idx.Name = tableLocalIndexIdentity(name, idx.SQLName())
+				delete(s.indexes, key)
+				s.indexes[idx.Name] = idx
+			}
 			idx.Table = name
 		}
 	}

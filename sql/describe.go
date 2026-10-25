@@ -437,6 +437,10 @@ func (s *Schema) describeProjection(columns []SelectColumn, all []ColumnDef, env
 			name = fmt.Sprintf("expr%d", index)
 		}
 		c.Name = name
+		if sc.Alias != "" {
+			c.OriginalName = ""
+			c.DisplayName = ""
+		}
 		out = append(out, c)
 		exprIndex++
 	}

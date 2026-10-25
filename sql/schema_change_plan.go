@@ -65,7 +65,16 @@ func (p *schemaChangePlanner) createIndex(st *CreateIndexStmt, online bool) erro
 		return err
 	}
 	name, table := strings.ToLower(st.Index), strings.ToLower(st.Table)
-	if p.indexes[name] != nil {
+	name, displayName := p.schema.indexIdentity(table, name, "")
+	exists := p.indexes[name] != nil
+	if p.schema.MySQLMode() {
+		for _, idx := range p.indexes {
+			if idx.Table == table && idx.SQLName() == displayName {
+				exists = true
+			}
+		}
+	}
+	if exists {
 		if !st.IfNotExists {
 			return fmt.Errorf("index %q already exists", name)
 		}
@@ -85,6 +94,7 @@ func (p *schemaChangePlanner) createIndex(st *CreateIndexStmt, online bool) erro
 		return err
 	}
 	idx := newIndexInfo(name, table, columns, st.Unique)
+	idx.DisplayName = displayName
 	idx.PrefixLengths, idx.Fulltext = st.PrefixLengths, st.Fulltext
 	if err := validateIndexPrefixes(info.Columns, idx); err != nil {
 		return err
@@ -247,7 +257,7 @@ func (p *schemaChangePlanner) alter(st *AlterTableStmt, online bool) error {
 		}
 		return p.createIndex(&CreateIndexStmt{Table: st.Table, Index: name, Columns: st.Constraint.Columns, PrefixLengths: st.Constraint.PrefixLengths, Fulltext: st.Constraint.Fulltext, Unique: st.Constraint.Kind == "UNIQUE_INDEX", PublicationAbortAfter: st.PublicationAbortAfter}, online)
 	case "DROP_INDEX":
-		if p.indexes[st.NewName] == nil && st.IfExists {
+		if p.findIndex(st.Table, st.NewName) == nil && st.IfExists {
 			p.add(st.Operation, st.NewName, "no-op", schemaExclusiveLock, "The index does not exist.", false, false, false)
 			return nil
 		}
@@ -282,17 +292,17 @@ func (p *schemaChangePlanner) alter(st *AlterTableStmt, online bool) error {
 				}
 			}
 		} else if st.Operation == "RENAME_INDEX" {
-			idx := p.indexes[st.OldColName]
+			idx := p.findIndex(st.Table, st.OldColName)
 			if idx == nil || idx.Table != st.Table {
 				return fmt.Errorf("index %s does not belong to %s", st.OldColName, st.Table)
 			}
-			if p.indexes[st.NewColName] != nil && st.NewColName != st.OldColName {
+			if p.findIndex(st.Table, st.NewColName) != nil && st.NewColName != st.OldColName {
 				return fmt.Errorf("index %s already exists", st.NewColName)
 			}
 			copy := *idx
-			copy.Name = st.NewColName
-			delete(p.indexes, st.OldColName)
-			p.indexes[st.NewColName] = &copy
+			copy.Name, copy.DisplayName = p.schema.indexIdentity(st.Table, st.NewColName, "")
+			delete(p.indexes, idx.Name)
+			p.indexes[copy.Name] = &copy
 		} else if st.Operation != "RENAME_CONSTRAINT" {
 			col, err := column()
 			if err != nil {
@@ -360,5 +370,14 @@ func (p *schemaChangePlanner) alter(st *AlterTableStmt, online bool) error {
 		*col = *st.Column
 	}
 	p.add(st.Operation, st.Table, work, schemaExclusiveLock, detail, scan, rewrite, indexes)
+	return nil
+}
+
+func (p *schemaChangePlanner) findIndex(table, name string) *IndexInfo {
+	for _, idx := range p.indexes {
+		if idx.Table == table && idx.SQLName() == name {
+			return idx
+		}
+	}
 	return nil
 }

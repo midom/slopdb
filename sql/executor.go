@@ -965,7 +965,7 @@ func (s *Schema) getCreateTableSQL(tableName string, inlineIndexes bool) string 
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		fmt.Fprintf(&b, "%s %s", quoteIdent(col.Name), col.DeclaredType())
+		fmt.Fprintf(&b, "%s %s", quoteIdent(col.DeclaredName()), col.DeclaredType())
 		if col.Binary {
 			b.WriteString(" COLLATE BINARY")
 		} else if col.Collation != "" {
@@ -2640,8 +2640,9 @@ func (s *Schema) CreateIndex(stmt *CreateIndexStmt) error {
 	s.ensureCatalogWritable()
 	idxName := strings.ToLower(stmt.Index)
 	tableName := strings.ToLower(stmt.Table)
+	idxName, displayName := s.indexIdentity(tableName, idxName, "")
 	columns := normalizedIndexColumns(stmt.Columns, stmt.Column)
-	if s.isTemporaryTable(tableName) && s.findTableIndex(tableName, idxName) != nil {
+	if (s.isTemporaryTable(tableName) || s.MySQLMode()) && s.findTableIndex(tableName, displayOrName(displayName, idxName)) != nil {
 		if stmt.IfNotExists {
 			return nil
 		}
@@ -2665,6 +2666,7 @@ func (s *Schema) CreateIndex(stmt *CreateIndexStmt) error {
 	}
 
 	idx := newIndexInfo(idxName, tableName, columns, stmt.Unique)
+	idx.DisplayName = displayName
 	idx.Fulltext = stmt.Fulltext
 	if idx.Fulltext {
 		idx.FulltextVersion = fulltextIndexVersion
@@ -2686,7 +2688,7 @@ func (s *Schema) CreateIndex(stmt *CreateIndexStmt) error {
 		return err
 	}
 	if s.isTemporaryTable(tableName) {
-		idx.DisplayName = idxName
+		idx.DisplayName = displayOrName(displayName, idxName)
 		idx.Name = fmt.Sprintf("__temporary_%d", idx.ID)
 		idxName = idx.Name
 	}

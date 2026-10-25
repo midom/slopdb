@@ -105,19 +105,27 @@ func (s *Schema) prepareInlineIndexes(table string, stmt *CreateTableStmt) ([]*I
 			return nil, err
 		}
 		name := strings.ToLower(def.Name)
+		display := def.DisplayName
 		if name == "" {
 			name = columns[0]
-			for n := 2; reserved[name] || name == "primary"; n++ {
+			for n := 2; ; n++ {
+				key, _ := s.indexIdentity(table, name, display)
+				if !reserved[key] && name != "primary" {
+					break
+				}
 				name = fmt.Sprintf("%s_%d", columns[0], n)
 			}
-		} else if reserved[name] {
-			return nil, fmt.Errorf("index %q already exists", name)
-		} else if name == "primary" {
+		}
+		name, display = s.indexIdentity(table, name, display)
+		if reserved[name] {
+			return nil, fmt.Errorf("index %q already exists", displayOrName(display, name))
+		}
+		if displayOrName(display, name) == "primary" {
 			return nil, fmt.Errorf("index name PRIMARY is reserved")
 		}
 		reserved[name] = true
 		idx := newIndexInfo(name, table, columns, def.Unique)
-		idx.DisplayName = def.DisplayName
+		idx.DisplayName = display
 		idx.Fulltext = def.Fulltext
 		if idx.Fulltext {
 			idx.FulltextVersion = fulltextIndexVersion

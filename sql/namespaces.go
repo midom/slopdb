@@ -487,7 +487,7 @@ func (s *Schema) resolveNamespaceStatement(stmt Statement, outer map[string]bool
 		schema, _ := SplitSchemaName(st.Table)
 		for i := range st.Indexes {
 			idx := &st.Indexes[i]
-			if schema != "main" && !strings.Contains(idx.Name, ".") {
+			if idx.Name != "" && schema != "main" && !strings.Contains(idx.Name, ".") {
 				if idx.DisplayName == "" {
 					idx.DisplayName = idx.Name
 				}

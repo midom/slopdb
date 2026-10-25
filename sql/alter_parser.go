@@ -198,7 +198,7 @@ func (p *Parser) parseAlterAction(table string) (*AlterTableStmt, error) {
 		if err != nil {
 			return nil, err
 		}
-		col := &ColumnDef{}
+		col := &ColumnDef{OriginalName: p.declaredColumnName()}
 		col.Name, err = p.alterName()
 		if err != nil {
 			return nil, err
@@ -258,6 +258,7 @@ func (p *Parser) parseAlterAction(table string) (*AlterTableStmt, error) {
 			err = p.alterWords("TO")
 		}
 		if err == nil {
+			a.NewColOriginalName = p.declaredColumnName()
 			a.NewColName, err = p.alterName()
 		}
 	case "ALTER":
@@ -304,7 +305,7 @@ func (p *Parser) parseAlterAction(table string) (*AlterTableStmt, error) {
 				return nil, err
 			}
 		}
-		col := &ColumnDef{}
+		col := &ColumnDef{OriginalName: p.declaredColumnName()}
 		col.Name, err = p.alterName()
 		if err != nil {
 			return nil, err

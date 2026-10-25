@@ -82,14 +82,22 @@ func (s *Schema) AlterTable(a *AlterTableStmt) error {
 		return s.renameTable(a.Table, a.NewName)
 	}
 	if a.Operation == "RENAME_COLUMN" {
-		return s.renameColumn(info, a.OldColName, a.NewColName)
+		if err := s.renameColumn(info, a.OldColName, a.NewColName); err != nil {
+			return err
+		}
+		for i := range info.Columns {
+			if info.Columns[i].Name == a.NewColName {
+				info.Columns[i].OriginalName = a.NewColOriginalName
+			}
+		}
+		return s.saveSchema()
 	}
 	if a.Operation == "RENAME_INDEX" {
-		idx := s.indexes[a.OldColName]
+		idx := s.findTableIndex(a.Table, a.OldColName)
 		if idx == nil || idx.Table != a.Table {
 			return fmt.Errorf("index %s does not belong to %s", a.OldColName, a.Table)
 		}
-		return s.renameIndex(a.OldColName, a.NewColName)
+		return s.renameIndex(idx.Name, a.NewColName)
 	}
 	if a.Operation == "RENAME_CONSTRAINT" {
 		for i := range info.Constraints {
@@ -645,6 +653,13 @@ func (s *Schema) renameIndex(old, name string) error {
 	if idx == nil {
 		return fmt.Errorf("index %s does not exist", old)
 	}
+	display := ""
+	if s.MySQLMode() {
+		if name == "primary" || (s.findTableIndex(idx.Table, name) != nil && idx.SQLName() != name) {
+			return fmt.Errorf("index %s already exists or is reserved", name)
+		}
+		name, display = s.indexIdentity(idx.Table, name, "")
+	}
 	if old == name {
 		return nil
 	}
@@ -652,6 +667,7 @@ func (s *Schema) renameIndex(old, name string) error {
 		return fmt.Errorf("index %s already exists or is reserved", name)
 	}
 	idx.Name = name
+	idx.DisplayName = display
 	s.indexes[name] = idx
 	delete(s.indexes, old)
 	return s.saveIndexes()

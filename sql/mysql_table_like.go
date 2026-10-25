@@ -111,3 +111,26 @@ func (s *Schema) expandCreateTableLike(input *CreateTableStmt) (*CreateTableStmt
 	}
 	return &stmt, nil
 }
+
+// indexIdentity separates table-scoped SQL names from the global internal map.
+// Length-prefixing preserves boundaries even for quoted names containing punctuation.
+func (s *Schema) indexIdentity(table, name, display string) (string, string) {
+	if !s.MySQLMode() {
+		return name, display
+	}
+	if display == "" {
+		_, display = SplitSchemaName(name)
+	}
+	return tableLocalIndexIdentity(table, display), display
+}
+
+func displayOrName(display, name string) string {
+	if display != "" {
+		return display
+	}
+	return name
+}
+
+func tableLocalIndexIdentity(table, name string) string {
+	return fmt.Sprintf("\x00mysql-index:%d:%s%s", len(table), table, name)
+}

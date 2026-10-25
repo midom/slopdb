@@ -444,7 +444,7 @@ func (p *Parser) parseCreateTable() (Statement, error) {
 			continue
 		}
 
-		col := ColumnDef{}
+		col := ColumnDef{OriginalName: p.declaredColumnName()}
 		col.Name = strings.ToLower(p.cur.Value)
 		if err := p.expect(TokIdent); err != nil {
 			return nil, err
@@ -3068,4 +3068,12 @@ func (p *Parser) parseSetConstraints() (Statement, error) {
 		return nil, fmt.Errorf("expected DEFERRED or IMMEDIATE")
 	}
 	return statement, nil
+}
+
+// Keep client-facing column spelling separately from normalized lookup names.
+func (p *Parser) declaredColumnName() string {
+	if p.tok.options.MySQLQuoting {
+		return p.cur.Value
+	}
+	return ""
 }

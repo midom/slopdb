@@ -56,6 +56,7 @@ type ForeignKeyDef struct {
 }
 
 type ColumnDef struct {
+	OriginalName      string    `json:"original_name,omitempty"`
 	Collation         Collation `json:"collation,omitempty"` // explicit stored comparison policy
 	SemanticCollation Collation `json:"-"`                   // inferred expression collation; empty means database default
 	ParameterIndex    int       `json:"-"`                   // internal static inference provenance; never persisted
@@ -428,6 +429,7 @@ type AlterTableStmt struct {
 	Operation             string
 	NewName               string
 	OldColName            string
+	NewColOriginalName    string
 	NewColName            string
 	Column                *ColumnDef
 }

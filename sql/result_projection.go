@@ -3,6 +3,7 @@ package sql
 import (
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 // ResultName is the SQL output label. Name remains the unique key used to find
@@ -10,6 +11,9 @@ import (
 func (c ColumnDef) ResultName() string {
 	if c.DisplayName != "" {
 		return c.DisplayName
+	}
+	if c.OriginalName != "" && c.Name == strings.ToLower(c.OriginalName) {
+		return c.OriginalName
 	}
 	return c.Name
 }
@@ -36,7 +40,7 @@ func uniqueResultColumns(columns []ColumnDef, expressions []selectExprCol) bool 
 		}
 		changed = true
 		if c.DisplayName == "" {
-			c.DisplayName = old
+			c.DisplayName = c.ResultName()
 		}
 		key := "\x00result:" + strconv.Itoa(i)
 		for reserved[key] {
@@ -98,4 +102,12 @@ func (s *Schema) selectProjection(stmt *SelectStmt, info *TableInfo) ([]ColumnDe
 	}
 	s.projectionMetadata(stmt, info, columns)
 	return columns, expressions, uniqueResultColumns(columns, expressions)
+}
+
+// DeclaredName preserves identifier spelling without changing lookup keys.
+func (c ColumnDef) DeclaredName() string {
+	if c.OriginalName != "" {
+		return c.OriginalName
+	}
+	return c.Name
 }
