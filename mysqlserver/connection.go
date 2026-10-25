@@ -23,6 +23,7 @@ type client struct {
 	replicaUUID             string
 	replicationHeartbeat    time.Duration
 	replicationChecksumNone bool
+	transport               *sessionIOConn
 	server                  *Server
 	conn                    net.Conn
 	writer                  packetWriter
@@ -54,6 +55,7 @@ func (c *client) run() {
 	if err := c.handshake(); err != nil {
 		return
 	}
+	c.installNetworkTimeouts()
 	defer c.closeStatements()
 	// A separate reader detects EOF even while SQL waits on another session's
 	// locks. It cancels execution immediately so disconnects release transactions.
@@ -70,6 +72,7 @@ func (c *client) run() {
 		defer c.cancel()
 		defer c.conn.Close()
 		for {
+			c.transport.beginCommand()
 			compressedSequence := byte(0)
 			if compressed, ok := c.conn.(*compressedConn); ok {
 				compressed.readSequence = 0
@@ -177,6 +180,9 @@ func (c *client) dispatch(p []byte) error {
 	case 31: // COM_RESET_CONNECTION rolls back pooled connection state.
 		c.server.namedLocks.releaseOwner(c.id)
 		c.variables = defaultSessionVariables()
+		if c.transport != nil {
+			c.transport.configure(c.variables)
+		}
 		if len(p) != 1 {
 			return c.writeError(errMalformed)
 		}

@@ -12,12 +12,13 @@ import (
 )
 
 type sessionVariables struct {
-	groupConcatMaxLen int64
-	sqlMode, charset  string
+	groupConcatMaxLen               int64
+	netReadTimeout, netWriteTimeout int64
+	sqlMode, charset                string
 }
 
 func defaultSessionVariables() sessionVariables {
-	return sessionVariables{groupConcatMaxLen: 1024, sqlMode: "STRICT_TRANS_TABLES", charset: "utf8mb4"}
+	return sessionVariables{groupConcatMaxLen: 1024, netReadTimeout: 30, netWriteTimeout: 60, sqlMode: "STRICT_TRANS_TABLES", charset: "utf8mb4"}
 }
 
 func (c *client) mysqlContext() context.Context {
@@ -42,6 +43,16 @@ func sqlTokens(query string, options sql.ParseOptions) []sql.Token {
 
 func (c *client) variable(name string, global bool) (sql.Value, error) {
 	switch strings.ToLower(name) {
+	case "net_read_timeout":
+		if global {
+			return sql.NewIntValue(30), nil
+		}
+		return sql.NewIntValue(c.variables.netReadTimeout), nil
+	case "net_write_timeout":
+		if global {
+			return sql.NewIntValue(60), nil
+		}
+		return sql.NewIntValue(c.variables.netWriteTimeout), nil
 	case "warning_count":
 		return sql.NewIntValue(int64(c.warningCount())), nil
 	case "log_bin":
@@ -247,7 +258,7 @@ func (c *client) compatibilityControl(query string) (*db.ExecResult, bool, error
 			pattern = tokens[i+1].Value
 		}
 		names := []string{"autocommit", "group_concat_max_len", "sql_mode", "read_only", "super_read_only", "character_set_client", "character_set_connection", "character_set_results", "collation_connection", "version", "version_comment", "max_allowed_packet", "ft_min_word_len", "transaction_isolation", "tx_isolation", "lower_case_table_names", "time_zone", "system_time_zone"}
-		names = append(names, "log_bin", "binlog_format", "binlog_row_image", "binlog_checksum", "gtid_mode", "enforce_gtid_consistency", "server_id", "server_uuid", "gtid_executed", "gtid_purged")
+		names = append(names, "net_read_timeout", "net_write_timeout", "log_bin", "binlog_format", "binlog_row_image", "binlog_checksum", "gtid_mode", "enforce_gtid_consistency", "server_id", "server_uuid", "gtid_executed", "gtid_purged")
 		sort.Strings(names)
 		r := &db.ExecResult{Columns: []sql.ColumnDef{{Name: "Variable_name", ColType: sql.ColText}, {Name: "Value", ColType: sql.ColText}}}
 		for _, name := range names {
@@ -349,6 +360,16 @@ func (c *client) setSessionVariables(tokens []sql.Token) (*db.ExecResult, bool, 
 			if err != nil {
 				return nil, true, err
 			}
+		case "net_read_timeout", "net_write_timeout":
+			n, err := strconv.ParseInt(v.Value, 10, 64)
+			if err != nil || n < 1 || n > 31536000 {
+				return nil, true, fmt.Errorf("%s must be between 1 and 31536000 seconds", name)
+			}
+			if name == "net_read_timeout" {
+				next.netReadTimeout = n
+			} else {
+				next.netWriteTimeout = n
+			}
 		case "group_concat_max_len":
 			n, err := strconv.ParseInt(v.Value, 10, 64)
 			if err != nil || n < 4 || n > 1<<32-1 {
@@ -411,6 +432,9 @@ func (c *client) setSessionVariables(tokens []sql.Token) (*db.ExecResult, bool, 
 		}
 	}
 	c.variables = next
+	if c.transport != nil {
+		c.transport.configure(next)
+	}
 	c.autocommit = autocommit
 	return result, true, nil
 }
