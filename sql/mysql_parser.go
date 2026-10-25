@@ -10,6 +10,9 @@ func (p *Parser) parseMySQLPrimary() (Expression, bool, error) {
 	if expr, handled, err := p.parseMySQLTemporalPrimary(); handled {
 		return expr, true, err
 	}
+	if expr, handled, err := p.parseMySQLStringPrimary(); handled {
+		return expr, handled, err
+	}
 	if strings.EqualFold(p.cur.Value, "CURRENT_TIMESTAMP") && p.tok.Peek().Type != TokLParen {
 		p.advance()
 		return &FuncCallExpr{Name: "CURRENT_TIMESTAMP"}, true, nil
