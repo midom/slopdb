@@ -486,7 +486,7 @@ func postgresStringTransform(s *Schema, name string, a []Value) (Value, error) {
 func postgresQuoteIdent(text string) string {
 	plain := text != ""
 	for i, c := range text {
-		if !(c == '_' || unicode.IsLower(c) || c > 127 || i > 0 && (unicode.IsDigit(c) || c == '$')) {
+		if !(c == '_' || c >= 'a' && c <= 'z' || i > 0 && (c >= '0' && c <= '9' || c == '$')) {
 			plain = false
 			break
 		}

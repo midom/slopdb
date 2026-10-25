@@ -219,3 +219,29 @@ func TestPostgresFunctionArityOnEmptyInputs(t *testing.T) {
 		}
 	}
 }
+
+func TestPostgresUnicodeIdentifierQuoting(t *testing.T) {
+	// PostgreSQL 16.15 quote_ident quotes every non-ASCII identifier byte.
+	d, e := db.Open(t.TempDir(), nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer d.Close()
+	s, e := d.NewSession()
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	s.SetPostgresMode(true)
+	p, e := s.Prepare("SELECT quote_ident(?) AS v")
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer p.Close()
+	for _, text := range []string{"café", "é", "É", "aé"} {
+		r, e := p.Exec(text)
+		if e != nil || r.Rows[0]["v"].Text != "\""+text+"\"" {
+			t.Fatal(text, r, e)
+		}
+	}
+}
