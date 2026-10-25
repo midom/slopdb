@@ -5,58 +5,6 @@ import (
 	"strings"
 )
 
-// MySQL virtual catalogs are built from the execution's catalog snapshot. They
-// use the ordinary SELECT pipeline for predicates, grouping, ordering and limits.
-func (s *Schema) resolveMySQLTables(stmt *SelectStmt) (*SelectStmt, error) {
-	options, enabled := MySQLSession(s.ctx)
-	if !enabled {
-		return stmt, nil
-	}
-	copyStmt := *stmt
-	copyStmt.Joins = append([]JoinClause(nil), stmt.Joins...)
-	resolve := func(name string) (string, *SelectStmt, error) {
-		lower := strings.ToLower(name)
-		if strings.HasPrefix(lower, "information_schema.") || lower == "mysql.user" {
-			data, err := s.mysqlCatalogTable(lower, options)
-			if err != nil {
-				return "", nil, err
-			}
-			return "", &SelectStmt{materialized: data}, nil
-		}
-
-		if strings.Contains(name, ".") {
-			resolved, err := s.namespaceName(name, false, nil)
-			return resolved, nil, err
-		}
-		return name, nil, nil
-	}
-	var sub *SelectStmt
-	var err error
-	if copyStmt.From != "" {
-		copyStmt.From, sub, err = resolve(copyStmt.From)
-		if err != nil {
-			return nil, err
-		}
-		if sub != nil {
-			copyStmt.FromExpr = &SubqueryExpr{Stmt: sub}
-		}
-	}
-	for i := range copyStmt.Joins {
-		j := &copyStmt.Joins[i]
-		if j.Table == "" {
-			continue
-		}
-		j.Table, sub, err = resolve(j.Table)
-		if err != nil {
-			return nil, err
-		}
-		if sub != nil {
-			j.Subquery = sub
-		}
-	}
-	return &copyStmt, nil
-}
-
 func mysqlCatalog(columns ...string) *ResultSet {
 	r := &ResultSet{}
 	for _, name := range columns {
@@ -89,10 +37,11 @@ func (s *Schema) mysqlCatalogTable(name string, options MySQLSessionOptions) (*R
 		}
 		return false
 	}
+	view := s.catalogFacts()
 	switch name {
 	case "information_schema.schemata":
-		r := mysqlCatalog("catalog_name", "schema_name", "default_character_set_name", "default_collation_name", "sql_path")
-		schemas := s.SchemaNames()
+		r := mysqlCatalogFor(name)
+		schemas := view.SchemaNames()
 		for i := range schemas {
 			if schemas[i] == "main" {
 				root := options.RootDatabase
@@ -111,11 +60,11 @@ func (s *Schema) mysqlCatalogTable(name string, options MySQLSessionOptions) (*R
 		}
 		return r, nil
 	case "information_schema.tables":
-		r := mysqlCatalog("table_catalog", "table_schema", "table_name", "table_type", "engine", "version", "row_format", "table_rows", "avg_row_length", "data_length", "max_data_length", "index_length", "data_free", "auto_increment", "create_time", "update_time", "check_time", "table_collation", "checksum", "create_options", "table_comment")
+		r := mysqlCatalogFor(name)
 		if !schemaVisible() {
 			return r, nil
 		}
-		for _, table := range append(s.GetTableList(), s.GetViewList()...) {
+		for _, table := range append(view.TableNames(), view.ViewNames()...) {
 			row := map[string]Value{}
 			for _, c := range r.Columns {
 				row[c.Name] = NewNullValue()
@@ -133,7 +82,7 @@ func (s *Schema) mysqlCatalogTable(name string, options MySQLSessionOptions) (*R
 			row["table_comment"], row["create_options"] = NewTextValue("SlopDB transactional LSM storage"), NewTextValue("")
 			// Size/cardinality estimates are available from SHOW TABLE STATUS.
 			// Unknown sizes remain NULL rather than claiming every table is empty.
-			if _, view := s.views[table]; view {
+			if _, view := view.views[table]; view {
 				row["table_type"] = NewTextValue("VIEW")
 				row["engine"] = NewNullValue()
 				row["row_format"] = NewNullValue()
@@ -142,11 +91,11 @@ func (s *Schema) mysqlCatalogTable(name string, options MySQLSessionOptions) (*R
 		}
 		return r, nil
 	case "information_schema.columns":
-		r := mysqlCatalog("table_catalog", "table_schema", "table_name", "column_name", "ordinal_position", "column_default", "is_nullable", "data_type", "column_type", "column_key", "extra", "character_set_name", "collation_name")
+		r := mysqlCatalogFor(name)
 		if !schemaVisible() {
 			return r, nil
 		}
-		for _, table := range s.GetTableList() {
+		for _, table := range view.TableNames() {
 			info := s.GetTableInfo(table)
 			for i, c := range info.Columns {
 				schema, bare := SplitSchemaName(table)
@@ -191,4 +140,18 @@ func (s *Schema) mysqlCatalogTable(name string, options MySQLSessionOptions) (*R
 	default:
 		return nil, fmt.Errorf("unknown information_schema table %q", name)
 	}
+}
+
+var mysqlCatalogSchemas = map[string][]string{
+	"information_schema.schemata": {"catalog_name", "schema_name", "default_character_set_name", "default_collation_name", "sql_path"},
+	"information_schema.tables":   {"table_catalog", "table_schema", "table_name", "table_type", "engine", "version", "row_format", "table_rows", "avg_row_length", "data_length", "max_data_length", "index_length", "data_free", "auto_increment", "create_time", "update_time", "check_time", "table_collation", "checksum", "create_options", "table_comment"},
+	"information_schema.columns":  {"table_catalog", "table_schema", "table_name", "column_name", "ordinal_position", "column_default", "is_nullable", "data_type", "column_type", "column_key", "extra", "character_set_name", "collation_name"},
+}
+
+func mysqlCatalogFor(name string) *ResultSet { return mysqlCatalog(mysqlCatalogSchemas[name]...) }
+func mysqlCatalogColumns(name string) ([]ColumnDef, bool) {
+	if _, ok := mysqlCatalogSchemas[name]; !ok {
+		return nil, false
+	}
+	return mysqlCatalogFor(name).Columns, true
 }

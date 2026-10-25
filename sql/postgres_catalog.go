@@ -178,36 +178,6 @@ func pgYes(v bool) string {
 	}
 	return "NO"
 }
-func (s *Schema) resolvePostgresTables(stmt *SelectStmt) (*SelectStmt, error) {
-	if !s.PostgresMode() {
-		return stmt, nil
-	}
-	cp := *stmt
-	cp.Joins = append([]JoinClause(nil), stmt.Joins...)
-	resolve := func(name string) (*SelectStmt, error) {
-		if _, ok := postgresCatalogName(name); !ok {
-			return nil, nil
-		}
-		r, e := s.PostgresCatalogTable(name)
-		return &SelectStmt{materialized: r}, e
-	}
-	if sub, e := resolve(cp.From); e != nil {
-		return nil, e
-	} else if sub != nil {
-		cp.From = ""
-		cp.FromExpr = &SubqueryExpr{Stmt: sub}
-	}
-	for i := range cp.Joins {
-		j := &cp.Joins[i]
-		if sub, e := resolve(j.Table); e != nil {
-			return nil, e
-		} else if sub != nil {
-			j.Table = ""
-			j.Subquery = sub
-		}
-	}
-	return &cp, nil
-}
 
 // PostgresCatalogTable returns nil for an ordinary user relation. Callers must
 // hold their normal session/catalog execution view, just as for Describe.
@@ -225,21 +195,8 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 	if owner == "" {
 		owner = "slopdb"
 	}
-	tables := make([]string, 0, len(s.tables))
-	for n := range s.tables {
-		tables = append(tables, n)
-	}
-	sort.Strings(tables)
-	indexes := make([]string, 0, len(s.indexes))
-	for n := range s.indexes {
-		indexes = append(indexes, n)
-	}
-	sort.Strings(indexes)
-	views := make([]string, 0, len(s.views))
-	for n := range s.views {
-		views = append(views, n)
-	}
-	sort.Strings(views)
+	view := s.catalogFacts()
+	tables, indexes, views := view.TableNames(), view.IndexNames(), view.ViewNames()
 
 	// A wire OID has fewer bits than the native object allocator. Refuse an
 	// unrepresentable catalog instead of silently wrapping or publishing OID zero.
@@ -255,7 +212,7 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 		return nil
 	}
 	for _, n := range tables {
-		t := s.tables[n]
+		t := view.tables[n]
 		if e := claim(pgObjectOID(t.ID), "table:"+n); e != nil {
 			return nil, e
 		}
@@ -266,7 +223,7 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 		}
 	}
 	for _, n := range indexes {
-		if e := claim(pgObjectOID(s.indexes[n].ID), "index:"+n); e != nil {
+		if e := claim(pgObjectOID(view.indexes[n].ID), "index:"+n); e != nil {
 			return nil, e
 		}
 	}
@@ -275,12 +232,12 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 			return nil, e
 		}
 	}
-	columnRelations := s.tables
+	columnRelations := view.tables
 	columnNames := tables
 	viewColumns := map[string][]ColumnDef{}
 	if name == "pg_attribute" || name == "information_schema.columns" || name == "pg_class" {
-		columnRelations = make(map[string]*TableInfo, len(s.tables)+len(s.views))
-		for n, t := range s.tables {
+		columnRelations = make(map[string]*TableInfo, len(view.tables)+len(view.views))
+		for n, t := range view.tables {
 			columnRelations[n] = t
 		}
 		columnNames = append([]string(nil), tables...)
@@ -300,18 +257,18 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 		}
 	}
 	relationOID := func(n string, t *TableInfo) int64 {
-		if s.views[n] != nil {
+		if view.views[n] != nil {
 			return pgSyntheticOID("view:" + n)
 		}
 		return pgObjectOID(t.ID)
 	}
 	switch name {
 	case "pg_namespace", "information_schema.schemata":
-		r := pgCatalog("oid:o nspname nspowner:o nspacl")
+		r := pgCatalogFor(name)
 		if name != "pg_namespace" {
-			r = pgCatalog("catalog_name schema_name schema_owner default_character_set_catalog default_character_set_schema default_character_set_name sql_path")
+			r = pgCatalogFor(name)
 		}
-		names := append([]string{"pg_catalog", "information_schema"}, s.SchemaNames()...)
+		names := append([]string{"pg_catalog", "information_schema"}, view.SchemaNames()...)
 		sort.Strings(names)
 		for _, n := range names {
 			n = pgNamespaceName(n)
@@ -323,22 +280,22 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 		}
 		return r, nil
 	case "pg_type":
-		r := pgCatalog("oid:o typname typnamespace:o typowner:o typlen:i typbyval:b typtype typcategory typispreferred:b typisdefined:b typrelid:o typelem:o typarray:o typbasetype:o typtypmod:i typnotnull:b typdefault")
+		r := pgCatalogFor(name)
 		for _, t := range pgTypes {
 			pgCatalogRow(r, t.oid, t.name, int64(11), int64(10), t.length, t.length > 0, "b", t.category, false, true, 0, 0, 0, 0, -1, false, nil)
 		}
 		return r, nil
 	case "pg_am":
-		r := pgCatalog("oid:o amname amtype")
+		r := pgCatalogFor(name)
 		pgCatalogRow(r, 8000, "lsm", "t")
 		pgCatalogRow(r, 8001, "lsm_index", "i")
 		return r, nil
 	case "pg_database":
-		r := pgCatalog("oid:o datname datdba:o encoding:i datistemplate:b datallowconn:b datconnlimit:i datcollate datctype")
+		r := pgCatalogFor(name)
 		pgCatalogRow(r, 16384, database, 10, 6, false, true, -1, "C", "C")
 		return r, nil
 	case "pg_class":
-		r := pgCatalog("oid:o relname relnamespace:o reltype:o reloftype:o relowner:o relam:o relfilenode:o reltablespace:o relpages:i reltuples:r relallvisible:i reltoastrelid:o relhasindex:b relisshared:b relpersistence relkind relnatts:i relchecks:i relhasrules:b relhastriggers:b relhassubclass:b relrowsecurity:b relforcerowsecurity:b relispopulated:b relreplident relispartition:b relrewrite:o relacl reloptions")
+		r := pgCatalogFor(name)
 		add := func(oid int64, n, kind string, cols int, hasindex, temp bool) {
 			ns, obj := pgObjectNames(n)
 			p := "p"
@@ -353,34 +310,34 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 				am = 0
 			}
 			count := -1.0
-			if v, ok := s.stats[n]; ok {
+			if v, ok := view.stats[n]; ok {
 				count = float64(v)
 			}
 			pgCatalogRow(r, oid, obj, pgNamespaceOID(ns), 0, 0, 10, am, 0, 0, 0, count, 0, 0, hasindex, false, p, kind, cols, 0, false, false, false, false, false, true, "d", false, 0, nil, nil)
 		}
 		for _, n := range tables {
-			t := s.tables[n]
+			t := view.tables[n]
 			has := len(t.PKColumns) > 0
-			for _, idx := range s.indexes {
+			for _, idx := range view.indexes {
 				has = has || idx.Table == n
 			}
-			add(pgObjectOID(t.ID), n, "r", len(t.Columns), has, s.isTemporaryTable(n))
+			add(pgObjectOID(t.ID), n, "r", len(t.Columns), has, view.IsTemporary(n))
 			if pgPrimaryIsSynthetic(t) {
 				ns, _ := pgObjectNames(n)
-				add(pgPrimaryOID(t), ns+"."+pgPrimaryName(t), "i", len(t.PKColumns), false, s.isTemporaryTable(n))
+				add(pgPrimaryOID(t), ns+"."+pgPrimaryName(t), "i", len(t.PKColumns), false, view.IsTemporary(n))
 			}
 		}
 		for _, n := range indexes {
-			idx := s.indexes[n]
+			idx := view.indexes[n]
 			ns, _ := pgObjectNames(idx.Table)
-			add(pgObjectOID(idx.ID), ns+"."+idx.SQLName(), "i", len(idx.columnNames()), false, s.isTemporaryTable(idx.Table))
+			add(pgObjectOID(idx.ID), ns+"."+idx.SQLName(), "i", len(idx.columnNames()), false, view.IsTemporary(idx.Table))
 		}
 		for _, n := range views {
 			add(pgSyntheticOID("view:"+n), n, "v", len(viewColumns[n]), false, false)
 		}
 		return r, nil
 	case "pg_attribute":
-		r := pgCatalog("attrelid:o attname atttypid:o attstattarget:i attlen:i attnum:i attndims:i attcacheoff:i atttypmod:i attbyval:b attstorage attalign attnotnull:b atthasdef:b atthasmissing:b attidentity attgenerated attisdropped:b attislocal:b attinhcount:i attcollation:o attacl attoptions attfdwoptions attmissingval")
+		r := pgCatalogFor(name)
 		for _, n := range columnNames {
 			t := columnRelations[n]
 			for i, c := range t.Columns {
@@ -390,9 +347,9 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 		}
 		return r, nil
 	case "pg_attrdef":
-		r := pgCatalog("oid:o adrelid:o adnum:i adbin")
+		r := pgCatalogFor(name)
 		for _, n := range tables {
-			t := s.tables[n]
+			t := view.tables[n]
 			for i, c := range t.Columns {
 				if c.DefaultSQL != "" {
 					pgCatalogRow(r, pgSyntheticOID(fmt.Sprintf("default:%d:%d", t.ID, i)), pgObjectOID(t.ID), i+1, c.DefaultSQL)
@@ -401,10 +358,10 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 		}
 		return r, nil
 	case "pg_index":
-		r := pgCatalog("indexrelid:o indrelid:o indnatts:i indnkeyatts:i indisunique:b indnullsnotdistinct:b indisprimary:b indisexclusion:b indimmediate:b indisclustered:b indisvalid:b indcheckxmin:b indisready:b indislive:b indisreplident:b indkey indexprs indpred")
+		r := pgCatalogFor(name)
 		for _, n := range indexes {
-			idx := s.indexes[n]
-			t := s.tables[idx.Table]
+			idx := view.indexes[n]
+			t := view.tables[idx.Table]
 			if t == nil {
 				continue
 			}
@@ -424,7 +381,7 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 		}
 
 		for _, n := range tables {
-			t := s.tables[n]
+			t := view.tables[n]
 			if !pgPrimaryIsSynthetic(t) {
 				continue
 			}
@@ -440,21 +397,21 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 		}
 		return r, nil
 	case "pg_tables", "information_schema.tables":
-		r := pgCatalog("schemaname tablename tableowner tablespace hasindexes:b hasrules:b hastriggers:b rowsecurity:b")
+		r := pgCatalogFor(name)
 		if name != "pg_tables" {
-			r = pgCatalog("table_catalog table_schema table_name table_type self_referencing_column_name reference_generation user_defined_type_catalog user_defined_type_schema user_defined_type_name is_insertable_into is_typed commit_action")
+			r = pgCatalogFor(name)
 		}
 		for _, n := range tables {
 			ns, obj := pgObjectNames(n)
-			has := len(s.tables[n].PKColumns) > 0
-			for _, idx := range s.indexes {
+			has := len(view.tables[n].PKColumns) > 0
+			for _, idx := range view.indexes {
 				has = has || idx.Table == n
 			}
 			if name == "pg_tables" {
 				pgCatalogRow(r, ns, obj, owner, nil, has, false, false, false)
 			} else {
 				kind := "BASE TABLE"
-				if s.isTemporaryTable(n) {
+				if view.IsTemporary(n) {
 					kind = "LOCAL TEMPORARY"
 				}
 				pgCatalogRow(r, database, ns, obj, kind, nil, nil, nil, nil, nil, "YES", "NO", nil)
@@ -468,15 +425,15 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 		}
 		return r, nil
 	case "pg_indexes":
-		r := pgCatalog("schemaname tablename indexname tablespace indexdef")
+		r := pgCatalogFor(name)
 		for _, n := range indexes {
-			idx := s.indexes[n]
+			idx := view.indexes[n]
 			ns, obj := pgObjectNames(idx.Table)
 			pgCatalogRow(r, ns, obj, idx.SQLName(), nil, s.GetIndexSQL(n))
 		}
 
 		for _, n := range tables {
-			t := s.tables[n]
+			t := view.tables[n]
 			if pgPrimaryIsSynthetic(t) {
 				ns, obj := pgObjectNames(n)
 				pgCatalogRow(r, ns, obj, pgPrimaryName(t), nil, pgPrimarySQL(t))
@@ -484,21 +441,21 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 		}
 		return r, nil
 	case "pg_views", "information_schema.views":
-		r := pgCatalog("schemaname viewname viewowner definition")
+		r := pgCatalogFor(name)
 		if name != "pg_views" {
-			r = pgCatalog("table_catalog table_schema table_name view_definition check_option is_updatable is_insertable_into is_trigger_updatable is_trigger_deletable is_trigger_insertable_into")
+			r = pgCatalogFor(name)
 		}
 		for _, n := range views {
 			ns, obj := pgObjectNames(n)
 			if name == "pg_views" {
-				pgCatalogRow(r, ns, obj, owner, s.views[n].SQL)
+				pgCatalogRow(r, ns, obj, owner, view.views[n].SQL)
 			} else {
-				pgCatalogRow(r, database, ns, obj, s.views[n].SQL, "NONE", "NO", "NO", "NO", "NO", "NO")
+				pgCatalogRow(r, database, ns, obj, view.views[n].SQL, "NONE", "NO", "NO", "NO", "NO", "NO")
 			}
 		}
 		return r, nil
 	case "information_schema.columns":
-		r := pgCatalog("table_catalog table_schema table_name column_name ordinal_position:i column_default is_nullable data_type character_maximum_length:i character_octet_length:i numeric_precision:i numeric_precision_radix:i numeric_scale:i datetime_precision:i interval_type interval_precision:i character_set_catalog character_set_schema character_set_name collation_catalog collation_schema collation_name domain_catalog domain_schema domain_name udt_catalog udt_schema udt_name scope_catalog scope_schema scope_name maximum_cardinality:i dtd_identifier is_self_referencing is_identity identity_generation identity_start identity_increment identity_maximum identity_minimum identity_cycle is_generated generation_expression is_updatable")
+		r := pgCatalogFor(name)
 		for _, n := range columnNames {
 			t := columnRelations[n]
 			ns, obj := pgObjectNames(n)
@@ -556,17 +513,18 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 	return nil, fmt.Errorf("unsupported PostgreSQL catalog %s", name)
 }
 func (s *Schema) postgresConstraints(name string, tables []string, database string) *ResultSet {
-	r := pgCatalog("oid:o conname connamespace:o contype condeferrable:b condeferred:b convalidated:b conrelid:o contypid:o conindid:o conparentid:o confrelid:o confupdtype confdeltype confmatchtype conislocal:b coninhcount:i connoinherit:b conkey confkey conbin")
+	view := s.catalogFacts()
+	r := pgCatalogFor(name)
 	switch name {
 	case "information_schema.table_constraints":
-		r = pgCatalog("constraint_catalog constraint_schema constraint_name table_catalog table_schema table_name constraint_type is_deferrable initially_deferred enforced nulls_distinct")
+		r = pgCatalogFor(name)
 	case "information_schema.key_column_usage":
-		r = pgCatalog("constraint_catalog constraint_schema constraint_name table_catalog table_schema table_name column_name ordinal_position:i position_in_unique_constraint:i")
+		r = pgCatalogFor(name)
 	case "information_schema.referential_constraints":
-		r = pgCatalog("constraint_catalog constraint_schema constraint_name unique_constraint_catalog unique_constraint_schema unique_constraint_name match_option update_rule delete_rule")
+		r = pgCatalogFor(name)
 	}
 	for _, n := range tables {
-		t := s.tables[n]
+		t := view.tables[n]
 		ns, obj := pgObjectNames(n)
 		for _, c := range t.Constraints {
 			kind := pgConstraintKind(c.Kind)
@@ -584,7 +542,7 @@ func (s *Schema) postgresConstraints(name string, tables []string, database stri
 				continue
 			}
 			oid := pgSyntheticOID(fmt.Sprintf("constraint:%d:%s", t.ID, c.Name))
-			ref := s.tables[c.RefTable]
+			ref := view.tables[c.RefTable]
 			refid := int64(0)
 			if ref != nil {
 				refid = pgObjectOID(ref.ID)

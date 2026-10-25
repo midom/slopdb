@@ -21,7 +21,7 @@ func (s *Schema) mysqlExplain(stmt *ExplainStmt) (*ResultSet, bool, error) {
 	if !ok {
 		return nil, false, nil
 	}
-	resolved, err := s.resolveMySQLTables(sel)
+	resolved, err := s.resolveCatalogTables(sel)
 	if err != nil {
 		return nil, true, err
 	}

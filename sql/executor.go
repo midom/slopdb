@@ -64,6 +64,7 @@ type ViewInfo struct {
 }
 
 type Schema struct {
+	catalogView              *CatalogSnapshot
 	foreignChanges           []foreignChange
 	foreignConstraintModes   map[string]bool
 	checkingDeferred         bool
@@ -4405,11 +4406,7 @@ func (s *Schema) selectInto(stmt *SelectStmt, dst *ResultSet) (result *ResultSet
 	if stmt.Compound != nil {
 		return s.Union(stmt.Compound)
 	}
-	stmt, err = s.resolvePostgresTables(stmt)
-	if err != nil {
-		return nil, err
-	}
-	stmt, err = s.resolveMySQLTables(stmt)
+	stmt, err = s.resolveCatalogTables(stmt)
 	if err != nil {
 		return nil, err
 	}

@@ -36,6 +36,7 @@ type CatalogSnapshot struct {
 }
 
 func (s *Schema) CatalogSnapshot() *CatalogSnapshot {
+	s.catalogShared = true
 	temp := map[string]bool{}
 	for name := range s.tables {
 		if s.isTemporaryTable(name) {
@@ -54,7 +55,7 @@ func DecodeCatalogSnapshot(metadata map[string][]byte) (*CatalogSnapshot, error)
 		target any
 	}{
 		{"\x00__schema__", &c.tables}, {"\x00__schema_indexes__", &c.indexes},
-		{"\x00__schema_views__", &c.views}, {"\x00__schema_triggers__", &c.triggers},
+		{"\x00__schema_views__", &c.views}, {"\x00__schema_trig__", &c.triggers},
 		{"\x00__namespaces_v1__", &c.namespaces},
 	} {
 		if data := metadata[entry.key]; len(data) > 0 {

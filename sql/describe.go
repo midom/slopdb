@@ -64,20 +64,8 @@ func (s *Schema) describeTable(name string, scope map[string][]ColumnDef, depth 
 		}
 		return cols, nil
 	}
-	if s.PostgresMode() {
-		if data, err := s.PostgresCatalogTable(name); data != nil || err != nil {
-			if err != nil {
-				return nil, err
-			}
-			return append([]ColumnDef(nil), data.Columns...), nil
-		}
-	}
-	if options, ok := MySQLSession(s.ctx); ok && (strings.HasPrefix(name, "information_schema.") || name == "mysql.user") {
-		data, err := s.mysqlCatalogTable(name, options)
-		if err != nil {
-			return nil, err
-		}
-		return append([]ColumnDef(nil), data.Columns...), nil
+	if columns, known, err := s.virtualRelationColumns(name); known || err != nil {
+		return append([]ColumnDef(nil), columns...), err
 	}
 	return nil, fmt.Errorf("table %q does not exist", name)
 }
