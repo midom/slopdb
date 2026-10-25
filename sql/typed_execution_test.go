@@ -41,7 +41,7 @@ func TestTypedExpressionSemantics(t *testing.T) {
 		{"NULL IS NULL", NewIntValue(1), ""},
 		{"NULL IS NOT NULL", NewIntValue(0), ""},
 		{"'a'||'b'", NewTextValue("ab"), ""},
-		{"X'0102'", NewBlobValue([]byte{1, 2}), ""},
+		{"X'0102'", Value{Type: ColBlob, Blob: []byte{1, 2}, HexLiteral: true}, ""},
 		{"9223372036854775807+1", Value{}, "integer overflow"},
 		{"(-9223372036854775807-1)/-1", Value{}, "integer overflow"},
 		{"-(-9223372036854775807-1)", Value{}, "integer overflow"},
