@@ -110,7 +110,6 @@ func (db *Database) rollbackRequestedTransaction(schema *sql.Schema, request *Tr
 }
 
 func (db *Database) finishManagedCall(schema *sql.Schema, ctx context.Context, err error, pending bool) error {
-	defer db.syncActivity(schema)
 	c := &db.locks.state(schema).transaction
 	c.mu.Lock()
 	c.activeCancel = nil
@@ -121,6 +120,7 @@ func (db *Database) finishManagedCall(schema *sql.Schema, ctx context.Context, e
 	c.mu.Unlock()
 	if request != nil {
 		if aborted := db.rollbackRequestedTransaction(schema, request, pending); aborted != nil {
+			db.syncActivity(schema)
 			return aborted
 		}
 	}
