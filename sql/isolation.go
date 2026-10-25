@@ -5,8 +5,9 @@ import (
 	"strings"
 )
 
-// IsolationLevel controls consistent reads. Mutations and locking reads always
-// use the statement's latest committed view, including under REPEATABLE READ.
+// IsolationLevel controls consistent reads using the session dialect's policy.
+// MySQL/native mutations and locking reads use current committed data; PostgreSQL
+// REPEATABLE READ retains the transaction snapshot for those operations too.
 type IsolationLevel string
 
 const (
@@ -88,6 +89,12 @@ func (s *Schema) releaseConsistentSnapshot() {
 func (s *Schema) StatementReadView(statement Statement) {
 	s.statementConsistent = false
 	s.statementQuery = false
+	policy := s.dialect.ReadPolicy()
+	if policy.SnapshotMutations && s.inTx && s.txIsolation == RepeatableRead && !snapshotControl(statement) {
+		s.statementConsistent = true
+		s.statementQuery = true
+		return
+	}
 	switch stmt := statement.(type) {
 	case *SessionVariableStmt:
 		s.statementQuery = true
@@ -133,6 +140,9 @@ func (s *Schema) useConsistentStatementSnapshot() error {
 // Conversely, a nonlocking subquery in a SELECT FOR UPDATE is a consistent read;
 // views expanded with physical row tracking inherit their parent's read view.
 func (s *Schema) selectReadView(stmt *SelectStmt) (func(), error) {
+	if s.dialect.ReadPolicy().SnapshotMutations {
+		return func() {}, nil
+	}
 	if !s.statementActive || !s.statementQuery || !s.inTx || s.txIsolation != RepeatableRead || !selectReadsTable(stmt) {
 		return func() {}, nil
 	}

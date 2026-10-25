@@ -25,6 +25,9 @@ func (s *Schema) validateLockedRow(key []byte) error {
 		return err
 	}
 	if changed {
+		if s.inTx && s.txIsolation == RepeatableRead && s.dialect.ReadPolicy().ConflictOnChangedRow {
+			return fmt.Errorf("%w: row changed after transaction snapshot", ErrConflict)
+		}
 		return ErrStatementRetry
 	}
 	s.validatedRowKey = string(key)
