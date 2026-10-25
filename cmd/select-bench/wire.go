@@ -22,10 +22,9 @@ import (
 
 const wireQueryPrefix = "SELECT id,v,payload FROM small_rows WHERE id="
 
-// Both ends of loopback TCP live in this process: the harness therefore counts
-// client decoding, database/sql, protocol handling and engine CPU/allocations.
-// Each reader owns typed scan destinations; there is no ExecResult/map adapter.
-type wireReader struct {
+// Each database/sql reader owns typed scan destinations. Embedded and TCP
+// backends use the same path without an ExecResult/map adapter.
+type sqlPoolReader struct {
 	pool      *gosql.DB
 	statement *gosql.Stmt
 	literal   []byte
@@ -34,7 +33,7 @@ type wireReader struct {
 	rows      int
 }
 
-func (r *wireReader) openRows(ctx context.Context, id int64) (*gosql.Rows, error) {
+func (r *sqlPoolReader) openRows(ctx context.Context, id int64) (*gosql.Rows, error) {
 	if r.statement != nil {
 		return r.statement.QueryContext(ctx, id)
 	}
@@ -44,7 +43,7 @@ func (r *wireReader) openRows(ctx context.Context, id int64) (*gosql.Rows, error
 	return r.pool.QueryContext(ctx, string(r.literal))
 }
 
-func (r *wireReader) scanRows(rows *gosql.Rows, id int64) error {
+func (r *sqlPoolReader) scanRows(rows *gosql.Rows, id int64) error {
 	r.rows = 0
 	var scanErr error
 	for rows.Next() {
@@ -64,7 +63,7 @@ func (r *wireReader) scanRows(rows *gosql.Rows, id int64) error {
 	return nil
 }
 
-func (r *wireReader) query(id int64) error {
+func (r *sqlPoolReader) query(id int64) error {
 	r.rows = 0
 	rows, err := r.openRows(context.Background(), id)
 	if err != nil {
@@ -73,13 +72,13 @@ func (r *wireReader) query(id int64) error {
 	return r.scanRows(rows, id)
 }
 
-func (r *wireReader) validate(id int64, expected []byte) error {
+func (r *sqlPoolReader) validate(id int64, expected []byte) error {
 	if len(expected) != payloadBytes {
 		return fmt.Errorf("invalid validation buffer size %d", len(expected))
 	}
 	payload(id, expected)
 	if r.rows != 1 || r.id != id || r.value != id*17 || !bytes.Equal(r.data, expected) {
-		return fmt.Errorf("id %d: incorrect wire result", id)
+		return fmt.Errorf("id %d: incorrect database/sql result", id)
 	}
 	return nil
 }
@@ -89,6 +88,8 @@ type benchmarkWireServer interface {
 	Close() error
 }
 
+// With no Endpoint, both TCP endpoints live in this process and the harness
+// counts client, database/sql, protocol and engine CPU/allocations together.
 func newWireBackend(c config, d *db.Database) (_ *benchmarkBackend, err error) {
 	if c.Workers < 1 {
 		return nil, fmt.Errorf("wire backend requires at least one worker")
@@ -127,7 +128,7 @@ func newWireBackend(c config, d *db.Database) (_ *benchmarkBackend, err error) {
 		go func() { served <- server.Serve(listener) }()
 	}
 	var pool *gosql.DB
-	var statement *gosql.Stmt
+	var poolClose func() error
 	var once sync.Once
 	var closeErr error
 	backend := &benchmarkBackend{}
@@ -135,11 +136,10 @@ func newWireBackend(c config, d *db.Database) (_ *benchmarkBackend, err error) {
 		once.Do(func() {
 			// Close clients before stopping the server, and join Serve before the
 			// harness closes its Database. The server never owns that Database.
-			if pool != nil {
+			if poolClose != nil {
+				closeErr = errors.Join(closeErr, poolClose())
+			} else if pool != nil {
 				closeErr = errors.Join(closeErr, pool.Close())
-			}
-			if statement != nil {
-				closeErr = errors.Join(closeErr, statement.Close())
 			}
 			if server != nil {
 				closeErr = errors.Join(closeErr, server.Close())
@@ -180,6 +180,46 @@ func newWireBackend(c config, d *db.Database) (_ *benchmarkBackend, err error) {
 	if err != nil {
 		return nil, err
 	}
+	sqlBackend, err := newSQLPoolBackend(c, pool)
+	if err != nil {
+		return nil, err
+	}
+	poolClose = sqlBackend.close
+	backend.readers = sqlBackend.readers
+	backend.poolStats = sqlBackend.poolStats
+	return backend, nil
+}
+
+// newSQLPoolBackend owns pool setup and cleanup for both embedded and wire
+// database/sql drivers, so their timed scan and validation paths are identical.
+func newSQLPoolBackend(c config, pool *gosql.DB) (_ *benchmarkBackend, err error) {
+	if pool == nil {
+		return nil, fmt.Errorf("nil SQL pool")
+	}
+	var statement *gosql.Stmt
+	var once sync.Once
+	var closeErr error
+	backend := &benchmarkBackend{}
+	backend.close = func() error {
+		once.Do(func() {
+			closeErr = pool.Close()
+			if statement != nil {
+				closeErr = errors.Join(closeErr, statement.Close())
+			}
+		})
+		return closeErr
+	}
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, backend.close())
+		}
+	}()
+	if c.Workers < 1 {
+		return nil, fmt.Errorf("SQL pool backend requires at least one worker")
+	}
+	if c.QueryMode != "text" && c.QueryMode != "prepared" {
+		return nil, fmt.Errorf("unsupported SQL pool query mode %q", c.QueryMode)
+	}
 	pool.SetMaxOpenConns(c.Workers)
 	pool.SetMaxIdleConns(c.Workers)
 	backend.poolStats = func() poolCounters {
@@ -190,7 +230,7 @@ func newWireBackend(c config, d *db.Database) (_ *benchmarkBackend, err error) {
 	defer cancel()
 	if c.QueryMode == "prepared" {
 		text := query
-		if c.API != "mysql" {
+		if c.API == "pq" || c.API == "pgx" {
 			text = "SELECT id,v,payload FROM small_rows WHERE id=$1"
 		}
 		statement, err = pool.PrepareContext(ctx, text)
@@ -199,9 +239,9 @@ func newWireBackend(c config, d *db.Database) (_ *benchmarkBackend, err error) {
 		}
 	}
 	backend.readers = make([]benchmarkReader, c.Workers)
-	readers := make([]*wireReader, c.Workers)
+	readers := make([]*sqlPoolReader, c.Workers)
 	for i := range readers {
-		reader := &wireReader{pool: pool, statement: statement, literal: make([]byte, len(wireQueryPrefix), len(wireQueryPrefix)+20)}
+		reader := &sqlPoolReader{pool: pool, statement: statement, literal: make([]byte, len(wireQueryPrefix), len(wireQueryPrefix)+20)}
 		copy(reader.literal, wireQueryPrefix)
 		readers[i] = reader
 		backend.readers[i] = reader
