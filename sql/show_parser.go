@@ -89,6 +89,18 @@ func (p *Parser) parseShow() (Statement, error) {
 		return nil, fmt.Errorf("FULL is only supported for SHOW TABLES and SHOW COLUMNS")
 	}
 	switch kind {
+	case "RAFT":
+		if !p.showWord("STATUS") {
+			return nil, fmt.Errorf("expected STATUS after SHOW RAFT")
+		}
+		p.advance()
+		stmt.Kind = "RAFT STATUS"
+	case "GLOBAL":
+		if !p.showWord("VARIABLES") {
+			return nil, fmt.Errorf("expected VARIABLES after SHOW GLOBAL")
+		}
+		p.advance()
+		stmt.Kind = "GLOBAL VARIABLES"
 	case "REPLICATION":
 		if !p.showWord("POSITION") {
 			return nil, fmt.Errorf("expected POSITION after SHOW REPLICATION")

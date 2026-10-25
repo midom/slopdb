@@ -20,11 +20,19 @@ func (n *Node) publishPosition(index, term uint64) {
 		n.position.Store(nil)
 		return
 	}
+	position := n.formatPosition(index, term)
+	n.position.Store(&position)
+}
+
+func (n *Node) formatPosition(index, term uint64) string {
+	if index == 0 || term == 0 || n.config.LogsOnly {
+		return ""
+	}
 	body := "sdb1:" + n.cluster + ":" + strconv.FormatUint(index, 10) + ":" + strconv.FormatUint(term, 10)
 	h := hmac.New(sha256.New, []byte(n.config.Token))
 	_, _ = h.Write([]byte(body))
 	position := body + ":" + hex.EncodeToString(h.Sum(nil))
-	n.position.Store(&position)
+	return position
 }
 
 func (n *Node) currentPosition() string {

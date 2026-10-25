@@ -15,6 +15,7 @@ import (
 )
 
 type client struct {
+	observation             *stateObservation
 	capabilities            uint32
 	moreResults             bool
 	preparedPath            []string
@@ -190,7 +191,7 @@ func (c *client) dispatch(p []byte) error {
 			return c.writeError(err)
 		}
 		c.closeStatements()
-		session, err := c.server.database.NewSession()
+		session, err := c.server.database.NewInspectionSession(c.ctx)
 		if err != nil {
 			return c.writeError(err)
 		}
@@ -221,6 +222,9 @@ func scalar(name string, value sql.Value) *db.ExecResult {
 }
 
 func (c *client) query(query string, stmt *db.Stmt, args []any) (*db.ExecResult, error) {
+	oldObservation := c.observation
+	c.observation = &stateObservation{}
+	defer func() { c.observation = oldObservation }()
 	c.beginDiagnostics(query)
 	if stmt == nil {
 		if result, handled, err := c.control(query); handled {

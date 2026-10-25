@@ -418,6 +418,8 @@ func Open(ctx context.Context, config Config) (node *Node, err error) {
 		n.captureDurableView(cp.Index, cp.Term, true)
 	}
 	guard := &db.ReplicationGuard{Check: n.checkSQL, CheckControl: n.checkSQLControl, Durable: n.FlushDurable}
+	guard.State = n.sqlState
+	guard.CheckInspection = n.checkInspection
 	guard.Position, guard.AckedPosition, guard.WaitPosition = n.currentPosition, n.AckedPosition, n.WaitPosition
 	guard.CheckRead, guard.CheckSession, guard.ReadSnapshot = n.checkReadSQL, n.checkReadSQL, n.captureReadSnapshot
 	n.database.SetReplicationGuard(guard)

@@ -311,6 +311,8 @@ func (s *Schema) describeStatement(stmt Statement, outer map[string][]ColumnDef,
 		return describeColumns("plan"), nil
 	case *ShowStmt:
 		switch st.Kind {
+		case "RAFT STATUS", "GLOBAL VARIABLES":
+			return describeColumns("Variable_name", "Value"), nil
 		case "COLUMNS":
 			return describeColumns("Field", "Type", "Null", "Key", "Default", "Extra"), nil
 		case "INDEX":

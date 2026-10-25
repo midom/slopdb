@@ -657,3 +657,7 @@ func (l *LSMTree) stampChangeBatch(batch []Mutation) []Mutation {
 	copy(owned, batch)
 	return append(owned, Mutation{Key: changeLogClockKey, Value: binary.BigEndian.AppendUint64(nil, uint64(time.Now().UTC().UnixNano()))})
 }
+
+// ChangeLogEnabled reports committed journal activation without reading data or
+// enabling it. State inspection must not append a Raft/WAL control record.
+func (l *LSMTree) ChangeLogEnabled() bool { return l.changeLogEnabled.Load() }

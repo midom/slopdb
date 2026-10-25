@@ -171,7 +171,7 @@ func (c *client) handshake() error {
 	c.account = account
 	c.database = c.server.database
 	c.capabilities = flags & serverCapabilities
-	session, err := c.server.database.NewSession()
+	session, err := c.server.database.NewInspectionSession(c.ctx)
 	if err != nil {
 		return c.fail(1040, "08004", err.Error())
 	}

@@ -43,6 +43,7 @@ type Config struct {
 // Server owns listeners and client sessions, but never closes the Database.
 // Multiple Serve calls can expose the same database on TCP and Unix sockets.
 type Server struct {
+	startedAt  time.Time
 	database   *db.Database
 	config     Config
 	mu         sync.Mutex
@@ -89,7 +90,7 @@ func New(database *db.Database, config Config) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("MySQL TLS: %w", err)
 	}
-	server := &Server{database: database, config: config, listeners: make(map[net.Listener]struct{}), clients: make(map[net.Conn]context.CancelFunc), done: make(chan struct{})}
+	server := &Server{startedAt: time.Now(), database: database, config: config, listeners: make(map[net.Listener]struct{}), clients: make(map[net.Conn]context.CancelFunc), done: make(chan struct{})}
 	if err := server.initAccounts(); err != nil {
 		return nil, err
 	}

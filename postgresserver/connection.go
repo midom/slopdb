@@ -45,7 +45,7 @@ func (c *client) run() {
 	if err := c.startup(); err != nil {
 		return
 	}
-	session, err := c.server.database.NewSession()
+	session, err := c.server.database.NewInspectionSession(c.ctx)
 	if err != nil {
 		_ = c.fatal("57P01", err.Error())
 		return

@@ -18,10 +18,13 @@ var ErrInvalidPosition = errors.New("invalid replication position or cluster inc
 // Install before exposing the database to clients. Storage access below is for
 // a replication owner; applications must continue to use SQL APIs.
 type ReplicationGuard struct {
-	Position      func() string
-	AckedPosition func(context.Context) (string, error)
-	WaitPosition  func(context.Context, string) error
-	Check         func(context.Context) error
+	// State is a local owner snapshot; CheckInspection admits metadata/session-only commands.
+	State           func(context.Context) (RaftState, error)
+	CheckInspection func(context.Context) error
+	Position        func() string
+	AckedPosition   func(context.Context) (string, error)
+	WaitPosition    func(context.Context, string) error
+	Check           func(context.Context) error
 	// Optional read/session admission. Nil retains leader-only admission.
 	CheckRead    func(context.Context) error
 	CheckSession func(context.Context) error
@@ -52,6 +55,9 @@ func (d *Database) installReplicaSnapshotHook(schema *sql.Schema) {
 		return
 	}
 	schema.SetStatementSnapshotHook(func(ctx context.Context, s *sql.Schema) (bool, error) {
+		if local, _ := ctx.Value(localInspectionKey{}).(bool); local {
+			return false, nil
+		}
 		if g := d.replication.Load(); g != nil && g.ReadSnapshot != nil {
 			return g.ReadSnapshot(ctx, s)
 		}
@@ -76,6 +82,15 @@ func (d *Database) checkStatementReplication(ctx context.Context, statements []s
 	}
 	if g == nil {
 		return nil
+	}
+	if g.CheckInspection != nil && len(statements) > 0 {
+		local := true
+		for _, stmt := range statements {
+			local = local && sql.IsLocalInspectionStatement(stmt)
+		}
+		if local {
+			return g.CheckInspection(ctx)
+		}
 	}
 	allPosition := len(statements) > 0
 	for _, statement := range statements {

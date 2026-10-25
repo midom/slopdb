@@ -46,7 +46,15 @@ func (db *Database) NewSession() (*Session, error) {
 	return db.newSessionContext(context.Background())
 }
 
+// NewInspectionSession permits protocol login for local state inspection while
+// all data statements retain ordinary replication admission.
+func (db *Database) NewInspectionSession(ctx context.Context) (*Session, error) {
+	return db.newSessionContextPolicy(ctx, true)
+}
 func (db *Database) newSessionContext(ctx context.Context) (*Session, error) {
+	return db.newSessionContextPolicy(ctx, false)
+}
+func (db *Database) newSessionContextPolicy(ctx context.Context, inspection bool) (*Session, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -55,7 +63,11 @@ func (db *Database) newSessionContext(ctx context.Context) (*Session, error) {
 			return nil, err
 		}
 		defer db.execution.RUnlock()
-		if err := db.checkReplicationSession(ctx); err != nil {
+		check := db.checkReplicationSession
+		if g := db.replication.Load(); inspection && g != nil && g.CheckInspection != nil {
+			check = g.CheckInspection
+		}
+		if err := check(ctx); err != nil {
 			return nil, err
 		}
 	}

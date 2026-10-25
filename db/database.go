@@ -18,6 +18,7 @@ import (
 )
 
 type Database struct {
+	changeIdentity     atomic.Pointer[changefeedIdentity]
 	currentStorage     atomic.Pointer[storage.LSMTree]
 	replication        atomic.Pointer[ReplicationGuard]
 	generation         atomic.Uint64
@@ -250,6 +251,7 @@ func (db *Database) execAdmittedStatementsInto(ctx context.Context, stmts []sql.
 		if guard := db.replication.Load(); guard != nil && guard.ReadSnapshot != nil {
 			statementCtx = readStatementContext(ctx, schema, stmt)
 		}
+		statementCtx = db.inspectionContext(statementCtx, stmt)
 		schema.SetContext(statementCtx)
 		if admitEach {
 			if err := db.checkStatementReplication(statementCtx, []sql.Statement{stmt}); err != nil {
@@ -271,6 +273,16 @@ func (db *Database) execAdmittedStatementsInto(ctx context.Context, stmts []sql.
 				return nil, ErrTxDone
 			}
 			result, err = db.execPosition(ctx, schema, position)
+			if err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if show, ok := stmt.(*sql.ShowStmt); ok && (show.Kind == "RAFT STATUS" || show.Kind == "GLOBAL VARIABLES") {
+			if transactionBound && !schema.InTransaction() {
+				return nil, ErrTxDone
+			}
+			result, err = db.runtimeShow(statementCtx, show)
 			if err != nil {
 				return nil, err
 			}

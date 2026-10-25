@@ -42,6 +42,9 @@ func sqlTokens(query string, options sql.ParseOptions) []sql.Token {
 }
 
 func (c *client) variable(name string, global bool) (sql.Value, error) {
+	if value, known, err := c.serverVariable(name); known || err != nil {
+		return value, err
+	}
 	switch strings.ToLower(name) {
 	case "net_read_timeout":
 		if global {
@@ -55,8 +58,6 @@ func (c *client) variable(name string, global bool) (sql.Value, error) {
 		return sql.NewIntValue(c.variables.netWriteTimeout), nil
 	case "warning_count":
 		return sql.NewIntValue(int64(c.warningCount())), nil
-	case "log_bin":
-		return sql.NewIntValue(1), nil
 	case "binlog_format":
 		return sql.NewTextValue("ROW"), nil
 	case "binlog_row_image":
@@ -65,26 +66,6 @@ func (c *client) variable(name string, global bool) (sql.Value, error) {
 		return sql.NewTextValue("CRC32"), nil
 	case "gtid_mode", "enforce_gtid_consistency":
 		return sql.NewTextValue("ON"), nil
-	case "server_id", "server_uuid", "gtid_executed", "gtid_purged":
-		snapshot, err := c.server.binlogSnapshot(c.ctx)
-		if err != nil {
-			return sql.Value{}, err
-		}
-		if strings.EqualFold(name, "server_id") {
-			return sql.NewIntValue(int64(snapshot.serverID)), nil
-		}
-		if strings.EqualFold(name, "gtid_purged") {
-			return sql.NewTextValue(""), nil
-		}
-		source := snapshot.source
-		uuid := source[:8] + "-" + source[8:12] + "-" + source[12:16] + "-" + source[16:20] + "-" + source[20:]
-		if strings.EqualFold(name, "server_uuid") {
-			return sql.NewTextValue(uuid), nil
-		}
-		if len(snapshot.entries) == 0 {
-			return sql.NewTextValue(""), nil
-		}
-		return sql.NewTextValue(uuid + ":1-" + fmt.Sprint(snapshot.entries[len(snapshot.entries)-1].sequence)), nil
 	case "autocommit":
 		if c.autocommit {
 			return sql.NewIntValue(1), nil
@@ -100,16 +81,10 @@ func (c *client) variable(name string, global bool) (sql.Value, error) {
 			return sql.NewTextValue("STRICT_TRANS_TABLES"), nil
 		}
 		return sql.NewTextValue(c.variables.sqlMode), nil
-	case "read_only", "super_read_only":
-		v, err := c.server.database.MySQLReadOnly(c.ctx)
-		if err != nil {
-			return sql.Value{}, err
-		}
-		if v {
-			return sql.NewIntValue(1), nil
-		}
-		return sql.NewIntValue(0), nil
 	case "character_set_client", "character_set_connection", "character_set_results", "character_set_server", "character_set_database":
+		if global {
+			return sql.NewTextValue("utf8mb4"), nil
+		}
 		return sql.NewTextValue(c.variables.charset), nil
 	case "collation_connection", "collation_server", "collation_database":
 		return sql.NewTextValue("utf8mb4_bin"), nil
@@ -259,9 +234,19 @@ func (c *client) compatibilityControl(query string) (*db.ExecResult, bool, error
 		}
 		names := []string{"autocommit", "group_concat_max_len", "sql_mode", "read_only", "super_read_only", "character_set_client", "character_set_connection", "character_set_results", "collation_connection", "version", "version_comment", "max_allowed_packet", "ft_min_word_len", "transaction_isolation", "tx_isolation", "lower_case_table_names", "time_zone", "system_time_zone"}
 		names = append(names, "net_read_timeout", "net_write_timeout", "log_bin", "binlog_format", "binlog_row_image", "binlog_checksum", "gtid_mode", "enforce_gtid_consistency", "server_id", "server_uuid", "gtid_executed", "gtid_purged")
+		extra, err := c.serverVariableNames()
+		if err != nil {
+			return nil, true, err
+		}
+		names = append(names, extra...)
 		sort.Strings(names)
 		r := &db.ExecResult{Columns: []sql.ColumnDef{{Name: "Variable_name", ColType: sql.ColText}, {Name: "Value", ColType: sql.ColText}}}
+		seen := map[string]bool{}
 		for _, name := range names {
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
 			if !variableLike(name, pattern) {
 				continue
 			}
@@ -269,9 +254,13 @@ func (c *client) compatibilityControl(query string) (*db.ExecResult, bool, error
 			if err != nil {
 				return nil, true, err
 			}
-			text := value.Text
-			if value.Type == sql.ColInteger {
-				text = strconv.FormatInt(value.Int, 10)
+			text := value.String()
+			if systemBoolVariable(name) && value.Type == sql.ColInteger {
+				if value.Int != 0 {
+					text = "ON"
+				} else {
+					text = "OFF"
+				}
 			}
 			r.Rows = append(r.Rows, map[string]sql.Value{"Variable_name": sql.NewTextValue(name), "Value": sql.NewTextValue(text)})
 		}
@@ -280,49 +269,7 @@ func (c *client) compatibilityControl(query string) (*db.ExecResult, bool, error
 	return c.setSessionVariables(tokens)
 }
 
-func variableLike(value, pattern string) bool {
-	var visit func(int, int) bool
-	visit = func(i, j int) bool {
-		for j < len(pattern) {
-			switch pattern[j] {
-			case '\\':
-				j++
-				if j == len(pattern) || i == len(value) || value[i] != pattern[j] {
-					return false
-				}
-				i++
-				j++
-			case '_':
-				if i == len(value) {
-					return false
-				}
-				i++
-				j++
-			case '%':
-				for j < len(pattern) && pattern[j] == '%' {
-					j++
-				}
-				if j == len(pattern) {
-					return true
-				}
-				for ; i <= len(value); i++ {
-					if visit(i, j) {
-						return true
-					}
-				}
-				return false
-			default:
-				if i == len(value) || strings.ToLower(value[i:i+1]) != strings.ToLower(pattern[j:j+1]) {
-					return false
-				}
-				i++
-				j++
-			}
-		}
-		return i == len(value)
-	}
-	return visit(0, 0)
-}
+func variableLike(value, pattern string) bool { return sql.SystemVariableLike(value, pattern) }
 
 func (c *client) setSessionVariables(tokens []sql.Token) (*db.ExecResult, bool, error) {
 	i := 1
