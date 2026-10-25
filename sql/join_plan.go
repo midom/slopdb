@@ -425,7 +425,7 @@ type joinReader struct {
 }
 
 func (s *Schema) joinReader(r *joinRelation, pairs []joinKeyPair) *joinReader {
-	if s.collation != "" && s.collation != BinaryCollation {
+	if s.nonbinaryDefaultCollation() || relationJoinKeysHaveExplicitCollation(r.info, pairs) {
 		pairs = nil
 	}
 	reader := &joinReader{relation: r, pairs: pairs, cache: make(map[string][]map[string]Value)}
@@ -613,7 +613,11 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 	var mask uint64
 	estimatedLeft := 1.0
 	for depth, i := range p.order {
-		readers[depth] = s.joinReader(p.relations[i], p.pairs(i, mask))
+		pairs := p.pairs(i, mask)
+		if p.pairsHaveExplicitCollation(i, pairs) {
+			pairs = nil
+		}
+		readers[depth] = s.joinReader(p.relations[i], pairs)
 		r := p.relations[i]
 		hash := p.preferHashJoin(i, mask, estimatedLeft, readers[depth])
 		if depth > 0 && len(readers[depth].pairs) > 0 && hash {

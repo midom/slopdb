@@ -414,8 +414,17 @@ func (s *Schema) FinishOnlineIndex(stmt *CreateIndexStmt, b *OnlineIndexBuild) e
 	}
 	test := *b.idx
 	s.bindIndexCollation(&test)
-	if !reflect.DeepEqual(test.collation, b.idx.collation) || !reflect.DeepEqual(test.binaryColumns, b.idx.binaryColumns) {
+	if !reflect.DeepEqual(test.collation, b.idx.collation) || !reflect.DeepEqual(test.binaryColumns, b.idx.binaryColumns) || !reflect.DeepEqual(test.columnCollations, b.idx.columnCollations) {
 		return fmt.Errorf("%w: collation changed during online index build", ErrConflict)
+	}
+	if stmt.Fulltext != b.idx.Fulltext {
+		return fmt.Errorf("%w: full-text index definition changed during online build", ErrConflict)
+	}
+	if err := configureFullTextIndex(&test, stmt.FullTextConfig); err != nil {
+		return fmt.Errorf("%w: full-text configuration changed during online build: %v", ErrConflict, err)
+	}
+	if !equivalentFullTextConfigs(test.FullTextConfig, b.idx.FullTextConfig) {
+		return fmt.Errorf("%w: full-text configuration changed during online build", ErrConflict)
 	}
 	if _, exists := s.indexes[b.idx.Name]; exists {
 		if stmt.IfNotExists {

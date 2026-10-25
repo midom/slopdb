@@ -568,7 +568,7 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 			}
 		}
 		ordered = orderedAggregateInput(stmt, info, groupExprs, paths)
-		if s.expressionMySQL() || s.collation != "" && s.collation != BinaryCollation {
+		if s.expressionMySQL() || s.nonbinaryDefaultCollation() || tableHasExplicitCollation(info) {
 			ordered = false
 		}
 		finish := (func(int64, int64, error))(nil)
@@ -577,7 +577,7 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 		}
 		var typed *typedAggregate
 		var ok bool
-		if s.expressionMySQL() || s.collation != "" && s.collation != BinaryCollation {
+		if s.expressionMySQL() || s.nonbinaryDefaultCollation() || tableHasExplicitCollation(info) {
 			// The typed program uses bytewise comparison and grouping keys.
 			// Unicode modes use the expression evaluator's collation rules.
 		} else if p := stmt.prepared; p != nil {

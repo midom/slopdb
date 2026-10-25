@@ -293,7 +293,7 @@ func (s *Schema) executeJoins(stmt *SelectStmt, baseRows []map[string]Value, bas
 			// string can equal a number without sharing its string hash key.
 			pairs = nil
 		}
-		if s.collation != "" && s.collation != BinaryCollation {
+		if s.nonbinaryDefaultCollation() || joinKeyValuesHaveCollation(result, joinRows, pairs) {
 			// A BINARY column can be compared to a collated column. Their
 			// hash representations then differ even when the raw values match.
 			pairs = nil

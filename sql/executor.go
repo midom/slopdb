@@ -1879,6 +1879,7 @@ func (s *Schema) ensureCatalogWritable() {
 		// source and does not turn an ordinary row update into a catalog change.
 		c.Constraints = slices.Clone(v.Constraints)
 		for i := range c.Constraints {
+			c.Constraints[i].FullTextConfig = copyFullTextConfig(v.Constraints[i].FullTextConfig)
 			c.Constraints[i].Columns = slices.Clone(v.Constraints[i].Columns)
 			c.Constraints[i].PrefixLengths = slices.Clone(v.Constraints[i].PrefixLengths)
 			c.Constraints[i].RefColumns = slices.Clone(v.Constraints[i].RefColumns)
@@ -1907,6 +1908,9 @@ func (s *Schema) ensureCatalogWritable() {
 		c := *v
 		c.Columns = slices.Clone(v.Columns)
 		c.PrefixLengths = slices.Clone(v.PrefixLengths)
+		c.columnCollations = maps.Clone(v.columnCollations)
+		c.binaryColumns = maps.Clone(v.binaryColumns)
+		c.FullTextConfig = copyFullTextConfig(v.FullTextConfig)
 		indexes[k] = &c
 	}
 	for k, v := range s.views {

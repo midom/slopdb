@@ -265,6 +265,9 @@ type typedAggregate struct {
 }
 
 func compileTypedAggregate(info *TableInfo, table, alias string, where Expression, group []Expression, functions []*FuncCallExpr, representative map[string]bool) (*typedAggregate, bool) {
+	if tableHasExplicitCollation(info) {
+		return nil, false
+	}
 	// ENUM numeric values come from their column declaration, while this
 	// compact decoder intentionally handles only ordinary storage values.
 	for _, col := range info.Columns {

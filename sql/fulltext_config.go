@@ -287,3 +287,32 @@ func (s *Schema) selectFullTextIndex(table string, names []string) (*IndexInfo, 
 	}
 	return selected, nil
 }
+
+func equivalentFullTextConfigs(left, right *FullTextConfig) bool {
+	a, err := fullTextAnalyzerForIndex(&IndexInfo{FullTextConfig: left})
+	if err != nil {
+		return false
+	}
+	b, err := fullTextAnalyzerForIndex(&IndexInfo{FullTextConfig: right})
+	if err != nil {
+		return false
+	}
+	x, y := a.config, b.config
+	wordsEqual := slices.Equal(x.Stopwords, y.Stopwords)
+	x.Stopwords = nil
+	y.Stopwords = nil
+	x.analysis = nil
+	y.analysis = nil
+	return wordsEqual && reflect.DeepEqual(x, y)
+}
+
+// Catalog copies own mutable declaration slices while sharing their immutable
+// compiled analyzer. No runtime cache is modified through a declaration copy.
+func copyFullTextConfig(input *FullTextConfig) *FullTextConfig {
+	if input == nil {
+		return nil
+	}
+	copy := *input
+	copy.Stopwords = slices.Clone(input.Stopwords)
+	return &copy
+}
