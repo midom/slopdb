@@ -207,3 +207,45 @@ func TestMySQLTemporaryForeignKeysRejectedAndDDLFailureAtomic(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestMySQLTemporaryAutoCountersNeverEnterDurableGroupCommit(t *testing.T) {
+	path := t.TempDir()
+	options := storage.DefaultOptions()
+	options.DisableWAL, options.DisableWALSync = false, false
+	d, err := db.Open(path, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { d.Close() }()
+	a, b := mysqlTypeSession(t, d), mysqlTypeSession(t, d)
+	mysqlTypeExec(t, a, "CREATE TABLE shadowed(id INTEGER PRIMARY KEY AUTO_INCREMENT,v INTEGER)")
+	mysqlTypeExec(t, a, "INSERT INTO shadowed(v) VALUES(10)")
+	mysqlTypeExec(t, a, "CREATE TABLE durable(id INTEGER PRIMARY KEY AUTO_INCREMENT)")
+	mysqlTypeExec(t, a, "CREATE TEMPORARY TABLE shadowed(id INTEGER PRIMARY KEY AUTO_INCREMENT,v INTEGER)")
+	mysqlTypeExec(t, a, "INSERT INTO shadowed VALUES(1000,1000)")
+	mysqlTypeExec(t, a, "BEGIN")
+	mysqlTypeExec(t, a, "INSERT INTO shadowed(v) VALUES(1001)")
+	mysqlTypeExec(t, a, "INSERT INTO durable DEFAULT VALUES")
+	mysqlTypeExec(t, a, "COMMIT")
+	mysqlTypeExec(t, a, "INSERT INTO durable DEFAULT VALUES")
+	r := mysqlTypeExec(t, b, "INSERT INTO shadowed(v) VALUES(20)")
+	if r.LastID != 2 {
+		t.Fatalf("temporary counter reached permanent table: %+v", r)
+	}
+	mysqlTypeExec(t, b, "DELETE FROM shadowed WHERE id=2")
+	if err = d.Close(); err != nil {
+		t.Fatal(err)
+	}
+	d, err = db.Open(path, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a = mysqlTypeSession(t, d)
+	r = mysqlTypeExec(t, a, "INSERT INTO shadowed(v) VALUES(30)")
+	if r.LastID != 3 {
+		t.Fatalf("temporary counter persisted or durable floor lost: %+v", r)
+	}
+	if _, err = d.CheckIntegrity(); err != nil {
+		t.Fatal(err)
+	}
+}

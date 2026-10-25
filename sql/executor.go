@@ -1851,7 +1851,7 @@ func (s *Schema) Commit() error {
 	}
 	changed := s.catalogChanged()
 	persistent := s.persistentStateChanged()
-	queueAutoinc := s.enableAutoIncrementGroupCommit && s.parent != nil && s.lockHandler != nil && !changed &&
+	queueAutoinc := s.enableAutoIncrementGroupCommit && s.parent != nil && s.lockHandler != nil && !s.hasTemporaryTables() && !changed &&
 		!reflect.DeepEqual(s.autoincMax, s.txState.autoinc)
 	if queueAutoinc {
 		// Earlier queued counter snapshots can contain higher IDs than this
