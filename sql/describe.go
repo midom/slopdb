@@ -592,7 +592,6 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 		}
 		return result, nil
 	case *FuncCallExpr:
-
 		name := strings.ToUpper(e.Name)
 		if name == "CAST" && len(e.Args) == 2 {
 			if target, ok := e.Args[1].(*LiteralExpr); ok {
@@ -601,7 +600,17 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 				}
 				name := strings.ToUpper(mysqlCastTarget(target.Value.Text))
 				c := describeType(name)
-				if err := validateResolvedFunction(s.Dialect(), e); err != nil && !isAggregate(e) && e.Window == nil {
+				if s.PostgresMode() {
+					c = postgresDescribeType(name)
+				} else if !s.MySQLMode() && (name == "DECIMAL" || name == "NUMERIC") {
+					c = ColumnDef{ColType: ColDecimal, Declared: name}
+				}
+				s.constrainDescription(e.Args[0], c, env)
+				return c, nil
+			}
+		}
+
+		if err := validateResolvedFunction(s.Dialect(), e); err != nil && !isAggregate(e) && e.Window == nil {
 
 			return text, err
 		}

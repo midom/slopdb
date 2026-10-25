@@ -22,30 +22,14 @@ func (s *Session) DescribePreparedTypes(ctx context.Context, stmt *Stmt, options
 	if stmt.closed.Load() {
 		return sql.PreparedDescription{}, ErrStmtClosed
 	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	if err := s.gate.LockContext(ctx); err != nil {
-		return sql.PreparedDescription{}, err
-	}
-	defer s.gate.Unlock()
-	if err := s.db.execution.RLockContextForReader(ctx, s.executionReader); err != nil {
-		return sql.PreparedDescription{}, err
-	}
-	defer s.db.execution.RUnlockForReader(s.executionReader)
-	if err := s.registerActive(cancel); err != nil {
-		return sql.PreparedDescription{}, err
-	}
-	defer s.clearActive()
-	if err := s.schema.RefreshReadCommitted(); err != nil {
-		return sql.PreparedDescription{}, err
-	}
-	s.schema.SetContext(ctx)
-	resolved, err := s.schema.ResolveNamespaces(stmt.query.MetadataStatement())
-	if err != nil {
-		return sql.PreparedDescription{}, err
-	}
-	return s.schema.DescribePrepared(resolved, options)
+	var result sql.PreparedDescription
+	err := s.readCatalog(ctx, func(schema *sql.Schema) error {
+		resolved, err := schema.ResolveNamespaces(stmt.query.MetadataStatement())
+		if err != nil {
+			return err
+		}
+		result, err = schema.DescribePrepared(resolved, options)
+		return err
+	})
+	return result, err
 }
