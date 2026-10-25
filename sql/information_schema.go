@@ -51,22 +51,21 @@ type catalogRelationFact struct {
 	Relation CatalogRelation
 }
 
+func (s *Schema) catalogVisibleNamespace(name string) bool {
+	return name == "main" || s.Dialect().NamespacePolicy().Visible(name) && s.namespaceAlias(name) == name
+}
 func (s *Schema) catalogNamespace(name string) string {
-	if name != "main" {
-		return name
-	}
-	if s.PostgresMode() {
-		return "public"
-	}
-	if opts, ok := MySQLSession(s.ctx); ok {
-		if opts.RootDatabase != "" {
-			return opts.RootDatabase
-		}
-		if opts.Database != "" {
-			return opts.Database
+	if name == "main" {
+		if opts, ok := MySQLSession(s.ctx); ok {
+			if opts.RootDatabase != "" {
+				return opts.RootDatabase
+			}
+			if opts.Database != "" && !s.namespaces[opts.Database] {
+				return opts.Database
+			}
 		}
 	}
-	return "main"
+	return s.Dialect().NamespacePolicy().Present(name)
 }
 func (s *Schema) catalogDatabase() string {
 	if s.PostgresMode() {
@@ -103,6 +102,9 @@ func (s *Schema) catalogRelations(filter catalogFilter, describeViews bool) ([]c
 	out := make([]catalogRelationFact, 0, len(names))
 	for _, n := range names {
 		ns, bare := SplitSchemaName(n)
+		if !s.catalogVisibleNamespace(ns) {
+			continue
+		}
 		if filter.Table != "" && bare != filter.Table || filter.Schema != "" && s.catalogNamespace(ns) != filter.Schema {
 			continue
 		}
@@ -236,6 +238,9 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 		sort.Strings(names)
 		seen := map[string]bool{}
 		for _, ns := range names {
+			if !s.catalogVisibleNamespace(ns) {
+				continue
+			}
 			ns = s.catalogNamespace(ns)
 			if seen[ns] || filter.Schema != "" && filter.Schema != ns {
 				continue
@@ -577,6 +582,9 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 				target = tr.View
 			}
 			ns, bare := SplitSchemaName(target)
+			if !s.catalogVisibleNamespace(ns) {
+				continue
+			}
 			ns = s.catalogNamespace(ns)
 			if filter.Schema != "" && ns != filter.Schema || filter.Table != "" && bare != filter.Table {
 				continue

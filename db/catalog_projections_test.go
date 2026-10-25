@@ -106,3 +106,56 @@ func TestCatalogDeclaredNamesAndEffectiveCollations(t *testing.T) {
 		t.Fatal(r)
 	}
 }
+
+func TestSharedCatalogNamespacePolicy(t *testing.T) {
+	d, _ := bulkDatabase(t)
+	my, e := d.NewSession()
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer my.Close()
+	if e = my.SetDialect(sql.DialectMySQL); e != nil {
+		t.Fatal(e)
+	}
+	ctx := sql.WithMySQLSession(context.Background(), sql.MySQLSessionOptions{Database: "wiki", RootDatabase: "wiki"})
+	if _, e = my.ExecContext(ctx, "CREATE DATABASE public;CREATE TABLE public.shadow(id BIGINT);CREATE TABLE root_visible(id BIGINT)"); e != nil {
+		t.Fatal(e)
+	}
+	r, e := my.ExecContext(ctx, "SELECT schema_name FROM information_schema.schemata WHERE schema_name IN ('wiki','public') ORDER BY schema_name")
+	if e != nil || len(r.Rows) != 2 {
+		t.Fatal(r, e)
+	}
+	r, e = my.ExecContext(ctx, "SELECT table_schema FROM information_schema.tables WHERE table_name='shadow'")
+	if e != nil || len(r.Rows) != 1 || r.Rows[0]["table_schema"].Text != "public" {
+		t.Fatal(r, e)
+	}
+	pg, e := d.NewSession()
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer pg.Close()
+	if e = pg.SetDialect(sql.DialectPostgreSQL); e != nil {
+		t.Fatal(e)
+	}
+	r, e = pg.Exec("SELECT nspname FROM pg_namespace WHERE nspname='public'")
+	if e != nil || len(r.Rows) != 1 {
+		t.Fatal("duplicate PostgreSQL namespace", r, e)
+	}
+	for _, q := range []string{"SELECT table_name FROM information_schema.tables WHERE table_name='shadow'", "SELECT relname FROM pg_class WHERE relname='shadow'"} {
+		r, e = pg.Exec(q)
+		if e != nil || len(r.Rows) != 0 {
+			t.Fatal("unreachable shadow leaked", q, r, e)
+		}
+	}
+	r, e = pg.Exec("SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name='root_visible'")
+	if e != nil || len(r.Rows) != 1 {
+		t.Fatal(r, e)
+	}
+	if e = my.RegisterRootSchemaAlias(ctx, "public"); e != nil {
+		t.Fatal(e)
+	}
+	r, e = my.ExecContext(ctx, "SELECT table_name FROM information_schema.tables WHERE table_name='shadow'")
+	if e != nil || len(r.Rows) != 0 {
+		t.Fatal("explicit root alias leaked physical shadow", r, e)
+	}
+}
