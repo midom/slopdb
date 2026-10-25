@@ -2431,8 +2431,14 @@ func (s *Schema) CreateIndex(stmt *CreateIndexStmt) error {
 	idxName := strings.ToLower(stmt.Index)
 	tableName := strings.ToLower(stmt.Table)
 	columns := normalizedIndexColumns(stmt.Columns, stmt.Column)
+	if s.isTemporaryTable(tableName) && s.findTableIndex(tableName, idxName) != nil {
+		if stmt.IfNotExists {
+			return nil
+		}
+		return fmt.Errorf("index %q already exists", idxName)
+	}
 
-	if _, ok := s.indexes[idxName]; ok {
+	if _, ok := s.indexes[idxName]; ok && !s.isTemporaryTable(tableName) {
 		if stmt.IfNotExists {
 			return nil
 		}
@@ -2462,6 +2468,11 @@ func (s *Schema) CreateIndex(stmt *CreateIndexStmt) error {
 	idx.ID, err = s.allocateObjectID()
 	if err != nil {
 		return err
+	}
+	if s.isTemporaryTable(tableName) {
+		idx.DisplayName = idxName
+		idx.Name = fmt.Sprintf("__temporary_%d", idx.ID)
+		idxName = idx.Name
 	}
 	var indexEntries []storage.Mutation
 	values := make(map[string]bool)

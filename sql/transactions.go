@@ -291,7 +291,11 @@ func (s *Schema) recordWrites(pos int) error {
 			s.txHasWrites = true
 		}
 		if s.rowIDDirty {
-			s.parent.reserveRowIDs(s.rowIDCount)
+			if s.hasTemporaryTables() {
+				s.parent.reserveRowIDs(s.captureState().rowIDs)
+			} else {
+				s.parent.reserveRowIDs(s.rowIDCount)
+			}
 			s.rowIDDirty = false
 		}
 		return nil
@@ -314,7 +318,11 @@ func (s *Schema) recordWrites(pos int) error {
 			s.txHasDDL = true
 		}
 	}
-	root.reserveRowIDs(s.rowIDCount)
+	if s.hasTemporaryTables() {
+		root.reserveRowIDs(s.captureState().rowIDs)
+	} else {
+		root.reserveRowIDs(s.rowIDCount)
+	}
 	s.rowIDDirty = false
 	return nil
 }

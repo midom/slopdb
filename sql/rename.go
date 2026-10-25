@@ -9,6 +9,9 @@ func (s *Schema) renameTable(table, name string) error {
 	if table == name {
 		return nil
 	}
+	if s.isTemporaryTable(table) {
+		return s.renameTemporaryTable(table, name)
+	}
 	info := s.tables[table]
 	if s.tables[name] != nil || s.views[name] != nil {
 		return fmt.Errorf("object %q already exists", name)
@@ -60,6 +63,9 @@ func (s *Schema) renameTable(table, name string) error {
 }
 
 func (s *Schema) renameDependencies(table, newTable, oldCol, newCol string) error {
+	if s.isTemporaryTable(table) {
+		return nil
+	}
 	op := "RENAME_TO"
 	if oldCol != "" {
 		op = "RENAME_COLUMN"

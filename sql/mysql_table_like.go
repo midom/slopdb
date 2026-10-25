@@ -34,7 +34,7 @@ func cloneLikeExpression(expr Expression) (Expression, error) {
 }
 
 func (s *Schema) expandCreateTableLike(input *CreateTableStmt) (*CreateTableStmt, error) {
-	if _, exists := s.tables[strings.ToLower(input.Table)]; exists && input.IfNotExists {
+	if _, exists := s.tables[strings.ToLower(input.Table)]; exists && input.IfNotExists && (!input.Temporary || s.isTemporaryTable(input.Table)) {
 		copy := *input
 		copy.Like = ""
 		return &copy, nil

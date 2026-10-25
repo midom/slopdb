@@ -19,6 +19,9 @@ func tableForeignKeys(info *TableInfo) []ForeignKeyDef {
 
 func (s *Schema) foreignDefinitions(info *TableInfo) error {
 	for _, fk := range tableForeignKeys(info) {
+		if s.isTemporaryTable(fk.RefTable) {
+			return fmt.Errorf("foreign keys cannot reference temporary table %s", fk.RefTable)
+		}
 		parent := s.tables[fk.RefTable]
 		if parent == nil {
 			return fmt.Errorf("referenced table %s does not exist", fk.RefTable)
@@ -95,6 +98,9 @@ func foreignValues(columns []string, row map[string]Value) ([]Value, bool) {
 
 func (s *Schema) checkForeignRow(table string, row map[string]Value) error {
 	for _, fk := range s.lookups().foreign[table] {
+		if s.isTemporaryTable(fk.RefTable) {
+			return fmt.Errorf("foreign-key parent %s is shadowed by a temporary table", fk.RefTable)
+		}
 		values, present := foreignValues(fk.Columns, row)
 		if !present {
 			continue
@@ -266,6 +272,9 @@ func (s *Schema) checkDropReferencedTable(table string) error {
 }
 
 func (s *Schema) renameForeignKeys(table, newTable, oldColumn, newColumn string) {
+	if s.isTemporaryTable(table) {
+		return
+	}
 	for _, info := range s.tables {
 		for i := range info.Constraints {
 			c := &info.Constraints[i]

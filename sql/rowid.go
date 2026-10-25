@@ -27,6 +27,12 @@ func (s *Schema) nextRowID(table string) (id int64, err error) {
 			current = maxID + 1
 		}
 		current = max(current, s.rowIDCount[counter])
+		if maximum := s.getAutoincMax(table); maximum >= current {
+			if maximum == math.MaxInt64 {
+				return 0, fmt.Errorf("integer primary key exhausted")
+			}
+			current = maximum + 1
+		}
 		if current <= 0 {
 			return 0, fmt.Errorf("integer primary key exhausted")
 		}

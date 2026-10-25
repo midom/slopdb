@@ -7,6 +7,7 @@ import (
 	"maps"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 
 	"slopdb/storage"
@@ -53,6 +54,23 @@ func (s *Schema) createTemporaryTable(stmt *CreateTableStmt) error {
 		}
 		return fmt.Errorf("table %q already exists", name)
 	}
+	if stmt.Like != "" {
+		var err error
+		stmt, err = s.expandCreateTableLike(stmt)
+		if err != nil {
+			return err
+		}
+	}
+	for _, info := range s.tables {
+		if s.isTemporaryTable(info.Name) {
+			continue
+		}
+		for _, fk := range tableForeignKeys(info) {
+			if fk.RefTable == name {
+				return fmt.Errorf("temporary table cannot shadow foreign-key parent %s", name)
+			}
+		}
+	}
 	if len(stmt.ForeignKeys) > 0 {
 		return fmt.Errorf("foreign keys on temporary tables are not supported")
 	}
@@ -81,6 +99,16 @@ func (s *Schema) createTemporaryTable(stmt *CreateTableStmt) error {
 	oldBuilding := s.temporary.building
 	s.temporary.building = true
 	copy := *stmt
+	copy.Indexes = append([]IndexDef(nil), stmt.Indexes...)
+	for i := range copy.Indexes {
+		idx := &copy.Indexes[i]
+		if idx.DisplayName == "" {
+			idx.DisplayName = idx.Name
+		}
+		if s.indexes[idx.Name] != nil {
+			idx.Name = fmt.Sprintf("__temporary_%d_%s", s.temporaryObjectID(), idx.Name)
+		}
+	}
 	copy.Temporary = false
 	err := s.CreateTable(&copy)
 	if hiddenView != nil {
@@ -92,13 +120,44 @@ func (s *Schema) createTemporaryTable(stmt *CreateTableStmt) error {
 		return err
 	}
 	s.temporary.tables[name] = s.tables[name]
-	for key, idx := range s.indexes {
+	for key, idx := range maps.Clone(s.indexes) {
 		if idx.Table == name {
-			s.temporary.indexes[key] = idx
+			copy := *idx
+			if copy.DisplayName == "" {
+				copy.DisplayName = copy.Name
+			}
+			copy.Name = fmt.Sprintf("__temporary_%d", copy.ID)
+			delete(s.indexes, key)
+			s.indexes[copy.Name] = &copy
+			s.temporary.indexes[copy.Name] = &copy
 		}
 	}
 	s.temporary.base = persistent
 	s.catalogLookup = nil
+	return nil
+}
+
+func (s *Schema) renameTemporaryTable(table, name string) error {
+	if s.isTemporaryTable(name) {
+		return fmt.Errorf("temporary table %q already exists", name)
+	}
+	persistent := s.captureState()
+	t := s.temporary
+	info := *s.tables[table]
+	info.Name = name
+	t.tables = maps.Clone(t.tables)
+	delete(t.tables, table)
+	t.tables[name] = &info
+	for key, idx := range s.indexes {
+		if idx.Table == table {
+			copy := *idx
+			copy.Table = name
+			t.indexes[key] = &copy
+		}
+	}
+	t.autoinc[name] = s.autoincMax[table]
+	delete(t.autoinc, table)
+	s.restoreState(persistent)
 	return nil
 }
 
@@ -210,6 +269,13 @@ func (s *Schema) persistentTemporaryState(state *schemaState) *schemaState {
 		for key, idx := range t.base.indexes {
 			if t.tables[idx.Table] != nil {
 				state.indexes[key] = idx
+			}
+		}
+	}
+	for key := range state.rowIDs {
+		if strings.HasPrefix(key, "#") {
+			if id, err := strconv.ParseUint(key[1:], 10, 64); err == nil && t.ids[id] {
+				delete(state.rowIDs, key)
 			}
 		}
 	}

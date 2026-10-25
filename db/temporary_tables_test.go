@@ -91,6 +91,8 @@ func TestMySQLTemporaryDefinitionsSurviveRollbackRowsDoNot(t *testing.T) {
 		t.Fatalf("rows survived rollback: %+v", r.Rows)
 	}
 	mysqlTypeExec(t, s, "INSERT INTO scratch(v) VALUES(20)")
+	mysqlTypeExec(t, s, "INSERT INTO scratch(id,v) VALUES(100,100)")
+	mysqlTypeExec(t, s, "DELETE FROM scratch WHERE id=100")
 	mysqlTypeExec(t, s, "BEGIN")
 	mysqlTypeExec(t, s, "UPDATE scratch SET v=30")
 	mysqlTypeExec(t, s, "SAVEPOINT keep")
@@ -100,6 +102,11 @@ func TestMySQLTemporaryDefinitionsSurviveRollbackRowsDoNot(t *testing.T) {
 	r := mysqlTypeExec(t, s, "SELECT id,v FROM scratch")
 	if len(r.Rows) != 1 || r.Rows[0]["id"].Int != 2 || r.Rows[0]["v"].Int != 30 {
 		t.Fatalf("temporary transactional rows: %+v", r.Rows)
+	}
+	mysqlTypeExec(t, s, "INSERT INTO scratch(v) VALUES(50)")
+	r = mysqlTypeExec(t, s, "SELECT id FROM scratch WHERE v=50")
+	if len(r.Rows) != 1 || r.Rows[0]["id"].Int <= 100 {
+		t.Fatalf("temporary explicit ID floor: %+v", r.Rows)
 	}
 	mysqlTypeExec(t, s, "BEGIN")
 	mysqlTypeExec(t, s, "DROP TEMPORARY TABLE scratch")
@@ -112,5 +119,91 @@ func TestMySQLTemporaryDefinitionsSurviveRollbackRowsDoNot(t *testing.T) {
 	r = mysqlTypeExec(t, s, "SELECT id FROM scratch")
 	if len(r.Rows) != 1 || r.Rows[0]["id"].Int != 1 {
 		t.Fatalf("recreated temporary counter: %+v", r.Rows)
+	}
+}
+
+func TestMySQLTemporaryLikeRenamePreparedAndIndexLifecycle(t *testing.T) {
+	d, err := db.Open(t.TempDir(), storage.DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	a, b := mysqlTypeSession(t, d), mysqlTypeSession(t, d)
+	mysqlTypeExec(t, a, "CREATE TABLE original(id INTEGER PRIMARY KEY AUTO_INCREMENT,b BINARY(3),e ENUM('z','a'),KEY named(b(2)))")
+	mysqlTypeExec(t, a, "INSERT INTO original(b,e) VALUES('old','z')")
+	prepared, err := a.Prepare("SELECT b,e+0 AS ordinal FROM original WHERE id=?")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer prepared.Close()
+	if _, err = prepared.Exec(1); err != nil {
+		t.Fatal(err)
+	}
+	mysqlTypeExec(t, a, "CREATE TEMPORARY TABLE IF NOT EXISTS original LIKE original")
+	mysqlTypeExec(t, a, "INSERT INTO original(b,e) VALUES('new',2)")
+	r, err := prepared.Exec(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Rows) != 1 || string(r.Rows[0]["b"].Blob) != "new" || r.Rows[0]["ordinal"].Int != 2 {
+		t.Fatalf("prepared shadow read: %+v", r.Rows)
+	}
+	mysqlTypeExec(t, a, "CREATE TEMPORARY TABLE IF NOT EXISTS original LIKE missing_source")
+	mysqlTypeExec(t, a, "DROP INDEX named ON original")
+	mysqlTypeExec(t, a, "CREATE INDEX named ON original(e)")
+	mysqlTypeExec(t, a, "ALTER TABLE original ADD COLUMN n INTEGER DEFAULT 5")
+	mysqlTypeExec(t, a, "ALTER TABLE original RENAME TO renamed")
+	r = mysqlTypeExec(t, a, "SELECT b,n FROM renamed WHERE e='a'")
+	if len(r.Rows) != 1 || string(r.Rows[0]["b"].Blob) != "new" || r.Rows[0]["n"].Int != 5 {
+		t.Fatalf("renamed temporary data: %+v", r.Rows)
+	}
+	r, err = prepared.Exec(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Rows) != 1 || string(r.Rows[0]["b"].Blob) != "old" {
+		t.Fatalf("prepared restored permanent: %+v", r.Rows)
+	}
+	r = mysqlTypeExec(t, b, "SELECT b FROM original")
+	if len(r.Rows) != 1 || string(r.Rows[0]["b"].Blob) != "old" {
+		t.Fatalf("permanent source changed: %+v", r.Rows)
+	}
+	if _, err = b.Exec("SELECT * FROM renamed"); err == nil {
+		t.Fatal("renamed temporary table leaked")
+	}
+	mysqlTypeExec(t, a, "CREATE TABLE permanent_after_index_drop(id INTEGER PRIMARY KEY)")
+	if _, err = d.CheckIntegrity(); err != nil {
+		t.Fatal(err)
+	}
+	mysqlTypeExec(t, a, "DROP TEMPORARY TABLE renamed")
+}
+
+func TestMySQLTemporaryForeignKeysRejectedAndDDLFailureAtomic(t *testing.T) {
+	d, err := db.Open(t.TempDir(), storage.DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	a, b := mysqlTypeSession(t, d), mysqlTypeSession(t, d)
+	mysqlTypeExec(t, a, "CREATE TABLE parent(id INTEGER PRIMARY KEY)")
+	mysqlTypeExec(t, a, "CREATE TABLE child(id INTEGER PRIMARY KEY,parent_id INTEGER REFERENCES parent(id))")
+	if _, err = a.Exec("CREATE TEMPORARY TABLE parent(id INTEGER PRIMARY KEY)"); err == nil {
+		t.Fatal("temporary table shadowed FK parent")
+	}
+	mysqlTypeExec(t, a, "CREATE TEMPORARY TABLE scratch(id INTEGER PRIMARY KEY,v INTEGER)")
+	if _, err = a.Exec("CREATE TABLE bad_child(id INTEGER PRIMARY KEY,parent_id INTEGER REFERENCES scratch(id))"); err == nil {
+		t.Fatal("persistent FK referenced temporary table")
+	}
+	mysqlTypeExec(t, a, "INSERT INTO scratch VALUES(1,10),(2,10)")
+	if _, err = a.Exec("ALTER TABLE scratch ADD UNIQUE INDEX bad_unique(v)"); err == nil {
+		t.Fatal("duplicate unique index succeeded")
+	}
+	mysqlTypeExec(t, a, "INSERT INTO scratch VALUES(3,10)")
+	mysqlTypeExec(t, b, "CREATE TABLE independent(id INTEGER PRIMARY KEY)")
+	if r := mysqlTypeExec(t, a, "SELECT id FROM scratch ORDER BY id"); len(r.Rows) != 3 {
+		t.Fatalf("failed DDL changed temporary data: %+v", r.Rows)
+	}
+	if _, err = d.CheckIntegrity(); err != nil {
+		t.Fatal(err)
 	}
 }
