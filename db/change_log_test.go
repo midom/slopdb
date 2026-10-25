@@ -1,0 +1,132 @@
+package db
+
+import (
+	"context"
+	"slopdb/sql"
+	"slopdb/storage"
+	"testing"
+)
+
+func TestCDCTransactionsTypedRowsNamespacesRollbackAndResume(t *testing.T) {
+	path := t.TempDir()
+	opt := storage.DefaultOptions()
+	opt.DisableWALSync = true
+	d, e := Open(path, opt)
+	if e != nil {
+		t.Fatal(e)
+	}
+	t.Cleanup(func() { _ = d.Close() })
+	ctx := context.Background()
+	metadata, e := d.EnableCDC(ctx)
+	if e != nil || metadata.SourceID == "" {
+		t.Fatal(metadata, e)
+	}
+	session := isolationSession(t, d)
+	isolationExec(t, session, "CREATE SCHEMA tenant;CREATE TABLE tenant.records(id BIGINT UNSIGNED PRIMARY KEY,price DECIMAL(20,4),doc JSON)")
+	reader, e := d.NewCDCReader(ctx, 0)
+	if e != nil {
+		t.Fatal(e)
+	}
+	initial, e := reader.Read(ctx, 100)
+	if e != nil || len(initial) != 2 || len(initial[0].Namespaces) != 2 || len(initial[1].SchemaChanges) != 1 {
+		t.Fatal(initial, e)
+	}
+	if initial[1].SchemaChanges[0].After.Schema != "tenant" {
+		t.Fatal(initial)
+	}
+	isolationExec(t, session, "CREATE TEMPORARY TABLE scratch(id INTEGER PRIMARY KEY,v TEXT)")
+	isolationExec(t, session, "BEGIN;INSERT INTO tenant.records VALUES(18446744073709551615,1234567890123456.1234,'{\"n\":18446744073709551615}');INSERT INTO scratch VALUES(1,'private');COMMIT")
+	txs, e := reader.Read(ctx, 100)
+	if e != nil || len(txs) != 1 || len(txs[0].Changes) != 1 {
+		t.Fatal(txs, e)
+	}
+	row := txs[0].Changes[0]
+	if row.Kind != "insert" || row.After[0].Type != sql.ColUnsigned || row.After[0].Uint != ^uint64(0) || row.After[1].Text != "1234567890123456.1234" || row.After[2].Type != sql.ColJSON {
+		t.Fatal(row)
+	}
+	// Caller metadata is owned; mutation must not corrupt later event decoding.
+	txs[0].Tables[0].Columns[1].ColType = sql.ColBlob
+	position := reader.Position()
+	isolationExec(t, session, "BEGIN;UPDATE tenant.records SET price=1.0001;ROLLBACK")
+	if rows, e := reader.Read(ctx, 100); e != nil || len(rows) != 0 {
+		t.Fatal(rows, e)
+	}
+	isolationExec(t, session, "UPDATE tenant.records SET price=2.0002")
+	isolationExec(t, session, "DELETE FROM tenant.records")
+	if e = session.Close(); e != nil {
+		t.Fatal(e)
+	}
+	if e = d.Close(); e != nil {
+		t.Fatal(e)
+	}
+	d, e = Open(path, opt)
+	if e != nil {
+		t.Fatal(e)
+	}
+	resumed, e := d.NewCDCReader(ctx, position)
+	if e != nil {
+		t.Fatal(e)
+	}
+	txs, e = resumed.Read(ctx, 100)
+	if e != nil || len(txs) != 2 {
+		t.Fatal(txs, e)
+	}
+	if txs[0].Changes[0].Kind != "update" || txs[0].Changes[0].Before[1].Text != "1234567890123456.1234" || txs[0].Changes[0].After[1].Text != "2.0002" || txs[1].Changes[0].Kind != "delete" {
+		t.Fatal(txs)
+	}
+	reopened, e := d.CDCMetadata(ctx)
+	if e != nil || reopened.SourceID != metadata.SourceID {
+		t.Fatal(reopened, e)
+	}
+	if _, e = d.NewCDCReader(ctx, ^uint64(0)); e == nil {
+		t.Fatal("accepted future resume position")
+	}
+	if _, e = d.CheckIntegrity(); e != nil {
+		t.Fatal(e)
+	}
+	if e = d.Close(); e != nil {
+		t.Fatal(e)
+	}
+}
+func TestCDCCatalogCheckpointAfterSchemaChanges(t *testing.T) {
+	d, e := Open(t.TempDir(), nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer d.Close()
+	ctx := context.Background()
+	if _, e = d.EnableCDC(ctx); e != nil {
+		t.Fatal(e)
+	}
+	s := isolationSession(t, d)
+	isolationExec(t, s, "CREATE TABLE oldname(id INTEGER PRIMARY KEY,v TEXT);INSERT INTO oldname VALUES(1,'old')")
+	first, e := d.CDCPosition(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	isolationExec(t, s, "ALTER TABLE oldname RENAME TO newname;ALTER TABLE newname ADD COLUMN more INTEGER DEFAULT 7")
+	position, e := d.CDCPosition(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	isolationExec(t, s, "UPDATE newname SET v='new'")
+	resumed, e := d.NewCDCReader(ctx, position)
+	if e != nil {
+		t.Fatal(e)
+	}
+	rows, e := resumed.Read(ctx, 100)
+	if e != nil || len(rows) != 1 || rows[0].Tables[0].Name != "newname" || len(rows[0].Changes[0].After) != 3 || rows[0].Changes[0].After[2].Int != 7 {
+		t.Fatal(rows, e)
+	}
+	old, e := d.NewCDCReader(ctx, first)
+	if e != nil {
+		t.Fatal(e)
+	}
+	rows, e = old.Read(ctx, 100)
+	if e != nil || len(rows) < 2 {
+		t.Fatal(rows, e)
+	}
+	if rows[0].SchemaChanges[0].Before.Name != "oldname" || rows[0].SchemaChanges[0].After.Name != "newname" {
+		t.Fatal(rows)
+	}
+}

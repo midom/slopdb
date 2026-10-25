@@ -17,6 +17,7 @@ var changeLogHeaderKey = []byte("\x00__change_log_v1__")
 var changeLogPrefix = []byte{4}
 var changeLogSequenceKey = []byte("\x00__change_sequence_v1__")
 var changeLogClockKey = []byte("\x00__change_clock_v1__")
+var changeCatalogPrefix = []byte{5}
 
 // ChangeLogHeader is a persistent baseline for interpreting subsequent catalog
 // and row changes. The source ID and baseline survive checkpoint, backup and crash.
@@ -48,7 +49,7 @@ func changeLogKey(sequence uint64) []byte {
 }
 
 func changeCatalogKey(key []byte) bool {
-	return bytes.HasPrefix(key, []byte("\x00__schema"))
+	return bytes.HasPrefix(key, []byte("\x00__schema")) || bytes.Equal(key, []byte("\x00__namespaces_v1__"))
 }
 
 func changeRowKey(key []byte) bool { return len(key) >= 10 && key[0] == 1 && key[1] == 0xff }
@@ -271,10 +272,45 @@ func (l *LSMTree) appendChangeLog(batch []Mutation, base uint64, boundaries []in
 	}
 	result := make([]Mutation, 0, len(batch)+len(records)+1)
 	result = append(result, batch...)
+	var catalog map[string][]byte
 	for i := range records {
 		records[i].Sequence = seq + uint64(i+1)
 		data := encodeChangeRecord(records[i])
 		result = append(result, Mutation{Key: changeLogKey(records[i].Sequence), Value: data})
+		changedCatalog := false
+		for _, mutation := range records[i].Mutations {
+			if !changeCatalogKey(mutation.Key) {
+				continue
+			}
+			if catalog == nil {
+				catalog = make(map[string][]byte)
+				it := l.NewIteratorRange([]byte{0}, []byte{1}, false)
+				for ; it.Valid(); it.Next() {
+					if changeCatalogKey(it.Key().UserKey) {
+						catalog[string(it.Key().UserKey)] = bytes.Clone(it.Value())
+					}
+				}
+				err := IteratorError(it)
+				it.Close()
+				if err != nil {
+					return nil, false, err
+				}
+			}
+			changedCatalog = true
+			if mutation.Delete {
+				delete(catalog, string(mutation.Key))
+			} else {
+				catalog[string(mutation.Key)] = bytes.Clone(mutation.After)
+			}
+		}
+		if changedCatalog {
+			data, err := json.Marshal(catalog)
+			if err != nil {
+				return nil, false, err
+			}
+			key := binary.BigEndian.AppendUint64([]byte{5}, records[i].Sequence)
+			result = append(result, Mutation{Key: key, Value: data})
+		}
 	}
 	result = append(result, Mutation{Key: changeLogSequenceKey, Value: binary.BigEndian.AppendUint64(nil, seq+uint64(len(records)))})
 	return result, true, nil
@@ -365,6 +401,93 @@ func (l *LSMTree) ReadChanges(ctx context.Context, after uint64, limit int) ([]C
 		records = append(records, record)
 	}
 	return records, IteratorError(it)
+}
+
+// ChangeCatalogAt seeks the nearest catalog checkpoint. Resuming a stream does
+// not replay its entire row history merely to learn the table definitions.
+func (l *LSMTree) ChangeCatalogAt(ctx context.Context, sequence uint64) (map[string][]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	upper := []byte{6}
+	if sequence < math.MaxUint64 {
+		upper = binary.BigEndian.AppendUint64([]byte{5}, sequence+1)
+	}
+	it := l.NewIteratorRange(changeCatalogPrefix, upper, true)
+	if it.Valid() {
+		var catalog map[string][]byte
+		err := json.Unmarshal(it.Value(), &catalog)
+		it.Close()
+		if err != nil {
+			return nil, fmt.Errorf("change catalog checkpoint: %w", err)
+		}
+		return catalog, nil
+	}
+	err := IteratorError(it)
+	it.Close()
+	if err != nil {
+		return nil, err
+	}
+	header, err := l.ChangeLogHeader()
+	if err != nil {
+		return nil, err
+	}
+	if header == nil {
+		return nil, fmt.Errorf("change log is not enabled")
+	}
+	return header.Catalog, nil
+}
+
+func (l *LSMTree) ChangeLogPosition() (uint64, error) {
+	data, found, err := l.Get(changeLogSequenceKey)
+	if err != nil || !found {
+		return 0, err
+	}
+	if len(data) != 8 {
+		return 0, fmt.Errorf("invalid change log sequence")
+	}
+	return binary.BigEndian.Uint64(data), nil
+}
+
+// ValidateChangeEntry is used by logical integrity inspection in addition to
+// the physical SSTable checksum checks. The caller scans the committed view.
+func ValidateChangeEntry(key, data []byte) (bool, error) {
+	if bytes.Equal(key, changeLogSequenceKey) || bytes.Equal(key, changeLogClockKey) {
+		if len(data) != 8 {
+			return true, fmt.Errorf("invalid change log numeric metadata")
+		}
+		return true, nil
+	}
+	if bytes.Equal(key, changeLogHeaderKey) {
+		var header ChangeLogHeader
+		if err := json.Unmarshal(data, &header); err != nil {
+			return true, err
+		}
+		if header.Version != 1 || len(header.SourceID) != 32 {
+			return true, fmt.Errorf("invalid change log header")
+		}
+		_, err := hex.DecodeString(header.SourceID)
+		return true, err
+	}
+	if len(key) > 0 && key[0] == 4 {
+		record, err := decodeChangeRecord(data)
+		if err != nil {
+			return true, err
+		}
+		if len(key) != 9 || binary.BigEndian.Uint64(key[1:]) != record.Sequence {
+			return true, fmt.Errorf("invalid change record key")
+		}
+		return true, nil
+	}
+	if len(key) > 0 && key[0] == 5 {
+		if len(key) != 9 {
+			return true, fmt.Errorf("invalid change catalog key")
+		}
+		var catalog map[string][]byte
+		err := json.Unmarshal(data, &catalog)
+		return true, err
+	}
+	return false, nil
 }
 
 // Read the notification channel BEFORE reading records to avoid missing a

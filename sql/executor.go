@@ -7122,8 +7122,8 @@ func applyAffinity(v Value, typ ColumnType) Value {
 		return v
 	}
 	if typ == ColDecimal {
-		if n, err := NewDecimalValue(v.String()); err == nil {
-			return n
+		if coefficient, scale, err := valueDecimal(v); err == nil {
+			return Value{Type: ColDecimal, Text: decimalText(coefficient, scale)}
 		}
 		return v
 	}

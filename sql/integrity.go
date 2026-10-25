@@ -38,6 +38,13 @@ func (s *Schema) CheckIntegrity() (report IntegrityReport, err error) {
 		if len(key) == 0 {
 			return report, fmt.Errorf("empty storage key")
 		}
+		if handled, validationErr := storage.ValidateChangeEntry(key, data); handled {
+			if validationErr != nil {
+				return report, fmt.Errorf("change log %q: %w", key, validationErr)
+			}
+			iterator.Next()
+			continue
+		}
 		switch key[0] {
 		case 0:
 			if string(key) != versionPrefix && string(key) != objectIDPrefix && !json.Valid(data) {
