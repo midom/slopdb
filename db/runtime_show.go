@@ -19,6 +19,9 @@ func (d *Database) inspectionContext(ctx context.Context, stmt sql.Statement, di
 }
 func (d *Database) runtimeShow(ctx context.Context, show *sql.ShowStmt) (*ExecResult, error) {
 	if show.Kind == "PROCESSLIST" {
+		if show.Object != "" || show.Database != "" || show.Column != "" || show.Where != nil || show.Like != nil {
+			return nil, fmt.Errorf("SHOW PROCESSLIST does not accept object or filter clauses")
+		}
 		activities, err := d.Activity(ctx)
 		if err != nil {
 			return nil, err
