@@ -49,3 +49,45 @@ func (s *Schema) finishTemporaryCommit() {
 		s.temporary.pendingCleanup = nil
 	}
 }
+
+// TemporaryCommitAction applies when the owning transaction commits successfully.
+// The unspecified action preserves rows, matching PostgreSQL's default.
+type TemporaryCommitAction uint8
+
+const (
+	TemporaryCommitUnspecified TemporaryCommitAction = iota
+	TemporaryCommitPreserveRows
+	TemporaryCommitDeleteRows
+	TemporaryCommitDrop
+)
+
+func (s *Schema) prepareTemporaryCommit() error {
+	if !s.Dialect().TemporaryDDLPolicy().CommitActions || s.temporary == nil {
+		return nil
+	}
+	t := s.temporary
+	// Copy names because DROP modifies the private definitions during iteration.
+	var drops []string
+	for name, table := range t.tables {
+		switch t.actions[table.ID] {
+		case TemporaryCommitDrop:
+			drops = append(drops, name)
+		case TemporaryCommitDeleteRows:
+			if t.pendingCleanup == nil {
+				t.pendingCleanup = map[uint64]bool{}
+			}
+			t.pendingCleanup[table.ID] = true
+			for _, idx := range t.indexes {
+				if idx.Table == name {
+					t.pendingCleanup[idx.ID] = true
+				}
+			}
+		}
+	}
+	for _, name := range drops {
+		if err := s.dropTemporaryTable(&DropTableStmt{Table: name}); err != nil {
+			return err
+		}
+	}
+	return nil
+}

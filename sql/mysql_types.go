@@ -532,7 +532,7 @@ func mysqlBinaryCompare(a, b Value) (int, bool) {
 }
 
 // MySQL options select supported behavior; storage remains the native LSM.
-func (p *Parser) parseMySQLTableOptions(stmt *CreateTableStmt) error {
+func (p *Parser) parseTableOptions(stmt *CreateTableStmt) error {
 	for p.cur.Type != TokEOF && p.cur.Type != TokSemicolon {
 		if p.cur.Type == TokComma {
 			p.advance()
@@ -544,6 +544,31 @@ func (p *Parser) parseMySQLTableOptions(stmt *CreateTableStmt) error {
 			word = strings.ToUpper(p.cur.Value)
 		}
 		switch word {
+		case "ON":
+			if stmt.OnCommit != TemporaryCommitUnspecified {
+				return fmt.Errorf("duplicate ON COMMIT clause")
+			}
+			p.advance()
+			if err := p.expectKeyword("COMMIT"); err != nil {
+				return err
+			}
+			switch strings.ToUpper(p.cur.Value) {
+			case "PRESERVE":
+				stmt.OnCommit = TemporaryCommitPreserveRows
+			case "DELETE":
+				stmt.OnCommit = TemporaryCommitDeleteRows
+			case "DROP":
+				stmt.OnCommit = TemporaryCommitDrop
+			default:
+				return fmt.Errorf("expected PRESERVE ROWS, DELETE ROWS or DROP after ON COMMIT")
+			}
+			p.advance()
+			if stmt.OnCommit != TemporaryCommitDrop {
+				if !strings.EqualFold(p.cur.Value, "ROWS") {
+					return fmt.Errorf("expected ROWS after ON COMMIT action")
+				}
+				p.advance()
+			}
 		case "ENGINE":
 			p.advance()
 			if p.cur.Type == TokEq {

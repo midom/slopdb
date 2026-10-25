@@ -19,6 +19,7 @@ type temporaryCatalog struct {
 	base           *schemaState
 	ids            map[uint64]bool
 	pendingCleanup map[uint64]bool
+	actions        map[uint64]TemporaryCommitAction
 	dropped        map[uint64]bool
 	autoinc        map[string]int64
 	nextRow        map[string]int64
@@ -108,6 +109,7 @@ func (s *Schema) createTemporaryTable(stmt *CreateTableStmt) error {
 		}
 	}
 	copy.Temporary = false
+	copy.OnCommit = TemporaryCommitUnspecified
 	err := s.CreateTable(&copy)
 	if hiddenView != nil {
 		s.views[name] = hiddenView
@@ -118,6 +120,10 @@ func (s *Schema) createTemporaryTable(stmt *CreateTableStmt) error {
 		return err
 	}
 	s.temporary.tables[name] = s.tables[name]
+	if s.temporary.actions == nil {
+		s.temporary.actions = map[uint64]TemporaryCommitAction{}
+	}
+	s.temporary.actions[s.tables[name].ID] = stmt.OnCommit
 	for key, idx := range maps.Clone(s.indexes) {
 		if idx.Table == name {
 			copy := *idx
@@ -184,6 +190,7 @@ func cloneTemporaryDefinitions(t *temporaryCatalog) *temporaryCatalog {
 	copy.nextRow = maps.Clone(t.nextRow)
 	copy.dropped = maps.Clone(t.dropped)
 	copy.pendingCleanup = maps.Clone(t.pendingCleanup)
+	copy.actions = maps.Clone(t.actions)
 	return &copy
 }
 
@@ -216,6 +223,7 @@ func (s *Schema) dropTemporaryTable(stmt *DropTableStmt) error {
 		}
 	}
 	delete(t.tables, name)
+	delete(t.actions, tableID)
 	t.dropped = maps.Clone(t.dropped)
 	for id := range ids {
 		t.dropped[id] = true

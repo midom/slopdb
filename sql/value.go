@@ -151,6 +151,7 @@ type CreateTableStmt struct {
 	Engine        string
 	Charset       string
 	Temporary     bool
+	OnCommit      TemporaryCommitAction
 	Like          string // source table for CREATE TABLE ... LIKE
 	Constraints   []ConstraintDef
 	Table         string

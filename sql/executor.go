@@ -502,6 +502,9 @@ func (s *Schema) schemaGet(key []byte) (value []byte, found bool, err error) {
 }
 
 func (s *Schema) CreateTable(stmt *CreateTableStmt) error {
+	if stmt.OnCommit != TemporaryCommitUnspecified && (!stmt.Temporary || !s.Dialect().TemporaryDDLPolicy().CommitActions) {
+		return fmt.Errorf("ON COMMIT is supported only for PostgreSQL temporary tables")
+	}
 	for _, c := range stmt.Columns {
 		if expressionUsesSessionVariable(c.Default) || expressionUsesSessionVariable(c.Check) {
 			return fmt.Errorf("session variables cannot appear in persistent table definitions")
@@ -1935,7 +1938,14 @@ func (s *Schema) BeginWithOptions(stmt *BeginStmt) error {
 	return nil
 }
 func (s *Schema) Commit() error {
+	if !s.inTx {
+		return fmt.Errorf("not in a transaction")
+	}
+
 	if err := s.checkDeferredForeignKeys(); err != nil {
+		return err
+	}
+	if err := s.prepareTemporaryCommit(); err != nil {
 		return err
 	}
 	// Logical catalog/row/predicate locks protect data-only commits. Publishing

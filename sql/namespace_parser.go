@@ -43,8 +43,11 @@ func (p *Parser) parseNamespaceCreate() (Statement, error) {
 		return nil, fmt.Errorf("invalid schema name")
 	}
 	var options CreateTableStmt
-	if err = p.parseMySQLTableOptions(&options); err != nil {
+	if err = p.parseTableOptions(&options); err != nil {
 		return nil, err
+	}
+	if options.OnCommit != TemporaryCommitUnspecified {
+		return nil, fmt.Errorf("ON COMMIT is not a namespace option")
 	}
 	return &NamespaceStmt{Operation: "create", Names: []string{name}, IfNotExists: conditional}, nil
 }

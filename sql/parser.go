@@ -283,7 +283,7 @@ func (p *Parser) parseCreate() (Statement, error) {
 	switch kw {
 	case "SCHEMA", "DATABASE":
 		return p.parseNamespaceCreate()
-	case "TEMPORARY":
+	case "TEMPORARY", "TEMP":
 		p.advance()
 		if !strings.EqualFold(p.cur.Value, "TABLE") {
 			return nil, fmt.Errorf("expected TABLE after CREATE TEMPORARY")
@@ -343,6 +343,9 @@ func (p *Parser) parseCreateTable() (Statement, error) {
 			if err := p.expect(TokRParen); err != nil {
 				return nil, err
 			}
+		}
+		if err := p.parseTableOptions(stmt); err != nil {
+			return nil, err
 		}
 		return stmt, nil
 	}
@@ -452,7 +455,7 @@ func (p *Parser) parseCreateTable() (Statement, error) {
 		stmt.Columns = append(stmt.Columns, col)
 	}
 
-	if err := p.parseMySQLTableOptions(stmt); err != nil {
+	if err := p.parseTableOptions(stmt); err != nil {
 		return nil, err
 	}
 
