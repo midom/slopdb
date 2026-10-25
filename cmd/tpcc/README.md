@@ -27,8 +27,12 @@ Workers choose new-order (45%), payment (43%), order-status (4%), delivery (4%),
 and stock-level (4%) transactions. New orders have 5–15 distinct items, occasional
 remote stock, and a 1% intentional invalid-item rollback. Payments can select
 remote customers. Delivery processes up to one queued order per district using
-`FOR UPDATE SKIP LOCKED`. Stock-level checks recent orders. Each transaction uses
-an independent `Database.Begin()` session, with deadlock detection enabled.
+`FOR UPDATE SKIP LOCKED`. Stock-level checks recent orders. Each worker owns an independent session, with a fresh explicit transaction for
+every attempt and deadlock detection enabled. Fixed workload statements reuse
+worker-private prepared result storage; normal adapter calls return owned results.
+Arbitrary adapter calls cause that worker session to be replaced before its next
+transaction, preserving isolation of variables, temporary tables and other
+connection state.
 Contention failures roll back and retry the same inputs with bounded backoff.
 
 Loading, SQL preflight, validation, and shutdown are excluded from the requested
@@ -152,3 +156,22 @@ drain, excluding loading, preparation, validation and close. The allocation
 profile is cumulative from process start through drain, including setup.
 Collect throughput separately without profiling, since sampling adds overhead.
 See [catalog profiling and rename checks](../../docs/catalog-performance.md).
+
+## Allocation reuse
+
+The SlopDB adapter keeps one independent session per worker and private result
+slots per prepared template. Slots are used only by the workload helpers, which
+consume each result before executing that template again. Public transaction
+execution still returns owned results. Completed transaction handles remain
+closed when the same worker starts a later transaction; cancelled statements and
+failed attempts retain normal rollback and retry behavior. New-order item buffers
+and stock-level argument buffers also belong to one worker and survive retries.
+
+Run `go test ./internal/tpcc` for all five transaction paths, expected invalid-item
+rollbacks, cancellation, lock waits, retained results, and all 15 consistency
+checks before and after reopening. `BenchmarkPreparedTransactions` reports
+allocations for real prepared transactions at a small deterministic scale. Its
+setup is excluded, and each iteration rolls back to preserve the same fixture;
+it measures transaction execution and rollback rather than committed throughput.
+Use `go test ./internal/tpcc -run '^$' -bench BenchmarkPreparedTransactions -benchmem`
+for an allocation comparison, separately from other performance workloads.

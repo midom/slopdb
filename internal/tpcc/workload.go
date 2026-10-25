@@ -2,6 +2,7 @@
 package tpcc
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,6 +14,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -398,22 +400,25 @@ type plan struct {
 	invalid                                                                bool
 }
 
-func makePlan(rng *rand.Rand, c Config, kind int) plan {
+func makePlan(rng *rand.Rand, c Config, kind int) plan { return makePlanInto(rng, c, kind, nil) }
+
+// dst belongs to one worker and is not reused until all retries of this plan
+// finish. The random draws and distinct-item selection match the text runner.
+func makePlanInto(rng *rand.Rand, c Config, kind int, dst []orderItem) plan {
 	p := plan{kind: kind, w: 1 + rng.Intn(c.Warehouses), d: 1 + rng.Intn(c.Districts), customer: 1 + rng.Intn(c.Customers), amount: 100 + rng.Intn(499901), carrier: 1 + rng.Intn(10), threshold: 10 + rng.Intn(11)}
+	p.items = dst[:0]
 	p.customerW, p.customerD = p.w, p.d
 	if kind == 1 && c.Warehouses > 1 && rng.Intn(100) < 15 {
 		p.customerW = (p.w+rng.Intn(c.Warehouses-1))%c.Warehouses + 1
 		p.customerD = 1 + rng.Intn(c.Districts)
 	}
 	if kind == 0 {
-		seen := make(map[int]bool)
 		count := 5 + rng.Intn(11)
 		for len(p.items) < count {
 			i := 1 + rng.Intn(c.Items)
-			if seen[i] {
+			if slices.ContainsFunc(p.items, func(item orderItem) bool { return item.id == i }) {
 				continue
 			}
-			seen[i] = true
 			w := p.w
 			if c.Warehouses > 1 && rng.Intn(100) == 0 {
 				w = (p.w+rng.Intn(c.Warehouses-1))%c.Warehouses + 1
@@ -421,11 +426,11 @@ func makePlan(rng *rand.Rand, c Config, kind int) plan {
 			p.items = append(p.items, orderItem{i, w, 1 + rng.Intn(10)})
 		}
 		// Consistent stock lock order reduces avoidable deadlocks.
-		sort.Slice(p.items, func(i, j int) bool {
-			if p.items[i].warehouse != p.items[j].warehouse {
-				return p.items[i].warehouse < p.items[j].warehouse
+		slices.SortFunc(p.items, func(a, b orderItem) int {
+			if a.warehouse != b.warehouse {
+				return cmp.Compare(a.warehouse, b.warehouse)
 			}
-			return p.items[i].id < p.items[j].id
+			return cmp.Compare(a.id, b.id)
 		})
 		p.invalid = rng.Intn(100) == 0
 	}
@@ -452,9 +457,22 @@ func (q *queries) exec(query string, args ...any) *db.ExecResult {
 			q.err = fmt.Errorf("workload query was not prepared: %s", query)
 			return &db.ExecResult{}
 		}
-		r, err = q.tx.ExecPreparedContext(q.ctx, stmt, args...)
+		if reusable, ok := q.tx.(interface {
+			execPreparedContextReusable(context.Context, Statement, ...any) (*db.ExecResult, error)
+		}); ok {
+			r, err = reusable.execPreparedContextReusable(q.ctx, stmt, args...)
+		} else {
+			r, err = q.tx.ExecPreparedContext(q.ctx, stmt, args...)
+		}
 	} else {
-		r, err = q.tx.ExecContext(q.ctx, numericQuery(query, args))
+		text := numericQuery(query, args)
+		if trusted, ok := q.tx.(interface {
+			execContextWorkload(context.Context, string) (*db.ExecResult, error)
+		}); ok {
+			r, err = trusted.execContextWorkload(q.ctx, text)
+		} else {
+			r, err = q.tx.ExecContext(q.ctx, text)
+		}
 	}
 	if err != nil {
 		q.err = fmt.Errorf("%s (arguments %v): %w", query, args, err)
@@ -479,7 +497,12 @@ func (q *queries) change(query string, count int64, args ...any) {
 	}
 }
 
+type executionScratch struct{ stockArgs []any }
+
 func execute(ctx context.Context, tx Transaction, p plan, c Config, historyID int64) (effect, error) {
+	return executeWithScratch(ctx, tx, p, c, historyID, &executionScratch{})
+}
+func executeWithScratch(ctx context.Context, tx Transaction, p plan, c Config, historyID int64, scratch *executionScratch) (effect, error) {
 	q := queries{tx: tx, ctx: ctx, prepared: c.statements}
 	var e effect
 	switch p.kind {
@@ -550,12 +573,16 @@ func execute(ctx context.Context, tx Transaction, p plan, c Config, historyID in
 		next := q.one(districtRead, p.w, p.d)["next_o_id"].Int
 		r := q.exec(recentItems, p.w, p.d, next-20, next)
 		if len(r.Rows) > 0 {
-			args := make([]any, 0, len(r.Rows)+2)
+			args := scratch.stockArgs[:0]
+			if cap(args) < len(r.Rows)+2 {
+				args = make([]any, 0, len(r.Rows)+2)
+			}
 			args = append(args, p.w, p.threshold)
 			for _, row := range r.Rows {
 				args = append(args, row["i_id"].Int)
 			}
 			q.one(c.statements.stockCounts[len(r.Rows)], args...)
+			scratch.stockArgs = args
 		}
 	}
 	return e, q.err
@@ -581,6 +608,8 @@ func errorClass(err error) string {
 func work(ctx context.Context, database Database, c Config, worker int, historyID, committed, failed, retried *atomic.Int64) workerStats {
 	rng := rand.New(rand.NewSource(c.Seed + int64(worker+1)*1000003))
 	s := workerStats{errors: make(map[string]int64), retryErrors: make(map[string]int64)}
+	var itemBuffer [15]orderItem
+	var scratch executionScratch
 	for ctx.Err() == nil {
 		kind, pick := 0, rng.Intn(100)
 		switch {
@@ -595,7 +624,7 @@ func work(ctx context.Context, database Database, c Config, worker int, historyI
 		default:
 			kind = 4
 		}
-		p := makePlan(rng, c, kind)
+		p := makePlanInto(rng, c, kind, itemBuffer[:0])
 		id := int64(0)
 		if kind == 1 {
 			id = historyID.Add(1)
@@ -607,7 +636,7 @@ func work(ctx context.Context, database Database, c Config, worker int, historyI
 			tx, err := database.BeginContext(txctx, worker, kind == 2 || kind == 4)
 			var e effect
 			if err == nil {
-				e, err = execute(txctx, tx, p, c, id)
+				e, err = executeWithScratch(txctx, tx, p, c, id, &scratch)
 				if err == nil {
 					err = txctx.Err()
 				}
