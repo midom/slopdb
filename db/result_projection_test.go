@@ -89,6 +89,16 @@ func TestDuplicateResultProjectionSlots(t *testing.T) {
 			assertProjection(t, r, tc.labels, tc.want)
 		})
 	}
+	for _, query := range []string{"SELECT 1 AS x,2 AS x FROM sqlite_master WHERE name='p'", "SELECT 1 AS x,2 AS x FROM sqlite_stat1 WHERE tbl='p'"} {
+		if _, e := d.Exec("ANALYZE p"); e != nil {
+			t.Fatal(e)
+		}
+		r, e := d.Exec(query)
+		if e != nil {
+			t.Fatal(e)
+		}
+		assertProjection(t, r, []string{"x", "x"}, [][]int64{{1, 2}})
+	}
 	for _, q := range []string{"UPDATE p SET b=b+1 WHERE id=1 RETURNING a AS x,b AS x", "INSERT INTO p VALUES(3,30,40) RETURNING a AS x,b AS x", "DELETE FROM p WHERE id=3 RETURNING a AS x,b AS x"} {
 		r, e := d.Exec(q)
 		if e != nil {

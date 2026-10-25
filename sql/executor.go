@@ -5290,98 +5290,28 @@ func (s *Schema) rowKey(row map[string]Value) string {
 	return string(key)
 }
 
+func (s *Schema) selectCatalogProjection(stmt *SelectStmt, source *ResultSet) (*ResultSet, error) {
+	copy := *stmt
+	if copy.FromAlias == "" {
+		copy.FromAlias = copy.From
+	}
+	copy.From = ""
+	copy.FromExpr = &SubqueryExpr{Stmt: &SelectStmt{materialized: source}}
+	return s.Select(&copy)
+}
 func (s *Schema) selectFromSqliteMaster(stmt *SelectStmt) (*ResultSet, error) {
-	masterRS, err := s.QuerySqliteMaster(nil)
+	source, err := s.QuerySqliteMaster(nil)
 	if err != nil {
 		return nil, err
 	}
-
-	rs := &ResultSet{}
-	masterCols := map[string]ColumnDef{
-		"type":     {Name: "type", ColType: ColText},
-		"name":     {Name: "name", ColType: ColText},
-		"tbl_name": {Name: "tbl_name", ColType: ColText},
-		"rootpage": {Name: "rootpage", ColType: ColInteger},
-		"sql":      {Name: "sql", ColType: ColText},
-	}
-
-	if stmt.SelectAll {
-		for _, col := range []string{"type", "name", "tbl_name", "rootpage", "sql"} {
-			rs.Columns = append(rs.Columns, masterCols[col])
-		}
-	} else {
-		for _, sc := range stmt.Columns {
-			if cr, ok := sc.Expr.(*ColumnRefExpr); ok {
-				if def, found := masterCols[cr.Name]; found {
-					rs.Columns = append(rs.Columns, def)
-				} else {
-					rs.Columns = append(rs.Columns, ColumnDef{Name: cr.Name, ColType: ColText})
-				}
-			} else if sc.Star {
-				for _, col := range []string{"type", "name", "tbl_name", "rootpage", "sql"} {
-					rs.Columns = append(rs.Columns, masterCols[col])
-				}
-			}
-		}
-	}
-
-	rows := masterRS.Rows
-	if stmt.Where != nil {
-		var filterErr error
-		rows, filterErr = s.filterRows(stmt.Where, rows)
-		if filterErr != nil {
-			return nil, filterErr
-		}
-	}
-
-	if len(stmt.OrderBy) > 0 {
-		sort.Slice(rows, func(i, j int) bool {
-			return s.compareRows(rows[i], rows[j], stmt.OrderBy)
-		})
-	}
-
-	if stmt.Offset > 0 {
-		if stmt.Offset >= int64(len(rows)) {
-			rows = nil
-		} else {
-			rows = rows[int(stmt.Offset):]
-		}
-	}
-	if stmt.Limit >= 0 && stmt.Limit < int64(len(rows)) {
-		rows = rows[:int(stmt.Limit)]
-	}
-
-	rs.Rows = rows
-	return rs, nil
+	return s.selectCatalogProjection(stmt, source)
 }
-
 func (s *Schema) selectFromStat1(stmt *SelectStmt) (*ResultSet, error) {
-	rs := &ResultSet{
-		Columns: []ColumnDef{
-			{Name: "tbl", ColType: ColText},
-			{Name: "idx", ColType: ColText},
-			{Name: "stat", ColType: ColText},
-		},
-	}
-
+	source := &ResultSet{Columns: []ColumnDef{{Name: "tbl", ColType: ColText}, {Name: "idx", ColType: ColText}, {Name: "stat", ColType: ColText}}}
 	for name, count := range s.stats {
-		rs.Rows = append(rs.Rows, map[string]Value{
-			"tbl":  NewTextValue(name),
-			"idx":  NewTextValue(name),
-			"stat": NewTextValue(fmt.Sprintf("%d", count)),
-		})
+		source.Rows = append(source.Rows, map[string]Value{"tbl": NewTextValue(name), "idx": NewTextValue(name), "stat": NewTextValue(fmt.Sprint(count))})
 	}
-
-	rows := rs.Rows
-	if stmt.Where != nil {
-		var filterErr error
-		rows, filterErr = s.filterRows(stmt.Where, rows)
-		if filterErr != nil {
-			return nil, filterErr
-		}
-	}
-	rs.Rows = rows
-	return rs, nil
+	return s.selectCatalogProjection(stmt, source)
 }
 
 func (s *Schema) isOrderByNatural(stmt *SelectStmt, info *TableInfo) int {
