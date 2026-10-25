@@ -70,7 +70,7 @@ func (c *client) isLocalCommand(data []byte) bool {
 	if len(data) == 0 || data[0] != 3 {
 		return false
 	}
-	return loadPrefix(string(data[1:]), c.server.database.ParseOptions())
+	return loadPrefix(string(data[1:]), c.parseOptions())
 }
 
 // Prefetch the first post-command packet before awaiting the decision. EOF can
@@ -129,7 +129,7 @@ func (c *client) receiveLocalUpload() (pending []byte, next byte, compressedNext
 	}
 }
 func (c *client) loadData(query string) (*db.ExecResult, bool, error) {
-	command, e := parseLocalLoad(query, c.currentDatabase().ParseOptions())
+	command, e := parseLocalLoad(query, c.parseOptions())
 	if command == nil {
 		return nil, false, e
 	}

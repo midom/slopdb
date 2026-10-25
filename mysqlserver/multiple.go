@@ -56,7 +56,7 @@ func (c *client) queryResults(query string) error {
 	}
 	if len(commands) > 1 {
 		for _, q := range commands {
-			if loadPrefix(q, c.currentDatabase().ParseOptions()) {
+			if loadPrefix(q, c.parseOptions()) {
 				return c.writeError(&protocolError{1235, "42000", "LOAD DATA LOCAL must be a standalone query"})
 			}
 		}
