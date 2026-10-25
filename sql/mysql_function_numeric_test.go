@@ -36,6 +36,7 @@ func TestMySQLNumericFunctionsExactAndDomains(t *testing.T) {
 		{"FORMAT(123456789.5,2,'en_IN')", "12,34,56,789.50"},
 		{"FORMAT(12345.5,2,'fr_FR')", "12345,50"}, {"FORMAT(12345.5,2,'ru_RU')", "12 345,50"},
 		{"FORMAT(12345.5,2,NULL)", "12,345.50"}, {"FORMAT(-12345.55,1)", "-12,345.6"},
+		{"FORMAT(CAST(-0.5 AS REAL),0)", "-0"},
 		{"FORMAT(12345.5,-1)", "12,346"}, {"FORMAT(12345.5,100)", "12,345.500000000000000000000000000000"},
 		{"FORMAT(CAST('99999999999999999999.995' AS DECIMAL(23,3)),2)", "100,000,000,000,000,000,000.00"},
 	} {
@@ -88,5 +89,49 @@ func TestMySQLNumericWarningsAndOutputBudget(t *testing.T) {
 	s.queryMemoryBytes = 8
 	if _, err := s.evalExpr(parseTestExpression(t, "FORMAT(123456789,30)"), nil); err == nil {
 		t.Fatal("FORMAT exceeded output budget")
+	}
+}
+
+func TestMySQLRoundingTypesAndNativeFallback(t *testing.T) {
+	s := &Schema{mysqlMode: true}
+	for _, tc := range []struct {
+		expression, want string
+		typ              ColumnType
+	}{
+		{"ROUND(2.5)", "3", ColDecimal}, {"ROUND(-2.5)", "-3", ColDecimal},
+		{"ROUND(CAST(2.5 AS REAL))", "2", ColReal}, {"ROUND(CAST(3.5 AS REAL))", "4", ColReal},
+		{"ROUND(CAST(-2.5 AS REAL))", "-2", ColReal},
+		{"ROUND(CAST(1.25 AS REAL),1)", "1.2", ColReal},
+		{"ROUND(12345,-2)", "12300", ColInteger}, {"ROUND(123,-100)", "0", ColInteger},
+		{"ROUND(1,2)", "1", ColInteger}, {"ROUND(1.23,10)", "1.23", ColDecimal},
+		{"ROUND(99999999999999999999.995,2)", "100000000000000000000.00", ColDecimal},
+		{"ROUND(18446744073709551615,2)", "18446744073709551615", ColUnsigned},
+		{"ABS(-9007199254740993)", "9007199254740993", ColInteger},
+		{"ABS(18446744073709551615)", "18446744073709551615", ColUnsigned},
+		{"ABS(-99999999999999999999.125)", "99999999999999999999.125", ColDecimal},
+		{"ABS('12suffix')", "12", ColReal},
+	} {
+		v, err := s.evalExpr(parseTestExpression(t, tc.expression), nil)
+		if err != nil || v.String() != tc.want || v.Type != tc.typ {
+			t.Errorf("%s: %v type%v (%v), want%s type%v", tc.expression, v, v.Type, err, tc.want, tc.typ)
+		}
+	}
+	for _, expression := range []string{"ROUND(18446744073709551615,-1)", "ROUND(9223372036854775807,-1)", "ABS(-9223372036854775808)"} {
+		if _, err := s.evalExpr(parseTestExpression(t, expression), nil); err == nil {
+			t.Errorf("integer overflow accepted in %s", expression)
+		}
+	}
+	for _, expression := range []string{"ROUND(NULL)", "ROUND(1,NULL)", "ABS(NULL)"} {
+		if v, err := s.evalExpr(parseTestExpression(t, expression), nil); err != nil || !v.Null {
+			t.Errorf("%s: %v %v", expression, v, err)
+		}
+	}
+	native := &Schema{}
+	v, err := native.evalExpr(parseTestExpression(t, "ROUND(12,-1)"), nil)
+	if err != nil || v.Real != 12 || v.Type != ColReal {
+		t.Fatal("native ROUND behavior changed", v, err)
+	}
+	if _, err := native.evalExpr(parseTestExpression(t, "ABS('12suffix')"), nil); err == nil {
+		t.Fatal("native strict numeric behavior changed")
 	}
 }

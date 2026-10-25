@@ -88,6 +88,43 @@ func mysqlNumericFunctions() map[string]mysqlFunctionSpec {
 		}
 		return mysqlTruncateNumber(args[0], mysqlFunctionInt(args[1]))
 	}}
+	functions["ROUND"] = mysqlFunctionSpec{Min: 1, Max: 2, MySQLOnly: true, Metadata: mysqlNumericFunctionMetadata, Eval: func(_ *Schema, args []Value) (Value, error) {
+		if mysqlAnyNull(args) {
+			return NewNullValue(), nil
+		}
+		places := int64(0)
+		if len(args) > 1 {
+			places = mysqlFunctionInt(args[1])
+		}
+		return mysqlRoundNumber(args[0], places)
+	}}
+	functions["ABS"] = mysqlFunctionSpec{Min: 1, Max: 1, MySQLOnly: true, Metadata: mysqlNumericFunctionMetadata, Eval: func(_ *Schema, args []Value) (Value, error) {
+		v := args[0]
+		if v.Null {
+			return NewNullValue(), nil
+		}
+		if !isNumeric(v) || v.Type == ColReal {
+			return NewRealValue(math.Abs(toFloat(mysqlFunctionNumber(v)))), nil
+		}
+		if v.Type == ColUnsigned {
+			return v, nil
+		}
+		if v.Type == ColInteger {
+			if v.Int == math.MinInt64 {
+				return NewNullValue(), fmt.Errorf("BIGINT value is out of range in ABS")
+			}
+			if v.Int < 0 {
+				return NewIntValue(-v.Int), nil
+			}
+			return v, nil
+		}
+		n, scale, err := valueDecimal(v)
+		if err != nil {
+			return NewNullValue(), err
+		}
+		n.Abs(n)
+		return Value{Type: ColDecimal, Text: decimalText(n, scale)}, nil
+	}}
 	functions["MOD"] = mysqlFunctionSpec{Min: 2, Max: 2, Metadata: mysqlModMetadata, Eval: mysqlModuloFunction}
 	functions["CONV"] = mysqlFunctionSpec{Min: 3, Max: 3, Return: ColText, Eval: func(_ *Schema, args []Value) (Value, error) {
 		if mysqlAnyNull(args) {
@@ -147,11 +184,12 @@ func mysqlNumericWarning(s *Schema, code uint16, message string) {
 }
 
 func mysqlMathResult(s *Schema, name string, result float64) (Value, error) {
-	if math.IsNaN(result) || math.IsInf(result, -1) {
+	logDomain := (name == "LN" || name == "LOG" || name == "LOG2" || name == "LOG10") && math.IsInf(result, -1)
+	if math.IsNaN(result) || logDomain {
 		mysqlNumericWarning(s, 3020, "Invalid argument for "+name)
 		return NewNullValue(), nil
 	}
-	if math.IsInf(result, 1) {
+	if math.IsInf(result, 0) {
 		return NewNullValue(), fmt.Errorf("DOUBLE value is out of range in %s", name)
 	}
 	return NewRealValue(result), nil
@@ -171,8 +209,8 @@ func mysqlNumericFunctionMetadata(args []ColumnDef) ColumnDef {
 func mysqlIntegralFunctionMetadata(args []ColumnDef) ColumnDef {
 	c := mysqlNumericFunctionMetadata(args)
 	if c.ColType == ColDecimal {
+		c.Precision = min(65, max(1, c.Precision-c.Scale)+1)
 		c.Scale = 0
-		c.Precision = min(65, max(1, c.Precision)+1)
 		c.Declared = "DECIMAL"
 	}
 	return c
@@ -270,16 +308,71 @@ func mysqlTruncateNumber(v Value, places int64) (Value, error) {
 	return Value{Type: ColDecimal, Text: decimalText(n, int(places))}, nil
 }
 
+func mysqlRoundNumber(v Value, places int64) (Value, error) {
+	if v.Type == ColReal || !isNumeric(v) {
+		x := toFloat(mysqlFunctionNumber(v))
+		if places > 308 {
+			return NewRealValue(x), nil
+		}
+		if places < -308 {
+			return NewRealValue(math.Copysign(0, x)), nil
+		}
+		factor := math.Pow10(int(places))
+		scaled := x * factor
+		if math.IsInf(scaled, 0) {
+			return NewRealValue(x), nil
+		}
+		value := math.RoundToEven(scaled) / factor
+		if math.IsInf(value, 0) || math.IsNaN(value) {
+			return NewNullValue(), fmt.Errorf("DOUBLE value is out of range in ROUND")
+		}
+		return NewRealValue(value), nil
+	}
+	n, scale, err := valueDecimal(v)
+	if err != nil {
+		return NewNullValue(), err
+	}
+	if places >= int64(scale) {
+		return v, nil
+	}
+	if places < -maxDecimalDigits {
+		n.SetInt64(0)
+		places = 0
+	} else {
+		n = roundDecimal(n, scale, int(places))
+		if places < 0 {
+			n.Mul(n, decimalPower(int(-places)))
+			places = 0
+		}
+	}
+	switch v.Type {
+	case ColInteger:
+		if !n.IsInt64() {
+			return NewNullValue(), fmt.Errorf("BIGINT value is out of range in ROUND")
+		}
+		return NewIntValue(n.Int64()), nil
+	case ColUnsigned:
+		if !n.IsUint64() {
+			return NewNullValue(), fmt.Errorf("BIGINT UNSIGNED value is out of range in ROUND")
+		}
+		return NewUnsignedValue(n.Uint64()), nil
+	}
+	if len(new(big.Int).Abs(n).String()) > 65 {
+		return NewNullValue(), fmt.Errorf("DECIMAL value is out of range in ROUND")
+	}
+	return Value{Type: ColDecimal, Text: decimalText(n, int(places))}, nil
+}
+
 func mysqlModuloFunction(s *Schema, args []Value) (Value, error) {
 	if mysqlAnyNull(args) {
 		return NewNullValue(), nil
 	}
 	left, right := mysqlFunctionNumber(args[0]), mysqlFunctionNumber(args[1])
-	if toFloat(right) == 0 {
-		mysqlNumericWarning(s, 1365, "Division by 0")
-		return NewNullValue(), nil
-	}
 	if args[0].Type == ColReal || args[1].Type == ColReal || !isNumeric(args[0]) || !isNumeric(args[1]) {
+		if toFloat(right) == 0 {
+			mysqlNumericWarning(s, 1365, "Division by 0")
+			return NewNullValue(), nil
+		}
 		return NewRealValue(math.Mod(toFloat(left), toFloat(right))), nil
 	}
 	a, as, err := valueDecimal(left)
@@ -289,6 +382,10 @@ func mysqlModuloFunction(s *Schema, args []Value) (Value, error) {
 	b, bs, err := valueDecimal(right)
 	if err != nil {
 		return NewNullValue(), err
+	}
+	if b.Sign() == 0 {
+		mysqlNumericWarning(s, 1365, "Division by 0")
+		return NewNullValue(), nil
 	}
 	scale := max(as, bs)
 	a.Mul(a, decimalPower(scale-as))
@@ -389,12 +486,30 @@ func mysqlFormatFunction(s *Schema, args []Value) (Value, error) {
 	}
 	places := max(int64(0), min(int64(30), mysqlFunctionInt(args[1])))
 	v := mysqlFunctionNumber(args[0])
-	n, scale, err := valueDecimal(v)
+	var n *big.Int
+	var scale int
+	var err error
+	negativeZero := false
+	if args[0].Type == ColReal || !isNumeric(args[0]) {
+		factor := math.Pow10(int(places))
+		x := toFloat(v)
+		scaled := x * factor
+		if !math.IsInf(scaled, 0) {
+			x = math.RoundToEven(scaled) / factor
+		}
+		negativeZero = x == 0 && math.Signbit(x)
+		n, scale, err = parseDecimal(strconv.FormatFloat(x, 'f', int(places), 64))
+	} else {
+		n, scale, err = valueDecimal(v)
+	}
 	if err != nil {
 		return NewNullValue(), err
 	}
 	n = roundDecimal(n, scale, int(places))
 	text := decimalText(n, int(places))
+	if negativeZero {
+		text = "-" + text
+	}
 	locale := "en_US"
 	if len(args) > 2 && !args[2].Null {
 		locale = mysqlStringValue(args[2])
