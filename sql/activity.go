@@ -32,6 +32,7 @@ type SessionActivity struct {
 }
 
 type ActivityIdentity struct {
+	StartedAt                                            time.Time
 	BackendID                                            uint32
 	Dialect                                              Dialect
 	User, Database, ApplicationName, ClientAddress, Host string

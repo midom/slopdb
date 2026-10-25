@@ -59,6 +59,9 @@ func (s *Session) SetActivityIdentity(identity sql.ActivityIdentity) {
 		r.value.ID = uint64(identity.BackendID)
 	}
 	r.identified = true
+	if !identity.StartedAt.IsZero() {
+		r.value.StartedAt = identity.StartedAt
+	}
 	r.value.Dialect = identity.Dialect
 	r.value.User = identity.User
 	r.value.Database = identity.Database
@@ -210,4 +213,11 @@ func (d *Database) Activity(ctx context.Context) ([]sql.SessionActivity, error) 
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
 	return result, ctx.Err()
+}
+
+// TrackActivity describes a protocol command handled without executing native
+// SQL. Call the returned function when the command finishes. Adapters must not
+// nest this scope around calls which already track their native execution.
+func (s *Session) TrackActivity(ctx context.Context, source string) func() {
+	return s.db.beginActivity(s.schema, ctx, source)
 }
