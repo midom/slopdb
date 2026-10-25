@@ -86,6 +86,14 @@ func (s *Schema) ExecuteSessionVariables(stmt *SessionVariableStmt) error {
 func sessionVariableFunctions() map[string]FunctionSpec {
 	return map[string]FunctionSpec{
 		systemVariableRead: {Min: 2, Max: 2, Return: ColUnknown, Dialects: OnlyMySQL, Volatile: true, Metadata: func([]ColumnDef) ColumnDef { return ColumnDef{ColType: ColUnknown} }, Eval: func(s *Schema, a []Value) (Value, error) {
+			name := strings.ToLower(a[0].Text)
+			if name == "transaction_isolation" || name == "tx_isolation" {
+				level := s.IsolationLevel()
+				if a[1].Int != 0 {
+					level = RepeatableRead
+				}
+				return NewTextValue(strings.ReplaceAll(string(level), " ", "-")), nil
+			}
 			options, ok := SessionContextFrom(s.ctx)
 			if !ok || options.SystemVariable == nil {
 				return NewNullValue(), fmt.Errorf("system variables require a server connection")
@@ -244,7 +252,7 @@ func (p *Parser) parseSessionVariableSetting() (Statement, error) {
 func expressionUsesSessionVariable(expr Expression) bool {
 	found := false
 	_ = walkExpression(expr, func(e Expression) (bool, error) {
-		if f, ok := e.(*FuncCallExpr); ok && (f.Name == sessionVariableRead || f.Name == sessionVariableAssign) {
+		if f, ok := e.(*FuncCallExpr); ok && (f.Name == sessionVariableRead || f.Name == sessionVariableAssign || f.Name == systemVariableRead) {
 			found = true
 		}
 		return found, nil

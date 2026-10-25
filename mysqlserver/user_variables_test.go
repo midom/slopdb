@@ -4,6 +4,7 @@ import (
 	"context"
 	gosql "database/sql"
 	"testing"
+	"time"
 )
 
 func TestMySQLUserVariablesPreparedAndScalarSubqueries(t *testing.T) {
@@ -119,5 +120,32 @@ func TestMySQLResetClearsUserVariables(t *testing.T) {
 		if i == 2 && (len(packet) != 1 || packet[0] != 0xfb) {
 			t.Fatalf("reset retained variable: %x", packet)
 		}
+	}
+}
+
+func TestMySQLSystemIsolationVariableDoesNotReenterSession(t *testing.T) {
+	s := startTestServer(t, "tcp", Config{})
+	pool := s.open(t, "slopdb", "", "slopdb")
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	c, e := pool.Conn(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer c.Close()
+	var current, global string
+	if e = c.QueryRowContext(ctx, "SELECT @@transaction_isolation,@@global.transaction_isolation").Scan(&current, &global); e != nil || current != "REPEATABLE-READ" || global != "REPEATABLE-READ" {
+		t.Fatal(current, global, e)
+	}
+	if _, e = c.ExecContext(ctx, "SET SESSION transaction_isolation='READ-COMMITTED'"); e != nil {
+		t.Fatal(e)
+	}
+	p, e := c.PrepareContext(ctx, "SELECT @@session.tx_isolation")
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer p.Close()
+	if e = p.QueryRowContext(ctx).Scan(&current); e != nil || current != "READ-COMMITTED" {
+		t.Fatal(current, e)
 	}
 }
