@@ -29,7 +29,7 @@ func (s *Schema) lookups() *catalogLookups {
 				l.indexesByID[idx.ID] = idx
 			}
 			l.indexes[idx.Table] = append(l.indexes[idx.Table], idx)
-			if !s.isAutoIndex(idx) {
+			if !s.isAutoIndex(idx) && !idx.Fulltext {
 				l.covering[idx] = coveringTableInfo(idx, s.tables[idx.Table])
 			}
 		}
@@ -74,6 +74,12 @@ func (s *Schema) tableIndexes(table string) []*IndexInfo { return s.lookups().in
 // Names may contain colons. Resolve the longest registered name prefix without
 // scanning the catalog or interpreting colons inside a primary key as names.
 func (s *Schema) rowTable(key []byte) (string, *TableInfo) {
+	if len(key) >= 12 && key[0] == 3 && key[1] == 1 && key[2] == 255 && key[11] == ':' && s.temporaryKey(key) {
+		if info := s.lookups().tablesByID[binary.BigEndian.Uint64(key[3:11])]; info != nil {
+			return info.Name, info
+		}
+		return "", nil
+	}
 	if len(key) == 0 || key[0] != dataPrefix[0] {
 		return "", nil
 	}

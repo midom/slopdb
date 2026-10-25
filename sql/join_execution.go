@@ -43,7 +43,7 @@ func andTerms(expr Expression) []Expression {
 
 func deterministicFunction(name string) bool {
 	switch strings.ToUpper(name) {
-	case "COUNT", "SUM", "AVG", "MIN", "MAX", "TOTAL", "GROUP_CONCAT", "COALESCE", "IFNULL", "NULLIF", "LENGTH", "UPPER", "LOWER", "ABS", "ROUND", "IIF", "IF", "GREATEST", "LEAST", "CONCAT", "__MYSQL_CONVERT", "CAST", "SUBSTR", "SUBSTRING", "REPLACE", "TRIM", "LTRIM", "RTRIM", "TYPEOF", "HEX", "UNICODE", "CHAR", "INSTR":
+	case fulltextFunction, "COUNT", "SUM", "AVG", "MIN", "MAX", "TOTAL", "GROUP_CONCAT", "COALESCE", "IFNULL", "NULLIF", "LENGTH", "UPPER", "LOWER", "ABS", "ROUND", "IIF", "IF", "GREATEST", "LEAST", "CONCAT", "__MYSQL_CONVERT", "CAST", "SUBSTR", "SUBSTRING", "REPLACE", "TRIM", "LTRIM", "RTRIM", "TYPEOF", "HEX", "UNICODE", "CHAR", "INSTR":
 		return true
 	}
 	return false

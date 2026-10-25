@@ -411,7 +411,7 @@ func (s *Schema) tuplePlan(stmt *SelectStmt, info *TableInfo) *tupleReadPlan {
 	}
 	bestCost := costFor(best)
 	for _, idx := range s.tableIndexes(info.Name) {
-		if s.isClusteredIndex(idx) {
+		if s.isClusteredIndex(idx) || idx.Fulltext {
 			continue
 		}
 		plan := buildTuplePlan(stmt, info, idx, constraints)

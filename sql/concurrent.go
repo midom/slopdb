@@ -111,6 +111,9 @@ func (s *Schema) preparePointUpdateUncached(stmt *UpdateStmt) *PointUpdate {
 		}
 	}
 	for _, idx := range s.tableIndexes(table) {
+		if idx.Fulltext {
+			return nil
+		}
 		if !idx.IsUnique {
 			continue
 		}

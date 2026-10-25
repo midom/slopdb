@@ -13,6 +13,8 @@ import (
 // snapshot. The caller must keep the statement alive until Close. It is not
 // safe for concurrent calls.
 type RowCursor struct {
+	fulltext         bool
+	fulltextOpened   bool
 	schema           *Schema
 	stmt             *SelectStmt
 	info             *TableInfo
@@ -94,6 +96,10 @@ func (s *Schema) OpenRowCursor(stmt *SelectStmt) (*RowCursor, bool, error) {
 			c.expressions = append(c.expressions, selectExprCol{name: name, expr: col.Expr})
 		}
 	}
+	if hasFulltextCondition(stmt.Where) {
+		c.fulltext = true
+		return c, true, nil
+	}
 	prefix := []byte(info.storagePrefix(info.Name))
 	// Merge clustered intervals so OR/IN reads remain bounded, ordered and
 	// duplicate-free. Any branch that cannot constrain the key keeps the scan.
@@ -144,6 +150,23 @@ func cursorOrderColumn(stmt *SelectStmt, name string) string {
 }
 
 func (c *RowCursor) nextSourceRow() (map[string]Value, bool, error) {
+	if c.fulltext && !c.fulltextOpened {
+		c.fulltextOpened = true
+		keys, used, err := c.schema.fulltextCandidates(c.stmt.Where, c.info)
+		if err != nil {
+			return nil, false, err
+		}
+		if used {
+			for key := range keys {
+				k := []byte(key)
+				c.intervals = append(c.intervals, coveringInterval{k, append(copyBytes(k), 0)})
+			}
+			sort.Slice(c.intervals, func(i, j int) bool { return bytes.Compare(c.intervals[i].lower, c.intervals[j].lower) < 0 })
+		} else {
+			prefix := []byte(c.info.storagePrefix(c.info.Name))
+			c.intervals = []coveringInterval{{prefix, prefixSuccessor(prefix)}}
+		}
+	}
 	for {
 		if c.iterator == nil {
 			if c.position >= len(c.intervals) {

@@ -88,6 +88,9 @@ func (s *Schema) mysqlExplain(stmt *ExplainStmt) (*ResultSet, bool, error) {
 				row["type"] = NewTextValue("const")
 				row["key"] = NewTextValue("PRIMARY")
 				rows = 1
+			} else if index := s.fulltextPlanIndex(resolved.Where, info); index != nil {
+				row["type"] = NewTextValue("fulltext")
+				row["key"] = NewTextValue(index.SQLName())
 			} else if plan := s.tuplePlan(resolved, info); plan != nil {
 				row["type"] = NewTextValue("range")
 				key := "PRIMARY"

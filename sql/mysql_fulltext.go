@@ -1,7 +1,7 @@
 package sql
 
 import (
-	"bytes"
+	"encoding/binary"
 	"fmt"
 	"math"
 	"strings"
@@ -125,6 +125,9 @@ func validateFulltextIndex(info *TableInfo, idx *IndexInfo) error {
 	}
 	if idx.IsUnique {
 		return fmt.Errorf("FULLTEXT indexes cannot be UNIQUE")
+	}
+	if idx.hasPrefixes() {
+		return fmt.Errorf("FULLTEXT indexes do not support prefix lengths")
 	}
 	for _, name := range idx.columnNames() {
 		found := false
@@ -327,11 +330,12 @@ func parseBooleanFulltext(text string, q *fulltextQuery) ([]fulltextTerm, error)
 			}
 			if text[pos] == '(' {
 				var err error
+				groupStart := pos + 1
 				term.children, pos, err = parse(pos+1, true)
 				if err != nil {
 					return nil, pos, err
 				}
-				if len(term.children) == 0 {
+				if len(term.children) == 0 && strings.TrimSpace(text[groupStart:pos-1]) == "" {
 					return nil, pos, fmt.Errorf("empty fulltext group")
 				}
 			} else if text[pos] == '"' {
@@ -355,7 +359,11 @@ func parseBooleanFulltext(text string, q *fulltextQuery) ([]fulltextTerm, error)
 				word = strings.TrimSuffix(word, "*")
 				term.words = fulltextWords(word)
 			}
-			if len(term.words) > 0 || len(term.children) > 0 {
+			searchable := term.prefix || len(term.children) > 0
+			for _, word := range term.words {
+				searchable = searchable || q.indexed(word)
+			}
+			if searchable && (len(term.words) > 0 || len(term.children) > 0) {
 				nodes++
 				terms = append(terms, term)
 			}
@@ -388,7 +396,7 @@ func fulltextTermHits(t fulltextTerm, words []string, q *fulltextQuery) int {
 		matched := true
 		for j, w := range t.words {
 			if t.prefix && j == len(t.words)-1 {
-				matched = matched && strings.HasPrefix(words[i+j], w)
+				matched = matched && q.indexed(words[i+j]) && strings.HasPrefix(words[i+j], w)
 			} else {
 				matched = matched && words[i+j] == w
 			}
@@ -436,32 +444,22 @@ func scoreBooleanFulltext(terms []fulltextTerm, words []string, q *fulltextQuery
 	return positive > 0 && (required > 0 || hits > 0), score
 }
 
-// Fulltext execution uses a snapshot-safe document scan and bounded per-query
-// corpus counters. Persistent FULLTEXT document indexes use the normal atomic
-// index maintenance; an inverted-list acceleration can be added independently
-// without changing SQL answers or the persistent catalog format.
-func (s *Schema) evalFulltext(f *FuncCallExpr, row map[string]Value) (Value, error) {
-	if err := validateFulltextFunction(f); err != nil {
-		return NewNullValue(), err
-	}
-	binding, ok := s.fulltextBindings[f]
-	if !ok {
-		info, idx, err := s.resolveFulltextIndex(f, nil)
-		if err != nil {
-			return NewNullValue(), err
-		}
-		binding = fulltextBinding{info, idx}
+// Fulltext scoring uses snapshot-safe inverted posting statistics and verifies
+// candidate document tokens without scanning other table rows.
+func (s *Schema) compiledFulltextQuery(f *FuncCallExpr, binding fulltextBinding, row map[string]Value) (*fulltextQuery, error) {
+	if binding.index.FulltextVersion != fulltextIndexVersion {
+		return nil, fmt.Errorf("FULLTEXT index %s requires rebuild", binding.index.Name)
 	}
 	queryValue, err := s.evalExpr(f.Args[len(f.Args)-2], row)
 	if err != nil {
-		return NewNullValue(), err
+		return nil, err
 	}
 	if queryValue.Null {
-		return NewNullValue(), nil
+		return nil, nil
 	}
 	text := mysqlStringValue(queryValue)
 	if len(text) > 64<<10 {
-		return NewNullValue(), fmt.Errorf("fulltext query exceeds 64 KiB")
+		return nil, fmt.Errorf("fulltext query exceeds 64 KiB")
 	}
 	mode := f.Args[len(f.Args)-1].(*LiteralExpr).Value.Text
 	key := binding.index.Name + "\x00" + mode + "\x00" + text
@@ -475,17 +473,17 @@ func (s *Schema) evalFulltext(f *FuncCallExpr, row map[string]Value) (Value, err
 				if q.indexed(w) {
 					q.terms = append(q.terms, fulltextTerm{words: []string{w}, weight: 1})
 					if len(q.terms) > 1024 {
-						return NewNullValue(), fmt.Errorf("fulltext query has too many terms")
+						return nil, fmt.Errorf("fulltext query has too many terms")
 					}
 				}
 			}
 		}
 		if err != nil {
-			return NewNullValue(), err
+			return nil, err
 		}
-		if !q.boolean {
+		if !q.boolean && len(q.terms) > 0 {
 			if err = s.fulltextCorpus(q, binding); err != nil {
-				return NewNullValue(), err
+				return nil, err
 			}
 		}
 		if s.fulltextQueries == nil {
@@ -497,6 +495,28 @@ func (s *Schema) evalFulltext(f *FuncCallExpr, row map[string]Value) (Value, err
 			s.fulltextQueryBytes += cost
 		}
 	}
+	return q, nil
+}
+
+func (s *Schema) evalFulltext(f *FuncCallExpr, row map[string]Value) (Value, error) {
+	if err := validateFulltextFunction(f); err != nil {
+		return NewNullValue(), err
+	}
+	binding, ok := s.fulltextBindings[f]
+	if !ok {
+		info, idx, err := s.resolveFulltextIndex(f, nil)
+		if err != nil {
+			return NewNullValue(), err
+		}
+		binding = fulltextBinding{info, idx}
+	}
+	q, err := s.compiledFulltextQuery(f, binding, row)
+	if err != nil {
+		return NewNullValue(), err
+	}
+	if q == nil {
+		return NewNullValue(), nil
+	}
 	var words []string
 	for _, expr := range f.Args[:len(f.Args)-2] {
 		v, err := s.evalExpr(expr, row)
@@ -504,11 +524,12 @@ func (s *Schema) evalFulltext(f *FuncCallExpr, row map[string]Value) (Value, err
 			return NewNullValue(), err
 		}
 		if !v.Null {
-			part, err := s.fulltextDocumentWords(v.String(), s.memoryBudget()-int64(len(words))*16)
+			part, err := s.fulltextDocumentWords(mysqlStringValue(v), s.memoryBudget()-int64(len(words))*16)
 			if err != nil {
 				return NewNullValue(), err
 			}
 			words = append(words, part...)
+			words = append(words, "")
 		}
 	}
 	if q.boolean {
@@ -534,37 +555,86 @@ func (s *Schema) evalFulltext(f *FuncCallExpr, row map[string]Value) (Value, err
 	return NewRealValue(score), nil
 }
 
+// Corpus counts and document frequencies come entirely from the inverted
+// index. Only a transaction's overwritten rows need residual revalidation when
+// a repeatable-read snapshot still contains their historical posting entries.
 func (s *Schema) fulltextCorpus(q *fulltextQuery, b fulltextBinding) error {
-	prefix := []byte(s.tableDataPrefix(b.table.Name))
-	it := s.newIteratorSeek(prefix)
-	defer it.Close()
-	for it.Valid() && bytes.HasPrefix(it.Key().UserKey, prefix) {
+	prefix := fulltextDocumentPrefix(b.index)
+	it := s.newRangeIterator(prefix, prefixSuccessor(prefix), false)
+	for ; it.Valid(); it.Next() {
 		if err := s.checkInterrupt(); err != nil {
+			it.Close()
 			return err
 		}
-		r := decodeRow(it.Value(), b.table)
-		var words []string
-		for _, name := range b.index.columnNames() {
-			if v := r[name]; !v.Null {
-				part, err := s.fulltextDocumentWords(v.String(), s.memoryBudget()-int64(len(words))*16)
-				if err != nil {
-					return err
-				}
-				words = append(words, part...)
-			}
+		_, n := binary.Uvarint(it.Value())
+		if n <= 0 || n != len(it.Value()) {
+			it.Close()
+			return fmt.Errorf("malformed FULLTEXT document marker")
+		}
+		key := it.Key().UserKey[len(prefix):]
+		if pos, ok := s.txLatest[string(key)]; ok && s.txWrites[pos].del {
+			continue
 		}
 		q.docs++
-		seen := map[string]bool{}
-		for _, term := range q.terms {
-			w := term.words[0]
-			if !seen[w] && fulltextTermHits(term, words, q) > 0 {
-				q.frequency[w]++
-				seen[w] = true
-			}
-		}
-		it.Next()
 	}
-	return storage.IteratorError(it)
+	err := storage.IteratorError(it)
+	it.Close()
+	if err != nil {
+		return err
+	}
+	for _, term := range q.terms {
+		word := term.words[0]
+		if _, exists := q.frequency[word]; exists {
+			continue
+		}
+		prefix := fulltextPostingPrefix(b.index, word)
+		it := s.newRangeIterator(prefix, prefixSuccessor(prefix), false)
+		count := int64(0)
+		for ; it.Valid(); it.Next() {
+			if err := s.checkInterrupt(); err != nil {
+				it.Close()
+				return err
+			}
+			if err := validateFulltextPositions(it.Value()); err != nil {
+				it.Close()
+				return err
+			}
+			rowkey := it.Key().UserKey[len(prefix):]
+			if _, changed := s.txLatest[string(rowkey)]; changed {
+				value, found, e := s.schemaGet(rowkey)
+				if e != nil {
+					it.Close()
+					return e
+				}
+				if !found {
+					continue
+				}
+				row := decodeRow(value, b.table)
+				matched := false
+				for _, name := range b.index.columnNames() {
+					words, e := s.fulltextDocumentWords(mysqlStringValue(row[name]), s.memoryBudget())
+					if e != nil {
+						it.Close()
+						return e
+					}
+					for _, token := range words {
+						matched = matched || token == word
+					}
+				}
+				if !matched {
+					continue
+				}
+			}
+			count++
+		}
+		err := storage.IteratorError(it)
+		it.Close()
+		if err != nil {
+			return err
+		}
+		q.frequency[word] = count
+	}
+	return nil
 }
 
 func (s *Schema) fulltextDocumentWords(text string, remaining int64) ([]string, error) {

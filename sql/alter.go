@@ -659,6 +659,9 @@ func (s *Schema) alterIndex(a *AlterTableStmt) error {
 	if s.isClusteredIndex(idx) {
 		return nil
 	}
+	if idx.Fulltext {
+		idx.FulltextVersion = fulltextIndexVersion
+	}
 	prefix := []byte(idx.storagePrefix())
 	it := s.newIteratorSeek(prefix)
 	var keys [][]byte
@@ -683,11 +686,11 @@ func (s *Schema) alterIndex(a *AlterTableStmt) error {
 	}
 	for _, entry := range entries {
 		row := decodeRow(entry.Value, info)
-		if err = s.write(encodeRowIndexKey(idx, row, entry.Key.UserKey), s.encodeIndexValue(idx, row)); err != nil {
+		if err = s.writeIndexRow(idx, row, entry.Key.UserKey, false); err != nil {
 			return err
 		}
 	}
-	return nil
+	return s.saveIndexes()
 }
 func (s *Schema) alterView(a *AlterTableStmt) error {
 	v := s.views[a.Table]

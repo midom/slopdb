@@ -267,6 +267,11 @@ func (s *Schema) makeJoinPlan(stmt *SelectStmt) *joinPlan {
 			r.count *= s.predicateSelectivity(r.table, bare)
 		}
 	}
+	for _, relation := range p.relations {
+		if hasFulltextCondition(relation.filter) {
+			relation.count = math.Min(relation.count, 1)
+		}
+	}
 	p.chooseOrder()
 	return p
 }
@@ -295,7 +300,7 @@ func (s *Schema) loadJoinRelation(r *joinRelation) error {
 	if r.loaded {
 		return nil
 	}
-	err := s.walkAccess(r.info, r.needed, r.paths, func(row map[string]Value) error {
+	err := s.walkFilteredAccess(r.info, r.needed, r.filter, r.paths, func(row map[string]Value) error {
 		if r.filter != nil {
 			q := row
 			if r.qualifiedFilter {
@@ -470,7 +475,7 @@ func (s *Schema) joinReader(r *joinRelation, pairs []joinKeyPair) *joinReader {
 	}
 	consider(nil, r.info.PKColumns)
 	for _, idx := range s.tableIndexes(r.table) {
-		if !s.isClusteredIndex(idx) {
+		if !s.isClusteredIndex(idx) && !idx.Fulltext {
 			consider(idx, idx.columnNames())
 		}
 	}

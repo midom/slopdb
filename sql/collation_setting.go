@@ -105,7 +105,7 @@ func (s *Schema) rebuildCollation(mode Collation) error {
 			return err
 		}
 		key := iter.Key().UserKey
-		if len(key) > 0 && key[0] == indexPrefix[0] {
+		if len(key) > 0 && (key[0] == indexPrefix[0] || len(key) > 1 && key[0] == 3 && key[1] == 2 && s.temporaryKey(key)) {
 			oldIndexes = append(oldIndexes, copyBytes(key))
 		} else if table, info := s.rowTable(key); info != nil {
 			data := copyBytes(iter.Value())
@@ -178,7 +178,11 @@ func (s *Schema) rebuildCollation(mode Collation) error {
 			if s.isClusteredIndex(idx) {
 				continue
 			}
-			newIndexes = append(newIndexes, storage.Mutation{Key: encodeRowIndexKey(idx, entry.row, key), Value: s.encodeIndexValue(idx, entry.row)})
+			mutations, err := s.indexRowMutations(idx, entry.row, key, false)
+			if err != nil {
+				return err
+			}
+			newIndexes = append(newIndexes, mutations...)
 		}
 	}
 	for _, entry := range rows {

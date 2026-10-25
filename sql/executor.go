@@ -40,19 +40,20 @@ type TableInfo struct {
 }
 
 type IndexInfo struct {
-	PrefixEncoding int             `json:"prefix_encoding,omitempty"`
-	DisplayName    string          `json:"display_name,omitempty"`
-	PrefixLengths  []int64         `json:"prefix_lengths,omitempty"`
-	collation      Collation       `json:"-"`
-	binaryColumns  map[string]bool `json:"-"`
-	ID             uint64          `json:"id,omitempty"`
-	Name           string          `json:"name"`
-	Table          string          `json:"table"`
-	Column         string          `json:"column"`
-	IsUnique       bool            `json:"is_unique"`
-	Columns        []string        `json:"columns,omitempty"`
-	Auto           bool            `json:"auto,omitempty"`
-	Fulltext       bool            `json:"fulltext,omitempty"`
+	FulltextVersion int             `json:"fulltext_version,omitempty"`
+	PrefixEncoding  int             `json:"prefix_encoding,omitempty"`
+	DisplayName     string          `json:"display_name,omitempty"`
+	PrefixLengths   []int64         `json:"prefix_lengths,omitempty"`
+	collation       Collation       `json:"-"`
+	binaryColumns   map[string]bool `json:"-"`
+	ID              uint64          `json:"id,omitempty"`
+	Name            string          `json:"name"`
+	Table           string          `json:"table"`
+	Column          string          `json:"column"`
+	IsUnique        bool            `json:"is_unique"`
+	Columns         []string        `json:"columns,omitempty"`
+	Auto            bool            `json:"auto,omitempty"`
+	Fulltext        bool            `json:"fulltext,omitempty"`
 }
 
 type ViewInfo struct {
@@ -328,6 +329,9 @@ func newSchemaWithOptions(lsm *storage.LSMTree, pageSize int, opt *storage.Optio
 			return nil, err
 		}
 		if err := s.normalizeConstraintCatalog(); err != nil {
+			return nil, err
+		}
+		if err := s.upgradeFulltextIndexes(); err != nil {
 			return nil, err
 		}
 		if err := s.upgradePrefixIndexes(); err != nil {
@@ -1165,7 +1169,7 @@ func (s *Schema) findWhereIndex(where Expression, tableName string) *IndexInfo {
 		return nil
 	}
 	for _, idx := range s.tableIndexes(tableName) {
-		if idx.Table == tableName && idx.Column == colRef.Name {
+		if idx.Table == tableName && !idx.Fulltext && idx.Column == colRef.Name {
 			return idx
 		}
 	}
@@ -1189,7 +1193,7 @@ func (s *Schema) findOrderIndex(stmt *SelectStmt, tableName string) *IndexInfo {
 		return &IndexInfo{Name: "PRIMARY", Table: tableName, Column: name, IsUnique: true}
 	}
 	for _, idx := range s.tableIndexes(tableName) {
-		if idx.Table == tableName && len(idx.columnNames()) == 1 && idx.Column == name {
+		if idx.Table == tableName && !idx.Fulltext && !idx.hasPrefixes() && len(idx.columnNames()) == 1 && idx.Column == name {
 			return idx
 		}
 	}
@@ -1313,6 +1317,9 @@ func (s *Schema) Explain(stmt *ExplainStmt) (*ResultSet, error) {
 				addRow("JoinAccess", 0, 0, 0, access, "", r.alias+": index probes or hash input chosen by cardinality")
 				mask |= 1 << i
 			}
+		} else if ft := s.fulltextPlanIndex(inner.Where, info); ft != nil && !point {
+			addRow("OpenFulltext", 0, columnCount, 0, ft.SQLName(), "", "table="+tname)
+			addRow("PostingSeek", 0, 0, 0, ft.SQLName(), "", "inverted term postings; residual document verification")
 		} else if tuple != nil {
 			ordered = tuple.ordered
 			opcode := "OpenRead"
@@ -2406,7 +2413,14 @@ func (s *Schema) repairIndexes() error {
 				if s.isClusteredIndex(idx) {
 					continue
 				}
-				expected[string(encodeRowIndexKey(idx, row, key))] = s.encodeIndexValue(idx, row)
+				mutations, e := s.indexRowMutations(idx, row, key, false)
+				if e != nil {
+					iter.Close()
+					return e
+				}
+				for _, mutation := range mutations {
+					expected[string(mutation.Key)] = mutation.Value
+				}
 			}
 		}
 		iter.Next()
@@ -2538,6 +2552,9 @@ func (s *Schema) CreateIndex(stmt *CreateIndexStmt) error {
 
 	idx := newIndexInfo(idxName, tableName, columns, stmt.Unique)
 	idx.Fulltext = stmt.Fulltext
+	if idx.Fulltext {
+		idx.FulltextVersion = fulltextIndexVersion
+	}
 	if err := validateFulltextIndex(info, idx); err != nil {
 		return err
 	}
@@ -2587,7 +2604,12 @@ func (s *Schema) CreateIndex(stmt *CreateIndexStmt) error {
 				values[string(signature)] = true
 			}
 		}
-		indexEntries = append(indexEntries, storage.Mutation{Key: encodeRowIndexKey(idx, row, iter.Key().UserKey), Value: s.encodeIndexValue(idx, row)})
+		mutations, e := s.indexRowMutations(idx, row, iter.Key().UserKey, false)
+		if e != nil {
+			iter.Close()
+			return e
+		}
+		indexEntries = append(indexEntries, mutations...)
 		iter.Next()
 	}
 	err = storage.IteratorError(iter)
@@ -3026,7 +3048,7 @@ func (s *Schema) findMatchingRowsViaIndex(where Expression, tableName string) ([
 	}
 	var matchingIdx *IndexInfo
 	for _, idx := range s.tableIndexes(tableName) {
-		if idx.Table == tableName && idx.Column == colName {
+		if idx.Table == tableName && !idx.Fulltext && idx.Column == colName {
 			matchingIdx = idx
 			break
 		}
@@ -3792,6 +3814,12 @@ func (s *Schema) updateIndexes(tableName string, info *TableInfo, row map[string
 		if idx.Table != tableName || s.isClusteredIndex(idx) {
 			continue
 		}
+		if idx.Fulltext {
+			if err := s.writeIndexRow(idx, row, rowKey, !isInsert); err != nil {
+				return err
+			}
+			continue
+		}
 		key := encodeRowIndexKey(idx, row, rowKey)
 		var err error
 		if isInsert {
@@ -3809,6 +3837,17 @@ func (s *Schema) updateIndexes(tableName string, info *TableInfo, row map[string
 func (s *Schema) updateChangedIndexes(table string, oldRow, row map[string]Value, oldKey, key []byte) error {
 	for _, idx := range s.tableIndexes(table) {
 		if idx.Table != table || s.isClusteredIndex(idx) {
+			continue
+		}
+		if idx.Fulltext {
+			if oldRow != nil {
+				if err := s.writeIndexRow(idx, oldRow, oldKey, true); err != nil {
+					return err
+				}
+			}
+			if err := s.writeIndexRow(idx, row, key, false); err != nil {
+				return err
+			}
 			continue
 		}
 		before := encodeRowIndexKey(idx, oldRow, oldKey)

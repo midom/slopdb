@@ -170,14 +170,14 @@ func (s *Schema) profileRelation(key []byte) (string, bool) {
 	if len(key) == 0 {
 		return "catalog", false
 	}
-	if key[0] == 1 {
+	if key[0] == 1 || len(key) > 1 && key[0] == 3 && key[1] == 1 {
 		for name := range s.tables {
 			if bytes.HasPrefix(key, []byte(s.tableDataPrefix(name))) {
 				return name, false
 			}
 		}
 	}
-	if key[0] == 2 {
+	if key[0] == 2 || len(key) > 1 && key[0] == 3 && key[1] == 2 {
 		for name, index := range s.indexes {
 			if bytes.HasPrefix(key, []byte(s.indexDataPrefix(name))) {
 				return index.Table + "." + name, true
@@ -192,7 +192,7 @@ func (p *QueryProfile) read(id int, key, value []byte, index bool) {
 	if index {
 		op.IndexEntriesExamined++
 		p.IndexEntriesExamined++
-	} else if len(key) != 0 && key[0] == 1 {
+	} else if len(key) != 0 && (key[0] == 1 || len(key) > 1 && key[0] == 3 && key[1] == 1) {
 		op.RowsExamined++
 		p.RowsExamined++
 	}

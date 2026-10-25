@@ -14,7 +14,7 @@ import (
 // never an implicit copy of the entire row. The binary payload also preserves
 // embedded separators, NULLs and exact REAL values without parsing index keys.
 func coveringTableInfo(idx *IndexInfo, table *TableInfo) *TableInfo {
-	if table == nil {
+	if table == nil || idx.Fulltext {
 		return nil
 	}
 	info := &TableInfo{}

@@ -128,18 +128,23 @@ func (s *Schema) CheckIntegrity() (report IntegrityReport, err error) {
 				if s.isClusteredIndex(idx) {
 					continue
 				}
-				expectedKey := encodeRowIndexKey(idx, row, key)
-				value, found, getErr := s.schemaGet(expectedKey)
-				if getErr != nil {
-					return report, getErr
+				mutations, buildErr := s.indexRowMutations(idx, row, key, false)
+				if buildErr != nil {
+					return report, buildErr
 				}
-				if !found {
-					return report, fmt.Errorf("index %s: missing entry for row %q", idx.Name, key)
+				for _, mutation := range mutations {
+					value, found, getErr := s.schemaGet(mutation.Key)
+					if getErr != nil {
+						return report, getErr
+					}
+					if !found {
+						return report, fmt.Errorf("index %s: missing entry for row %q", idx.Name, key)
+					}
+					if !bytes.Equal(value, mutation.Value) {
+						return report, fmt.Errorf("index %s: stale payload for row %q", idx.Name, key)
+					}
+					expectedCounts[idx.Name]++
 				}
-				if !bytes.Equal(value, s.encodeIndexValue(idx, row)) {
-					return report, fmt.Errorf("index %s: stale payload for row %q", idx.Name, key)
-				}
-				expectedCounts[idx.Name]++
 			}
 			report.Rows++
 		case 3:

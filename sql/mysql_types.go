@@ -449,6 +449,9 @@ func (s *Schema) comparisonAffinity(v Value, col ColumnDef) Value {
 // Prefixes are physical key components: TEXT counts code points and BLOB
 // counts bytes. Unique prefix indexes enforce equality on these components.
 func validateIndexPrefixes(columns []ColumnDef, idx *IndexInfo) error {
+	if idx.Fulltext && idx.hasPrefixes() {
+		return fmt.Errorf("FULLTEXT indexes do not support prefix lengths")
+	}
 	for i, n := range idx.PrefixLengths {
 		if n == 0 {
 			continue

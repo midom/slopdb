@@ -598,7 +598,7 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 				readErr = s.walkTypedAggregate(typed, info, bareNeeded, paths, groups, newGroup)
 			}
 		} else {
-			readErr = s.walkAccess(info, bareNeeded, paths, accept)
+			readErr = s.walkFilteredAccess(info, bareNeeded, where, paths, accept)
 			if ordered && readErr == nil && orderedGroup != nil {
 				readErr = orderedEmit(orderedGroup)
 			}
@@ -658,7 +658,7 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 		if plan != nil {
 			readErr = s.walkJoinPlan(plan, capture)
 		} else {
-			readErr = s.walkAccess(info, bareNeeded, nil, capture)
+			readErr = s.walkFilteredAccess(info, bareNeeded, localAccessPredicate(stmt.Where, stmt.From, stmt.FromAlias), nil, capture)
 		}
 		var last string
 		var current *aggregateGroup

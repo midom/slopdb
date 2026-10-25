@@ -160,6 +160,9 @@ func (s *Schema) StartOnlineIndex(stmt *CreateIndexStmt) (*OnlineIndexBuild, err
 	}
 	idx := newIndexInfo(name, table, columns, stmt.Unique)
 	idx.Fulltext = stmt.Fulltext
+	if idx.Fulltext {
+		idx.FulltextVersion = fulltextIndexVersion
+	}
 	if err := validateFulltextIndex(info, idx); err != nil {
 		log.Close()
 		disk.close()
@@ -257,7 +260,11 @@ func (s *Schema) stageOnlineIndexRow(b *OnlineIndexBuild, key, data []byte, foun
 		if err = s.changeOnlineUniqueCount(b, row, -1); err != nil {
 			return nil, err
 		}
-		batch = append(batch, storage.Mutation{Key: encodeRowIndexKey(b.idx, row, key), Delete: true})
+		mutations, e := s.indexRowMutations(b.idx, row, key, true)
+		if e != nil {
+			return nil, e
+		}
+		batch = append(batch, mutations...)
 	}
 	if found {
 		row := decodeRow(data, b.info)
@@ -267,7 +274,11 @@ func (s *Schema) stageOnlineIndexRow(b *OnlineIndexBuild, key, data []byte, foun
 		if err = s.changeOnlineUniqueCount(b, row, 1); err != nil {
 			return nil, err
 		}
-		batch = append(batch, storage.Mutation{Key: encodeRowIndexKey(b.idx, row, key), Value: s.encodeIndexValue(b.idx, row)})
+		mutations, e := s.indexRowMutations(b.idx, row, key, false)
+		if e != nil {
+			return nil, e
+		}
+		batch = append(batch, mutations...)
 		err = b.disk.index.Put(key, data)
 	} else {
 		err = b.disk.index.Delete(key)

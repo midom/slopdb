@@ -234,7 +234,7 @@ func (s *Schema) accessPaths(where Expression, info *TableInfo) []*accessPath {
 			}
 		}
 		for _, idx := range s.tableIndexes(info.Name) {
-			if s.isClusteredIndex(idx) {
+			if s.isClusteredIndex(idx) || idx.Fulltext {
 				continue
 			}
 			p := buildAccessPath(info, idx, constraints)
@@ -670,6 +670,9 @@ func (s *Schema) streamSelectScan(stmt *SelectStmt, info *TableInfo) ([]map[stri
 	// A complete prepared PK predicate already has a minimal point-read path
 	// below. Avoid rebuilding scan/OR candidates only to discard them here.
 	// The normal point reader still checks types and evaluates residual terms.
+	if _, point := s.primaryKeyLookup(stmt.Where, info.Name, info); point {
+		return nil, false, nil
+	}
 	if s.selectDepth <= 1 && s.preparedPlan != nil && s.preparedPlan.info == info && s.preparedPlan.pointComplete() {
 		return nil, false, nil
 	}
@@ -703,7 +706,7 @@ func (s *Schema) streamSelectScan(stmt *SelectStmt, info *TableInfo) ([]map[stri
 	// Existing point/covering/ordered paths remain minimal for transactional
 	// calls. Use this reader for nested scans and otherwise unsupported OR access.
 	if s.selectDepth <= 1 {
-		if len(paths) <= 1 {
+		if len(paths) <= 1 && !hasFulltextCondition(where) {
 			return nil, false, nil
 		}
 	}
@@ -711,7 +714,7 @@ func (s *Schema) streamSelectScan(stmt *SelectStmt, info *TableInfo) ([]map[stri
 	if stmt.Limit == 0 {
 		return rows, true, nil
 	}
-	err := s.walkAccess(info, bareNeeded, paths, func(row map[string]Value) error {
+	err := s.walkFilteredAccess(info, bareNeeded, where, paths, func(row map[string]Value) error {
 		if needsQualifiedRows(stmt) {
 			qualifyAccessRow(row, stmt.From, stmt.FromAlias)
 		}
