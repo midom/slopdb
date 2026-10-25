@@ -23,16 +23,22 @@ type RowCursor struct {
 	columns          []ColumnDef
 	expressions      []selectExprCol
 	physical         *preparedExecutionPlan
-	sourcePlan       *preparedExecutionPlan
+	sourceColumns    []cursorSourceColumn
+	sourceFields     int
 	source           map[string]Value
 	condition        map[string]Value
-	qualified        bool
 	iterator         storage.Iterator
 	intervals        []coveringInterval
 	position         int
 	reverse          bool
 	skipped, emitted int64
 	closed           bool
+}
+
+type cursorSourceColumn struct {
+	pointDecodeMetadata
+	aliasName, tableName string
+	blobBuffer           []byte
 }
 
 // OpenRowCursor returns handled=false for operators which need the ordinary
@@ -85,7 +91,6 @@ func (s *Schema) OpenRowCursor(stmt *SelectStmt) (*RowCursor, bool, error) {
 	c := &RowCursor{schema: s, stmt: stmt, info: info, reverse: reverse}
 	c.columns, c.expressions, _ = s.selectProjection(stmt, info)
 	c.columnsComplete = cursorCatalogProjection(stmt, info, c.columns)
-	c.qualified = needsQualifiedRows(stmt)
 	// Compile decoding metadata once. Simple physical projections can decode
 	// straight into the caller's output buffers, keeping WHERE-only fields in
 	// a private map. Expressions use a separate, reusable source row instead.
@@ -98,13 +103,7 @@ func (s *Schema) OpenRowCursor(stmt *SelectStmt) (*RowCursor, bool, error) {
 			c.condition = make(map[string]Value, physical.pointDecodeCount)
 		}
 	} else {
-		c.sourcePlan = &preparedExecutionPlan{pointDecodeCount: len(info.Columns)}
-		for _, col := range info.Columns {
-			c.sourcePlan.pointDecodeMetadata = append(c.sourcePlan.pointDecodeMetadata, pointDecodeMetadata{
-				name: col.Name, kind: col.LogicalType().Kind, binary: col.Binary,
-				decode: true, collation: col.Collation, enums: col.EnumValues,
-			})
-		}
+		c.compileSourceColumns()
 	}
 	if hasFulltextCondition(stmt.Where) {
 		c.fulltext = true
@@ -144,6 +143,105 @@ func (s *Schema) OpenRowCursor(stmt *SelectStmt) (*RowCursor, bool, error) {
 	}
 	c.intervals = merged
 	return c, true, nil
+}
+
+// Expression and aliased projections need a private source row, but only the
+// columns referenced by their expressions or WHERE need decoding. Keep its
+// qualification keys and declaration metadata stable for the cursor lifetime.
+func (c *RowCursor) compileSourceColumns() {
+	needed := make([]bool, len(c.info.Columns))
+	mark := func(expression Expression) {
+		_ = walkExpression(expression, func(expression Expression) (bool, error) {
+			if ref, ok := expression.(*ColumnRefExpr); ok {
+				name := strings.ToLower(ref.Name)
+				for i, column := range c.info.Columns {
+					if name == column.Name || strings.HasSuffix(name, "."+column.Name) {
+						needed[i] = true
+					}
+				}
+			}
+			return false, nil
+		})
+	}
+	if c.stmt.SelectAll {
+		for i := range needed {
+			needed[i] = true
+		}
+	} else {
+		for _, expression := range c.expressions {
+			mark(expression.expr)
+		}
+	}
+	mark(c.stmt.Where)
+	qualified := needsQualifiedRows(c.stmt)
+	alias := c.stmt.FromAlias
+	if alias == "" {
+		alias = c.stmt.From
+	}
+	c.sourceColumns = make([]cursorSourceColumn, len(c.info.Columns))
+	for i, column := range c.info.Columns {
+		m := &c.sourceColumns[i]
+		m.name, m.decode = column.Name, needed[i]
+		if !m.decode {
+			continue
+		}
+		m.kind, m.binary, m.collation, m.enums = column.LogicalType().Kind, column.Binary, column.Collation, column.EnumValues
+		c.sourceFields++
+		if qualified && !strings.Contains(column.Name, ".") {
+			m.aliasName = alias + "." + column.Name
+			c.sourceFields++
+			if c.stmt.From != alias {
+				m.tableName = c.stmt.From + "." + column.Name
+				c.sourceFields++
+			}
+		}
+	}
+}
+
+// The map is entirely cursor-private, so no field cleanup or qualification-key
+// construction is needed per row. BLOB decoding reuses each source field's own
+// buffer; projection copies it before anything reaches a caller-owned result.
+func (c *RowCursor) decodeSourceRow(data []byte) map[string]Value {
+	if c.source == nil {
+		c.source = make(map[string]Value, c.sourceFields)
+	}
+	offset := 0
+	for i := range c.sourceColumns {
+		column := &c.sourceColumns[i]
+		if !column.decode {
+			if offset < len(data) {
+				offset += skipPointValue(data[offset:])
+			}
+			continue
+		}
+		value := NewNullValue()
+		if offset < len(data) {
+			var n int
+			previous := c.source[column.name]
+			if previous.Blob == nil {
+				previous.Blob = column.blobBuffer
+			}
+			value, n = decodePointValueInto(data[offset:], previous)
+			value = decorateTypedValue(value, column.kind, column.binary, column.collation, column.enums)
+			offset += n
+		}
+		// NULL clears the visible value, while a bounded, exclusively private
+		// buffer can survive for the next non-NULL row in this cursor.
+		if !value.Null && value.Type == ColBlob {
+			column.blobBuffer = nil
+			if cap(value.Blob) <= 64<<10 {
+				column.blobBuffer = value.Blob
+			}
+		}
+		c.source[column.name] = value
+		if column.aliasName != "" {
+			c.source[column.aliasName] = value
+		}
+		if column.tableName != "" {
+			c.source[column.tableName] = value
+		}
+	}
+	return c.source
 }
 
 func cursorOrderColumn(stmt *SelectStmt, name string) string {
@@ -203,8 +301,7 @@ func (c *RowCursor) nextSourceRow(dst map[string]Value) (row, out map[string]Val
 					row = c.condition
 				}
 			} else {
-				c.source = decodePointRowInto(data, c.info, c.sourcePlan, c.source)
-				row, out = c.source, dst
+				row, out = c.decodeSourceRow(data), dst
 			}
 			if c.reverse {
 				c.iterator.Prev()
@@ -334,9 +431,6 @@ func (c *RowCursor) NextInto(dst map[string]Value) (map[string]Value, bool, erro
 			c.Close()
 			return nil, false, err
 		}
-		if c.qualified {
-			qualifyAccessRow(row, c.stmt.From, c.stmt.FromAlias)
-		}
 		if c.stmt.Where != nil {
 			matches, err := c.schema.evalCondition(c.stmt.Where, row)
 			if err != nil {
@@ -400,6 +494,7 @@ func (c *RowCursor) Close() {
 			c.iterator = nil
 		}
 		c.source, c.condition = nil, nil
+		c.sourceColumns = nil
 		c.schema.clearSelectCaches()
 	}
 }
