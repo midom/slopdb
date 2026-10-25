@@ -627,18 +627,14 @@ func evaluateJSONFunction(name string, args []Value) (Value, error) {
 			return NewNullValue(), nil
 		}
 		var legs []jsonPathLeg
+		var pgParts []string
+		pgPath := strings.HasPrefix(name, "__JSON_PATH")
 		key := mysqlStringValue(args[1])
-		if strings.HasPrefix(name, "__JSON_PATH") {
-			if len(key) < 2 || key[0] != '{' || key[len(key)-1] != '}' {
-				return NewNullValue(), fmt.Errorf("invalid JSON path array")
-			}
-			for _, part := range strings.Split(key[1:len(key)-1], ",") {
-				part = strings.Trim(part, " \"")
-				if index, err := strconv.Atoi(part); err == nil {
-					legs = append(legs, jsonPathLeg{array: true, index: index})
-				} else {
-					legs = append(legs, jsonPathLeg{key: part})
-				}
+		if pgPath {
+			var err error
+			pgParts, err = parsePGJSONPath(key)
+			if err != nil {
+				return NewNullValue(), err
 			}
 		} else if strings.HasPrefix(key, "$") {
 			var err error
@@ -646,18 +642,32 @@ func evaluateJSONFunction(name string, args []Value) (Value, error) {
 			if err != nil {
 				return NewNullValue(), err
 			}
-		} else if args[1].Type == ColInteger {
-			index := int(args[1].Int)
-			if index < 0 {
-				if array, ok := document.([]any); ok {
-					index += len(array)
-				}
+		} else if args[1].Type == ColInteger || args[1].Type == ColUnsigned {
+			array, ok := document.([]any)
+			if !ok {
+				return NewNullValue(), nil
 			}
-			legs = []jsonPathLeg{{array: true, index: index}}
+			index := args[1].Int
+			if args[1].Type == ColUnsigned {
+				if args[1].Uint > math.MaxInt64 {
+					return NewNullValue(), nil
+				}
+				index = int64(args[1].Uint)
+			}
+			if index < 0 {
+				index += int64(len(array))
+			}
+			if index < 0 || index >= int64(len(array)) {
+				return NewNullValue(), nil
+			}
+			legs = []jsonPathLeg{{array: true, index: int(index)}}
 		} else {
 			legs = []jsonPathLeg{{key: key}}
 		}
 		matches := jsonPathValues(document, legs)
+		if pgPath {
+			matches = pgJSONPathValue(document, pgParts)
+		}
 		if len(matches) == 0 {
 			return NewNullValue(), nil
 		}

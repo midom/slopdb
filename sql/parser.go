@@ -2069,9 +2069,17 @@ func (p *Parser) parseUnary() (Expression, error) {
 	for p.cur.Type == TokJSONArrow || p.cur.Type == TokJSONArrowText || p.cur.Type == TokJSONPath || p.cur.Type == TokJSONPathText {
 		operator := p.cur.Type
 		p.advance()
+		var signs []string
+		for p.cur.Type == TokMinus || p.cur.Type == TokPlus || p.cur.Type == TokTilde {
+			signs = append(signs, p.cur.Value)
+			p.advance()
+		}
 		right, err := p.parsePrimary()
 		if err != nil {
 			return nil, err
+		}
+		for i := len(signs) - 1; i >= 0; i-- {
+			right = &UnaryExpr{Op: signs[i], Right: right}
 		}
 		name := "__JSON_GET"
 		switch operator {

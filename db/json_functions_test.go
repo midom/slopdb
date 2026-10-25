@@ -46,18 +46,25 @@ func TestJSONFunctionsAccessorsAndNumbers(t *testing.T) {
 		{`SELECT CAST('{"a":{"b":[1,"two"]}}' AS JSON)->'$.a.b[1]' AS v`, `"two"`},
 		{`SELECT CAST('{"a":{"b":[1,"two"]}}' AS JSON)->'a'->'b'->>1 AS v`, `two`},
 		{`SELECT CAST('{"a":{"b":[1,"two"]}}' AS JSON)#>>'{a,b,1}' AS v`, `two`},
+		{`SELECT CAST('{"1":{"a":[1,2]}}' AS JSON)#>>'{1,a,-1}' AS v`, `2`},
+		{`SELECT CAST('{"0":"zero"}' AS JSON)#>>'{0}' AS v`, `zero`},
+		{`SELECT CAST('{"a":1}' AS JSON)#>'{}' AS v`, `{"a":1}`},
+		{`SELECT CAST('{"a":{"b,c":"comma"}}' AS JSON)#>>'{a,"b,c"}' AS v`, `comma`},
+		{`SELECT CAST('{"":"empty"}' AS JSON)#>>'{""}' AS v`, `empty`},
+		{`SELECT CAST('[1,2]' AS JSON)->>-1 AS v`, `2`},
+		{`SELECT JSON_EXTRACT('5','$[0]') AS v`, `5`},
 	} {
 		r := mysqlTypeExec(t, s, test.query)
 		if got := r.Rows[0]["v"].String(); got != test.want {
 			t.Fatalf("%s: got %q want %q", test.query, got, test.want)
 		}
 	}
-	for _, query := range []string{`SELECT JSON_EXTRACT('{}','$..a')`, `SELECT JSON_REMOVE('{}','$')`, `SELECT JSON_SET('{}','$.*',1)`, `SELECT JSON_CONTAINS_PATH('{}','bad','$.a')`, `SELECT JSON_OBJECT('odd')`} {
+	for _, query := range []string{`SELECT JSON_EXTRACT('{}','$..a')`, `SELECT JSON_REMOVE('{}','$')`, `SELECT JSON_SET('{}','$.*',1)`, `SELECT JSON_CONTAINS_PATH('{}','bad','$.a')`, `SELECT JSON_OBJECT('odd')`, `SELECT CAST('{}' AS JSON)#>'{a,}'`, `SELECT CAST('{}' AS JSON)#>'{"unterminated}'`} {
 		if _, err = s.Exec(query); err == nil {
 			t.Fatalf("accepted malformed JSON operation: %s", query)
 		}
 	}
-	for _, query := range []string{`SELECT JSON_EXTRACT('{"a":1}','$.missing') AS v`, `SELECT JSON_VALUE('{"a":null}','$.a') AS v`, `SELECT JSON_EXTRACT(NULL,'$.a') AS v`} {
+	for _, query := range []string{`SELECT JSON_EXTRACT('{"a":1}','$.missing') AS v`, `SELECT JSON_VALUE('{"a":null}','$.a') AS v`, `SELECT JSON_EXTRACT(NULL,'$.a') AS v`, `SELECT CAST('5' AS JSON)->0 AS v`, `SELECT CAST('{"0":"zero"}' AS JSON)->0 AS v`, `SELECT CAST('[1,2]' AS JSON)->18446744073709551615 AS v`, `SELECT CAST('[1,2]' AS JSON)#>>'{-9223372036854775808}' AS v`} {
 		r := mysqlTypeExec(t, s, query)
 		if !r.Rows[0]["v"].Null {
 			t.Fatalf("expected SQL NULL: %+v", r.Rows)
