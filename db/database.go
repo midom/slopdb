@@ -241,6 +241,7 @@ func (db *Database) execAdmittedStatementsInto(ctx context.Context, stmts []sql.
 	var lockDeadline time.Time
 	admitEach := hasReadBarrierSetting(stmts)
 	for _, stmt := range stmts {
+		sourceStatement := stmt
 		if stmt == nil {
 			continue
 		}
@@ -330,12 +331,21 @@ func (db *Database) execAdmittedStatementsInto(ctx context.Context, stmts []sql.
 					}
 				}
 			}
+			if err == nil {
+				stmt, err = schema.ResolveNamespaces(sourceStatement)
+			}
 			if err == nil && onlineIndexStatement(schema, stmt) {
 				result, err = db.execOnlineIndex(ctx, schema, stmt, lockTimeout, &lockDeadline)
 			} else if err == nil {
 				switch stmt.(type) {
 				case *sql.BeginStmt, *sql.SetIsolationStmt, *sql.CommitStmt, *sql.RollbackStmt, *sql.SavepointStmt, *sql.ReleaseStmt, *sql.SelectStmt, *sql.UnionStmt, *sql.ExplainStmt, *sql.ShowStmt, *sql.VacuumStmt:
 					result, err = executor.execStatement(stmt)
+				case *sql.NamespaceStmt:
+					if stmt.(*sql.NamespaceStmt).Operation == "use" || stmt.(*sql.NamespaceStmt).Operation == "search_path" {
+						result, err = executor.execStatement(stmt)
+					} else {
+						err = schema.ExecuteStatement(func() error { var e error; result, e = executor.execStatement(stmt); return e })
+					}
 				case *sql.PragmaStmt:
 					if stmt.(*sql.PragmaStmt).Name == "page_size" {
 						result, err = executor.execStatement(stmt)
@@ -417,6 +427,14 @@ func (db *Database) execAdmittedStatementsInto(ctx context.Context, stmts []sql.
 func (db *statementExecutor) execStatement(stmt sql.Statement) (*ExecResult, error) {
 	var result *ExecResult
 	switch s := stmt.(type) {
+	case *sql.NamespaceStmt:
+		rs, err := db.schema.ExecuteNamespace(s)
+		if err != nil {
+			return nil, err
+		}
+		if rs != nil {
+			result = &ExecResult{Columns: rs.Columns, Rows: rs.Rows}
+		}
 	case *sql.CreateTableStmt:
 		if err := db.schema.CreateTable(s); err != nil {
 			return nil, fmt.Errorf("CREATE TABLE error: %w", err)

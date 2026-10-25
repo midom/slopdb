@@ -63,6 +63,10 @@ type ViewInfo struct {
 }
 
 type Schema struct {
+	namespaces               map[string]bool
+	defaultSchema            string
+	searchPath               []string
+	schemaAliases            map[string]string
 	autoincUnsigned          map[string]uint64
 	unsignedRowReservations  map[string]uint64
 	lastInsertIDUnsigned     uint64
@@ -279,6 +283,9 @@ func newSchemaWithOptions(lsm *storage.LSMTree, pageSize int, opt *storage.Optio
 		if err := cleanupTemporaryRange(lsm); err != nil {
 			return nil, err
 		}
+	}
+	if err := s.loadNamespaces(); err != nil {
+		return nil, err
 	}
 	if err := s.loadCollation(); err != nil {
 		return nil, err
@@ -1728,6 +1735,7 @@ func (s *Schema) fireTriggers(table, event, timing string, old, new map[string]V
 }
 
 type schemaState struct {
+	namespaces      map[string]bool
 	tables          map[string]*TableInfo
 	indexes         map[string]*IndexInfo
 	views           map[string]*ViewInfo
@@ -1748,7 +1756,7 @@ func (s *Schema) captureState() *schemaState {
 	if !s.catalogShared {
 		s.catalogShared = true
 	}
-	return s.persistentTemporaryState(&schemaState{tables: s.tables, indexes: s.indexes, views: s.views, triggers: s.triggers,
+	return s.persistentTemporaryState(&schemaState{namespaces: s.namespaces, tables: s.tables, indexes: s.indexes, views: s.views, triggers: s.triggers,
 		stats: maps.Clone(s.stats), distributions: maps.Clone(s.distributions), autoinc: maps.Clone(s.autoincMax), autoincUnsigned: maps.Clone(s.autoincUnsigned), rowIDs: maps.Clone(s.rowIDCount), userVersion: s.userVersion, collation: s.collation, nextObjectID: s.nextObjectID, lookups: s.catalogLookup})
 }
 
@@ -1812,6 +1820,7 @@ func (s *Schema) ensureCatalogWritable() {
 	s.catalogShared = false
 }
 func (s *Schema) restoreState(st *schemaState) {
+	s.namespaces = st.namespaces
 	s.tables = st.tables
 	s.catalogShared = true
 	s.catalogLookup = st.lookups
@@ -1934,6 +1943,7 @@ func (s *Schema) Commit() error {
 		value  any
 		before any
 	}{
+		{namespacesPrefix, s.namespaces, s.txState.namespaces},
 		{schemaPrefix, currentState.tables, s.txState.tables},
 		{schemaIdxPrefix, currentState.indexes, s.txState.indexes},
 		{schemaViewsPrefix, s.views, s.txState.views},

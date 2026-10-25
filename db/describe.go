@@ -48,5 +48,9 @@ func (s *Session) DescribePrepared(ctx context.Context, stmt *Stmt) ([]sql.Colum
 	if len(bound.Statements()) != 1 {
 		return nil, fmt.Errorf("metadata requires one statement")
 	}
-	return s.schema.Describe(bound.Statements()[0])
+	resolved, err := s.schema.ResolveNamespaces(bound.Statements()[0])
+	if err != nil {
+		return nil, err
+	}
+	return s.schema.Describe(resolved)
 }

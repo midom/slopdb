@@ -24,19 +24,27 @@ func (s *Schema) showTableStatus(stmt *ShowStmt) (*ResultSet, error) {
 	}
 	names := append(s.GetTableList(), s.GetViewList()...)
 	sort.Strings(names)
+	namespace := s.SearchPath()[0]
+	if stmt.Database != "" {
+		namespace = s.namespaceAlias(stmt.Database)
+	}
 	for _, name := range names {
+		schema, bare := SplitSchemaName(name)
+		if schema != namespace {
+			continue
+		}
 		if err := s.checkInterrupt(); err != nil {
 			return nil, err
 		}
 		// Avoid touching storage for objects rejected by a LIKE filter.
-		if stmt.Like != nil && !likeMatchEsc(name, *stmt.Like, '\\') {
+		if stmt.Like != nil && !likeMatchEsc(bare, *stmt.Like, '\\') {
 			continue
 		}
 		row := make(map[string]Value, len(rs.Columns))
 		for _, col := range rs.Columns {
 			row[col.Name] = NewNullValue()
 		}
-		row["Name"] = NewTextValue(name)
+		row["Name"] = NewTextValue(bare)
 		if _, view := s.views[name]; view {
 			row["Comment"] = NewTextValue("VIEW")
 			rs.Rows = append(rs.Rows, row)

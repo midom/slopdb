@@ -15,13 +15,17 @@ func showResult(names ...string) *ResultSet {
 }
 
 // ExecuteShow returns ordinary query results without starting a write transaction.
-// SlopDB has one database, named main, as in PRAGMA database_list.
+// Virtual namespace names resolve through the same catalog as ordinary queries.
 func (s *Schema) ExecuteShow(stmt *ShowStmt) (*ResultSet, error) {
 	if err := s.checkInterrupt(); err != nil {
 		return nil, err
 	}
-	if stmt.Database != "" && !strings.EqualFold(stmt.Database, "main") {
-		return nil, fmt.Errorf("unknown database %q", stmt.Database)
+	namespace := s.SearchPath()[0]
+	if stmt.Database != "" {
+		namespace = s.namespaceAlias(stmt.Database)
+	}
+	if !s.namespaces[namespace] {
+		return nil, fmt.Errorf("unknown database %q", namespace)
 	}
 	var rs *ResultSet
 	var err error
@@ -32,10 +36,16 @@ func (s *Schema) ExecuteShow(stmt *ShowStmt) (*ResultSet, error) {
 		likeColumn = "Name"
 	case "DATABASES":
 		rs = showResult("Database")
-		rs.Rows = append(rs.Rows, map[string]Value{"Database": NewTextValue("main")})
+		for _, name := range s.SchemaNames() {
+			rs.Rows = append(rs.Rows, map[string]Value{"Database": NewTextValue(name)})
+		}
 		likeColumn = "Database"
 	case "TABLES":
-		likeColumn = "Tables_in_main"
+		display := namespace
+		if options, ok := MySQLSession(s.ctx); ok && namespace == "main" && options.RootDatabase != "" {
+			display = options.RootDatabase
+		}
+		likeColumn = "Tables_in_" + display
 		rs = showResult(likeColumn)
 		if stmt.Full {
 			rs.Columns = append(rs.Columns, ColumnDef{Name: "Table_type", ColType: ColText})
@@ -43,7 +53,11 @@ func (s *Schema) ExecuteShow(stmt *ShowStmt) (*ResultSet, error) {
 		names := append(s.GetTableList(), s.GetViewList()...)
 		sort.Strings(names)
 		for _, name := range names {
-			row := map[string]Value{likeColumn: NewTextValue(name)}
+			schema, bare := SplitSchemaName(name)
+			if schema != namespace {
+				continue
+			}
+			row := map[string]Value{likeColumn: NewTextValue(bare)}
 			if stmt.Full {
 				kind := "BASE TABLE"
 				if _, ok := s.views[name]; ok {

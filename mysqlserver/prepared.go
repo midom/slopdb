@@ -10,12 +10,13 @@ import (
 )
 
 type prepared struct {
-	stmt    *db.Stmt
-	query   string
-	columns []sql.ColumnDef
-	types   []uint16
-	long    map[uint16][]byte
-	longErr error
+	stmt       *db.Stmt
+	query      string
+	columns    []sql.ColumnDef
+	schemaPath []string
+	types      []uint16
+	long       map[uint16][]byte
+	longErr    error
 }
 
 func unknownStatement() error { return &protocolError{1243, "HY000", "unknown prepared statement"} }
@@ -30,6 +31,11 @@ func (c *client) prepare(query string) error {
 	if stmt.NumInput() > math.MaxUint16 {
 		_ = stmt.Close()
 		return c.writeError(&protocolError{1390, "HY000", "too many placeholders"})
+	}
+	_, path, err := c.session.NamespaceSettings(c.ctx)
+	if err != nil {
+		_ = stmt.Close()
+		return c.writeError(err)
 	}
 	columns, err := c.session.DescribePrepared(c.mysqlContext(), stmt)
 	if err != nil {
@@ -46,7 +52,7 @@ func (c *client) prepare(query string) error {
 			break
 		}
 	}
-	c.statements[c.nextStmt] = &prepared{stmt: stmt, query: query, columns: columns}
+	c.statements[c.nextStmt] = &prepared{stmt: stmt, query: query, columns: columns, schemaPath: path}
 	// Catalog and AST metadata is available before execution; no user SQL ran.
 	p := append32([]byte{0}, c.nextStmt)
 	p = append16(p, uint16(len(columns)))
@@ -128,6 +134,8 @@ func (c *client) executePrepared(p []byte) error {
 	if err != nil {
 		return c.writeError(err)
 	}
+	c.preparedPath = s.schemaPath
+	defer func() { c.preparedPath = nil }()
 	result, err := c.query(s.query, s.stmt, args)
 	if err != nil {
 		return c.writeError(err)

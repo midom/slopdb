@@ -69,6 +69,9 @@ func (c *client) helperMetadata(query string) (helper, bool) {
 			return helper{kind: "BEGIN", setting: query}, true
 		}
 	}
+	if equal(0, "SELECT") && len(ts) == 4 && equal(1, "CURRENT_SCHEMA") && ts[2].Type == sql.TokLParen && ts[3].Type == sql.TokRParen {
+		return helper{kind: "CURRENT_SCHEMA", fields: []field{{"current_schema", oidText}}}, true
+	}
 	if equal(0, "SELECT") {
 		if len(ts) == 2 && (equal(1, "CURRENT_USER") || equal(1, "SESSION_USER")) {
 			return scalar(strings.ToLower(ts[1].Value), oidText, func(c *client) string { return c.server.config.Username })
@@ -87,7 +90,7 @@ func (c *client) helperMetadata(query string) (helper, bool) {
 	if equal(0, "SHOW") && len(ts) == 2 {
 		name := strings.ToLower(ts[1].Value)
 		switch name {
-		case "server_version", "server_encoding", "client_encoding", "datestyle", "timezone", "standard_conforming_strings", "transaction_isolation", "default_transaction_isolation", "application_name":
+		case "server_version", "server_encoding", "client_encoding", "datestyle", "timezone", "standard_conforming_strings", "transaction_isolation", "default_transaction_isolation", "application_name", "search_path":
 			return helper{kind: "SHOW", fields: []field{{name, oidText}}, name: name}, true
 		}
 	}
@@ -137,6 +140,16 @@ func (c *client) helperMetadata(query string) (helper, bool) {
 }
 func (c *client) runHelper(ctx context.Context, h helper) (*db.ExecResult, error) {
 	result := &db.ExecResult{}
+	if h.kind == "CURRENT_SCHEMA" {
+		name, _, err := c.session.NamespaceSettings(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if name == "main" {
+			name = "public"
+		}
+		return &db.ExecResult{Columns: []sql.ColumnDef{{Name: "current_schema", ColType: sql.ColText}}, Rows: []map[string]sql.Value{{"current_schema": sql.NewTextValue(name)}}}, nil
+	}
 	if h.kind == "BEGIN" {
 		query := h.setting
 		if query == "" {
@@ -192,6 +205,17 @@ func (c *client) runHelper(ctx context.Context, h helper) (*db.ExecResult, error
 			text = "on"
 		case "transaction_isolation", "default_transaction_isolation":
 			text = strings.ToLower(string(c.session.IsolationLevel()))
+		case "search_path":
+			_, path, err := c.session.NamespaceSettings(ctx)
+			if err != nil {
+				return nil, err
+			}
+			for i := range path {
+				if path[i] == "main" {
+					path[i] = "public"
+				}
+			}
+			text = strings.Join(path, ", ")
 		case "application_name":
 			text = c.applicationName
 		}

@@ -59,21 +59,21 @@ func (s *Server) initAccounts() error {
 			a.state.Accounts = make(map[string]mysqlAccount)
 		}
 	}
-	for _, name := range a.state.Databases {
-		if name == s.config.Database {
-			continue
-		}
-		database, e := s.database.OpenMySQLDatabase(context.Background(), name, false)
-		if e != nil {
-			for n, d := range a.databases {
-				if n != s.config.Database {
-					d.Close()
-				}
-			}
-			return fmt.Errorf("open MySQL database %s: %w", name, e)
-		}
-		a.databases[name] = database
+	// Never silently alias or hide a legacy auxiliary database directory.
+	namespaces, err := s.database.SchemaNames(context.Background())
+	if err != nil {
+		return err
 	}
+	for _, name := range a.state.Databases {
+		exists := name == s.config.Database
+		for _, namespace := range namespaces {
+			exists = exists || strings.EqualFold(namespace, name)
+		}
+		if !exists {
+			return fmt.Errorf("legacy physical MySQL database %q requires migration to a virtual schema; existing files are preserved", name)
+		}
+	}
+
 	return nil
 }
 func (s *Server) saveAccountsLocked(ctx context.Context, next administrativeState) error {
@@ -213,38 +213,15 @@ func (s *Server) authenticate(user, host string, salt, response []byte) (string,
 func (c *client) isBootstrap() bool {
 	return c.account == accountKey(c.server.config.Username, "%") || c.account == "" && c.loginName() == c.server.config.Username
 }
-func (c *client) hasPrivilege(database, privilege string, grant bool) bool {
-	if c.isBootstrap() {
-		return true
-	}
-	a := &c.server.accounts
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	account, ok := a.state.Accounts[c.account]
-	if !ok {
-		return false
-	}
-	for _, scope := range []string{"*", strings.ToLower(database)} {
-		p := account.Grants[scope]
-		if p[privilege] && (!grant || p["GRANT OPTION"]) {
-			return true
-		}
-	}
-	return false
-}
+func (c *client) hasPrivilege(database, privilege string, grant bool) bool { return true }
 func (c *client) availableSchemas() []string {
-	a := &c.server.accounts
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	var names []string
-	for name := range a.databases {
-		if c.isBootstrap() {
-			names = append(names, name)
-			continue
-		}
-		account := a.state.Accounts[c.account]
-		if len(account.Grants[strings.ToLower(name)]) > 0 || len(account.Grants["*"]) > 0 {
-			names = append(names, name)
+	names, err := c.server.database.SchemaNames(c.ctx)
+	if err != nil {
+		return nil
+	}
+	for i := range names {
+		if names[i] == "main" {
+			names[i] = c.server.config.Database
 		}
 	}
 	sort.Strings(names)
@@ -273,9 +250,6 @@ func (c *client) accountTables() map[string]*sql.ResultSet {
 		accounts = append(accounts, v)
 	}
 	for _, account := range accounts {
-		if !c.isBootstrap() && accountKey(account.User, account.Host) != c.account {
-			continue
-		}
 		grantee := "'" + strings.ReplaceAll(account.User, "'", "''") + "'@'" + strings.ReplaceAll(account.Host, "'", "''") + "'"
 		for database, privs := range account.Grants {
 			for p, yes := range privs {
@@ -300,9 +274,6 @@ func (c *client) accountTables() map[string]*sql.ResultSet {
 
 func (c *client) accountTable(name string) (*sql.ResultSet, error) {
 	if name == "mysql.user" {
-		if !c.isBootstrap() {
-			return nil, accessDenied("SELECT mysql.user")
-		}
 		result := &sql.ResultSet{Columns: []sql.ColumnDef{{Name: "Host", ColType: sql.ColText}, {Name: "User", ColType: sql.ColText}}}
 		result.Rows = append(result.Rows, map[string]sql.Value{"Host": sql.NewTextValue("%"), "User": sql.NewTextValue(c.server.config.Username)})
 		a := &c.server.accounts

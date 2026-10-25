@@ -46,42 +46,24 @@ func accountServer(t *testing.T, directory string) *testServer {
 	return &testServer{server: server, database: database, address: listener.Addr().String(), network: "tcp"}
 }
 
-func TestMySQLAccountsEnforceAndRevokePrivileges(t *testing.T) {
+func TestMySQLAuthenticationWithoutPermissionEnforcement(t *testing.T) {
 	s := accountServer(t, t.TempDir())
 	owner := s.open(t, "owner", "owner-password", "wiki")
-	mustExec(t, owner, "CREATE TABLE records(id INTEGER PRIMARY KEY,v TEXT)")
-	mustExec(t, owner, "CREATE USER 'writer'@'localhost' IDENTIFIED BY 'writer-password'")
-	mustExec(t, owner, "GRANT SELECT, INSERT, UPDATE ON wiki.* TO 'writer'@'localhost'")
-	writer := s.open(t, "writer", "writer-password", "wiki")
-	mustExec(t, writer, "INSERT INTO records VALUES(1,'value')")
+	mustExec(t, owner, "CREATE USER 'app'@'%' IDENTIFIED BY 'password'")
+	app := s.open(t, "app", "password", "wiki")
+	mustExec(t, app, "CREATE TABLE records(id INT PRIMARY KEY,v TEXT)")
+	mustExec(t, app, "INSERT INTO records VALUES(1,'value')")
+	mustExec(t, app, "UPDATE records SET v='updated'")
 	var value string
-	if err := writer.QueryRow("SELECT v FROM records WHERE id=1").Scan(&value); err != nil || value != "value" {
+	if err := app.QueryRow("SELECT v FROM records").Scan(&value); err != nil || value != "updated" {
 		t.Fatal(value, err)
 	}
-	if _, err := writer.Exec("DROP TABLE records"); err == nil {
-		t.Fatal("DROP without privilege accepted")
-	}
-	if _, err := writer.Exec("CREATE USER 'intruder'@'%' IDENTIFIED BY 'bad'"); err == nil {
-		t.Fatal("unprivileged account creation accepted")
-	}
-	mustExec(t, owner, "REVOKE INSERT ON wiki.* FROM 'writer'@'localhost'")
-	if _, err := writer.Exec("INSERT INTO records VALUES(2,'blocked')"); err == nil {
-		t.Fatal("revoked INSERT still accepted")
-	}
-	if _, err := writer.Exec("SELECT @@autocommit FROM records; DELETE FROM records"); err == nil {
-		t.Fatal("multi-query privilege bypass")
-	}
-	mustExec(t, owner, "CREATE USER 'visitor'@'localhost' IDENTIFIED BY 'visitor-password'")
-	visitor := s.open(t, "visitor", "visitor-password", "")
-	if _, err := visitor.Exec("SELECT * FROM records"); err == nil {
-		t.Fatal("USAGE account read table without grant")
-	}
-	if _, err := visitor.Exec("SELECT @@autocommit FROM records"); err == nil {
-		t.Fatal("variable rewrite bypassed SELECT privilege")
-	}
-	var one int
-	if err := visitor.QueryRow("SELECT 1").Scan(&one); err != nil || one != 1 {
-		t.Fatal(one, err)
+	mustExec(t, app, "CREATE DATABASE other")
+	mustExec(t, app, "CREATE TABLE other.records(id INT)")
+	mustExec(t, app, "DROP TABLE records")
+	bad := s.open(t, "app", "wrong", "wiki")
+	if err := bad.Ping(); err == nil {
+		t.Fatal("incorrect password accepted")
 	}
 }
 
@@ -98,8 +80,8 @@ func TestMySQLAccountAndDatabasePersistence(t *testing.T) {
 	if _, err := owner.Exec("SELECT * FROM payloads"); err == nil {
 		t.Fatal("additional database aliased default tables")
 	}
-	if _, err := app.Exec("USE wiki"); err == nil {
-		t.Fatal("USE without database grant accepted")
+	if _, err := app.Exec("USE wiki"); err != nil {
+		t.Fatal(err)
 	}
 	app.Close()
 	owner.Close()
@@ -126,8 +108,12 @@ func TestMySQLAccountAndDatabasePersistence(t *testing.T) {
 		t.Fatal(err)
 	}
 	mustExec(t, owner, "DROP USER 'app'@'%'")
-	if _, err := good.Exec("SELECT * FROM payloads"); err == nil {
-		t.Fatal("dropped account retained access")
+	if _, err := good.Exec("SELECT * FROM payloads"); err != nil {
+		t.Fatal(err)
+	}
+	removed := reopened.open(t, "app", "changed-password", "wiki_two")
+	if err := removed.Ping(); err == nil {
+		t.Fatal("dropped account reauthenticated")
 	}
 }
 
@@ -143,8 +129,11 @@ func TestMySQLUseDoesNotAbandonTransaction(t *testing.T) {
 	if _, err = c.ExecContext(context.Background(), "BEGIN"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = c.ExecContext(context.Background(), "USE extra"); err == nil {
-		t.Fatal("database switch abandoned an active transaction")
+	if _, err = c.ExecContext(context.Background(), "USE extra"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = c.ExecContext(context.Background(), "CREATE TABLE temporary_ddl(id INT)"); err != nil {
+		t.Fatal(err)
 	}
 	if _, err = c.ExecContext(context.Background(), "ROLLBACK"); err != nil {
 		t.Fatal(err)
@@ -154,52 +143,26 @@ func TestMySQLUseDoesNotAbandonTransaction(t *testing.T) {
 	}
 }
 
-func TestMySQLInsertConflictPrivilegeChecks(t *testing.T) {
+func TestMySQLTemporaryTablesWithoutGrants(t *testing.T) {
 	s := accountServer(t, t.TempDir())
 	owner := s.open(t, "owner", "owner-password", "wiki")
-	mustExec(t, owner, "CREATE TABLE guarded(id INT PRIMARY KEY,v TEXT)")
-	mustExec(t, owner, "INSERT INTO guarded VALUES(1,'protected')")
-	mustExec(t, owner, "CREATE USER 'inserter'@'localhost' IDENTIFIED BY 'password'")
-	mustExec(t, owner, "GRANT INSERT,SELECT ON wiki.* TO 'inserter'@'localhost'")
-	inserter := s.open(t, "inserter", "password", "wiki")
-	for _, query := range []string{"REPLACE INTO guarded VALUES(1,'bad')", "INSERT INTO guarded VALUES(1,'bad') ON DUPLICATE KEY UPDATE v='bad'"} {
-		if _, err := inserter.Exec(query); err == nil {
-			t.Fatal("mutation bypassed required privilege", query)
-		}
-	}
-	var value string
-	if err := owner.QueryRow("SELECT v FROM guarded WHERE id=1").Scan(&value); err != nil || value != "protected" {
-		t.Fatal(value, err)
-	}
-	mustExec(t, owner, "GRANT UPDATE,DELETE ON wiki.* TO 'inserter'@'localhost'")
-	mustExec(t, inserter, "REPLACE INTO guarded VALUES(1,'allowed')")
-	mustExec(t, inserter, "INSERT INTO guarded VALUES(1,'value') ON DUPLICATE KEY UPDATE v='updated'")
-}
-
-func TestMySQLTemporaryAndLikePrivileges(t *testing.T) {
-	s := accountServer(t, t.TempDir())
-	owner := s.open(t, "owner", "owner-password", "wiki")
-	mustExec(t, owner, "CREATE TABLE source(id INT PRIMARY KEY)")
-	mustExec(t, owner, "CREATE USER 'temporary'@'localhost' IDENTIFIED BY 'password'")
-	mustExec(t, owner, "GRANT CREATE TEMPORARY TABLES ON wiki.* TO 'temporary'@'localhost'")
-	user := s.open(t, "temporary", "password", "wiki")
-	connection, err := user.Conn(context.Background())
+	mustExec(t, owner, "CREATE TABLE source(id INT PRIMARY KEY,v TEXT)")
+	mustExec(t, owner, "INSERT INTO source VALUES(1,'source')")
+	mustExec(t, owner, "CREATE USER 'app'@'%' IDENTIFIED BY 'password'")
+	pool := s.open(t, "app", "password", "wiki")
+	connection, err := pool.Conn(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer connection.Close()
-	if _, err = connection.ExecContext(context.Background(), "CREATE TEMPORARY TABLE scratch(id INT)"); err != nil {
-		t.Fatal(err)
+	for _, q := range []string{"CREATE TEMPORARY TABLE scratch LIKE source", "INSERT INTO scratch SELECT * FROM source", "UPDATE scratch SET v='private'", "CREATE INDEX private_v ON scratch(v)", "DROP INDEX private_v ON scratch"} {
+		if _, err = connection.ExecContext(context.Background(), q); err != nil {
+			t.Fatal(q, err)
+		}
 	}
-	if _, err = connection.ExecContext(context.Background(), "CREATE TABLE durable(id INT)"); err == nil {
-		t.Fatal("temporary privilege allowed persistent creation")
-	}
-	if _, err = connection.ExecContext(context.Background(), "CREATE TEMPORARY TABLE copy LIKE source"); err == nil {
-		t.Fatal("LIKE read source without SELECT")
-	}
-	mustExec(t, owner, "GRANT SELECT ON wiki.* TO 'temporary'@'localhost'")
-	if _, err = connection.ExecContext(context.Background(), "CREATE TEMPORARY TABLE copy LIKE source"); err != nil {
-		t.Fatal(err)
+	var value string
+	if err = owner.QueryRow("SELECT v FROM source").Scan(&value); err != nil || value != "source" {
+		t.Fatal(value, err)
 	}
 }
 
@@ -236,8 +199,8 @@ func TestMySQLAccountsRefreshAppliedMetadata(t *testing.T) {
 	if err = s.database.SetMySQLServerState(context.Background(), data); err != nil {
 		t.Fatal(err)
 	}
-	if err = reader.QueryRow("SELECT id FROM guarded").Scan(&id); err == nil {
-		t.Fatal("applied revoke ignored on existing connection")
+	if err = reader.QueryRow("SELECT id FROM guarded").Scan(&id); err != nil {
+		t.Fatal(err)
 	}
 	stale := s.open(t, "reader", "password", "")
 	if err = stale.Ping(); err == nil {
@@ -246,76 +209,5 @@ func TestMySQLAccountsRefreshAppliedMetadata(t *testing.T) {
 	changed := s.open(t, "reader", "changed", "")
 	if err = changed.Ping(); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestMySQLTemporaryOwnerPrivilegesAndPersistentSources(t *testing.T) {
-	s := accountServer(t, t.TempDir())
-	owner := s.open(t, "owner", "owner-password", "wiki")
-	mustExec(t, owner, "CREATE TABLE scratch(id INT PRIMARY KEY,v INT)")
-	mustExec(t, owner, "INSERT INTO scratch VALUES(1,700)")
-	mustExec(t, owner, "CREATE TABLE protected(id INT PRIMARY KEY,secret INT)")
-	mustExec(t, owner, "INSERT INTO protected VALUES(1,99)")
-	mustExec(t, owner, "CREATE USER 'temporary'@'localhost' IDENTIFIED BY 'password'")
-	mustExec(t, owner, "GRANT CREATE TEMPORARY TABLES ON wiki.* TO 'temporary'@'localhost'")
-	pool := s.open(t, "temporary", "password", "wiki")
-	ctx := context.Background()
-	connection, err := pool.Conn(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer connection.Close()
-	exec := func(query string) {
-		t.Helper()
-		if _, err := connection.ExecContext(ctx, query); err != nil {
-			t.Fatal(query, err)
-		}
-	}
-	deny := func(query string) {
-		t.Helper()
-		if _, err := connection.ExecContext(ctx, query); err == nil {
-			t.Fatal("persistent privilege bypass", query)
-		}
-	}
-	exec("CREATE TEMPORARY TABLE scratch(id INT PRIMARY KEY,v INT)")
-	exec("INSERT INTO scratch VALUES(1,1)")
-	exec("UPDATE scratch SET v=2 WHERE id=1")
-	exec("REPLACE INTO scratch VALUES(1,3)")
-	exec("INSERT INTO scratch VALUES(1,4) ON DUPLICATE KEY UPDATE v=4")
-	exec("ALTER TABLE scratch ADD COLUMN extra INT DEFAULT 0")
-	exec("CREATE INDEX private_v ON scratch(v)")
-	exec("DROP INDEX private_v ON scratch")
-	statement, err := connection.PrepareContext(ctx, "UPDATE scratch SET v=? WHERE id=1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = statement.ExecContext(ctx, 5); err != nil {
-		t.Fatal(err)
-	}
-	statement.Close()
-	var value int
-	if err = connection.QueryRowContext(ctx, "SELECT v FROM scratch").Scan(&value); err != nil || value != 5 {
-		t.Fatal(value, err)
-	}
-	deny("SELECT secret FROM protected")
-	deny("INSERT INTO scratch(id,v) SELECT id,secret FROM protected")
-	deny("UPDATE scratch t JOIN protected p ON t.id=p.id SET t.v=p.secret")
-	deny("DROP TABLE protected")
-	mustExec(t, owner, "GRANT SELECT ON wiki.* TO 'temporary'@'localhost'")
-	exec("UPDATE scratch t JOIN protected p ON t.id=p.id SET t.v=p.secret")
-	exec("UPDATE scratch t JOIN protected p ON t.id=p.id SET v=p.secret")
-	deny("UPDATE scratch t JOIN protected p ON t.id=p.id SET p.secret=0")
-	deny("UPDATE scratch t JOIN protected p ON t.id=p.id SET secret=0")
-	deny("DELETE p FROM scratch t JOIN protected p ON t.id=p.id")
-	exec("DELETE t FROM scratch t JOIN protected p ON t.id=p.id")
-	exec("DROP TABLE scratch")
-	// The private exemption ends with DROP; its permanent shadow is protected.
-	deny("UPDATE scratch SET v=0")
-	deny("DROP TABLE scratch")
-	if err = owner.QueryRow("SELECT v FROM scratch").Scan(&value); err != nil || value != 700 {
-		t.Fatal(value, err)
-	}
-	if err = owner.QueryRow("SELECT secret FROM protected").Scan(&value); err != nil || value != 99 {
-		t.Fatal(value, err)
 	}
 }

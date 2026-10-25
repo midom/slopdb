@@ -34,6 +34,15 @@ func (db *Database) Query(query string) (*Rows, error) {
 	return db.QueryContext(context.Background(), query)
 }
 func (db *Database) QueryContext(ctx context.Context, query string) (*Rows, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := db.defaultGate.LockContext(ctx); err != nil {
+		return nil, err
+	}
+	path := db.schema.SessionSearchPath()
+	db.defaultGate.Unlock()
+	ctx = sql.WithNamespaceSearchPath(ctx, path)
 	s, err := db.newSessionContext(ctx)
 	if err != nil {
 		return nil, err
@@ -203,6 +212,11 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 	}
 	s.schema.StatementReadView(statements[0])
 	if err = s.schema.StartStatement(); err != nil {
+		release()
+		return nil, err
+	}
+	statements[0], err = s.schema.ResolveNamespaces(statements[0])
+	if err != nil {
 		release()
 		return nil, err
 	}

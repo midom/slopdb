@@ -72,8 +72,11 @@ func (p *Parser) parseMySQLDeleteTables(stmt *DeleteStmt) error {
 		if p.cur.Type != TokIdent {
 			return fmt.Errorf("expected DELETE table")
 		}
-		stmt.From = strings.ToLower(p.cur.Value)
-		p.advance()
+		var err error
+		stmt.From, err = p.qualifiedName()
+		if err != nil {
+			return err
+		}
 		if p.cur.Type == TokComma || strings.EqualFold(p.cur.Value, "USING") || p.cur.Type == TokDot && p.tok.Peek().Type == TokStar {
 			stmt.Targets = []string{stmt.From}
 			if p.cur.Type == TokDot {

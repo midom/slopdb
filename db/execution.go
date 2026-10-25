@@ -151,6 +151,7 @@ func (g *executionGate) rUnlock(readers *atomic.Int64) {
 // The session gate remains held across both paths. A failed lock acquisition
 // leaves no locks behind, then uses the full executor's timeout/deadlock retry.
 func (s *Session) tryPointUpdate(ctx context.Context, statements []sql.Statement, dst *ExecResult) (*ExecResult, bool, error) {
+	s.schema.SetContext(ctx)
 	if len(statements) != 1 {
 		return nil, false, nil
 	}
@@ -159,7 +160,7 @@ func (s *Session) tryPointUpdate(ctx context.Context, statements []sql.Statement
 		return nil, false, nil
 	}
 	d := s.db
-	if s.schema.InTransaction() {
+	if s.schema.InTransaction() || s.schema.DefaultSchemaNeedsResolution() {
 		return nil, false, nil
 	}
 	if s.schema.HasReplicaReadSnapshot() {

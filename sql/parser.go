@@ -196,6 +196,12 @@ func (p *Parser) parseLimit(limit, offset *int64, limitParam, offsetParam *int) 
 }
 
 func (p *Parser) parseStatement() (Statement, error) {
+	if p.showWord("USE") {
+		return p.parseNamespaceSetting()
+	}
+	if p.showWord("SET") && p.namespaceSettingAhead() {
+		return p.parseNamespaceSetting()
+	}
 	if p.showWord("SET") {
 		look := *p.tok
 		if strings.EqualFold(look.Next().Value, "READ") {
@@ -261,6 +267,8 @@ func (p *Parser) parseCreate() (Statement, error) {
 	p.advance()
 	kw := strings.ToUpper(p.cur.Value)
 	switch kw {
+	case "SCHEMA", "DATABASE":
+		return p.parseNamespaceCreate()
 	case "TEMPORARY":
 		p.advance()
 		if !strings.EqualFold(p.cur.Value, "TABLE") {
@@ -298,8 +306,8 @@ func (p *Parser) parseCreateTable() (Statement, error) {
 		ifNotExists = true
 	}
 
-	tableName := p.cur.Value
-	if err := p.expect(TokIdent); err != nil {
+	tableName, err := p.qualifiedName()
+	if err != nil {
 		return nil, err
 	}
 	stmt := &CreateTableStmt{Table: strings.ToLower(tableName), IfNotExists: ifNotExists}
@@ -312,8 +320,11 @@ func (p *Parser) parseCreateTable() (Statement, error) {
 		if p.cur.Type != TokIdent {
 			return nil, fmt.Errorf("expected source table after LIKE")
 		}
-		stmt.Like = strings.ToLower(p.cur.Value)
-		p.advance()
+		var err error
+		stmt.Like, err = p.qualifiedName()
+		if err != nil {
+			return nil, err
+		}
 		if wrappedLike {
 			if err := p.expect(TokRParen); err != nil {
 				return nil, err
@@ -828,8 +839,8 @@ func (p *Parser) parseCreateIndex() (Statement, error) {
 		ifNotExists = true
 	}
 
-	indexName := p.cur.Value
-	if err := p.expect(TokIdent); err != nil {
+	indexName, err := p.qualifiedName()
+	if err != nil {
 		return nil, err
 	}
 
@@ -837,8 +848,8 @@ func (p *Parser) parseCreateIndex() (Statement, error) {
 		return nil, err
 	}
 
-	tableName := p.cur.Value
-	if err := p.expect(TokIdent); err != nil {
+	tableName, err := p.qualifiedName()
+	if err != nil {
 		return nil, err
 	}
 
@@ -877,11 +888,9 @@ func (p *Parser) parsePublicationPolicy() (*time.Duration, error) {
 func (p *Parser) parseCreateView() (Statement, error) {
 	p.advance()
 
-	viewName := strings.ToLower(p.cur.Value)
-	if p.cur.Type == TokIdent || p.cur.Type == TokKeyword {
-		p.advance()
-	} else {
-		return nil, fmt.Errorf("expected view name, got %q", p.cur.Value)
+	viewName, err := p.qualifiedName()
+	if err != nil {
+		return nil, err
 	}
 
 	stmt := &CreateViewStmt{View: viewName}
@@ -925,8 +934,11 @@ func (p *Parser) parseCreateTrigger() (Statement, error) {
 	if p.cur.Type != TokIdent && p.cur.Type != TokKeyword {
 		return nil, fmt.Errorf("expected trigger name")
 	}
-	stmt := &CreateTriggerStmt{Name: strings.ToLower(p.cur.Value), Timing: "BEFORE"}
-	p.advance()
+	name, err := p.qualifiedName()
+	if err != nil {
+		return nil, err
+	}
+	stmt := &CreateTriggerStmt{Name: name, Timing: "BEFORE"}
 	if p.cur.Value == "INSTEAD" {
 		p.advance()
 		if err := p.expectKeyword("OF"); err != nil {
@@ -949,8 +961,10 @@ func (p *Parser) parseCreateTrigger() (Statement, error) {
 	if p.cur.Type != TokIdent && p.cur.Type != TokKeyword {
 		return nil, fmt.Errorf("expected trigger target")
 	}
-	stmt.View = strings.ToLower(p.cur.Value)
-	p.advance()
+	stmt.View, err = p.qualifiedName()
+	if err != nil {
+		return nil, err
+	}
 	if p.cur.Value == "FOR" {
 		p.advance()
 		if err := p.expectKeyword("EACH"); err != nil {
@@ -1012,8 +1026,8 @@ func (p *Parser) parseInsert() (Statement, error) {
 	if err := p.expectKeyword("INTO"); err != nil {
 		return nil, err
 	}
-	name := p.cur.Value
-	if err := p.expect(TokIdent); err != nil {
+	name, err := p.qualifiedName()
+	if err != nil {
 		return nil, err
 	}
 	stmt := &InsertStmt{Table: strings.ToLower(name), Replace: replace, Ignore: ignore}
@@ -1549,13 +1563,18 @@ func (p *Parser) parseUpdate() (Statement, error) {
 
 func (p *Parser) parseDrop() (Statement, error) {
 	p.advance()
+	if p.showWord("SCHEMA") || p.showWord("DATABASE") {
+		return p.parseNamespaceDrop()
+	}
 	if p.cur.Value == "TRIGGER" {
 		p.advance()
 		if p.cur.Type != TokIdent && p.cur.Type != TokKeyword {
 			return nil, fmt.Errorf("expected trigger name")
 		}
-		name := strings.ToLower(p.cur.Value)
-		p.advance()
+		name, err := p.qualifiedName()
+		if err != nil {
+			return nil, err
+		}
 		return &DropTriggerStmt{Name: name}, nil
 	}
 
@@ -1587,17 +1606,17 @@ func (p *Parser) parseDrop() (Statement, error) {
 	}
 	if kw == "VIEW" {
 		p.advance()
-		viewName := p.cur.Value
-		if p.cur.Type == TokIdent || p.cur.Type == TokKeyword {
-			p.advance()
+		viewName, err := p.qualifiedName()
+		if err != nil {
+			return nil, err
 		}
 		return &DropViewStmt{View: strings.ToLower(viewName)}, nil
 	}
 	if kw == "INDEX" {
 		p.advance()
-		idxName := p.cur.Value
-		if p.cur.Type == TokIdent || p.cur.Type == TokKeyword {
-			p.advance()
+		idxName, err := p.qualifiedName()
+		if err != nil {
+			return nil, err
 		}
 		table := ""
 		if strings.EqualFold(p.cur.Value, "ON") {
@@ -1605,8 +1624,10 @@ func (p *Parser) parseDrop() (Statement, error) {
 			if p.cur.Type != TokIdent {
 				return nil, fmt.Errorf("expected table after DROP INDEX ON")
 			}
-			table = strings.ToLower(p.cur.Value)
-			p.advance()
+			table, err = p.qualifiedName()
+			if err != nil {
+				return nil, err
+			}
 		}
 		abortAfter, err := p.parsePublicationPolicy()
 		if err != nil {
@@ -2254,11 +2275,21 @@ func (p *Parser) parsePrimary() (Expression, error) {
 			return p.parseFunctionCall(name)
 		}
 
-		if p.cur.Type == TokDot {
+		parts := 1
+		for p.cur.Type == TokDot {
 			p.advance()
-			colName := strings.ToLower(p.cur.Value)
-			p.expect(TokIdent)
-			return &ColumnRefExpr{Name: name + "." + colName}, nil
+			if p.cur.Type != TokIdent && p.cur.Type != TokKeyword {
+				return nil, fmt.Errorf("expected column name after qualifier")
+			}
+			name += "." + strings.ToLower(p.cur.Value)
+			p.advance()
+			parts++
+			if parts > 3 {
+				return nil, fmt.Errorf("too many column qualifiers")
+			}
+		}
+		if parts > 1 {
+			return &ColumnRefExpr{Name: name}, nil
 		}
 
 		return &ColumnRefExpr{Name: name}, nil

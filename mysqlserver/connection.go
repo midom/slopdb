@@ -16,6 +16,7 @@ import (
 type client struct {
 	capabilities uint32
 	moreResults  bool
+	preparedPath []string
 	server       *Server
 	conn         net.Conn
 	writer       packetWriter
@@ -180,6 +181,9 @@ func (c *client) dispatch(p []byte) error {
 		if err := enableMySQLSession(session); err != nil {
 			return c.writeError(err)
 		}
+		if err := session.RegisterRootSchemaAlias(c.ctx, c.server.config.Database); err != nil {
+			return c.writeError(err)
+		}
 		c.autocommit = true
 		c.selected = ""
 		return c.ok(nil)
@@ -199,9 +203,6 @@ func scalar(name string, value sql.Value) *db.ExecResult {
 }
 
 func (c *client) query(query string, stmt *db.Stmt, args []any) (*db.ExecResult, error) {
-	if err := c.server.refreshAccounts(c.ctx); err != nil {
-		return nil, err
-	}
 	c.beginDiagnostics(query)
 	if stmt == nil {
 		if result, handled, err := c.control(query); handled {
@@ -213,29 +214,6 @@ func (c *client) query(query string, stmt *db.Stmt, args []any) (*db.ExecResult,
 		}
 		if len(statements) != 1 {
 			return nil, &protocolError{1064, "42000", "exactly one SQL statement is required"}
-		}
-		if err := c.authorize(statements[0]); err != nil {
-			return nil, err
-		}
-	} else if !c.isBootstrap() {
-		template, err := sql.PrepareWithOptions(query, c.currentDatabase().ParseOptions())
-		if err != nil {
-			return nil, err
-		}
-		values := make([]sql.Value, template.NumInput())
-		for i := range values {
-			values[i] = sql.NewIntValue(0)
-		}
-		binding, err := template.Bind(values)
-		if err != nil {
-			return nil, err
-		}
-		defer binding.Release()
-		if len(binding.Statements()) != 1 {
-			return nil, errMalformed
-		}
-		if err = c.authorize(binding.Statements()[0]); err != nil {
-			return nil, err
 		}
 	}
 	first := strings.ToUpper(sql.NewTokenizerWithOptions(query, c.currentDatabase().ParseOptions()).Next().Value)

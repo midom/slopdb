@@ -2,12 +2,7 @@ package db
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
-	"path/filepath"
-
-	"slopdb/storage"
 )
 
 // MySQLReadOnly reports whether replication admission currently permits writes.
@@ -65,27 +60,8 @@ func (d *Database) SetMySQLServerState(ctx context.Context, data []byte) error {
 	return d.currentStorage.Load().Put(mysqlServerStateKey, data)
 }
 
-// OpenMySQLDatabase opens a separately isolated database owned by the protocol
-// server. Additional databases are standalone instances, never aliases for the
-// default database's tables. Name hashing avoids path traversal and case issues.
+// OpenMySQLDatabase is retained for source compatibility. SQL databases now
+// share one physical LSM; use CREATE DATABASE and a session's USE statement.
 func (d *Database) OpenMySQLDatabase(ctx context.Context, name string, create bool) (*Database, error) {
-	if err := d.execution.RLockContext(ctx); err != nil {
-		return nil, err
-	}
-	defer d.execution.RUnlock()
-	if d.closed.Load() {
-		return nil, fmt.Errorf("database closed")
-	}
-	if d.replication.Load() != nil {
-		return nil, fmt.Errorf("additional MySQL databases require a standalone server")
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	hash := sha256.Sum256([]byte(name))
-	path := filepath.Join(d.dir, "mysql-databases", hex.EncodeToString(hash[:]))
-	options := storage.Options(*d.opt)
-	options.CreateIfNotExist = create
-	options.ErrorIfExists = false
-	return Open(path, &options)
+	return nil, fmt.Errorf("physical MySQL child databases were removed; use CREATE DATABASE and a session USE statement")
 }

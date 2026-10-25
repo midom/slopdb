@@ -154,6 +154,12 @@ func (db *Database) installLocks(schema *sql.Schema) {
 func (db *Database) statementCatalogLock(schema *sql.Schema, statement sql.Statement) error {
 	exclusive := false
 	switch statement.(type) {
+	case *sql.NamespaceStmt:
+		operation := statement.(*sql.NamespaceStmt).Operation
+		if operation == "use" || operation == "search_path" {
+			return nil
+		}
+		exclusive = true
 	case *sql.CreateTableStmt, *sql.DropTableStmt, *sql.AlterTableStmt,
 		*sql.CreateIndexStmt, *sql.DropIndexStmt, *sql.CreateViewStmt, *sql.DropViewStmt,
 		*sql.CreateTriggerStmt, *sql.DropTriggerStmt, *sql.VacuumStmt:

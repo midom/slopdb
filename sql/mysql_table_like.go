@@ -13,7 +13,8 @@ func (idx *IndexInfo) SQLName() string {
 	if idx.DisplayName != "" {
 		return idx.DisplayName
 	}
-	return idx.Name
+	_, name := SplitSchemaName(idx.Name)
+	return name
 }
 
 func (s *Schema) findTableIndex(table, name string) *IndexInfo {

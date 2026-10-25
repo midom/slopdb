@@ -55,7 +55,7 @@ func (p *Parser) parseAlter() (Statement, error) {
 	if err != nil {
 		return nil, err
 	}
-	stmt.Table, err = p.alterName()
+	stmt.Table, err = p.qualifiedName()
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +64,7 @@ func (p *Parser) parseAlter() (Statement, error) {
 			if err = p.alterWords("TO"); err != nil {
 				return nil, err
 			}
-			stmt.NewName, err = p.alterName()
+			stmt.NewName, err = p.qualifiedName()
 			stmt.Operation = "RENAME_TO"
 			return stmt, err
 		}
@@ -240,7 +240,7 @@ func (p *Parser) parseAlterAction(table string) (*AlterTableStmt, error) {
 	case "RENAME":
 		if p.optionalAlterWord("TO") {
 			a.Operation = "RENAME_TO"
-			a.NewName, err = p.alterName()
+			a.NewName, err = p.qualifiedName()
 			break
 		}
 		if p.optionalAlterWord("INDEX") || p.optionalAlterWord("KEY") {
@@ -422,14 +422,14 @@ func (p *Parser) parseRenameTables() (Statement, error) {
 	}
 	s := &AlterTableStmt{ObjectKind: "TABLE", Operation: "RENAME_TABLES"}
 	for {
-		old, err := p.alterName()
+		old, err := p.qualifiedName()
 		if err != nil {
 			return nil, err
 		}
 		if err = p.alterWords("TO"); err != nil {
 			return nil, err
 		}
-		name, err := p.alterName()
+		name, err := p.qualifiedName()
 		if err != nil {
 			return nil, err
 		}

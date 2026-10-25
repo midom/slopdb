@@ -7,6 +7,7 @@ import "context"
 // A caller must keep Function safe for the lifetime of the executing call.
 type MySQLSessionOptions struct {
 	Database          string
+	RootDatabase      string
 	Schemas           []string
 	SchemaNames       func() []string
 	GroupConcatMaxLen int64

@@ -311,87 +311,25 @@ func (c *client) showDatabases(tokens []sql.Token) (*db.ExecResult, bool, error)
 	return r, true, nil
 }
 func (c *client) createDatabase(tokens []sql.Token) (*db.ExecResult, bool, error) {
-	c.server.accounts.writeMu.Lock()
-	defer c.server.accounts.writeMu.Unlock()
-	i := 2
-	conditional := false
-	if tokenWord(tokens, i, "IF") {
-		if !tokenWord(tokens, i+1, "NOT") || !tokenWord(tokens, i+2, "EXISTS") {
-			return nil, true, fmt.Errorf("expected IF NOT EXISTS")
-		}
-		i += 3
-		conditional = true
-	}
-	if i >= len(tokens) || tokens[i].Type != sql.TokIdent && tokens[i].Type != sql.TokKeyword {
-		return nil, true, fmt.Errorf("expected database name")
-	}
-	name := tokens[i].Value
-	i++
-	if name == "" || len(name) > 64 || strings.ContainsRune(name, 0) || strings.EqualFold(name, "information_schema") || strings.EqualFold(name, "mysql") {
-		return nil, true, fmt.Errorf("invalid or reserved database name")
-	}
-	// Binary UTF-8 options match the native server's default comparisons.
-	for i < len(tokens) {
-		if tokenWord(tokens, i, "DEFAULT") {
-			i++
-		}
-		if tokenWord(tokens, i, "CHARACTER") {
-			i++
-			if !tokenWord(tokens, i, "SET") {
-				return nil, true, fmt.Errorf("expected CHARACTER SET")
-			}
-			i++
-		} else if tokenWord(tokens, i, "CHARSET") || tokenWord(tokens, i, "COLLATE") {
-			i++
+	// Keep option parsing and transaction semantics in the native catalog path.
+	var query strings.Builder
+	query.WriteString("CREATE DATABASE ")
+	for _, t := range tokens[2:] {
+		if t.Type == sql.TokString {
+			query.WriteByte('\'')
+			query.WriteString(strings.ReplaceAll(t.Value, "'", "''"))
+			query.WriteByte('\'')
+		} else if t.Type == sql.TokIdent {
+			query.WriteByte('`')
+			query.WriteString(strings.ReplaceAll(t.Value, "`", "``"))
+			query.WriteByte('`')
 		} else {
-			return nil, true, fmt.Errorf("unsupported database option")
+			query.WriteString(t.Value)
 		}
-		if i < len(tokens) && tokens[i].Type == sql.TokEq {
-			i++
-		}
-		if i >= len(tokens) {
-			return nil, true, fmt.Errorf("missing database option value")
-		}
-		switch strings.ToLower(tokens[i].Value) {
-		case "binary", "utf8", "utf8mb3", "utf8mb4", "utf8mb4_bin", "utf8_bin":
-		default:
-			return nil, true, fmt.Errorf("unsupported database charset/collation")
-		}
-		i++
+		query.WriteByte(' ')
 	}
-	if !c.hasPrivilege(name, "CREATE", false) {
-		return nil, true, accessDenied("CREATE DATABASE")
-	}
-	if err := c.adminCommit(); err != nil {
-		return nil, true, err
-	}
-	a := &c.server.accounts
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	exists := false
-	for current := range a.databases {
-		exists = exists || strings.EqualFold(current, name)
-	}
-	if exists {
-		if conditional {
-			return nil, true, nil
-		}
-		return nil, true, &protocolError{1007, "HY000", "database already exists"}
-	}
-	a.mu.Unlock()
-	database, err := c.server.database.OpenMySQLDatabase(c.ctx, name, true)
-	a.mu.Lock()
-	if err != nil {
-		return nil, true, err
-	}
-	next := cloneAdministrativeState(a.state)
-	next.Databases = append(next.Databases, name)
-	if err = c.server.saveAccountsLocked(c.ctx, next); err != nil {
-		database.Close()
-		return nil, true, err
-	}
-	a.databases[name] = database
-	return &db.ExecResult{Changes: 1}, true, nil
+	result, err := c.session.ExecContext(c.mysqlContext(), query.String())
+	return result, true, err
 }
 
 func (c *client) showGrants(tokens []sql.Token) (*db.ExecResult, bool, error) {
@@ -405,9 +343,6 @@ func (c *client) showGrants(tokens []sql.Token) (*db.ExecResult, bool, error) {
 			return nil, true, fmt.Errorf("invalid SHOW GRANTS account")
 		}
 		key = accountKey(user, host)
-	}
-	if !c.isBootstrap() && key != c.account {
-		return nil, true, accessDenied("SHOW GRANTS")
 	}
 	a := &c.server.accounts
 	a.mu.Lock()

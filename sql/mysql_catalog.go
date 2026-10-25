@@ -23,11 +23,10 @@ func (s *Schema) resolveMySQLTables(stmt *SelectStmt) (*SelectStmt, error) {
 			}
 			return "", &SelectStmt{materialized: data}, nil
 		}
-		if dot := strings.IndexByte(name, '.'); dot >= 0 {
-			if !strings.EqualFold(name[:dot], options.Database) {
-				return "", nil, fmt.Errorf("unknown database %q", name[:dot])
-			}
-			return name[dot+1:], nil, nil
+
+		if strings.Contains(name, ".") {
+			resolved, err := s.namespaceName(name, false, nil)
+			return resolved, nil, err
 		}
 		return name, nil, nil
 	}
@@ -93,10 +92,17 @@ func (s *Schema) mysqlCatalogTable(name string, options MySQLSessionOptions) (*R
 	switch name {
 	case "information_schema.schemata":
 		r := mysqlCatalog("catalog_name", "schema_name", "default_character_set_name", "default_collation_name", "sql_path")
-		schemas := options.Schemas
-		if options.SchemaNames != nil {
-			schemas = options.SchemaNames()
+		schemas := s.SchemaNames()
+		for i := range schemas {
+			if schemas[i] == "main" {
+				root := options.RootDatabase
+				if root == "" {
+					root = options.Database
+				}
+				schemas[i] = root
+			}
 		}
+
 		if len(schemas) == 0 && options.SchemaNames == nil {
 			schemas = []string{options.Database}
 		}
@@ -114,7 +120,14 @@ func (s *Schema) mysqlCatalogTable(name string, options MySQLSessionOptions) (*R
 			for _, c := range r.Columns {
 				row[c.Name] = NewNullValue()
 			}
-			row["table_catalog"], row["table_schema"], row["table_name"] = NewTextValue("def"), NewTextValue(options.Database), NewTextValue(table)
+			schema, bare := SplitSchemaName(table)
+			if schema == "main" {
+				schema = options.RootDatabase
+				if schema == "" {
+					schema = options.Database
+				}
+			}
+			row["table_catalog"], row["table_schema"], row["table_name"] = NewTextValue("def"), NewTextValue(schema), NewTextValue(bare)
 			row["table_type"], row["engine"], row["row_format"] = NewTextValue("BASE TABLE"), NewTextValue("LSM"), NewTextValue("LSM")
 			row["table_collation"] = NewTextValue("binary")
 			row["table_comment"], row["create_options"] = NewTextValue("SlopDB transactional LSM storage"), NewTextValue("")
@@ -136,7 +149,14 @@ func (s *Schema) mysqlCatalogTable(name string, options MySQLSessionOptions) (*R
 		for _, table := range s.GetTableList() {
 			info := s.GetTableInfo(table)
 			for i, c := range info.Columns {
-				row := map[string]Value{"table_catalog": NewTextValue("def"), "table_schema": NewTextValue(options.Database), "table_name": NewTextValue(table), "column_name": NewTextValue(c.Name), "ordinal_position": NewIntValue(int64(i + 1)), "column_default": NewNullValue(), "is_nullable": NewTextValue("YES"), "data_type": NewTextValue(strings.ToLower(c.ColType.String())), "column_type": NewTextValue(strings.ToLower(c.DeclaredType())), "column_key": NewTextValue(""), "extra": NewTextValue(""), "character_set_name": NewNullValue(), "collation_name": NewNullValue()}
+				schema, bare := SplitSchemaName(table)
+				if schema == "main" {
+					schema = options.RootDatabase
+					if schema == "" {
+						schema = options.Database
+					}
+				}
+				row := map[string]Value{"table_catalog": NewTextValue("def"), "table_schema": NewTextValue(schema), "table_name": NewTextValue(bare), "column_name": NewTextValue(c.Name), "ordinal_position": NewIntValue(int64(i + 1)), "column_default": NewNullValue(), "is_nullable": NewTextValue("YES"), "data_type": NewTextValue(strings.ToLower(c.ColType.String())), "column_type": NewTextValue(strings.ToLower(c.DeclaredType())), "column_key": NewTextValue(""), "extra": NewTextValue(""), "character_set_name": NewNullValue(), "collation_name": NewNullValue()}
 				dataType := strings.ToLower(c.DeclaredType())
 				if index := strings.IndexAny(dataType, "( "); index >= 0 {
 					dataType = dataType[:index]

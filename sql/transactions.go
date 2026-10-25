@@ -223,6 +223,7 @@ func mergeState(base, local, latest *schemaState) *schemaState {
 		collation = local.collation
 	}
 	merged := &schemaState{
+		namespaces:      mergeCatalogMap(base.namespaces, local.namespaces, latest.namespaces),
 		tables:          mergeCatalogMap(base.tables, local.tables, latest.tables),
 		indexes:         mergeCatalogMap(base.indexes, local.indexes, latest.indexes),
 		views:           mergeCatalogMap(base.views, local.views, latest.views),
@@ -245,6 +246,9 @@ func mergeState(base, local, latest *schemaState) *schemaState {
 func (s *Schema) catalogChanged() bool {
 	if s.txState == nil {
 		return false
+	}
+	if !reflect.DeepEqual(s.namespaces, s.txState.namespaces) {
+		return true
 	}
 	if s.hasTemporaryTables() {
 		state := s.captureState()

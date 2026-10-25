@@ -179,6 +179,9 @@ func (c *client) handshake() error {
 	if err := enableMySQLSession(session); err != nil {
 		return c.fail(1040, "08004", err.Error())
 	}
+	if err := session.RegisterRootSchemaAlias(c.ctx, c.server.config.Database); err != nil {
+		return c.fail(1040, "08004", err.Error())
+	}
 	if database != "" {
 		if err := c.switchDatabase(database); err != nil {
 			if p, ok := err.(*protocolError); ok {
