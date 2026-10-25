@@ -123,6 +123,37 @@ and connection reset. Results carry column metadata, NULLs, binary values,
 affected-row counts, generated IDs and transaction status. `CLIENT_FOUND_ROWS`
 selects matched-row counts; ordinary MySQL updates report changed rows.
 
+Small command responses are coalesced into a reusable buffer bounded at 64 KiB.
+Larger responses flush incrementally. Prepared execution reuses native result
+storage and bounded encoding scratch; large result destinations are released
+after sending. Handshakes, replication streams and LOCAL INFILE requests retain
+their required immediate delivery and sequence behavior.
+
+Clients can negotiate MySQL's `CLIENT_OPTIONAL_RESULTSET_METADATA` capability
+to select a lean response without column-definition packets or identifiers:
+
+```sql
+SET SESSION resultset_metadata = NONE;
+-- Execute text queries or binary prepared statements using known result types.
+SET SESSION resultset_metadata = FULL;
+```
+
+The connection defaults to `FULL`; setting `NONE` without negotiating the
+capability is an error. `COM_RESET_CONNECTION` restores `FULL`. In the MySQL C
+API, request `MYSQL_OPT_OPTIONAL_RESULTSET_METADATA` before connecting or set
+`CLIENT_OPTIONAL_RESULTSET_METADATA` in `mysql_real_connect`. A metadata-free
+binary result requires the client to know its column types and order; the server
+does not replace names with a custom type format. Clients can independently
+negotiate `CLIENT_DEPRECATE_EOF` to omit intermediate EOF packets and receive
+the standard final OK terminator, preserving warnings, transaction and
+multi-result status. See [MySQL's optional metadata API](https://dev.mysql.com/doc/c-api/8.4/en/c-api-optional-metadata.html).
+
+The SELECT benchmark's `-api mysql` path measures the ordinary Go
+`database/sql` MySQL driver with full metadata. `-api mysql-lean` measures a
+separate schema-aware, ordinal wire client with metadata disabled and one
+connection per worker; its throughput includes a different client cost and
+must not be presented as the `database/sql` result.
+
 `CREATE DATABASE` / `CREATE SCHEMA` create virtual namespaces inside the same
 physical LSM. `USE` changes a connection's default namespace, including inside a
 transaction; qualified names support cross-schema queries and mutations. The

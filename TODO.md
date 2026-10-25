@@ -17,6 +17,8 @@
 
 - [x] Expanded MySQL string, numeric, temporal, encoding, UUID/IP, digest/compression and connection functions with independent MySQL reference checks; see [function coverage](docs/mysql-functions.md)
 
+- [x] MySQL bounded response coalescing, reusable prepared results, negotiated optional result metadata and deprecated EOF support; see [protocol details](docs/mysql-server.md)
+
 - [x] Optional MySQL default quoting for CLI/API input, prepared and streaming queries, with canonical schema persistence and matching SQL exports; see [SQL quoting](docs/sql-quoting.md)
 ## DML Extensions (5/5 done)
 

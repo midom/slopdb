@@ -20,6 +20,12 @@ than one template without sharing registers or parameter cells. Pool eviction
 can also cause a rebuild. These counters describe structure reuse, not result
 cache hits or a promise that a particular physical index will always be chosen.
 
+Statements owned by a session or transaction retain one private binding under
+that session's execution gate. Garbage collection does not evict this binding;
+catalog/statistics changes and transaction rollback still invalidate its plans.
+Argument references are cleared after each execution. Database-wide shared
+statements keep their concurrent execution-tree pool.
+
 ```go
 stmt, err := database.Prepare("SELECT balance FROM customer WHERE w_id=? AND d_id=? AND c_id=?")
 if err != nil {
