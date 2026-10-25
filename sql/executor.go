@@ -6573,6 +6573,9 @@ func (s *Schema) evalFunc(e *FuncCallExpr, row map[string]Value) (Value, error) 
 			return NewNullValue(), err
 		}
 		if v.Null {
+			if s.mysqlMode {
+				return NewNullValue(), nil
+			}
 			return NewTextValue(""), nil
 		}
 		data := v.Blob

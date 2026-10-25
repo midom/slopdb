@@ -3,6 +3,8 @@ package db
 import (
 	"context"
 	"fmt"
+
+	"slopdb/sql"
 )
 
 // MySQLReadOnly reports whether replication admission currently permits writes.
@@ -64,4 +66,19 @@ func (d *Database) SetMySQLServerState(ctx context.Context, data []byte) error {
 // share one physical LSM; use CREATE DATABASE and a session's USE statement.
 func (d *Database) OpenMySQLDatabase(ctx context.Context, name string, create bool) (*Database, error) {
 	return nil, fmt.Errorf("physical MySQL child databases were removed; use CREATE DATABASE and a session USE statement")
+}
+
+// RecordMySQLProtocolResult accounts for server-side SQL helpers that do not
+// execute an engine statement (for example SHOW VARIABLES and SELECT VERSION).
+func (s *Session) RecordMySQLProtocolResult(hasColumns bool, changes int64, rows uint64) {
+	s.gate.Lock()
+	defer s.gate.Unlock()
+	if s.closed || s.closing.Load() || s.db.closed.Load() {
+		return
+	}
+	var statement sql.Statement = &sql.UpdateStmt{}
+	if hasColumns {
+		statement = &sql.SelectStmt{}
+	}
+	s.schema.RecordMySQLFunctionResult(statement, changes, rows)
 }

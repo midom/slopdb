@@ -249,6 +249,18 @@ func (c *client) query(query string, stmt *db.Stmt, args []any) (*db.ExecResult,
 // control implements only settings whose effects the server can honor. Unknown
 // SETs go to the SQL engine and fail; they must never be silently acknowledged.
 func (c *client) control(query string) (*db.ExecResult, bool, error) {
+	result, handled, err := c.controlRaw(query)
+	if handled && err == nil {
+		if result == nil {
+			c.session.RecordMySQLProtocolResult(false, 0, 0)
+		} else {
+			c.session.RecordMySQLProtocolResult(len(result.Columns) > 0, result.Changes, uint64(len(result.Rows)))
+		}
+	}
+	return result, handled, err
+}
+
+func (c *client) controlRaw(query string) (*db.ExecResult, bool, error) {
 	if result, handled, err := c.binlogControl(query); handled {
 		return result, true, err
 	}

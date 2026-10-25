@@ -22,6 +22,26 @@ func TestMySQLAdditionalSessionFunctions(t *testing.T) {
 		t.Fatal(got, used, free, released, err)
 	}
 	var owner, connection uint64
+	if _, err := c.ExecContext(context.Background(), "CREATE TABLE counts(id INTEGER PRIMARY KEY); "); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.ExecContext(context.Background(), "INSERT INTO counts VALUES(1)"); err != nil {
+		t.Fatal(err)
+	}
+	var rowCount int64
+	if err := c.QueryRowContext(context.Background(), "SELECT ROW_COUNT()").Scan(&rowCount); err != nil || rowCount != 1 {
+		t.Fatal(rowCount, err)
+	}
+	if _, err := c.ExecContext(context.Background(), "UPDATE counts SET id=2"); err != nil {
+		t.Fatal(err)
+	}
+	var version string
+	if err := c.QueryRowContext(context.Background(), "SELECT VERSION()").Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.QueryRowContext(context.Background(), "SELECT ROW_COUNT()").Scan(&rowCount); err != nil || rowCount != -1 {
+		t.Fatal(rowCount, err)
+	}
 	if _, err := c.ExecContext(context.Background(), "SELECT GET_LOCK('all_a',0)"); err != nil {
 		t.Fatal(err)
 	}

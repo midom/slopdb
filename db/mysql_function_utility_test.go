@@ -81,6 +81,9 @@ func TestMySQLUtilityFunctionsPreparedAndBinary(t *testing.T) {
 			t.Fatal("accepted invalid utility call", q)
 		}
 	}
+	if r := mysqlTypeExec(t, s, "SELECT HEX(NULL) AS v"); !r.Rows[0]["v"].Null {
+		t.Fatal(r.Rows)
+	}
 	r := mysqlTypeExec(t, s, "SELECT LENGTH(RANDOM_BYTES(1024)) AS v")
 	if r.Rows[0]["v"].Int != 1024 {
 		t.Fatal(r.Rows)
