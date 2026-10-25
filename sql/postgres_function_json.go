@@ -232,6 +232,78 @@ func postgresJSONFunctions() map[string]FunctionSpec {
 		}
 		return NewTextValue(string(data)), nil
 	})
+	add("JSON_STRIP_NULLS", 1, 1, ColJSON, func(s *Schema, a []Value) (Value, error) {
+		if a[0].Null {
+			return NewNullValue(), nil
+		}
+		v, e := decodeJSONDocument(a[0])
+		if e != nil {
+			return NewNullValue(), e
+		}
+		return postgresJSONResult(s, postgresJSONStripNulls(v), false)
+	})
+	set := out["JSONB_SET"].Eval
+	add("JSONB_SET_LAX", 3, 5, ColJSON, func(s *Schema, a []Value) (Value, error) {
+		if a[0].Null || a[1].Null || (len(a) > 3 && a[3].Null) {
+			return NewNullValue(), nil
+		}
+		if len(a) > 4 && a[4].Null {
+			return NewNullValue(), fmt.Errorf("JSON null treatment must not be null")
+		}
+		if !a[2].Null {
+			n := len(a)
+			if n > 4 {
+				n = 4
+			}
+			return set(s, a[:n])
+		}
+		treatment := "use_json_null"
+		if len(a) > 4 {
+			if a[4].Null {
+				return NewNullValue(), nil
+			}
+			treatment = postgresText(a[4])
+		}
+		switch treatment {
+		case "raise_exception":
+			return NewNullValue(), fmt.Errorf("JSON value must not be null")
+		case "return_target":
+			return a[0].WithSemanticType(TypeJSONB), nil
+		case "use_json_null":
+			copy := append([]Value(nil), a...)
+			copy[2] = Value{Type: ColJSON, Text: "null"}
+			if len(copy) > 4 {
+				copy = copy[:4]
+			}
+			return set(s, copy)
+		case "delete_key":
+			v, e := decodeJSONDocument(a[0])
+			if e != nil {
+				return NewNullValue(), e
+			}
+			parts, e := parsePGJSONPath(postgresText(a[1]))
+			if e != nil {
+				return NewNullValue(), e
+			}
+			if len(parts) > 128 {
+				return NewNullValue(), fmt.Errorf("JSON path exceeds nesting limit")
+			}
+			if len(parts) > 0 {
+				switch v.(type) {
+				case []any, map[string]any:
+				default:
+					return NewNullValue(), fmt.Errorf("cannot delete path in scalar")
+				}
+			}
+			v, e = postgresJSONDeletePath(v, parts)
+			if e != nil {
+				return NewNullValue(), e
+			}
+			return postgresJSONResult(s, v, true)
+		default:
+			return NewNullValue(), fmt.Errorf("invalid JSON null treatment")
+		}
+	})
 	return out
 }
 func postgresJSONArgument(v Value) (any, error) {
@@ -341,6 +413,51 @@ func postgresJSONModify(v any, path []string, replacement any, insert, flag bool
 		x = append(x, nil)
 		copy(x[i+1:], x[i:])
 		x[i] = replacement
+		return x, nil
+	default:
+		return v, nil
+	}
+}
+
+func postgresJSONDeletePath(v any, path []string) (any, error) {
+	if len(path) == 0 {
+		return v, nil
+	}
+	switch x := v.(type) {
+	case map[string]any:
+		if len(path) == 1 {
+			delete(x, path[0])
+			return x, nil
+		}
+		child, exists := x[path[0]]
+		if !exists {
+			return x, nil
+		}
+		replacement, e := postgresJSONDeletePath(child, path[1:])
+		if e != nil {
+			return nil, e
+		}
+		x[path[0]] = replacement
+		return x, nil
+	case []any:
+		n, e := strconv.ParseInt(path[0], 10, 32)
+		if e != nil {
+			return nil, fmt.Errorf("JSON path array element is not an integer")
+		}
+		if n < 0 {
+			n += int64(len(x))
+		}
+		if n < 0 || n >= int64(len(x)) {
+			return x, nil
+		}
+		if len(path) == 1 {
+			return append(x[:n], x[n+1:]...), nil
+		}
+		child, e := postgresJSONDeletePath(x[n], path[1:])
+		if e != nil {
+			return nil, e
+		}
+		x[n] = child
 		return x, nil
 	default:
 		return v, nil

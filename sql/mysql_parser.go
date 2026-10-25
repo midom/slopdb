@@ -65,7 +65,14 @@ func (p *Parser) parseFunctionCall(name string) (Expression, error) {
 		f.MySQLGroupConcat = true
 	}
 	for p.cur.Type != TokRParen && p.cur.Type != TokEOF {
-		arg, err := p.parseExpression()
+		var arg Expression
+		var err error
+		if (f.Name == "NORMALIZE" && len(f.Args) == 1 || f.Name == "GET_FORMAT" && len(f.Args) == 0) && (p.cur.Type == TokIdent || p.cur.Type == TokKeyword) && (p.tok.Peek().Type == TokRParen || f.Name == "GET_FORMAT" && p.tok.Peek().Type == TokComma) {
+			arg = &LiteralExpr{Value: NewTextValue(strings.ToUpper(p.cur.Value))}
+			p.advance()
+		} else {
+			arg, err = p.parseExpression()
+		}
 		if err != nil {
 			return nil, err
 		}

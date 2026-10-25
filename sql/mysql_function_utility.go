@@ -4,11 +4,7 @@ import (
 	"bytes"
 	"compress/zlib"
 	"crypto/aes"
-	"crypto/md5"
 	"crypto/rand"
-	"crypto/sha1"
-	"crypto/sha256"
-	"crypto/sha512"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -39,32 +35,22 @@ func mysqlUtilityFunctions() map[string]FunctionSpec {
 				return NewNullValue(), nil
 			}
 			data := []byte(mysqlStringValue(a[0]))
-			var digest []byte
-			switch name {
-			case "MD5":
-				v := md5.Sum(data)
-				digest = v[:]
-			case "SHA", "SHA1":
-				v := sha1.Sum(data)
-				digest = v[:]
-			case "SHA2":
+			digestName := name
+			if name == "SHA2" {
 				switch mysqlUtilityUint(a[1]) {
 				case 0, 256:
-					v := sha256.Sum256(data)
-					digest = v[:]
+					digestName = "SHA256"
 				case 224:
-					v := sha256.Sum224(data)
-					digest = v[:]
+					digestName = "SHA224"
 				case 384:
-					v := sha512.Sum384(data)
-					digest = v[:]
+					digestName = "SHA384"
 				case 512:
-					v := sha512.Sum512(data)
-					digest = v[:]
+					digestName = "SHA512"
 				default:
 					return NewNullValue(), nil
 				}
 			}
+			digest := functionDigest(digestName, data)
 			return NewTextValue(hex.EncodeToString(digest)), nil
 		}
 		out[name] = spec
@@ -148,7 +134,7 @@ func mysqlUtilityFunctions() map[string]FunctionSpec {
 		binary.BigEndian.PutUint16(id[6:8], uint16(ticks>>48)&0xfff|0x1000)
 		id[8] = id[8]&0x3f | 0x80
 		id[10] |= 1
-		return NewTextValue(mysqlUUIDText(id[:])), nil
+		return NewTextValue(functionUUIDText(id[:])), nil
 	})
 	add("IS_UUID", 1, 1, ColInteger, false, func(s *Schema, a []Value) (Value, error) {
 		if a[0].Null {
@@ -184,7 +170,7 @@ func mysqlUtilityFunctions() map[string]FunctionSpec {
 		if len(a) == 2 && mysqlUtilityUint(a[1]) != 0 {
 			id = mysqlUUIDSwap(id, true)
 		}
-		return NewTextValue(mysqlUUIDText(id)), nil
+		return NewTextValue(functionUUIDText(id)), nil
 	})
 	add("INET_ATON", 1, 1, ColUnsigned, false, func(s *Schema, a []Value) (Value, error) {
 		if a[0].Null {
@@ -427,10 +413,7 @@ func mysqlUUIDBytes(text string) ([]byte, bool) {
 	data, err := hex.DecodeString(text)
 	return data, err == nil
 }
-func mysqlUUIDText(b []byte) string {
-	text := hex.EncodeToString(b)
-	return text[:8] + "-" + text[8:12] + "-" + text[12:16] + "-" + text[16:20] + "-" + text[20:]
-}
+
 func mysqlUUIDSwap(b []byte, inverse bool) []byte {
 	out := make([]byte, 16)
 	if inverse {

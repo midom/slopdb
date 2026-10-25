@@ -1,6 +1,9 @@
 package sql
 
-import "fmt"
+import (
+	"encoding/hex"
+	"fmt"
+)
 
 func functionAnyNull(args []Value) bool {
 	for _, v := range args {
@@ -17,4 +20,9 @@ func functionResultSize(s *Schema, n uint64) error {
 		return fmt.Errorf("function result exceeds query memory budget")
 	}
 	return nil
+}
+
+func functionUUIDText(b []byte) string {
+	text := hex.EncodeToString(b)
+	return text[:8] + "-" + text[8:12] + "-" + text[12:16] + "-" + text[16:20] + "-" + text[20:]
 }

@@ -8,7 +8,7 @@ import (
 var postgresFunctionRegistry map[string]FunctionSpec
 
 func postgresFunctions() map[string]FunctionSpec {
-	return buildFunctionRegistry(DialectPostgreSQL, postgresStringFunctions(), postgresJSONFunctions(), postgresMathFunctions(), postgresClockFunctions(), postgresRegexpFunctions(), postgresCatalogFunctions())
+	return buildFunctionRegistry(DialectPostgreSQL, postgresStringFunctions(), postgresJSONFunctions(), postgresMathFunctions(), postgresClockFunctions(), postgresRegexpFunctions(), postgresCatalogFunctions(), postgresExtraFunctions())
 }
 
 // PostgresFunctionMetadata exposes immutable builtin metadata to protocol

@@ -1,0 +1,169 @@
+{
+  "source": "Oracle MySQL8.0.46",
+  "cases": [
+    {
+      "sql": "GET_FORMAT(DATE,'USA')",
+      "value": "%m.%d.%Y"
+    },
+    {
+      "sql": "GET_FORMAT(DATETIME,'INTERNAL')",
+      "value": "%Y%m%d%H%i%s"
+    },
+    {
+      "sql": "GET_FORMAT(TIMESTAMP,'EUR')",
+      "value": "%Y-%m-%d %H.%i.%s"
+    },
+    {
+      "sql": "GET_FORMAT(TIME,'EUR')",
+      "value": "%H.%i.%s"
+    },
+    {
+      "sql": "GET_FORMAT(TIME,'USA')",
+      "value": "%h:%i:%s %p"
+    },
+    {
+      "sql": "GET_FORMAT(DATE,'unknown')",
+      "value": null
+    },
+    {
+      "sql": "GET_FORMAT(DATE,NULL)",
+      "value": null
+    },
+    {
+      "sql": "CONVERT_TZ('2004-01-01 12:00:00','+00:00','+10:00')",
+      "value": "2004-01-01 22:00:00"
+    },
+    {
+      "sql": "CONVERT_TZ('2004-01-01 12:00:00.123456','+02:00','-03:00')",
+      "value": "2004-01-01 07:00:00.123456"
+    },
+    {
+      "sql": "CONVERT_TZ('1960-01-01 00:00:00','+00:00','+02:00')",
+      "value": "1960-01-01 00:00:00"
+    },
+    {
+      "sql": "CONVERT_TZ('2039-01-01 00:00:00','+00:00','+02:00')",
+      "value": "2039-01-01 02:00:00"
+    },
+    {
+      "sql": "CONVERT_TZ('2000-01-01','+14:00','-13:59')",
+      "value": "1999-12-30 20:01:00"
+    },
+    {
+      "sql": "CONVERT_TZ('2000-01-01','+14:01','+00:00')",
+      "value": null
+    },
+    {
+      "sql": "CONVERT_TZ('2000-01-01','-14:00','+00:00')",
+      "value": null
+    },
+    {
+      "sql": "CONVERT_TZ('bad','+00:00','+00:00')",
+      "value": null
+    },
+    {
+      "sql": "CONVERT_TZ(NULL,'+00:00','+00:00')",
+      "value": null
+    },
+    {
+      "sql": "JSON_SEARCH('[\"AbC\",\"abc\",\"ábć\"]','all','abc')",
+      "value": "\"$[1]\"",
+      "json": true
+    },
+    {
+      "sql": "JSON_SEARCH('{\"a\":[\"x\",\"y\",\"x\"],\"b\":\"x\"}','all','x')",
+      "value": "[\"$.a[0]\", \"$.a[2]\", \"$.b\"]",
+      "json": true
+    },
+    {
+      "sql": "JSON_SEARCH('[1,\"1\",null]','all','1')",
+      "value": "\"$[1]\"",
+      "json": true
+    },
+    {
+      "sql": "JSON_SEARCH('[\"a_\",\"ab\",\"a%\"]','all','a_')",
+      "value": "[\"$[0]\", \"$[1]\", \"$[2]\"]",
+      "json": true
+    },
+    {
+      "sql": "JSON_SEARCH('[\"a_\",\"ab\",\"a%\"]','all','a!_','!')",
+      "value": "\"$[0]\"",
+      "json": true
+    },
+    {
+      "sql": "JSON_SEARCH('{\"a.b\":\"x\",\"z\":\"x\"}','all','x',NULL,'$.\"a.b\"')",
+      "value": "\"$.\\\"a.b\\\"\"",
+      "json": true
+    },
+    {
+      "sql": "JSON_SEARCH('{\"a\":[\"x\",\"y\",\"x\"],\"b\":\"x\"}','all','x',NULL,'$.a[*]')",
+      "value": "[\"$.a[0]\", \"$.a[2]\"]",
+      "json": true
+    },
+    {
+      "sql": "JSON_SEARCH('{\"a\":[\"x\",\"y\",\"x\"]}','all','x',NULL,'$.a[last]')",
+      "value": "\"$.a[last]\"",
+      "json": true
+    },
+    {
+      "sql": "JSON_SEARCH('{\"a\":{\"b\":\"x\"},\"c\":{\"b\":\"x\"}}','all','x',NULL,'$**.b')",
+      "value": "[\"$.a.b\", \"$.c.b\"]",
+      "json": true
+    },
+    {
+      "sql": "JSON_SEARCH('[\"é🪐\",\"éx\"]','all','é_')",
+      "value": "[\"$[0]\", \"$[1]\"]",
+      "json": true
+    },
+    {
+      "sql": "JSON_SEARCH('[\"x\"]','one','missing')",
+      "value": null,
+      "json": true
+    },
+    {
+      "sql": "JSON_SEARCH('[]','bad','x')",
+      "error": true,
+      "json": true
+    },
+    {
+      "sql": "JSON_SEARCH('bad','all','x')",
+      "error": true,
+      "json": true
+    },
+    {
+      "sql": "JSON_SEARCH('[\"x\"]','all','x','long')",
+      "error": true,
+      "json": true
+    },
+    {
+      "sql": "NAME_CONST('dump-name',42)",
+      "value": "42"
+    },
+    {
+      "sql": "NAME_CONST('dump-name',NULL)",
+      "value": null
+    },
+    {
+      "sql": "NAME_CONST('dump-name',-2)",
+      "value": "-2"
+    },
+    {
+      "sql": "NAME_CONST('dump-name',2+3)",
+      "error": true
+    },
+    {
+      "sql": "NAME_CONST(NULL,1)",
+      "error": true
+    },
+    {
+      "sql": "JSON_SEARCH('{\"a\":[\"x\",\"y\",\"x\"]}','all','y',NULL,'$.a[last - 1]')",
+      "value": "\"$.a[last-1]\"",
+      "json": true
+    },
+    {
+      "sql": "JSON_SEARCH('\"x\"','all','x',NULL,'$[0]')",
+      "value": null,
+      "json": true
+    }
+  ]
+}

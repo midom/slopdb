@@ -920,6 +920,143 @@
     {
       "sql": "regexp_replace('a','[','x')",
       "error": true
+    },
+    {
+      "sql": "CAST(starts_with('alphabet','alpha') AS INTEGER)",
+      "value": "1"
+    },
+    {
+      "sql": "CAST(starts_with('é🪐','é') AS INTEGER)",
+      "value": "1"
+    },
+    {
+      "sql": "CAST(starts_with('abc',NULL) AS INTEGER)",
+      "value": null
+    },
+    {
+      "sql": "to_hex(CAST(-1 AS INTEGER))",
+      "value": "ffffffff"
+    },
+    {
+      "sql": "to_hex(CAST(-1 AS BIGINT))",
+      "value": "ffffffffffffffff"
+    },
+    {
+      "sql": "bit_count(CAST('abc' AS BYTEA))",
+      "value": "10"
+    },
+    {
+      "sql": "bit_count(CAST('' AS BYTEA))",
+      "value": "0"
+    },
+    {
+      "sql": "encode(sha224(CAST('abc' AS BYTEA)),'hex')",
+      "value": "23097d223405d8228642a477bda255b32aadbce4bda0b3f7e36c9da7"
+    },
+    {
+      "sql": "encode(sha256(CAST('abc' AS BYTEA)),'hex')",
+      "value": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    },
+    {
+      "sql": "encode(sha384(CAST('abc' AS BYTEA)),'hex')",
+      "value": "cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7"
+    },
+    {
+      "sql": "encode(sha512(CAST('abc' AS BYTEA)),'hex')",
+      "value": "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f"
+    },
+    {
+      "sql": "normalize('á',NFC)",
+      "value": "á"
+    },
+    {
+      "sql": "normalize('é',NFD)",
+      "value": "é"
+    },
+    {
+      "sql": "normalize('①',NFKC)",
+      "value": "1"
+    },
+    {
+      "sql": "CAST(is_normalized('é') AS INTEGER)",
+      "value": "1"
+    },
+    {
+      "sql": "CAST(is_normalized('á','NFC') AS INTEGER)",
+      "value": "0"
+    },
+    {
+      "sql": "unistr('d\\0061t\\+000061')",
+      "value": "data"
+    },
+    {
+      "sql": "unistr('\\uD83E\\uDE90')",
+      "value": "🪐"
+    },
+    {
+      "sql": "unistr('\\0000')",
+      "error": true
+    },
+    {
+      "sql": "unistr('\\uD800x')",
+      "error": true
+    },
+    {
+      "sql": "unistr('\\zzzz')",
+      "error": true
+    },
+    {
+      "sql": "num_nulls(NULL,1,NULL,'')",
+      "value": "2"
+    },
+    {
+      "sql": "num_nonnulls(NULL,1,NULL,'')",
+      "value": "2"
+    },
+    {
+      "sql": "json_strip_nulls(CAST('{\"a\":null,\"b\":[null,{\"c\":null}]}' AS JSON))",
+      "value": "{\"b\":[null,{}]}",
+      "json": true
+    },
+    {
+      "sql": "jsonb_set_lax(CAST('{\"a\":1,\"b\":[1,2,3]}' AS JSONB),'{b,-1}',NULL,true,'use_json_null')",
+      "value": "{\"a\": 1, \"b\": [1, 2, null]}",
+      "json": true
+    },
+    {
+      "sql": "jsonb_set_lax(CAST('{\"a\":1,\"b\":[1,2,3]}' AS JSONB),'{b,-1}',NULL,true,'delete_key')",
+      "value": "{\"a\": 1, \"b\": [1, 2]}",
+      "json": true
+    },
+    {
+      "sql": "jsonb_set_lax(CAST('{\"a\":1,\"b\":[1,2,3]}' AS JSONB),'{b,-1}',NULL,true,'return_target')",
+      "value": "{\"a\": 1, \"b\": [1, 2, 3]}",
+      "json": true
+    },
+    {
+      "sql": "jsonb_set_lax(CAST('{\"a\":1,\"b\":[1,2,3]}' AS JSONB),'{b,-1}',NULL,true,'raise_exception')",
+      "error": true,
+      "json": true
+    },
+    {
+      "sql": "jsonb_set_lax(CAST('{\"a\":1,\"b\":[1,2,3]}' AS JSONB),'{b,-1}',NULL,true,'bad')",
+      "error": true,
+      "json": true
+    },
+    {
+      "sql": "jsonb_set_lax(CAST('1' AS JSONB),'{a}',NULL,true,'delete_key')",
+      "error": true,
+      "json": true
+    },
+    {
+      "sql": "jsonb_set_lax(CAST('{}' AS JSONB),'{a}',NULL,true,NULL)",
+      "error": true,
+      "json": true
+    },
+    {
+      "sql": "jsonb_set_lax(CAST('{}' AS JSONB),'{a}',CAST('1' AS JSONB),true,NULL)",
+      "error": true,
+      "json": true
     }
   ]
 }

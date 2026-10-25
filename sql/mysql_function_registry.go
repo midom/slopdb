@@ -9,7 +9,7 @@ import (
 var mysqlFunctionRegistry map[string]FunctionSpec
 
 func buildMySQLFunctionRegistry() map[string]FunctionSpec {
-	return buildFunctionRegistry(DialectMySQL, mysqlStringFunctions(), mysqlTemporalFunctions(), mysqlNumericFunctions(), mysqlUtilityFunctions(), mysqlSessionFunctions(), sessionVariableFunctions())
+	return buildFunctionRegistry(DialectMySQL, mysqlStringFunctions(), mysqlTemporalFunctions(), mysqlNumericFunctions(), mysqlUtilityFunctions(), mysqlSessionFunctions(), sessionVariableFunctions(), mysqlExtraFunctions())
 }
 
 // MySQL scalar functions accept a leading numeric prefix in string arguments.

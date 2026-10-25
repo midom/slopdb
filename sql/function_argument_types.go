@@ -66,6 +66,23 @@ func postgresFunctionArgumentTypes(name string) func([]ColumnDef) ([]ColumnDef, 
 			}
 			return out, nil
 		}
+	case "SHA224", "SHA256", "SHA384", "SHA512", "BIT_COUNT":
+		signature = []string{"BYTEA"}
+	case "STARTS_WITH", "NORMALIZE", "IS_NORMALIZED":
+		signature = []string{"TEXT", "TEXT"}
+	case "UNISTR":
+		signature = []string{"TEXT"}
+	case "TO_HEX":
+		return func(args []ColumnDef) ([]ColumnDef, error) {
+			target := functionArgumentColumn("BIGINT")
+			if len(args) > 0 && args[0].ColType == ColUnknown {
+				return nil, fmt.Errorf("function TO_HEX has ambiguous argument types; add explicit casts")
+			}
+			if len(args) > 0 && args[0].LogicalType().Kind == TypeInt32 {
+				target = functionArgumentColumn("INTEGER")
+			}
+			return []ColumnDef{target}, nil
+		}
 	case "CHR":
 		signature = []string{"INTEGER"}
 	case "LEFT", "RIGHT", "REPEAT":
