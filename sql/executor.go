@@ -4020,6 +4020,10 @@ func (s *Schema) selectInto(stmt *SelectStmt, dst *ResultSet) (result *ResultSet
 	if stmt.Compound != nil {
 		return s.Union(stmt.Compound)
 	}
+	stmt, err = s.resolveMySQLTables(stmt)
+	if err != nil {
+		return nil, err
+	}
 	stmt, err = s.resolveCTETables(stmt)
 	if err != nil {
 		return nil, err

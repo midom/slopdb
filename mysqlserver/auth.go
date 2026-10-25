@@ -167,6 +167,9 @@ func (c *client) handshake() error {
 		return c.fail(1040, "08004", err.Error())
 	}
 	c.session = session
+	if err := enableMySQLSession(session); err != nil {
+		return c.fail(1040, "08004", err.Error())
+	}
 	return c.ok(nil)
 }
 func checkPassword(password string, salt, response []byte) bool {

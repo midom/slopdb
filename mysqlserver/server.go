@@ -43,15 +43,16 @@ type Config struct {
 // Server owns listeners and client sessions, but never closes the Database.
 // Multiple Serve calls can expose the same database on TCP and Unix sockets.
 type Server struct {
-	database  *db.Database
-	config    Config
-	mu        sync.Mutex
-	closed    bool
-	listeners map[net.Listener]struct{}
-	clients   map[net.Conn]context.CancelFunc
-	wg        sync.WaitGroup
-	done      chan struct{}
-	nextID    atomic.Uint32
+	database   *db.Database
+	config     Config
+	mu         sync.Mutex
+	closed     bool
+	listeners  map[net.Listener]struct{}
+	clients    map[net.Conn]context.CancelFunc
+	wg         sync.WaitGroup
+	done       chan struct{}
+	nextID     atomic.Uint32
+	namedLocks namedLocks
 }
 
 func New(database *db.Database, config Config) (*Server, error) {

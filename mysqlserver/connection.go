@@ -22,12 +22,16 @@ type client struct {
 	session      *db.Session
 	id           uint32
 	selected     string
+	username     string
+	variables    sessionVariables
 	autocommit   bool
 	statements   map[uint32]*prepared
 	nextStmt     uint32
 }
 
 func (c *client) run() {
+	c.variables = defaultSessionVariables()
+	defer c.server.namedLocks.releaseOwner(c.id)
 	defer func() {
 		if c.session != nil {
 			_ = c.session.Close()
@@ -130,6 +134,8 @@ func (c *client) dispatch(p []byte) error {
 		s.longErr = nil
 		return c.ok(nil)
 	case 31: // COM_RESET_CONNECTION rolls back pooled connection state.
+		c.server.namedLocks.releaseOwner(c.id)
+		c.variables = defaultSessionVariables()
 		if len(p) != 1 {
 			return c.writeError(errMalformed)
 		}
@@ -142,6 +148,9 @@ func (c *client) dispatch(p []byte) error {
 			return c.writeError(err)
 		}
 		c.session = session
+		if err := enableMySQLSession(session); err != nil {
+			return c.writeError(err)
+		}
 		c.autocommit = true
 		c.selected = ""
 		return c.ok(nil)
@@ -180,14 +189,17 @@ func (c *client) query(query string, stmt *db.Stmt, args []any) (*db.ExecResult,
 		}
 	}
 	if stmt != nil {
-		return stmt.ExecContext(c.ctx, args...)
+		return stmt.ExecContext(c.mysqlContext(), args...)
 	}
-	return c.session.ExecContext(c.ctx, query)
+	return c.session.ExecContext(c.mysqlContext(), query)
 }
 
 // control implements only settings whose effects the server can honor. Unknown
 // SETs go to the SQL engine and fail; they must never be silently acknowledged.
 func (c *client) control(query string) (*db.ExecResult, bool, error) {
+	if result, handled, err := c.compatibilityControl(query); handled {
+		return result, true, err
+	}
 	tokenizer := sql.NewTokenizerWithOptions(query, c.server.database.ParseOptions())
 	var tokens []sql.Token
 	for tok := tokenizer.Next(); tok.Type != sql.TokEOF; tok = tokenizer.Next() {
@@ -285,4 +297,13 @@ func (c *client) control(query string) (*db.ExecResult, bool, error) {
 		return scalar("@@autocommit", sql.NewIntValue(value)), true, nil
 	}
 	return nil, false, nil
+}
+
+// The optional interface keeps this protocol package buildable while the type
+// compatibility implementation is integrated in an independent worktree.
+func enableMySQLSession(session *db.Session) error {
+	if mode, ok := any(session).(interface{ SetMySQLMode(bool) error }); ok {
+		return mode.SetMySQLMode(true)
+	}
+	return nil
 }
