@@ -146,6 +146,7 @@ type Schema struct {
 	viewDepth            int
 	savepoints           []savepoint
 	mysqlMode            bool
+	postgresMode         bool
 	mysqlFunctions       mysqlFunctionSessionState
 	mysqlConflictChanged bool
 	temporary            *temporaryCatalog
@@ -6264,6 +6265,9 @@ func (s *Schema) evalFunc(e *FuncCallExpr, row map[string]Value) (Value, error) 
 }
 
 func (s *Schema) evalFuncResult(e *FuncCallExpr, row map[string]Value) (Value, error) {
+	if v, handled, err := s.evalPostgresFunc(e, row); handled {
+		return v, err
+	}
 	if value, handled, err := s.evalJSONFunc(e, row); handled {
 		return value, err
 	}

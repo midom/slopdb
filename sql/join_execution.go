@@ -42,6 +42,9 @@ func andTerms(expr Expression) []Expression {
 }
 
 func deterministicFunction(name string) bool {
+	if spec, ok := postgresFunctionRegistry[strings.ToUpper(name)]; ok {
+		return !spec.Volatile
+	}
 	if spec, ok := mysqlFunctionRegistry[strings.ToUpper(name)]; ok {
 		return !spec.Volatile
 	}

@@ -508,6 +508,11 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 		}
 		return result, nil
 	case *FuncCallExpr:
+		if s.postgresMode {
+			if column, ok, err := s.describePostgresFunction(e, env, scope, depth); ok || err != nil {
+				return column, err
+			}
+		}
 		if err := validateScalarFunction(e); err != nil && !isAggregate(e) && e.Window == nil {
 			return text, err
 		}

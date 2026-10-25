@@ -49,6 +49,10 @@ func (c *client) run() {
 		return
 	}
 	c.session = session
+	if err := session.SetPostgresMode(true); err != nil {
+		_ = c.fatal("57P01", err.Error())
+		return
+	}
 	defer session.Close()
 	defer c.clearStatements()
 	defer c.clearPortals()
@@ -282,6 +286,7 @@ func (c *client) dispatch(ctx context.Context, message pgproto3.FrontendMessage)
 	}
 }
 func (c *client) executeSQL(ctx context.Context, p *prepared, args []any) (*db.ExecResult, string, error) {
+	ctx = sql.WithPostgresSession(ctx, sql.PostgresSessionOptions{Database: c.server.config.Database, User: c.server.config.Username, BackendPID: c.id})
 	c.currentSQL = p.original
 	c.reportPositions = false
 	wasInTx := c.session.InTransaction()

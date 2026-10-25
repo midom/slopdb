@@ -43,6 +43,7 @@ func (s *Schema) NewSession() *Schema {
 	child.disableAutoIncrementPersistence = s.disableAutoIncrementPersistence
 	child.enableAutoIncrementGroupCommit = s.enableAutoIncrementGroupCommit
 	child.mysqlMode = s.mysqlMode
+	child.postgresMode = s.postgresMode
 	child.isolation = s.isolation
 	child.restoreState(s.captureState())
 	child.rowIDCount = make(map[string]int64)

@@ -168,6 +168,9 @@ func validateScalarFunction(f *FuncCallExpr) error {
 	}
 	name := strings.ToUpper(f.Name)
 	n := len(f.Args)
+	if valid, known := validPostgresFunction(name, n); known && valid {
+		return nil
+	}
 	if valid, known := validJSONFunction(name, n); known {
 		if !valid {
 			return fmt.Errorf("wrong number of arguments to %s", name)
