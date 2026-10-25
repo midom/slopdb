@@ -89,8 +89,17 @@ func (s *Schema) CommittedSchemaNames() []string {
 	return root.SchemaNames()
 }
 func (s *Schema) DefaultSchemaNeedsResolution() bool {
-	path := s.SearchPath()
-	return path[0] != "main" || len(path) > 1
+	// Read the session-owned or immutable context path without cloning it.
+	// SearchPath returns caller-owned slices; this predicate does not expose one.
+	if s.ctx != nil {
+		if path, ok := s.ctx.Value(namespaceSearchPathKey{}).([]string); ok && len(path) > 0 {
+			return path[0] != "main" || len(path) > 1
+		}
+	}
+	if len(s.searchPath) > 0 {
+		return s.searchPath[0] != "main" || len(s.searchPath) > 1
+	}
+	return s.CurrentSchema() != "main"
 }
 func (s *Schema) loadNamespaces() error {
 	s.namespaces = map[string]bool{"main": true}
@@ -256,38 +265,20 @@ func (s *Schema) namespaceName(name string, create bool, scope map[string]bool) 
 // prepared statement's immutable names are resolved afresh for each execution,
 // so switching defaults cannot leave a cached binding pointed at another table.
 func (s *Schema) ResolveNamespaces(stmt Statement) (Statement, error) {
-	needed := s.DefaultSchemaNeedsResolution() || len(s.namespaces) > 1
+	rootPath := !s.DefaultSchemaNeedsResolution()
+	requirements, compiled := preparedNamespaceRequirements(stmt)
+	// Extra schemas cannot change an unqualified simple read whose effective
+	// path is exactly main. Retain the private tree and its compiled read plan;
+	// table/rename/temp/dialect invalidation remains the executor's responsibility.
+	if compiled && requirements.rootRead && rootPath && !requirements.qualified && !requirements.multiPartReference && (!requirements.nativeBare || s.PostgresMode()) {
+		return stmt, nil
+	}
+	needed := !rootPath || len(s.namespaces) > 1
 	if !needed {
-		namespaceVisit(reflect.ValueOf(stmt), func(value any) {
-			switch st := value.(type) {
-			case *FuncCallExpr:
-				needed = needed || st.PostgresBare && !s.PostgresMode()
-			case *SelectStmt:
-				needed = needed || strings.Contains(st.From, ".")
-			case JoinClause:
-				needed = needed || strings.Contains(st.Table, ".")
-			case *ShowStmt:
-				needed = needed || st.Database != "" || strings.Contains(st.Object, ".")
-			case *AlterTableStmt:
-				needed = needed || strings.Contains(st.Table, ".")
-			case *CreateViewStmt:
-				needed = needed || strings.Contains(st.View, ".")
-			case *DropViewStmt:
-				needed = needed || strings.Contains(st.View, ".")
-			case *InsertStmt:
-				needed = needed || strings.Contains(st.Table, ".")
-			case *CreateTableStmt:
-				needed = needed || strings.Contains(st.Table, ".")
-			case *UpdateStmt:
-				needed = needed || strings.Contains(st.Table, ".")
-			case *DeleteStmt:
-				needed = needed || strings.Contains(st.From, ".")
-			case *DropTableStmt:
-				needed = needed || strings.Contains(st.Table, ".")
-			case *CreateIndexStmt:
-				needed = needed || strings.Contains(st.Table, ".")
-			}
-		})
+		if !compiled {
+			requirements = compileNamespaceRequirements(stmt)
+		}
+		needed = requirements.qualified || requirements.nativeBare && !s.PostgresMode()
 	}
 	if !needed {
 		return stmt, nil

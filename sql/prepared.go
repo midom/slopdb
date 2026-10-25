@@ -13,10 +13,11 @@ import (
 // compiled execution structure, invalidated against the current catalog and
 // statistics; runtime bounds and costs use current arguments and snapshots.
 type PreparedQuery struct {
-	template Statement
-	count    int
-	pooled   bool
-	pool     sync.Pool
+	template   Statement
+	namespaces namespaceRequirements
+	count      int
+	pooled     bool
+	pool       sync.Pool
 	// Assign a counter shard only when building a private AST, never on a hit.
 	nextCounter atomic.Uint64
 	counters    [preparedCounterShards]preparedCounter
@@ -67,6 +68,10 @@ func PrepareWithOptions(query string, options ParseOptions) (*PreparedQuery, err
 	q := &PreparedQuery{template: statements[0], count: p.parameterCount, pooled: reusableStatement(statements[0])}
 	if q.count > 0 && !q.pooled {
 		return nil, fmt.Errorf("parameters are not supported in schema definitions")
+	}
+	q.namespaces = compileNamespaceRequirements(q.template)
+	if selectStmt, ok := q.template.(*SelectStmt); ok {
+		q.namespaces.rootRead = preparedSelectEligible(selectStmt)
 	}
 	q.pool.New = func() any { return q.newBound() }
 	return q, nil
