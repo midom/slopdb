@@ -165,6 +165,12 @@ nonstrict conversions. Unknown variables or unsupported mode flags fail.
 `SHOW WARNINGS`, `@@warning_count` and protocol warning counts expose conversion
 warnings.
 
+`net_read_timeout` and `net_write_timeout` are connection-local transfer timeouts
+in seconds (defaults 30 and 60). SET updates are atomic and reset restores the
+defaults. They bound stalled partial packets and writes, including TLS and
+compressed connections; an idle connection waiting for its next command is not
+closed by the read-transfer timeout.
+
 `GET_LOCK(name, timeout)`, `IS_FREE_LOCK(name)` and `RELEASE_LOCK(name)` use real
 connection-owned, reentrant named locks across sessions. Waits block with deadlines
 and cancellation; disconnect/reset releases all owned locks. MySQL-session
@@ -198,6 +204,10 @@ metadata. Declared MySQL integer widths, unsigned flags, FLOAT, DATE/DATETIME/TI
 fixed BINARY and ENUM are reflected in result metadata and binary prepared rows.
 Native REAL values retain float64 precision on the wire. Mixed-type expression columns use a string wire
 type to preserve their values without rounding large integers.
+
+The endpoint can act as a MySQL replication source with a durable LSM-backed CDC
+journal, full row events, GTIDs, byte-position resume, checksums and heartbeats.
+See [MySQL CDC](mysql-cdc.md) for activation, initial snapshots and DDL boundaries.
 
 ## Go clients and embedding
 

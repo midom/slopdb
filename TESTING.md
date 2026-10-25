@@ -232,6 +232,19 @@ Multiple-result and compression tests exercise standard drivers and raw frames.
 `storage/change_log_test.go` and `db/change_log_test.go` verify transactional CDC
 before/after images, group commit boundaries, restart/crash recovery, deterministic
 replica records, schema checkpoints and temporary/index exclusion.
+`replication/change_log_snapshot_test.go` checks exact journal preservation
+through the native snapshot decoder. `mysqlserver/binlog_test.go` checks event
+CRCs, exact row families, GTID filtering, live waits, rotation, byte-offset resume,
+reopen and unsupported transaction shapes. With Oracle MySQL installed, run the
+independent replica/applier check using:
+
+```sh
+SLOPDB_TEST_MYSQL_REPLICA=1 go test ./mysqlserver -run '^TestBinlogIndependentMySQLReplicaApply$' -count=1 -timeout 2m
+```
+
+It initializes an isolated server under `t.TempDir()`, applies real events using
+GTID auto-positioning and shuts down through SQL. It is optional; the ordinary
+suite needs no reference database server.
 
 ```sh
 go test ./db ./sql ./mysqlserver ./tests/regression -run 'Test(MySQL|MediaWiki|Temporary)' -count=1
