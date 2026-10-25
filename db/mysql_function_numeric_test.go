@@ -1,6 +1,7 @@
 package db_test
 
 import (
+	"math"
 	"testing"
 
 	"slopdb/db"
@@ -47,5 +48,36 @@ func TestMySQLNumericPreparedPersistenceAndMetadata(t *testing.T) {
 		if _, err := s.Exec(query); err == nil {
 			t.Fatalf("accepted invalid arity: %s", query)
 		}
+	}
+}
+
+func TestMySQLRandPreparedColumnSeedsAndPredicate(t *testing.T) {
+	d, err := db.Open(t.TempDir(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	s := mysqlTypeSession(t, d)
+	mysqlTypeExec(t, s, "CREATE TABLE rand_rows(id INTEGER PRIMARY KEY,seed INTEGER);INSERT INTO rand_rows VALUES(1,3),(2,3),(3,3)")
+	prepared, err := s.Prepare("SELECT RAND(?) AS a,RAND(3) AS b,RAND(seed) AS c FROM rand_rows ORDER BY id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer prepared.Close()
+	want := []float64{0.9057697559760601, 0.37307905813034536, 0.14808605345719125}
+	for execution := 0; execution < 2; execution++ {
+		rows, err := prepared.Exec(int64(3))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, row := range rows.Rows {
+			if math.Abs(row["a"].Real-want[i]) > 1e-15 || row["a"].Real != row["b"].Real || row["c"].Real != want[0] {
+				t.Fatal("RAND expression/row seed semantics", rows.Rows)
+			}
+		}
+	}
+	rows := mysqlTypeExec(t, s, "SELECT id FROM rand_rows WHERE RAND(3)<0.5 ORDER BY id")
+	if len(rows.Rows) != 2 || rows.Rows[0]["id"].Int != 2 || rows.Rows[1]["id"].Int != 3 {
+		t.Fatal("RAND predicate was cached", rows.Rows)
 	}
 }

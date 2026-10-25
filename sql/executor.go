@@ -84,6 +84,7 @@ type Schema struct {
 	statementConsistent      bool
 	consistentIndexDeletes   map[string]bool
 	statementTime            time.Time
+	mysqlRand                map[*FuncCallExpr]*mysqlRandState
 	onlineIndexMu            catalogGate
 	onlineIndexBuilds        map[*OnlineIndexBuild]struct{}
 	queryMemoryBytes         int64
@@ -4337,8 +4338,9 @@ func (s *Schema) selectInto(stmt *SelectStmt, dst *ResultSet) (result *ResultSet
 	}
 	defer restoreReadView()
 	if s.selectDepth == 0 && !s.statementActive {
+		s.mysqlRand = nil
 		s.statementTime = time.Now().UTC()
-		defer func() { s.statementTime = time.Time{} }()
+		defer func() { s.statementTime = time.Time{}; s.mysqlRand = nil }()
 	}
 	if s.replicaReadOnly && !IsReplicaReadStatement(stmt) {
 		return nil, fmt.Errorf("locking reads require the Raft leader")

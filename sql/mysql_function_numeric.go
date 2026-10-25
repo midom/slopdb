@@ -129,6 +129,14 @@ func mysqlNumericFunctions() map[string]mysqlFunctionSpec {
 		return NewIntValue(int64(count)), nil
 	}}
 	functions["FORMAT"] = mysqlFunctionSpec{Min: 2, Max: 3, Return: ColText, Eval: mysqlFormatFunction}
+	functions["RAND"] = mysqlFunctionSpec{Min: 0, Max: 1, Return: ColReal, Volatile: true, Eval: func(s *Schema, args []Value) (Value, error) {
+		expression := &FuncCallExpr{Name: "RAND"}
+		for _, arg := range args {
+			expression.Args = append(expression.Args, &LiteralExpr{Value: arg})
+		}
+		value, _, err := s.evalMySQLRand(expression, nil)
+		return value, err
+	}}
 	return functions
 }
 

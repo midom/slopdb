@@ -95,6 +95,7 @@ func (s *Schema) StartStatement() error {
 	return s.useConsistentStatementSnapshot()
 }
 func (s *Schema) EndStatement() {
+	s.mysqlRand = nil
 	s.statementTime = time.Time{}
 	if s.statementActive {
 		s.lsm.ReleaseSnapshotForReader(s.snapshotReader, s.statementSnapshot)

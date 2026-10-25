@@ -21,6 +21,9 @@ func mysqlStringValue(value Value) string {
 // IF is lazy and session/clock functions are never marked deterministic.
 func (s *Schema) evalMySQLFunc(e *FuncCallExpr, row map[string]Value) (Value, bool, error) {
 	name := strings.ToUpper(e.Name)
+	if name == "RAND" {
+		return s.evalMySQLRand(e, row)
+	}
 	if spec, registered := mysqlFunctionRegistry[name]; registered && (!spec.MySQLOnly || s.mysqlMode) {
 		args := make([]Value, len(e.Args))
 		for i, expr := range e.Args {
