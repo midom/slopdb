@@ -91,7 +91,7 @@ func (c *client) streamQuery(query string) (bool, error) {
 		return true, &streamWriteError{e}
 	}
 	packet := c.resultPacket[:0]
-	values := c.streamValues[:0]
+	values := c.streamValues
 	defer func() {
 		if cap(packet) <= maxRetainedResponseBytes {
 			c.resultPacket = packet[:0]
