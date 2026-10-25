@@ -24,7 +24,7 @@ func init() { mysqlFunctionRegistry = buildMySQLFunctionRegistry() }
 
 func buildMySQLFunctionRegistry() map[string]mysqlFunctionSpec {
 	out := make(map[string]mysqlFunctionSpec)
-	for _, family := range []map[string]mysqlFunctionSpec{mysqlStringFunctions(), mysqlTemporalFunctions(), mysqlNumericFunctions(), mysqlUtilityFunctions()} {
+	for _, family := range []map[string]mysqlFunctionSpec{mysqlStringFunctions(), mysqlTemporalFunctions(), mysqlNumericFunctions(), mysqlUtilityFunctions(), mysqlSessionFunctions()} {
 		for name, spec := range family {
 			if _, exists := out[name]; exists {
 				panic("duplicate MySQL function: " + name)

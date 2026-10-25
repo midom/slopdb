@@ -382,16 +382,31 @@ func mysqlUtilityFunctions() map[string]mysqlFunctionSpec {
 }
 
 func mysqlUtilityUint(v Value) uint64 {
-	v = mysqlFunctionNumber(v)
-	n, scale, err := valueDecimal(v)
-	if err != nil {
+	if v.Type == ColUnsigned {
+		return v.Uint
+	}
+	if isNumeric(v) {
+		return uint64(mysqlFunctionInt(v))
+	}
+	text := strings.TrimSpace(mysqlStringValue(v))
+	i := 0
+	negative := false
+	if i < len(text) && (text[i] == '+' || text[i] == '-') {
+		negative = text[i] == '-'
+		i++
+	}
+	start := i
+	for i < len(text) && text[i] >= '0' && text[i] <= '9' {
+		i++
+	}
+	if i == start {
 		return 0
 	}
-	n = roundDecimal(n, scale, 0)
-	if n.Sign() < 0 {
-		return uint64(n.Int64())
+	n, _ := strconv.ParseUint(text[start:i], 10, 64)
+	if negative {
+		return -n
 	}
-	return n.Uint64()
+	return n
 }
 func mysqlUUIDBytes(text string) ([]byte, bool) {
 	if len(text) == 38 && text[0] == '{' && text[37] == '}' {

@@ -69,6 +69,7 @@ func (s *Schema) StartStatement() error {
 	s.EndStatement()
 	s.consistentIndexDeletes = nil
 	s.statementTime = time.Now().UTC()
+	s.mysqlFunctions.generated = false
 	if s.replicaReadOnly {
 		s.replicaReadOnly = false
 		s.readStateVersion = ^uint64(0)

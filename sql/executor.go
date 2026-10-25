@@ -145,6 +145,7 @@ type Schema struct {
 	viewDepth            int
 	savepoints           []savepoint
 	mysqlMode            bool
+	mysqlFunctions       mysqlFunctionSessionState
 	mysqlConflictChanged bool
 	temporary            *temporaryCatalog
 	nextTemporaryID      atomic.Uint64
@@ -1694,6 +1695,8 @@ func (s *Schema) fireTriggers(table, event, timing string, old, new map[string]V
 	}
 	s.triggerDepth++
 	defer func() { s.triggerDepth-- }()
+	lastID := s.mysqlFunctions.lastID
+	defer func() { s.mysqlFunctions.lastID = lastID }()
 	previous := s.outerRow
 	context := make(map[string]Value)
 	for k, v := range old {
@@ -3336,6 +3339,7 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 			return 0, nil, err
 		}
 		pkCol := s.getPKColumn(info)
+		generatedAuto := pkCol != nil && pkCol.AutoIncrement && s.autoValueRequested(pkCol, row[pkName(pkCol)], suppliedColumn(stmt.ColumnNames, pkName(pkCol), stmt.DefaultValues))
 		if pkCol != nil && pkCol.AutoIncrement && pkCol.Unsigned {
 			if err := s.prepareUnsignedAuto(tableName, pkCol, row, suppliedColumn(stmt.ColumnNames, pkCol.Name, stmt.DefaultValues)); err != nil {
 				return 0, nil, err
@@ -3459,6 +3463,9 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 			return 0, nil, err
 		}
 		s.statementChanges++
+		if generatedAuto {
+			s.noteMySQLGeneratedID(row[pkCol.Name])
+		}
 		if pkCol != nil && row[pkCol.Name].Type == ColUnsigned && (!s.mysqlMode || pkCol.AutoIncrement) && lastUnsigned == 0 && (!s.mysqlMode || lastID == 0) {
 			lastUnsigned = row[pkCol.Name].Uint
 		}
@@ -3960,6 +3967,7 @@ func (s *Schema) insertFromSelect(stmt *InsertStmt, info *TableInfo) (int64, *Re
 			return 0, nil, err
 		}
 
+		generatedAuto := pkCol != nil && pkCol.AutoIncrement && s.autoValueRequested(pkCol, row[pkName(pkCol)], suppliedColumn(stmt.ColumnNames, pkName(pkCol), false))
 		if pkCol != nil && pkCol.AutoIncrement && pkCol.Unsigned {
 			if err := s.prepareUnsignedAuto(tableName, pkCol, row, suppliedColumn(stmt.ColumnNames, pkCol.Name, false)); err != nil {
 				return 0, nil, err
@@ -4068,6 +4076,9 @@ func (s *Schema) insertFromSelect(stmt *InsertStmt, info *TableInfo) (int64, *Re
 			return 0, nil, err
 		}
 		s.statementChanges++
+		if generatedAuto {
+			s.noteMySQLGeneratedID(row[pkCol.Name])
+		}
 		if pkCol != nil && row[pkCol.Name].Type == ColUnsigned && (!s.mysqlMode || pkCol.AutoIncrement) && lastUnsigned == 0 && (!s.mysqlMode || lastID == 0) {
 			lastUnsigned = row[pkCol.Name].Uint
 		}
@@ -4688,18 +4699,9 @@ func (s *Schema) selectInto(stmt *SelectStmt, dst *ResultSet) (result *ResultSet
 			}
 		}
 	} else if info == nil && tableName == "" && len(stmt.Joins) == 0 && len(stmt.Columns) > 0 {
-		row := make(map[string]Value)
-		for _, ec := range exprCols {
-			if windowed || containsAggregate(ec.expr) {
-				continue
-			}
-			val, err := s.evalExpr(ec.expr, row)
-			if err != nil {
-				return nil, err
-			}
-			row[ec.name] = val
-		}
-		rows = append(rows, row)
+		// Projection runs once below, after WHERE. Evaluating it here too
+		// duplicates volatile functions and executes rejected rows' expressions.
+		rows = append(rows, make(map[string]Value))
 	} else if info != nil && tableName != "" {
 		var baseRows []map[string]Value
 		var baseKeys [][]string

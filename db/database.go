@@ -357,6 +357,9 @@ func (db *Database) execAdmittedStatementsInto(ctx context.Context, stmts []sql.
 					err = schema.ExecuteStatement(func() error { var e error; result, e = executor.execStatement(stmt); return e })
 				}
 			}
+			if err == nil && result != nil {
+				schema.RecordMySQLFunctionResult(stmt, result.Changes, uint64(len(result.Rows)))
+			}
 			schema.EndStatement()
 			db.syncManagedTransaction(schema, err)
 			if !schema.InTransaction() {

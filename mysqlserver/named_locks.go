@@ -29,13 +29,15 @@ func (l *namedLocks) init() {
 	}
 }
 func (l *namedLocks) notify() { close(l.changed); l.changed = make(chan struct{}) }
-func (l *namedLocks) releaseOwner(owner uint32) {
+func (l *namedLocks) releaseOwner(owner uint32) uint64 {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.init()
 	changed := false
+	var released uint64
 	for name, lock := range l.held {
 		if lock.owner == owner {
+			released += lock.count
 			delete(l.held, name)
 			changed = true
 		}
@@ -43,6 +45,7 @@ func (l *namedLocks) releaseOwner(owner uint32) {
 	if changed {
 		l.notify()
 	}
+	return released
 }
 
 func (l *namedLocks) call(ctx context.Context, owner uint32, operation string, args []sql.Value) (sql.Value, error) {
@@ -147,6 +150,8 @@ func (l *namedLocks) call(ctx context.Context, owner uint32, operation string, a
 
 func (c *client) mysqlFunction(ctx context.Context, name string, args []sql.Value) (sql.Value, bool, error) {
 	switch strings.ToUpper(name) {
+	case "RELEASE_ALL_LOCKS":
+		return sql.NewUnsignedValue(c.server.namedLocks.releaseOwner(c.id)), true, nil
 	case "GET_LOCK", "IS_FREE_LOCK", "IS_USED_LOCK", "RELEASE_LOCK":
 		v, err := c.server.namedLocks.call(ctx, c.id, strings.ToUpper(name), args)
 		return v, true, err
