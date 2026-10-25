@@ -216,7 +216,7 @@ func (p *PointUpdate) Run(ctx context.Context) (int64, error) {
 	var data []byte
 	var found bool
 	var err error
-	if p.schema.inTx {
+	if p.schema.inTx || p.schema.temporaryKey(p.key) {
 		data, found, err = p.schema.schemaGet(p.key)
 	} else if p.stmt.prepared != nil {
 		cached := p.stmt.prepared

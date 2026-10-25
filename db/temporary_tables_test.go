@@ -252,3 +252,78 @@ func TestMySQLTemporaryAutoCountersNeverEnterDurableGroupCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestMySQLTemporaryPreparedPointReadsAndUpdates(t *testing.T) {
+	d, err := db.Open(t.TempDir(), storage.DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	a, b := mysqlTypeSession(t, d), mysqlTypeSession(t, d)
+	mysqlTypeExec(t, a, "CREATE TABLE scratch(id INTEGER PRIMARY KEY,v INTEGER)")
+	mysqlTypeExec(t, a, "INSERT INTO scratch VALUES(1,100)")
+	read, err := a.Prepare("SELECT v FROM scratch WHERE id=?")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer read.Close()
+	update, err := a.Prepare("UPDATE scratch SET v=? WHERE id=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer update.Close()
+	if _, err = update.Exec(101); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = read.Exec(1); err != nil {
+		t.Fatal(err)
+	}
+	mysqlTypeExec(t, a, "CREATE TEMPORARY TABLE scratch(id INTEGER PRIMARY KEY,v INTEGER)")
+	mysqlTypeExec(t, a, "INSERT INTO scratch VALUES(1,1)")
+	mysqlTypeExec(t, a, "REPLACE INTO scratch VALUES(1,2)")
+	mysqlTypeExec(t, a, "INSERT INTO scratch VALUES(1,3) ON DUPLICATE KEY UPDATE v=4")
+	mysqlTypeExec(t, a, "ALTER TABLE scratch ADD COLUMN extra INTEGER DEFAULT 0")
+	mysqlTypeExec(t, a, "CREATE INDEX scratch_v ON scratch(v)")
+	mysqlTypeExec(t, a, "DROP INDEX scratch_v ON scratch")
+	result, err := update.Exec(5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Changes != 1 {
+		t.Fatalf("prepared temporary update changes: %+v", result)
+	}
+	result, err = read.Exec(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Rows) != 1 || result.Rows[0]["v"].Int != 5 {
+		t.Fatalf("prepared temporary point result: %+v", result.Rows)
+	}
+	mysqlTypeExec(t, a, "BEGIN")
+	if _, err = update.Exec(6); err != nil {
+		t.Fatal(err)
+	}
+	mysqlTypeExec(t, a, "ROLLBACK")
+	result, err = read.Exec(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Rows) != 1 || result.Rows[0]["v"].Int != 5 {
+		t.Fatalf("prepared update rollback: %+v", result.Rows)
+	}
+	result = mysqlTypeExec(t, b, "SELECT v FROM scratch WHERE id=1")
+	if len(result.Rows) != 1 || result.Rows[0]["v"].Int != 101 {
+		t.Fatalf("prepared update changed permanent shadow: %+v", result.Rows)
+	}
+	mysqlTypeExec(t, a, "DROP TEMPORARY TABLE scratch")
+	if _, err = update.Exec(102); err != nil {
+		t.Fatal(err)
+	}
+	result, err = read.Exec(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Rows) != 1 || result.Rows[0]["v"].Int != 102 {
+		t.Fatalf("prepared update after dropping shadow: %+v", result.Rows)
+	}
+}

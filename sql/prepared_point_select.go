@@ -98,7 +98,7 @@ func (s *Schema) selectPreparedPoint(stmt *SelectStmt, info *TableInfo, dst *Res
 	var data []byte
 	var found bool
 	var err error
-	if !s.inTx && s.statementActive {
+	if !s.inTx && s.statementActive && !s.temporaryKey(key) {
 		data, found, err = s.lsm.GetAtForReaderInto(key, s.statementSnapshot, s.snapshotReader, p.pointValueScratch)
 		p.pointValueScratch = data
 	} else {
