@@ -524,6 +524,16 @@ log records remain synchronously durable. WAL and its synchronization capability
 must stay enabled; the ordinary
 `--no-wal-fsync` and `--no-wal` flags remain invalid for replication.
 
+Learner certificate delivery is asynchronous and does not extend voter-quorum
+completion. A leader keeps one latest pending certificate per current learner
+in one tracked delivery worker. Transient HTTP failures retry with cancellable
+50 ms–1 s backoff and the configured operation timeout; newer seals coalesce
+without bypassing failure backoff. A learner can therefore publish an already
+certified durable read view after a lost notification, without requiring another
+write or Raft fence. Leadership/term changes and shutdown cancel pending requests
+and release their certificate references. These retries do not certify new data
+or append Raft entries.
+
 Memtable rotation hands the sealed WAL to a background job for fsync and close,
 outside the storage writer and publication locks. Deferred writes can continue
 in the new WAL while that job runs. Durable writes used by receipts and

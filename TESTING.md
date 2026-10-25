@@ -313,3 +313,9 @@ have owning-package tests for native/MySQL/PG, and typed user variables, stored
 collations, column spelling/table-local indexes, temporary ON COMMIT behavior,
 full-text configurations, shared bulk imports and client-local ingestion each
 have permanent regression suites.
+
+`replication/learner_durable_test.go` deterministically drops a learner finalize
+notification, then verifies delivery recovers without a new log entry. It also
+covers certificate coalescing, failure backoff, blocked-request shutdown and
+real leadership-transfer cancellation. The dropped-notification case was
+confirmed to fail against the previous one-shot sender.
