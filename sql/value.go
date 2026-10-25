@@ -55,6 +55,7 @@ type ForeignKeyDef struct {
 }
 
 type ColumnDef struct {
+	Postgres             bool              `json:"postgres_type,omitempty"`
 	RefOnDelete          string            `json:"ref_on_delete,omitempty"`
 	RefOnUpdate          string            `json:"ref_on_update,omitempty"`
 	RefDeferrable        bool              `json:"ref_deferrable,omitempty"`
@@ -90,6 +91,15 @@ type ColumnDef struct {
 // DeclaredType preserves bounded string declarations for schema introspection.
 // The underlying SQL value remains TEXT or BLOB.
 func (col ColumnDef) DeclaredType() string {
+	if col.Postgres && col.Declared != "" {
+		if col.ColType == ColDecimal && col.Precision > 0 {
+			return fmt.Sprintf("NUMERIC(%d,%d)", col.Precision, col.Scale)
+		}
+		if col.Length > 0 && col.ColType == ColText {
+			return fmt.Sprintf("VARCHAR(%d)", col.Length)
+		}
+		return col.Declared
+	}
 	if col.Declared != "" && ((col.Declared != "INTEGER" && col.Declared != "INT" && col.Declared != "BIGINT") || col.MySQL || col.Unsigned) {
 		declared := col.Declared
 		if col.ColType == ColDecimal {
@@ -529,6 +539,7 @@ func (*SubqueryExpr) expr()  {}
 func (*ExistsExpr) expr()    {}
 
 type Value struct {
+	PGType       string    `json:"-"` // expression/column PostgreSQL type; row storage uses existing physical tags
 	HexLiteral   bool      `json:"-"` // transient X'..' numeric context, never a stored BLOB property
 	Collation    Collation `json:"-"`
 	Type         ColumnType

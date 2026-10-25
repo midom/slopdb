@@ -495,6 +495,14 @@ func (s *Schema) schemaGet(key []byte) (value []byte, found bool, err error) {
 }
 
 func (s *Schema) CreateTable(stmt *CreateTableStmt) error {
+	if s.postgresMode {
+		copy := *stmt
+		copy.Columns = append([]ColumnDef(nil), stmt.Columns...)
+		for i := range copy.Columns {
+			postgresColumnDefinition(&copy.Columns[i])
+		}
+		stmt = &copy
+	}
 	if stmt.Temporary {
 		return s.createTemporaryTable(stmt)
 	}
@@ -6586,6 +6594,9 @@ func (s *Schema) evalFuncResult(e *FuncCallExpr, row map[string]Value) (Value, e
 		t, err := s.evalExpr(e.Args[1], row)
 		if err != nil {
 			return NewNullValue(), err
+		}
+		if s.postgresMode {
+			return CastPostgresValue(v, t.Text)
 		}
 		if s.mysqlMode && v.HexLiteral {
 			target := strings.ToUpper(mysqlCastTarget(t.Text))

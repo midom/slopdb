@@ -193,6 +193,9 @@ func (p *Parser) parseColumnType(col *ColumnDef) error {
 }
 
 func decorateColumnValue(v Value, col ColumnDef) Value {
+	if col.Postgres {
+		v.PGType = col.Declared
+	}
 	v.HexLiteral = false
 	v.Binary = col.Binary
 	if !v.Null && len(col.EnumValues) > 0 {
@@ -259,6 +262,9 @@ func mysqlMixedNumericCompare(a, b Value) (int, bool) {
 // normalizeColumnValue is shared by inserts, updates and ALTER rewrites, before
 // validation and key encoding. It never returns borrowed binary storage.
 func normalizeColumnValue(v Value, col ColumnDef) (Value, error) {
+	if col.Postgres {
+		return normalizePostgresColumnValue(v, col)
+	}
 	v.HexLiteral = false
 	if v.Null {
 		return v, nil
@@ -496,6 +502,7 @@ func formatIndexColumns(idx *IndexInfo) string {
 	return strings.Join(parts, ", ")
 }
 func copyColumnType(dst, src *ColumnDef) {
+	dst.Postgres = src.Postgres
 	dst.Declared = src.Declared
 	dst.Precision, dst.Scale = src.Precision, src.Scale
 	dst.Unsigned = src.Unsigned
