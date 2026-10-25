@@ -576,22 +576,25 @@ func (*CaseExpr) expr()      {}
 func (*SubqueryExpr) expr()  {}
 func (*ExistsExpr) expr()    {}
 
+// Pointer-bearing fields precede scalars, keeping this frequently copied value
+// compact and limiting the prefix the garbage collector scans for pointers.
+// Physical rows and spills use explicit encodings, independent of this layout.
 type Value struct {
-	SemanticType TypeID    `json:"-"` // compact protocol-neutral logical type, never a physical row tag
 	PGType       string    `json:"-"` // deprecated compatibility input; use SemanticType/WithDeclaredType
-	HexLiteral   bool      `json:"-"` // transient X'..' numeric context, never a stored BLOB property
 	Collation    Collation `json:"-"`
-	Type         ColumnType
-	EnumValue    bool  `json:"-"`
-	EnumOrdinal  int64 `json:"-"`
-	Binary       bool  `json:"-"` // expression-level BINARY override; never persisted
+	NumericText  string    `json:"-"` // exact source spelling for decimal conversion of numeric literals
+	NumericExact string    `json:"-"` // immutable rational provenance for native REAL literal expressions
+	Text         string
+	Blob         []byte
 	Int          int64
 	Real         float64
 	Uint         uint64
-	NumericText  string `json:"-"` // exact source spelling for decimal conversion of numeric literals
-	NumericExact string `json:"-"` // immutable rational provenance for native REAL literal expressions
-	Text         string
-	Blob         []byte
+	EnumOrdinal  int64 `json:"-"`
+	Type         ColumnType
+	SemanticType TypeID `json:"-"` // compact protocol-neutral logical type, never a physical row tag
+	HexLiteral   bool   `json:"-"` // transient X'..' numeric context, never a stored BLOB property
+	EnumValue    bool   `json:"-"`
+	Binary       bool   `json:"-"` // expression-level BINARY override; never persisted
 	Null         bool
 }
 
