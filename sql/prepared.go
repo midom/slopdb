@@ -186,7 +186,7 @@ func (b *BoundQuery) clone(v reflect.Value) reflect.Value {
 			return v
 		}
 		if parameter, ok := v.Interface().(*ParameterExpr); ok {
-			if b.metadata {
+			if b.metadata || b.query == nil {
 				copy := *parameter
 				return reflect.ValueOf(&copy)
 			}

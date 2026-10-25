@@ -119,3 +119,30 @@ func TestSharedPreparedFunctionAndCastConstraints(t *testing.T) {
 		t.Fatalf("supplied input type overwritten %+v %v", desc, e)
 	}
 }
+
+func TestSharedDescriptionQualifiedParameterCloning(t *testing.T) {
+	d := projectionDatabase(t)
+	s, e := d.NewSession()
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	if e = s.SetDialect(sql.DialectPostgreSQL); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.Exec("CREATE SCHEMA tenant; CREATE TABLE tenant.items(id BIGINT PRIMARY KEY)"); e != nil {
+		t.Fatal(e)
+	}
+	p, e := s.Prepare("SELECT ? AS output FROM tenant.items WHERE id=?")
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer p.Close()
+	desc, e := s.DescribePreparedTypes(context.Background(), p, sql.DescribeOptions{ParameterPositions: []int{0, 0}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if len(desc.Parameters) != 1 || desc.Parameters[0].Kind != sql.TypeInt64 || desc.Results[0].LogicalType().Kind != sql.TypeInt64 {
+		t.Fatalf("%+v", desc)
+	}
+}
