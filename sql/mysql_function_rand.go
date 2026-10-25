@@ -4,6 +4,8 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
+	"strconv"
+	"strings"
 )
 
 // MySQL uses two 30-bit seeds. Constant initializers belong to the expression,
@@ -52,15 +54,7 @@ func (s *Schema) evalMySQLRand(expression *FuncCallExpr, row map[string]Value) (
 		if err != nil {
 			return NewNullValue(), true, err
 		}
-		n, scale, err := valueDecimal(mysqlFunctionNumber(value))
-		if value.Null {
-			n, scale, err = valueDecimal(NewIntValue(0))
-		}
-		if err != nil {
-			return NewNullValue(), true, err
-		}
-		seed := roundDecimal(n, scale, 0)
-		state = mysqlSeededRand(uint32(seed.Int64()))
+		state = mysqlSeededRand(mysqlRandSeed(value))
 		state.constant = true
 		_ = walkExpression(expression.Args[0], func(e Expression) (bool, error) {
 			switch x := e.(type) {
@@ -78,4 +72,31 @@ func (s *Schema) evalMySQLRand(expression *FuncCallExpr, row map[string]Value) (
 	}
 	s.mysqlRand[key] = state
 	return NewRealValue(state.next()), true, nil
+}
+
+func mysqlRandSeed(value Value) uint32 {
+	if value.Null {
+		return 0
+	}
+	if value.Type == ColUnsigned {
+		return uint32(value.Uint)
+	}
+	if value.Type == ColText || value.Type == ColBlob {
+		text := strings.TrimSpace(mysqlStringValue(value))
+		if strings.HasPrefix(text, "+") {
+			text = text[1:]
+		}
+		if !strings.HasPrefix(text, "-") {
+			end := 0
+			for end < len(text) && text[end] >= '0' && text[end] <= '9' {
+				end++
+			}
+			if end == 0 {
+				return 0
+			}
+			n, _ := strconv.ParseUint(text[:end], 10, 64)
+			return uint32(n)
+		}
+	}
+	return uint32(mysqlFunctionInt(value))
 }

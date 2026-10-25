@@ -2,7 +2,9 @@ package sql
 
 import (
 	"context"
+	"encoding/json"
 	"math"
+	"os"
 	"testing"
 )
 
@@ -18,7 +20,7 @@ func TestMySQLNumericFunctionsExactAndDomains(t *testing.T) {
 		{"SIGN(-0.000001)", "-1"}, {"SIGN('17suffix')", "1"}, {"SIGN('junk')", "0"},
 		{"TRUNCATE(1.999,1)", "1.9"}, {"TRUNCATE(-1.999,1)", "-1.9"},
 		{"TRUNCATE(12345,-2)", "12300"}, {"TRUNCATE(123,-9223372036854775808)", "0"},
-		{"TRUNCATE(1.23,10)", "1.23"}, {"TRUNCATE(18446744073709551615,-1)", "18446744073709551610"},
+		{"TRUNCATE(12.345,1.9)", "12.34"}, {"TRUNCATE(12.345,'1.9')", "12.3"}, {"TRUNCATE(1.23,10)", "1.23"}, {"TRUNCATE(18446744073709551615,-1)", "18446744073709551610"},
 		{"TRUNCATE(CAST('9999999999999999999999999.99999' AS DECIMAL(30,5)),2)", "9999999999999999999999999.99"},
 		{"MOD(34.5,3)", "1.5"}, {"MOD(-34.5,3)", "-1.5"},
 		{"MOD(18446744073709551615,17)", "0"}, {"MOD(-9223372036854775808,-1)", "0"},
@@ -37,7 +39,7 @@ func TestMySQLNumericFunctionsExactAndDomains(t *testing.T) {
 		{"FORMAT(12345.5,2,'fr_FR')", "12345,50"}, {"FORMAT(12345.5,2,'ru_RU')", "12 345,50"},
 		{"FORMAT(12345.5,2,NULL)", "12,345.50"}, {"FORMAT(-12345.55,1)", "-12,345.6"},
 		{"FORMAT(CAST(-0.5 AS REAL),0)", "-0"},
-		{"FORMAT(12345.5,-1)", "12,346"}, {"FORMAT(12345.5,100)", "12,345.500000000000000000000000000000"},
+		{"FORMAT(12.345,1.9)", "12.35"}, {"FORMAT(12.345,'1.9')", "12.3"}, {"FORMAT(2.5e0,0)", "2"}, {"FORMAT(2.5,0)", "3"}, {"FORMAT(12345.5,-1)", "12,346"}, {"FORMAT(12345.5,100)", "12,345.500000000000000000000000000000"},
 		{"FORMAT(CAST('99999999999999999999.995' AS DECIMAL(23,3)),2)", "100,000,000,000,000,000,000.00"},
 	} {
 		t.Run(tc.expression, func(t *testing.T) {
@@ -47,7 +49,7 @@ func TestMySQLNumericFunctionsExactAndDomains(t *testing.T) {
 			}
 		})
 	}
-	for _, expression := range []string{"SQRT(-1)", "LN(0)", "LOG(-2)", "LOG(1,100)", "ASIN(2)", "ACOS(-2)", "MOD(1,0)", "CEIL(NULL)", "TRUNCATE(1,NULL)", "POW(NULL,2)", "CONV('1',1,16)", "FORMAT(NULL,2)"} {
+	for _, expression := range []string{"SQRT(-1)", "LN(0)", "LOG(-2)", "LOG(1,100)", "ASIN(2)", "ACOS(-2)", "MOD(1,0)", "CEIL(NULL)", "TRUNCATE(1,NULL)", "POW(NULL,2)", "CONV('1',1,16)", "CONV('',10,16)", "FORMAT(NULL,2)"} {
 		value, err := s.evalExpr(parseTestExpression(t, expression), nil)
 		if err != nil || !value.Null {
 			t.Errorf("%s: expected NULL, got %v (%v)", expression, value, err)
@@ -98,7 +100,7 @@ func TestMySQLRoundingTypesAndNativeFallback(t *testing.T) {
 		expression, want string
 		typ              ColumnType
 	}{
-		{"ROUND(2.5)", "3", ColDecimal}, {"ROUND(-2.5)", "-3", ColDecimal},
+		{"ROUND(25e-1)", "2", ColReal}, {"ROUND(12.345,1.9)", "12.35", ColDecimal}, {"ROUND(12.345,'1.9')", "12.3", ColDecimal}, {"ROUND(2.5)", "3", ColDecimal}, {"ROUND(-2.5)", "-3", ColDecimal},
 		{"ROUND(CAST(2.5 AS REAL))", "2", ColReal}, {"ROUND(CAST(3.5 AS REAL))", "4", ColReal},
 		{"ROUND(CAST(-2.5 AS REAL))", "-2", ColReal},
 		{"ROUND(CAST(1.25 AS REAL),1)", "1.2", ColReal},
@@ -133,5 +135,26 @@ func TestMySQLRoundingTypesAndNativeFallback(t *testing.T) {
 	}
 	if _, err := native.evalExpr(parseTestExpression(t, "ABS('12suffix')"), nil); err == nil {
 		t.Fatal("native strict numeric behavior changed")
+	}
+}
+
+// These factual answers were queried from Oracle MySQL 8.0.46 using
+// SELECT locale, FORMAT(123456789.5,2,locale) for the documented locale list.
+func TestMySQLFormatAllDocumentedLocales(t *testing.T) {
+	data, err := os.ReadFile("testdata/mysql_format_locales.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reference []struct{ Locale, Formatted string }
+	if err = json.Unmarshal(data, &reference); err != nil {
+		t.Fatal(err)
+	}
+	s := &Schema{mysqlMode: true}
+	for _, tc := range reference {
+		expr := "FORMAT(123456789.5,2,'" + tc.Locale + "')"
+		value, err := s.evalExpr(parseTestExpression(t, expr), nil)
+		if err != nil || value.Text != tc.Formatted {
+			t.Errorf("%s: got%q (%v), want%q", expr, value.Text, err, tc.Formatted)
+		}
 	}
 }

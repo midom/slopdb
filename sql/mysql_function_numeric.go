@@ -418,6 +418,9 @@ func mysqlNumericUint(v Value) uint64 {
 }
 
 func mysqlConvertBase(value Value, from, to int64) Value {
+	if mysqlStringValue(value) == "" {
+		return NewNullValue()
+	}
 	if from == math.MinInt64 || to == math.MinInt64 {
 		return NewNullValue()
 	}

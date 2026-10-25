@@ -1,0 +1,446 @@
+[
+  {
+    "locale": "ar_AE",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "ar_BH",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "ar_DZ",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "ar_EG",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "ar_IN",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "ar_IQ",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "ar_JO",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "ar_KW",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "ar_LB",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "ar_LY",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "ar_MA",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "ar_OM",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "ar_QA",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "ar_SA",
+    "formatted": "123456789.50"
+  },
+  {
+    "locale": "ar_SD",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "ar_SY",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "ar_TN",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "ar_YE",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "be_BY",
+    "formatted": "123.456.789,50"
+  },
+  {
+    "locale": "bg_BG",
+    "formatted": "123\u0000456\u0000789,50"
+  },
+  {
+    "locale": "ca_ES",
+    "formatted": "123456789,50"
+  },
+  {
+    "locale": "cs_CZ",
+    "formatted": "123 456 789,50"
+  },
+  {
+    "locale": "da_DK",
+    "formatted": "123.456.789,50"
+  },
+  {
+    "locale": "de_AT",
+    "formatted": "123456789,50"
+  },
+  {
+    "locale": "de_BE",
+    "formatted": "123.456.789,50"
+  },
+  {
+    "locale": "de_CH",
+    "formatted": "123'456'789.50"
+  },
+  {
+    "locale": "de_DE",
+    "formatted": "123.456.789,50"
+  },
+  {
+    "locale": "de_LU",
+    "formatted": "123.456.789,50"
+  },
+  {
+    "locale": "el_GR",
+    "formatted": "123456789,50"
+  },
+  {
+    "locale": "en_AU",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "en_CA",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "en_GB",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "en_IN",
+    "formatted": "12,34,56,789.50"
+  },
+  {
+    "locale": "en_NZ",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "en_PH",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "en_US",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "en_ZA",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "en_ZW",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "es_AR",
+    "formatted": "123.456.789,50"
+  },
+  {
+    "locale": "es_BO",
+    "formatted": "123.456.789,50"
+  },
+  {
+    "locale": "es_CL",
+    "formatted": "123.456.789,50"
+  },
+  {
+    "locale": "es_CO",
+    "formatted": "123.456.789,50"
+  },
+  {
+    "locale": "es_CR",
+    "formatted": "123 456 789,50"
+  },
+  {
+    "locale": "es_DO",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "es_EC",
+    "formatted": "123.456.789,50"
+  },
+  {
+    "locale": "es_ES",
+    "formatted": "123.456.789,50"
+  },
+  {
+    "locale": "es_GT",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "es_HN",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "es_MX",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "es_NI",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "es_PA",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "es_PE",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "es_PR",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "es_PY",
+    "formatted": "123.456.789,50"
+  },
+  {
+    "locale": "es_SV",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "es_US",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "es_UY",
+    "formatted": "123.456.789,50"
+  },
+  {
+    "locale": "es_VE",
+    "formatted": "123.456.789,50"
+  },
+  {
+    "locale": "et_EE",
+    "formatted": "123 456 789,50"
+  },
+  {
+    "locale": "eu_ES",
+    "formatted": "123456789,50"
+  },
+  {
+    "locale": "fi_FI",
+    "formatted": "123 456 789,50"
+  },
+  {
+    "locale": "fo_FO",
+    "formatted": "123.456.789,50"
+  },
+  {
+    "locale": "fr_BE",
+    "formatted": "123456789,50"
+  },
+  {
+    "locale": "fr_CA",
+    "formatted": "123456789,50"
+  },
+  {
+    "locale": "fr_CH",
+    "formatted": "123456789,50"
+  },
+  {
+    "locale": "fr_FR",
+    "formatted": "123456789,50"
+  },
+  {
+    "locale": "fr_LU",
+    "formatted": "123456789,50"
+  },
+  {
+    "locale": "gl_ES",
+    "formatted": "123456789,50"
+  },
+  {
+    "locale": "gu_IN",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "he_IL",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "hi_IN",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "hr_HR",
+    "formatted": "123456789,50"
+  },
+  {
+    "locale": "hu_HU",
+    "formatted": "123.456.789,50"
+  },
+  {
+    "locale": "id_ID",
+    "formatted": "123.456.789,50"
+  },
+  {
+    "locale": "is_IS",
+    "formatted": "123.456.789,50"
+  },
+  {
+    "locale": "it_CH",
+    "formatted": "123'456'789,50"
+  },
+  {
+    "locale": "it_IT",
+    "formatted": "123456789,50"
+  },
+  {
+    "locale": "ja_JP",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "ko_KR",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "lt_LT",
+    "formatted": "123.456.789,50"
+  },
+  {
+    "locale": "lv_LV",
+    "formatted": "123 456 789,50"
+  },
+  {
+    "locale": "mk_MK",
+    "formatted": "123 456 789,50"
+  },
+  {
+    "locale": "mn_MN",
+    "formatted": "123.456.789,50"
+  },
+  {
+    "locale": "ms_MY",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "nb_NO",
+    "formatted": "123.456.789,50"
+  },
+  {
+    "locale": "nl_BE",
+    "formatted": "123456789,50"
+  },
+  {
+    "locale": "nl_NL",
+    "formatted": "123456789,50"
+  },
+  {
+    "locale": "no_NO",
+    "formatted": "123.456.789,50"
+  },
+  {
+    "locale": "pl_PL",
+    "formatted": "123456789,50"
+  },
+  {
+    "locale": "pt_BR",
+    "formatted": "123456789,50"
+  },
+  {
+    "locale": "pt_PT",
+    "formatted": "123456789,50"
+  },
+  {
+    "locale": "rm_CH",
+    "formatted": "123'456'789,50"
+  },
+  {
+    "locale": "ro_RO",
+    "formatted": "123.456.789,50"
+  },
+  {
+    "locale": "ru_RU",
+    "formatted": "123 456 789,50"
+  },
+  {
+    "locale": "ru_UA",
+    "formatted": "123.456.789,50"
+  },
+  {
+    "locale": "sk_SK",
+    "formatted": "123 456 789,50"
+  },
+  {
+    "locale": "sl_SI",
+    "formatted": "123456789,50"
+  },
+  {
+    "locale": "sq_AL",
+    "formatted": "123.456.789,50"
+  },
+  {
+    "locale": "sr_RS",
+    "formatted": "123456789.50"
+  },
+  {
+    "locale": "sv_FI",
+    "formatted": "123 456 789,50"
+  },
+  {
+    "locale": "sv_SE",
+    "formatted": "123 456 789,50"
+  },
+  {
+    "locale": "ta_IN",
+    "formatted": "12,34,56,789.50"
+  },
+  {
+    "locale": "te_IN",
+    "formatted": "12,34,56,789.50"
+  },
+  {
+    "locale": "th_TH",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "tr_TR",
+    "formatted": "123.456.789,50"
+  },
+  {
+    "locale": "uk_UA",
+    "formatted": "123.456.789,50"
+  },
+  {
+    "locale": "ur_PK",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "vi_VN",
+    "formatted": "123.456.789,50"
+  },
+  {
+    "locale": "zh_CN",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "zh_HK",
+    "formatted": "123,456,789.50"
+  },
+  {
+    "locale": "zh_TW",
+    "formatted": "123,456,789.50"
+  }
+]
