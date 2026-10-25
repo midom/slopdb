@@ -336,6 +336,8 @@ func run(c config) (r report, err error) {
 		backend, err = newNativeBackend(c, d)
 	} else if c.API == "embedded" {
 		backend, err = newEmbeddedBackend(c, d)
+	} else if c.API == "mysql-lean" {
+		backend, err = newLeanMySQLBackend(c, d)
 	} else {
 		backend, err = newWireBackend(c, d)
 	}
@@ -556,7 +558,7 @@ func writeJSON(path string, v any) error {
 func main() {
 	var c config
 	flag.StringVar(&c.ServerStatsURL, "server-stats-url", "", "external benchmark server /stats URL")
-	flag.StringVar(&c.API, "api", "native", "native, embedded, mysql, pq or pgx")
+	flag.StringVar(&c.API, "api", "native", "native, embedded, mysql, mysql-lean, pq or pgx")
 	flag.StringVar(&c.QueryMode, "query-mode", "prepared", "text or prepared")
 	flag.StringVar(&c.Endpoint, "endpoint", "", "external TCP host:port (wire APIs only)")
 	flag.StringVar(&c.ServeMySQL, "serve-mysql", "", "serve benchmark MySQL TCP listener")

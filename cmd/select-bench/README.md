@@ -164,6 +164,7 @@ The same checked fixture supports these access modes:
 | `-api embedded -query-mode text` | Native embedded `database/sql` pool with literal SQL |
 | `-api embedded -query-mode prepared` | Native embedded pool with a shared prepared statement |
 | `-api mysql -query-mode text` or `prepared` | `go-sql-driver/mysql` over loopback TCP |
+| `-api mysql-lean -query-mode text` or `prepared` | Ordinal typed MySQL wire control with optional metadata disabled |
 | `-api pgx -query-mode text` or `prepared` | pgx `database/sql` adapter over loopback TCP |
 | `-api pq -query-mode text` or `prepared` | lib/pq over loopback TCP |
 
@@ -175,6 +176,17 @@ opening and lazy per-connection preparation finish before measurement. Timed
 calls use the shared ordinary `database/sql` pool; query results are fully
 scanned, drained and closed before validation and the next request. Pool wait
 counts, open connections and checked answers are recorded.
+
+The `mysql-lean` control negotiates standard `CLIENT_OPTIONAL_RESULTSET_METADATA`
+and `CLIENT_DEPRECATE_EOF`, then sets `SESSION resultset_metadata=NONE` before
+preparation. Each worker owns one connection and reusable packet/typed result
+buffers. It decodes this fixture's two BIGINTs and BLOB by ordinal without any
+column-definition packets. This is a fixture-specific protocol client with an
+empty-password `slopdb` login, not a general driver or a `database/sql` result.
+Reports label it `typed-wire:mysql-lean:...`; its missing shared pool overhead
+must be considered when comparing it with the ordinary `mysql` mode. It rejects
+unexpected metadata, malformed packets, extra rows, NULLs and incorrect values.
+Packets are bounded to 1 MiB, and input reads are buffered.
 
 Without `-endpoint`, wire clients start an isolated protocol server in the same
 process as the benchmark. CPU and allocation counters then include both ends.

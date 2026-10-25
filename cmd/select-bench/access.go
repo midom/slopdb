@@ -52,7 +52,7 @@ func accessConfig(c config) (config, error) {
 		c.QueryMode = "prepared"
 	}
 	switch c.API {
-	case "native", "embedded", "mysql", "pq", "pgx":
+	case "native", "embedded", "mysql", "mysql-lean", "pq", "pgx":
 	default:
 		return c, fmt.Errorf("unknown API %q", c.API)
 	}
@@ -63,7 +63,7 @@ func accessConfig(c config) (config, error) {
 		return c, fmt.Errorf("reuse-results requires native prepared execution")
 	}
 	if c.Endpoint != "" && (c.API == "native" || c.API == "embedded") {
-		return c, fmt.Errorf("external endpoint requires mysql, pq or pgx")
+		return c, fmt.Errorf("external endpoint requires mysql, mysql-lean, pq or pgx")
 	}
 	return c, nil
 }
@@ -76,6 +76,9 @@ func apiMode(c config) string {
 			return "ExecPreparedInto"
 		}
 		return "ExecPrepared"
+	}
+	if c.API == "mysql-lean" {
+		return "typed-wire:mysql-lean:" + c.QueryMode
 	}
 	return "database/sql:" + c.API + ":" + c.QueryMode
 }
