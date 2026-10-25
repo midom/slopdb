@@ -29,6 +29,9 @@ func namespaceObject(schema, name string) string {
 }
 func (s *Schema) namespaceAlias(name string) string {
 	name = strings.ToLower(name)
+	if canonical := s.schemaAliases[name]; canonical != "" {
+		return canonical
+	}
 	if options, ok := MySQLSession(s.ctx); ok {
 		root := options.RootDatabase
 		if root == "" && !s.namespaces[options.Database] {
@@ -38,13 +41,7 @@ func (s *Schema) namespaceAlias(name string) string {
 			return "main"
 		}
 	}
-	if name == "public" {
-		return "main"
-	}
-	if canonical := s.schemaAliases[name]; canonical != "" {
-		return canonical
-	}
-	return name
+	return s.Dialect().NamespacePolicy().Resolve(name)
 }
 func (s *Schema) CurrentSchema() string {
 	if s.defaultSchema == "" {

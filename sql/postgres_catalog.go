@@ -39,10 +39,7 @@ func pgObjectOID(id uint64) int64 {
 	return int64(id) + 16384
 }
 func pgNamespaceName(name string) string {
-	if name == "main" {
-		return "public"
-	}
-	return name
+	return DialectPostgreSQL.NamespacePolicy().Present(name)
 }
 func pgNamespaceOID(name string) int64 {
 	switch pgNamespaceName(name) {
