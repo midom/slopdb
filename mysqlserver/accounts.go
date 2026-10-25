@@ -59,19 +59,8 @@ func (s *Server) initAccounts() error {
 			a.state.Accounts = make(map[string]mysqlAccount)
 		}
 	}
-	// Never silently alias or hide a legacy auxiliary database directory.
-	namespaces, err := s.database.SchemaNames(context.Background())
-	if err != nil {
+	if err = s.database.MigrateLegacyMySQLDatabases(context.Background(), a.state.Databases, s.config.Database); err != nil {
 		return err
-	}
-	for _, name := range a.state.Databases {
-		exists := name == s.config.Database
-		for _, namespace := range namespaces {
-			exists = exists || strings.EqualFold(namespace, name)
-		}
-		if !exists {
-			return fmt.Errorf("legacy physical MySQL database %q requires migration to a virtual schema; existing files are preserved", name)
-		}
 	}
 
 	return nil

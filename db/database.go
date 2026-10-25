@@ -18,22 +18,23 @@ import (
 )
 
 type Database struct {
-	currentStorage  atomic.Pointer[storage.LSMTree]
-	replication     atomic.Pointer[ReplicationGuard]
-	generation      atomic.Uint64
-	onlineIndexHook func(string) // instance-local synchronization hook for index concurrency tests
-	mu              sync.Mutex
-	execution       executionGate
-	closed          atomic.Bool
-	lsm             *storage.LSMTree
-	schema          *sql.Schema
-	dir             string
-	opt             *storage.Options
-	sessions        map[*Session]struct{}
-	defaultGate     contextMutex
-	defaultCancel   context.CancelFunc
-	locks           *lockManager
-	executionReader uint64
+	currentStorage     atomic.Pointer[storage.LSMTree]
+	replication        atomic.Pointer[ReplicationGuard]
+	generation         atomic.Uint64
+	mysqlMigrationHook func(string) // instance-local crash/failure test synchronization
+	onlineIndexHook    func(string) // instance-local synchronization hook for index concurrency tests
+	mu                 sync.Mutex
+	execution          executionGate
+	closed             atomic.Bool
+	lsm                *storage.LSMTree
+	schema             *sql.Schema
+	dir                string
+	opt                *storage.Options
+	sessions           map[*Session]struct{}
+	defaultGate        contextMutex
+	defaultCancel      context.CancelFunc
+	locks              *lockManager
+	executionReader    uint64
 }
 
 func Open(dir string, opt *storage.Options) (*Database, error) {
