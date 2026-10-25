@@ -64,7 +64,7 @@ func TestCopyBinaryPGXAndIndependentFixture(t *testing.T) {
 	s := startTestServer(t, "tcp", Config{})
 	c := copyConnection(t, s)
 	ctx := context.Background()
-	if _, err := c.Exec(ctx, "CREATE TABLE binary_copy(id BIGINT PRIMARY KEY, txt TEXT, b BLOB, amount REAL)"); err != nil {
+	if _, err := c.Exec(ctx, "CREATE TABLE binary_copy(id BIGINT PRIMARY KEY, txt TEXT, b BYTEA, amount DOUBLE PRECISION)"); err != nil {
 		t.Fatal(err)
 	}
 	rows := [][]any{{int64(1), "hello 世界", []byte{0, 1, 255}, 1.25}, {int64(2), nil, []byte{}, -2.5}}
