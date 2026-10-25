@@ -8,8 +8,32 @@ import (
 // Registry descriptors share the engine's metadata and bounded evaluation shape.
 var postgresFunctionRegistry map[string]mysqlFunctionSpec
 
-func init()                                           { postgresFunctionRegistry = postgresFunctions() }
-func postgresFunctions() map[string]mysqlFunctionSpec { return nil }
+func init() { postgresFunctionRegistry = postgresFunctions() }
+func postgresFunctions() map[string]mysqlFunctionSpec {
+	out := map[string]mysqlFunctionSpec{}
+	for _, group := range []map[string]mysqlFunctionSpec{postgresStringFunctions(), postgresJSONFunctions(), postgresMathFunctions(), postgresClockFunctions()} {
+		for name, spec := range group {
+			if _, ok := out[name]; ok {
+				panic("duplicate PostgreSQL function " + name)
+			}
+			out[name] = spec
+		}
+	}
+	return out
+}
+
+// PostgresFunctionMetadata exposes immutable builtin metadata to protocol
+// Describe without evaluating an expression or taking query locks.
+func PostgresFunctionMetadata(name string, args []ColumnDef) (ColumnDef, bool) {
+	spec, ok := postgresFunctionRegistry[strings.ToUpper(name)]
+	if !ok {
+		return ColumnDef{}, false
+	}
+	if spec.Metadata != nil {
+		return spec.Metadata(args), true
+	}
+	return ColumnDef{ColType: spec.Return}, true
+}
 func validPostgresFunction(name string, n int) (bool, bool) {
 	spec, ok := postgresFunctionRegistry[name]
 	return ok && n >= spec.Min && (spec.Max < 0 || n <= spec.Max), ok

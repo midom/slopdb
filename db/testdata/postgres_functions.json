@@ -1,0 +1,289 @@
+{
+  "source": "PostgreSQL 16.15",
+  "cases": [
+    {
+      "sql": "concat(NULL)",
+      "value": ""
+    },
+    {
+      "sql": "concat('a',NULL,42,'b')",
+      "value": "a42b"
+    },
+    {
+      "sql": "concat_ws(',',NULL,'a','','b')",
+      "value": "a,,b"
+    },
+    {
+      "sql": "concat_ws(NULL,'a')",
+      "value": null
+    },
+    {
+      "sql": "char_length('é🪐')",
+      "value": "2"
+    },
+    {
+      "sql": "length('é🪐')",
+      "value": "2"
+    },
+    {
+      "sql": "octet_length('é🪐')",
+      "value": "6"
+    },
+    {
+      "sql": "bit_length('é🪐')",
+      "value": "48"
+    },
+    {
+      "sql": "ascii('é')",
+      "value": "233"
+    },
+    {
+      "sql": "ascii('')",
+      "value": "0"
+    },
+    {
+      "sql": "chr(129680)",
+      "value": "🪐"
+    },
+    {
+      "sql": "strpos('aé🪐','🪐')",
+      "value": "3"
+    },
+    {
+      "sql": "strpos('abc','')",
+      "value": "1"
+    },
+    {
+      "sql": "strpos('abc','x')",
+      "value": "0"
+    },
+    {
+      "sql": "left('café🪐',-2)",
+      "value": "caf"
+    },
+    {
+      "sql": "right('café🪐',-2)",
+      "value": "fé🪐"
+    },
+    {
+      "sql": "left('abc',-99)",
+      "value": ""
+    },
+    {
+      "sql": "right('abc',99)",
+      "value": "abc"
+    },
+    {
+      "sql": "repeat('é',3)",
+      "value": "ééé"
+    },
+    {
+      "sql": "repeat('é',-3)",
+      "value": ""
+    },
+    {
+      "sql": "reverse('café🪐')",
+      "value": "🪐éfac"
+    },
+    {
+      "sql": "initcap('FOO_bar 123ABC café')",
+      "value": "Foo_Bar 123abc Café"
+    },
+    {
+      "sql": "translate('éabcé','éac','XY')",
+      "value": "XYbX"
+    },
+    {
+      "sql": "split_part('a.b.c','.',-2)",
+      "value": "b"
+    },
+    {
+      "sql": "split_part('abc','',-1)",
+      "value": "abc"
+    },
+    {
+      "sql": "split_part('a.b','.',5)",
+      "value": ""
+    },
+    {
+      "sql": "lpad('é',5,'xy')",
+      "value": "xyxyé"
+    },
+    {
+      "sql": "rpad('é',5,'xy')",
+      "value": "éxyxy"
+    },
+    {
+      "sql": "lpad('abc',5,'')",
+      "value": "abc"
+    },
+    {
+      "sql": "rpad('abc',-1,'x')",
+      "value": ""
+    },
+    {
+      "sql": "lpad('abc',2)",
+      "value": "ab"
+    },
+    {
+      "sql": "btrim('xyabxy','xy')",
+      "value": "ab"
+    },
+    {
+      "sql": "ltrim('xyabxy','xy')",
+      "value": "abxy"
+    },
+    {
+      "sql": "rtrim('xyabxy','xy')",
+      "value": "xyab"
+    },
+    {
+      "sql": "btrim(' a ')",
+      "value": "a"
+    },
+    {
+      "sql": "quote_ident('hello')",
+      "value": "hello"
+    },
+    {
+      "sql": "quote_ident('Hello')",
+      "value": "\"Hello\""
+    },
+    {
+      "sql": "quote_ident('select')",
+      "value": "\"select\""
+    },
+    {
+      "sql": "quote_ident('a\"b')",
+      "value": "\"a\"\"b\""
+    },
+    {
+      "sql": "quote_literal('a''b')",
+      "value": "'a''b'"
+    },
+    {
+      "sql": "quote_nullable(NULL)",
+      "value": "NULL"
+    },
+    {
+      "sql": "quote_literal(NULL)",
+      "value": null
+    },
+    {
+      "sql": "format('%s %I %L','a','b c','d''e')",
+      "value": "a \"b c\" 'd''e'"
+    },
+    {
+      "sql": "format('%2$s %1$s %s','a','b','c')",
+      "value": "b a b"
+    },
+    {
+      "sql": "format('|%*s|',-5,'é')",
+      "value": "|é    |"
+    },
+    {
+      "sql": "format('%s:%L',NULL,NULL)",
+      "value": ":NULL"
+    },
+    {
+      "sql": "format('%% %1$*2$s','x',5)",
+      "value": "%     x"
+    },
+    {
+      "sql": "encode(decode('00ff615c','hex'),'escape')",
+      "value": "\\000\\377a\\\\"
+    },
+    {
+      "sql": "encode(decode('YWJj','base64'),'hex')",
+      "value": "616263"
+    },
+    {
+      "sql": "get_byte(decode('ff00','hex'),0)",
+      "value": "255"
+    },
+    {
+      "sql": "get_bit(decode('01','hex'),0)",
+      "value": "1"
+    },
+    {
+      "sql": "encode(set_byte(decode('0000','hex'),1,256),'hex')",
+      "value": "0000"
+    },
+    {
+      "sql": "encode(set_bit(decode('0000','hex'),9,1),'hex')",
+      "value": "0002"
+    },
+    {
+      "sql": "convert_from(decode('c3a9','hex'),'UTF8')",
+      "value": "é"
+    },
+    {
+      "sql": "encode(convert_to('é','UTF8'),'hex')",
+      "value": "c3a9"
+    },
+    {
+      "sql": "length(NULL)",
+      "value": null
+    },
+    {
+      "sql": "translate(NULL,'a','b')",
+      "value": null
+    },
+    {
+      "sql": "split_part(NULL,'.',1)",
+      "value": null
+    },
+    {
+      "sql": "format(NULL,'x')",
+      "value": null
+    },
+    {
+      "sql": "concat()",
+      "error": true
+    },
+    {
+      "sql": "concat_ws(',')",
+      "error": true
+    },
+    {
+      "sql": "chr(0)",
+      "error": true
+    },
+    {
+      "sql": "chr(55296)",
+      "error": true
+    },
+    {
+      "sql": "split_part('a','.',0)",
+      "error": true
+    },
+    {
+      "sql": "format('%I',NULL)",
+      "error": true
+    },
+    {
+      "sql": "format('%s')",
+      "error": true
+    },
+    {
+      "sql": "format('%q','x')",
+      "error": true
+    },
+    {
+      "sql": "decode('x','hex')",
+      "error": true
+    },
+    {
+      "sql": "get_byte(decode('00','hex'),1)",
+      "error": true
+    },
+    {
+      "sql": "set_bit(decode('00','hex'),0,2)",
+      "error": true
+    },
+    {
+      "sql": "convert_from(decode('ff','hex'),'UTF8')",
+      "error": true
+    }
+  ]
+}
