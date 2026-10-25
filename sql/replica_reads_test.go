@@ -16,6 +16,8 @@ func TestReplicaReadStatementClassification(t *testing.T) {
 		{"PRAGMA table_info('t')", true},
 		{"PRAGMA page_size", true},
 		{"BEGIN", true}, {"COMMIT ASYNC", true}, {"SAVEPOINT s", true},
+		{"USE main", true}, {"SET search_path TO main", true},
+		{"CREATE SCHEMA tenant", false}, {"DROP SCHEMA tenant CASCADE", false},
 		{"SELECT * FROM t FOR UPDATE", false},
 		{"SELECT * FROM t FOR SHARE", false},
 		{"SELECT (SELECT x FROM t FOR UPDATE)", false},

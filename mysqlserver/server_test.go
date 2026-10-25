@@ -337,8 +337,9 @@ func TestDriverBoundaryResultsAndLongStrings(t *testing.T) {
 	if err := rows.Err(); err != nil || len(got) != 2 || got[0] != "9223372036854775807" || got[1] != "0.5" {
 		t.Fatalf("mixed expression types %v %v", got, err)
 	}
-	if _, err := client.Exec(`SELECT ?`, uint64(18446744073709551615)); err == nil {
-		t.Fatal("out-of-range unsigned parameter accepted")
+	var unsigned uint64
+	if err := client.QueryRow(`SELECT ?`, uint64(18446744073709551615)).Scan(&unsigned); err != nil || unsigned != uint64(18446744073709551615) {
+		t.Fatalf("full-range unsigned parameter: %d %v", unsigned, err)
 	}
 	// Force a standard driver to use COM_STMT_SEND_LONG_DATA for string values.
 	config := driver.NewConfig()

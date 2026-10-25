@@ -92,10 +92,10 @@ func TestTransactionControlStillGuardsDataAccess(t *testing.T) {
 	database.SetReplicationGuard(&ReplicationGuard{Check: func(context.Context) error { return noQuorum }, CheckControl: func(context.Context) error { return nil }})
 	// These operations manipulate private session state; the combined call also
 	// covers ROLLBACK TO's ReleaseStmt representation.
-	if _, err = database.Exec("BEGIN; SAVEPOINT one; ROLLBACK TO one; RELEASE one; COMMIT"); err != nil {
+	if _, err = database.Exec("USE main; SET search_path TO main; BEGIN; SAVEPOINT one; ROLLBACK TO one; RELEASE one; COMMIT"); err != nil {
 		t.Fatal(err)
 	}
-	for _, query := range []string{"SELECT 1", "INSERT INTO items VALUES(1)", "BEGIN; SELECT 1", "PRAGMA page_size", "EXPLAIN SELECT 1"} {
+	for _, query := range []string{"SELECT 1", "INSERT INTO items VALUES(1)", "BEGIN; SELECT 1", "PRAGMA page_size", "EXPLAIN SELECT 1", "CREATE SCHEMA tenant", "DROP SCHEMA tenant CASCADE", "USE main; CREATE SCHEMA tenant"} {
 		if _, err = database.Exec(query); !errors.Is(err, noQuorum) {
 			t.Fatalf("data access bypassed quorum guard for %q: %v", query, err)
 		}

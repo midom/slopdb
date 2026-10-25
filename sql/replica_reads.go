@@ -15,6 +15,8 @@ func IsReplicaReadStatement(statement Statement) bool {
 		return true
 	case *BeginStmt, *SetIsolationStmt, *SetConstraintsStmt, *RollbackStmt, *SavepointStmt, *ReleaseStmt:
 		return true
+	case *NamespaceStmt:
+		return s.Operation == "use" || s.Operation == "search_path"
 	case *CommitStmt:
 		return s.Durability != "durable"
 	case *ShowStmt:
