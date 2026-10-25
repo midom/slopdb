@@ -35,6 +35,8 @@ type Session struct {
 	gate              contextMutex
 	activeMu          sync.Mutex
 	activeCancel      context.CancelFunc
+	closingContext    context.Context // immutable after construction; independent of statement contexts
+	cancelClosing     context.CancelFunc
 	transactionHandle bool
 	abortError        atomic.Pointer[TransactionAbortedError]
 	executionReader   uint64
@@ -76,18 +78,27 @@ func (db *Database) newSessionContextPolicy(ctx context.Context, inspection bool
 	}
 	// Catalog copying can wait for metadata publication. Keep that work outside
 	// the lifecycle mutex so active queries can register cancellation promptly.
-	session := &Session{db: db, schema: db.schema.NewSession()}
+	closingContext, cancelClosing := context.WithCancel(context.Background())
+	session := &Session{db: db, schema: db.schema.NewSession(), closingContext: closingContext, cancelClosing: cancelClosing}
 	db.installLocks(session.schema)
 	session.executionReader = db.locks.state(session.schema).id
 	db.mu.Lock()
 	defer db.mu.Unlock()
 	if db.closed.Load() {
+		session.cancelClosing()
 		db.activityRecords.Delete(session.schema)
 		return nil, errors.New("database closed")
 	}
 	db.sessions[session] = struct{}{}
 	return session, nil
 }
+
+// ClosingContext is canceled when this session or its owning database starts
+// closing. It remains live after normal statement completion, cancellation, or
+// Rows.Close. Observing it does not acquire the session's execution gate, so a
+// protocol can interrupt a blocked response write even after rows are exhausted.
+// The returned context belongs to the session and callers cannot cancel it.
+func (s *Session) ClosingContext() context.Context { return s.closingContext }
 
 // Cancellation registration is private to this session. Publishing first and
 // then checking the closing flags ensures concurrent Close either sees this
@@ -206,6 +217,7 @@ func (s *Session) execParsedInto(ctx context.Context, statements []sql.Statement
 // Close discards this session's uncommitted writes. It does not close the database.
 func (s *Session) Close() error {
 	s.closing.Store(true)
+	s.cancelClosing()
 	s.cancelActive()
 	s.gate.Lock()
 	defer s.gate.Unlock()
@@ -218,6 +230,7 @@ func (s *Session) Close() error {
 }
 
 func (s *Session) closeLocked() {
+	s.cancelClosing()
 	s.db.activityRecords.Delete(s.schema)
 	if !s.closed {
 		s.closing.Store(true)
@@ -314,6 +327,7 @@ func (tx *Tx) Rollback() error {
 		return err
 	}
 	s.closing.Store(true)
+	s.cancelClosing()
 	s.cancelActive()
 	s.gate.Lock()
 	defer s.gate.Unlock()

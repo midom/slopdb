@@ -116,6 +116,7 @@ func (db *Database) Close() error {
 		db.defaultCancel()
 	}
 	for session := range db.sessions {
+		session.cancelClosing()
 		session.cancelActive()
 	}
 	db.mu.Unlock()
