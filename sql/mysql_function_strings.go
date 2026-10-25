@@ -11,10 +11,10 @@ import (
 	"unicode/utf8"
 )
 
-func mysqlStringFunctions() map[string]mysqlFunctionSpec {
-	m := make(map[string]mysqlFunctionSpec)
+func mysqlStringFunctions() map[string]FunctionSpec {
+	m := make(map[string]FunctionSpec)
 	add := func(name string, min, max int, typ ColumnType, eval func(*Schema, []Value) (Value, error)) {
-		m[name] = mysqlFunctionSpec{Min: min, Max: max, Return: typ, Eval: eval}
+		m[name] = FunctionSpec{Min: min, Max: max, Return: typ, Eval: eval}
 	}
 	for _, name := range []string{"LEFT", "RIGHT", "REPEAT", "REVERSE", "LPAD", "RPAD", "INSERT", "SUBSTRING_INDEX", "LCASE", "UCASE", "MID"} {
 		name := name
@@ -84,7 +84,7 @@ func mysqlStringFunctions() map[string]mysqlFunctionSpec {
 		if count <= 0 {
 			return NewTextValue(""), nil
 		}
-		if err := mysqlFunctionSize(s, uint64(count)); err != nil {
+		if err := functionResultSize(s, uint64(count)); err != nil {
 			return NewNullValue(), err
 		}
 		return NewTextValue(strings.Repeat(" ", int(count))), nil
@@ -92,7 +92,7 @@ func mysqlStringFunctions() map[string]mysqlFunctionSpec {
 	add("LOCATE", 2, 3, ColInteger, mysqlLocate)
 	add("POSITION", 2, 2, ColInteger, mysqlLocate)
 	add("STRCMP", 2, 2, ColInteger, func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
 		n := s.valueCompare(mysqlTextValue(a[0]), mysqlTextValue(a[1]))
@@ -106,7 +106,7 @@ func mysqlStringFunctions() map[string]mysqlFunctionSpec {
 	})
 	add("FIELD", 2, -1, ColInteger, mysqlField)
 	add("FIND_IN_SET", 2, 2, ColInteger, func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
 		text := mysqlStringValue(a[1])
@@ -141,7 +141,7 @@ func mysqlStringFunctions() map[string]mysqlFunctionSpec {
 		if a[n].Null {
 			return NewNullValue(), nil
 		}
-		if err := mysqlFunctionSize(s, uint64(len(mysqlStringValue(a[n])))); err != nil {
+		if err := functionResultSize(s, uint64(len(mysqlStringValue(a[n])))); err != nil {
 			return NewNullValue(), err
 		}
 		return mysqlStringResult(mysqlStringValue(a[n]), mysqlHasBlob(a[1:])), nil
@@ -173,7 +173,7 @@ func mysqlStringFunctions() map[string]mysqlFunctionSpec {
 		if len(text)%2 != 0 {
 			text = "0" + text
 		}
-		if err := mysqlFunctionSize(s, uint64(len(text)/2)); err != nil {
+		if err := functionResultSize(s, uint64(len(text)/2)); err != nil {
 			return NewNullValue(), err
 		}
 		data, err := hex.DecodeString(text)
@@ -191,7 +191,7 @@ func mysqlStringFunctions() map[string]mysqlFunctionSpec {
 		if size > 0 {
 			size += (size - 1) / 76
 		}
-		if err := mysqlFunctionSize(s, size); err != nil {
+		if err := functionResultSize(s, size); err != nil {
 			return NewNullValue(), err
 		}
 		encoded := base64.StdEncoding.EncodeToString([]byte(text))
@@ -218,7 +218,7 @@ func mysqlStringFunctions() map[string]mysqlFunctionSpec {
 			}
 			return r
 		}, mysqlStringValue(a[0]))
-		if err := mysqlFunctionSize(s, uint64(base64.StdEncoding.DecodedLen(len(text)))); err != nil {
+		if err := functionResultSize(s, uint64(base64.StdEncoding.DecodedLen(len(text)))); err != nil {
 			return NewNullValue(), err
 		}
 		data, err := base64.StdEncoding.DecodeString(text)
@@ -249,7 +249,7 @@ func mysqlStringFunctions() map[string]mysqlFunctionSpec {
 	}
 	m["SOUNDEX"] = spec
 	add("__MYSQL_TRIM", 3, 3, ColText, func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
 		text, trim, mode := mysqlStringValue(a[0]), mysqlStringValue(a[1]), a[2].Text
@@ -265,7 +265,7 @@ func mysqlStringFunctions() map[string]mysqlFunctionSpec {
 				}
 			}
 		}
-		if err := mysqlFunctionSize(s, uint64(len(text))); err != nil {
+		if err := functionResultSize(s, uint64(len(text))); err != nil {
 			return NewNullValue(), err
 		}
 		return mysqlStringResult(text, a[0].Type == ColBlob), nil
@@ -371,7 +371,7 @@ func mysqlStringLength(text string, binary bool) int64 {
 }
 
 func mysqlStringTransform(s *Schema, name string, a []Value) (Value, error) {
-	if mysqlAnyNull(a) {
+	if functionAnyNull(a) {
 		return NewNullValue(), nil
 	}
 	text := mysqlStringValue(a[0])
@@ -412,7 +412,7 @@ func mysqlStringTransform(s *Schema, name string, a []Value) (Value, error) {
 		}
 		result = mysqlStringSlice(text, start, start+n, binary)
 	case "REVERSE":
-		if err := mysqlFunctionSize(s, uint64(len(text))*4); err != nil {
+		if err := functionResultSize(s, uint64(len(text))*4); err != nil {
 			return NewNullValue(), err
 		}
 		if binary {
@@ -435,7 +435,7 @@ func mysqlStringTransform(s *Schema, name string, a []Value) (Value, error) {
 			break
 		}
 		if uint64(n) > uint64(s.memoryBudget())/uint64(len(text)) {
-			return NewNullValue(), mysqlFunctionSize(s, math.MaxUint64)
+			return NewNullValue(), functionResultSize(s, math.MaxUint64)
 		}
 		result = strings.Repeat(text, int(n))
 	case "LCASE", "UCASE":
@@ -469,10 +469,10 @@ func mysqlStringTransform(s *Schema, name string, a []Value) (Value, error) {
 		copies := need / plen
 		tail := mysqlStringSlice(pad, 0, need%plen, binary)
 		if uint64(copies) > uint64(s.memoryBudget())/uint64(len(pad)) {
-			return NewNullValue(), mysqlFunctionSize(s, math.MaxUint64)
+			return NewNullValue(), functionResultSize(s, math.MaxUint64)
 		}
 		size := uint64(len(text)) + uint64(copies)*uint64(len(pad)) + uint64(len(tail))
-		if err := mysqlFunctionSize(s, size); err != nil {
+		if err := functionResultSize(s, size); err != nil {
 			return NewNullValue(), err
 		}
 		padding := strings.Repeat(pad, int(copies)) + tail
@@ -496,7 +496,7 @@ func mysqlStringTransform(s *Schema, name string, a []Value) (Value, error) {
 		if !binary && !utf8.ValidString(inserted) {
 			return NewNullValue(), fmt.Errorf("invalid UTF-8 in INSERT replacement")
 		}
-		if err := mysqlFunctionSize(s, uint64(len(before))+uint64(len(inserted))+uint64(len(after))); err != nil {
+		if err := functionResultSize(s, uint64(len(before))+uint64(len(inserted))+uint64(len(after))); err != nil {
 			return NewNullValue(), err
 		}
 		result = before + inserted + after
@@ -541,7 +541,7 @@ func mysqlStringTransform(s *Schema, name string, a []Value) (Value, error) {
 			}
 		}
 	}
-	if err := mysqlFunctionSize(s, uint64(len(result))); err != nil {
+	if err := functionResultSize(s, uint64(len(result))); err != nil {
 		return NewNullValue(), err
 	}
 	return mysqlStringResult(result, binary), nil
@@ -562,7 +562,7 @@ func mysqlConcatWS(s *Schema, a []Value) (Value, error) {
 			size += uint64(len(separator))
 		}
 		size += uint64(len(part))
-		if err := mysqlFunctionSize(s, size); err != nil {
+		if err := functionResultSize(s, size); err != nil {
 			return NewNullValue(), err
 		}
 		parts = append(parts, part)
@@ -570,7 +570,7 @@ func mysqlConcatWS(s *Schema, a []Value) (Value, error) {
 	return mysqlStringResult(strings.Join(parts, separator), mysqlHasBlob(a)), nil
 }
 func mysqlLocate(s *Schema, a []Value) (Value, error) {
-	if mysqlAnyNull(a) {
+	if functionAnyNull(a) {
 		return NewNullValue(), nil
 	}
 	needle, haystack := mysqlStringValue(a[0]), mysqlStringValue(a[1])
@@ -591,7 +591,7 @@ func mysqlLocate(s *Schema, a []Value) (Value, error) {
 		c = s.collation
 	}
 	if !binary {
-		if err := mysqlFunctionSize(s, uint64(len(needle))+uint64(len(suffix))); err != nil {
+		if err := functionResultSize(s, uint64(len(needle))+uint64(len(suffix))); err != nil {
 			return NewNullValue(), err
 		}
 		needle = mysqlStringSearchKey(c, needle)
@@ -669,7 +669,7 @@ func mysqlField(s *Schema, a []Value) (Value, error) {
 	return NewIntValue(0), nil
 }
 func mysqlChar(s *Schema, a []Value) (Value, error) {
-	if err := mysqlFunctionSize(s, uint64(len(a))*4); err != nil {
+	if err := functionResultSize(s, uint64(len(a))*4); err != nil {
 		return NewNullValue(), err
 	}
 	out := make([]byte, 0, len(a))
@@ -760,7 +760,7 @@ func mysqlMakeSet(s *Schema, a []Value) (Value, error) {
 		if len(parts) > 0 {
 			size++
 		}
-		if err := mysqlFunctionSize(s, size); err != nil {
+		if err := functionResultSize(s, size); err != nil {
 			return NewNullValue(), err
 		}
 		parts = append(parts, text)
@@ -768,7 +768,7 @@ func mysqlMakeSet(s *Schema, a []Value) (Value, error) {
 	return mysqlStringResult(strings.Join(parts, ","), mysqlHasBlob(a[1:])), nil
 }
 func mysqlExportSet(s *Schema, a []Value) (Value, error) {
-	if mysqlAnyNull(a) {
+	if functionAnyNull(a) {
 		return NewNullValue(), nil
 	}
 	bits := mysqlSetBits(a[0])
@@ -795,7 +795,7 @@ func mysqlExportSet(s *Schema, a []Value) (Value, error) {
 		if i > 0 {
 			size += uint64(len(separator))
 		}
-		if err := mysqlFunctionSize(s, size); err != nil {
+		if err := functionResultSize(s, size); err != nil {
 			return NewNullValue(), err
 		}
 		parts = append(parts, text)
@@ -853,7 +853,7 @@ func mysqlSoundex(s *Schema, a []Value) (Value, error) {
 			continue
 		}
 		if c != 0 && c != previous {
-			if err := mysqlFunctionSize(s, uint64(out.Len()+4)); err != nil {
+			if err := functionResultSize(s, uint64(out.Len()+4)); err != nil {
 				return NewNullValue(), err
 			}
 			out.WriteByte(c)
@@ -866,7 +866,7 @@ func mysqlSoundex(s *Schema, a []Value) (Value, error) {
 	for utf8.RuneCountInString(out.String()) < 4 {
 		out.WriteByte('0')
 	}
-	if err := mysqlFunctionSize(s, uint64(out.Len())); err != nil {
+	if err := functionResultSize(s, uint64(out.Len())); err != nil {
 		return NewNullValue(), err
 	}
 	return mysqlStringResult(out.String(), a[0].Type == ColBlob), nil

@@ -6,10 +6,10 @@ import (
 	"strings"
 )
 
-func postgresCatalogFunctions() map[string]mysqlFunctionSpec {
-	out := map[string]mysqlFunctionSpec{}
+func postgresCatalogFunctions() map[string]FunctionSpec {
+	out := map[string]FunctionSpec{}
 	add := func(name string, min, max int, typ ColumnType, declared string, fn func(*Schema, []Value) (Value, error)) {
-		out[name] = mysqlFunctionSpec{Min: min, Max: max, Return: typ, Volatile: true, Metadata: func([]ColumnDef) ColumnDef { return ColumnDef{ColType: typ, Declared: declared, Postgres: true} }, Eval: func(s *Schema, a []Value) (Value, error) { v, e := fn(s, a); v.PGType = declared; return v, e }}
+		out[name] = FunctionSpec{Min: min, Max: max, Return: typ, Volatile: true, Metadata: func([]ColumnDef) ColumnDef { return ColumnDef{ColType: typ, Declared: declared, Postgres: true} }, Eval: func(s *Schema, a []Value) (Value, error) { v, e := fn(s, a); v.PGType = declared; return v, e }}
 	}
 	add("TO_REGCLASS", 1, 1, ColInteger, "BIGINT", func(s *Schema, a []Value) (Value, error) {
 		if a[0].Null {

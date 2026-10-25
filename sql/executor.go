@@ -6184,22 +6184,12 @@ func (s *Schema) evalFunc(e *FuncCallExpr, row map[string]Value) (Value, error) 
 }
 
 func (s *Schema) evalFuncResult(e *FuncCallExpr, row map[string]Value) (Value, error) {
-	if v, handled, err := s.evalPostgresFunc(e, row); handled {
-		return v, err
-	}
-	if value, handled, err := s.evalJSONFunc(e, row); handled {
-		return value, err
-	}
-	if e.Name == fulltextFunction {
-		return s.evalFulltext(e, row)
-	}
+	return s.evalResolvedFunction(e, row)
+}
+
+// Core handlers implement native operators selected by the common registry.
+func (s *Schema) evalCoreFunction(e *FuncCallExpr, row map[string]Value) (Value, error) {
 	name := strings.ToUpper(e.Name)
-	if err := validateScalarFunctionDialect(e, s.PostgresMode()); err != nil {
-		return NewNullValue(), err
-	}
-	if value, handled, err := s.evalMySQLFunc(e, row); handled || err != nil {
-		return value, err
-	}
 
 	switch strings.ToUpper(e.Name) {
 	case "COALESCE", "IFNULL":

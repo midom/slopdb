@@ -512,12 +512,8 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 		}
 		return result, nil
 	case *FuncCallExpr:
-		if s.PostgresMode() {
-			if column, ok, err := s.describePostgresFunction(e, env, scope, depth); ok || err != nil {
-				return column, err
-			}
-		}
-		if err := validateScalarFunction(e); err != nil && !isAggregate(e) && e.Window == nil {
+
+		if err := validateResolvedFunction(s.Dialect(), e); err != nil && !isAggregate(e) && e.Window == nil {
 			return text, err
 		}
 		name := strings.ToUpper(e.Name)
@@ -547,50 +543,10 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 				}
 			}
 		}
-		if column, ok := s.describeRegisteredMySQLFunction(name, args); ok {
-			return column, nil
+		if column, known, err := FunctionMetadata(s.Dialect(), name, args); known || err != nil {
+			return column, err
 		}
-		common := text
-		if len(args) > 0 {
-			common = args[0]
-			for _, a := range args[1:] {
-				common = describeCommon(common, a)
-			}
-		}
-		switch name {
-		case "COUNT", "LENGTH", "OCTET_LENGTH", "CHAR_LENGTH", "INSTR", "CHANGES", "LAST_INSERT_ROWID", "ROW_NUMBER", "RANK", "DENSE_RANK", "NTILE", "CONNECTION_ID", "GET_LOCK", "RELEASE_LOCK", "IS_FREE_LOCK", "UNIX_TIMESTAMP":
-			return integer, nil
-		case "AVG":
-			if common.ColType == ColDecimal || common.ColType == ColUnsigned {
-				return ColumnDef{ColType: ColDecimal, Declared: "DECIMAL"}, nil
-			}
-			return real, nil
-		case "TOTAL", "PERCENT_RANK", "CUME_DIST", fulltextFunction:
-			return real, nil
-		case "MIN", "MAX", "ABS", "SUM", "COALESCE", "IFNULL", "NULLIF", "LAG", "LEAD", "FIRST_VALUE", "LAST_VALUE", "NTH_VALUE", "GREATEST", "LEAST":
-			return common, nil
-		case "IF":
-			if len(args) == 3 {
-				return describeCommon(args[1], args[2]), nil
-			}
-		case "GROUP_CONCAT", "CONCAT", "SUBSTRING", "SUBSTR":
-			for _, a := range args {
-				if a.ColType == ColBlob {
-					return ColumnDef{ColType: ColBlob}, nil
-				}
-			}
-			return text, nil
-		}
-		if strings.HasPrefix(name, "JSON_") || name == "JSON" || name == "JSONB" {
-			switch name {
-			case "JSON_UNQUOTE", "JSON_TYPE", "JSON_VALUE":
-				return text, nil
-			case "JSON_VALID", "JSON_LENGTH", "JSON_DEPTH", "JSON_CONTAINS", "JSON_CONTAINS_PATH", "JSON_OVERLAPS":
-				return integer, nil
-			}
-			return describeType("JSON"), nil
-		}
-		return text, nil
+		return ColumnDef{ColType: ColUnknown}, nil
 	}
 	return text, fmt.Errorf("unsupported metadata expression %T", expr)
 }

@@ -7,10 +7,10 @@ import (
 	"strings"
 )
 
-func postgresJSONFunctions() map[string]mysqlFunctionSpec {
-	out := map[string]mysqlFunctionSpec{}
+func postgresJSONFunctions() map[string]FunctionSpec {
+	out := map[string]FunctionSpec{}
 	add := func(name string, min, max int, typ ColumnType, eval func(*Schema, []Value) (Value, error)) {
-		spec := mysqlFunctionSpec{Min: min, Max: max, Return: typ, Eval: eval}
+		spec := FunctionSpec{Min: min, Max: max, Return: typ, Eval: eval}
 		if typ == ColJSON {
 			kind := "JSON"
 			if strings.HasPrefix(name, "JSONB") || name == "TO_JSONB" {
@@ -118,7 +118,7 @@ func postgresJSONFunctions() map[string]mysqlFunctionSpec {
 			typ = ColText
 		}
 		add(name, 1, -1, typ, func(s *Schema, a []Value) (Value, error) {
-			if mysqlAnyNull(a) {
+			if functionAnyNull(a) {
 				return NewNullValue(), nil
 			}
 			v, e := decodeJSONDocument(a[0])
@@ -165,7 +165,7 @@ func postgresJSONFunctions() map[string]mysqlFunctionSpec {
 	for _, name := range []string{"JSONB_SET", "JSONB_INSERT"} {
 		name := name
 		add(name, 3, 4, ColJSON, func(s *Schema, a []Value) (Value, error) {
-			if mysqlAnyNull(a) {
+			if functionAnyNull(a) {
 				return NewNullValue(), nil
 			}
 			v, e := decodeJSONDocument(a[0])
@@ -227,7 +227,7 @@ func postgresJSONFunctions() map[string]mysqlFunctionSpec {
 		if e != nil {
 			return NewNullValue(), e
 		}
-		if e = mysqlFunctionSize(s, uint64(len(data))); e != nil {
+		if e = functionResultSize(s, uint64(len(data))); e != nil {
 			return NewNullValue(), e
 		}
 		return NewTextValue(string(data)), nil
@@ -235,7 +235,7 @@ func postgresJSONFunctions() map[string]mysqlFunctionSpec {
 	return out
 }
 func postgresJSONArgument(v Value) (any, error) {
-	if strings.EqualFold(v.PGType, "BOOLEAN") && !v.Null {
+	if v.LogicalType().Kind == TypeBoolean && !v.Null {
 		return v.Int != 0, nil
 	}
 	if v.Type == ColBlob && !v.Null {
@@ -248,12 +248,12 @@ func postgresJSONResult(s *Schema, v any, binary bool) (Value, error) {
 	if e != nil {
 		return r, e
 	}
-	if e = mysqlFunctionSize(s, uint64(len(r.Text))); e != nil {
+	if e = functionResultSize(s, uint64(len(r.Text))); e != nil {
 		return NewNullValue(), e
 	}
-	r.PGType = "JSON"
+	r = r.WithSemanticType(TypeJSON)
 	if binary {
-		r.PGType = "JSONB"
+		r = r.WithSemanticType(TypeJSONB)
 	}
 	return r, nil
 }

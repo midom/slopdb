@@ -91,7 +91,7 @@ func (s *Schema) subqueryDependencies(stmt *SelectStmt) ([]string, bool) {
 						free[e.Name] = true
 					}
 				case *FuncCallExpr:
-					if !deterministicFunction(e.Name) {
+					if !s.deterministicFunction(e.Name) {
 						safe = false
 					}
 				case *SubqueryExpr:

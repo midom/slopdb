@@ -22,11 +22,11 @@ type mysqlCivil struct {
 	parsed           bool
 }
 
-func mysqlTemporalFunctions() map[string]mysqlFunctionSpec {
-	out := make(map[string]mysqlFunctionSpec)
+func mysqlTemporalFunctions() map[string]FunctionSpec {
+	out := make(map[string]FunctionSpec)
 	add := func(names string, min, max int, ret ColumnType, volatile bool, fn func(*Schema, []Value) (Value, error)) {
 		for _, name := range strings.Fields(names) {
-			out[name] = mysqlFunctionSpec{Min: min, Max: max, Return: ret, Volatile: volatile, Eval: fn}
+			out[name] = FunctionSpec{Min: min, Max: max, Return: ret, Volatile: volatile, Eval: fn}
 		}
 	}
 	for _, name := range strings.Fields("YEAR MONTH DAY DAYOFMONTH DAYOFWEEK DAYOFYEAR WEEKDAY QUARTER MONTHNAME DAYNAME LAST_DAY") {
@@ -44,7 +44,7 @@ func mysqlTemporalFunctions() map[string]mysqlFunctionSpec {
 			max = 1
 		}
 		add(name, 1, max, ColInteger, false, func(s *Schema, a []Value) (Value, error) {
-			if mysqlAnyNull(a) {
+			if functionAnyNull(a) {
 				return NewNullValue(), nil
 			}
 			d := mysqlParseCivil(a[0])
@@ -106,7 +106,7 @@ func mysqlTemporalFunctions() map[string]mysqlFunctionSpec {
 		return NewTextValue(mysqlFormatTime(n, fsp)), nil
 	})
 	add("DATEDIFF", 2, 2, ColInteger, false, func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
 		x, y := mysqlParseCivil(a[0]), mysqlParseCivil(a[1])
@@ -120,7 +120,7 @@ func mysqlTemporalFunctions() map[string]mysqlFunctionSpec {
 		add(name, 2, 2, ColText, false, func(s *Schema, a []Value) (Value, error) { return mysqlTimeArithmetic(name, a), nil })
 	}
 	add("MAKETIME", 3, 3, ColText, false, func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
 		h, m := mysqlFunctionInt(a[0]), mysqlFunctionInt(a[1])
@@ -147,7 +147,7 @@ func mysqlTemporalFunctions() map[string]mysqlFunctionSpec {
 		return NewTextValue(mysqlFormatTime(n, fsp)), nil
 	})
 	add("MAKEDATE", 2, 2, ColText, false, func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
 		y, n := mysqlFunctionInt(a[0]), mysqlFunctionInt(a[1])
@@ -198,7 +198,7 @@ func mysqlTemporalFunctions() map[string]mysqlFunctionSpec {
 	for _, name := range []string{"PERIOD_ADD", "PERIOD_DIFF"} {
 		name := name
 		add(name, 2, 2, ColInteger, false, func(s *Schema, a []Value) (Value, error) {
-			if mysqlAnyNull(a) {
+			if functionAnyNull(a) {
 				return NewNullValue(), nil
 			}
 			x, ok := mysqlPeriod(mysqlFunctionInt(a[0]))
@@ -237,7 +237,7 @@ func mysqlTemporalFunctions() map[string]mysqlFunctionSpec {
 			max = 0
 		}
 		add(name, 0, max, ColText, true, func(s *Schema, a []Value) (Value, error) {
-			if mysqlAnyNull(a) {
+			if functionAnyNull(a) {
 				return NewNullValue(), nil
 			}
 			fsp := 0
@@ -262,7 +262,7 @@ func mysqlTemporalFunctions() map[string]mysqlFunctionSpec {
 		})
 	}
 	add("FROM_UNIXTIME", 1, 2, ColText, false, func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
 		n, fsp, ok := mysqlSecondsMicros(a[0])
@@ -278,7 +278,7 @@ func mysqlTemporalFunctions() map[string]mysqlFunctionSpec {
 	for _, name := range []string{"DATE_FORMAT", "TIME_FORMAT"} {
 		name := name
 		add(name, 2, 2, ColText, false, func(s *Schema, a []Value) (Value, error) {
-			if mysqlAnyNull(a) {
+			if functionAnyNull(a) {
 				return NewNullValue(), nil
 			}
 			d := mysqlParseCivil(a[0])
@@ -296,7 +296,7 @@ func mysqlTemporalFunctions() map[string]mysqlFunctionSpec {
 		})
 	}
 	add("STR_TO_DATE", 2, 2, ColText, false, func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
 		format, err := mysqlExpandDateFormat(s, mysqlStringValue(a[1]))
@@ -308,7 +308,7 @@ func mysqlTemporalFunctions() map[string]mysqlFunctionSpec {
 	for _, name := range []string{"DATE_ADD", "DATE_SUB", "ADDDATE", "SUBDATE"} {
 		name := name
 		add(name, 2, 3, ColText, false, func(s *Schema, a []Value) (Value, error) {
-			if mysqlAnyNull(a) {
+			if functionAnyNull(a) {
 				return NewNullValue(), nil
 			}
 			unit := "DAY"
@@ -319,19 +319,19 @@ func mysqlTemporalFunctions() map[string]mysqlFunctionSpec {
 		})
 	}
 	add("TIMESTAMPADD", 3, 3, ColText, false, func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
 		return mysqlDateAdd(a[2], a[1], strings.ToUpper(mysqlStringValue(a[0])), false), nil
 	})
 	add("TIMESTAMPDIFF", 3, 3, ColInteger, false, func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
 		return mysqlTimestampDiff(strings.ToUpper(mysqlStringValue(a[0])), a[1], a[2]), nil
 	})
 	add("EXTRACT", 2, 2, ColInteger, false, func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
 		return mysqlExtract(strings.ToUpper(mysqlStringValue(a[0])), a[1]), nil
@@ -692,7 +692,7 @@ func mysqlTimeValue(v Value) (int64, int, bool) {
 	return n, fsp, true
 }
 func mysqlTimeArithmetic(name string, a []Value) Value {
-	if mysqlAnyNull(a) {
+	if functionAnyNull(a) {
 		return NewNullValue()
 	}
 	left := mysqlParseCivil(a[0])

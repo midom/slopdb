@@ -162,67 +162,13 @@ func suppliedColumn(columns []string, name string, defaultValues bool) bool {
 
 var scalarExactArguments = map[string]int{"IFNULL": 2, "NULLIF": 2, "LENGTH": 1, "UPPER": 1, "LOWER": 1, "ABS": 1, "IIF": 3, "REPLACE": 3, "RANDOM": 0, "CAST": 2, "HEX": 1, "TYPEOF": 1, "QUOTE": 1, "INSTR": 2, "CHANGES": 0, "LAST_INSERT_ROWID": 0}
 
-func validateScalarFunction(f *FuncCallExpr) error {
-	return validateScalarFunctionDialect(f, true)
-}
-
+func validateScalarFunction(f *FuncCallExpr) error { return validateAnyFunction(f) }
 func validateScalarFunctionDialect(f *FuncCallExpr, allowPostgres bool) error {
-	if f.Name == fulltextFunction {
-		return validateFulltextFunction(f)
+	d := DialectNative
+	if allowPostgres {
+		d = DialectPostgreSQL
 	}
-	name := strings.ToUpper(f.Name)
-	n := len(f.Args)
-	if valid, known := validPostgresFunction(name, n); allowPostgres && known && valid {
-		return nil
-	}
-	if valid, known := validJSONFunction(name, n); known {
-		if !valid {
-			return fmt.Errorf("wrong number of arguments to %s", name)
-		}
-		return nil
-	}
-	if valid, known := validMySQLFunction(name, n); known {
-		if !valid {
-			return fmt.Errorf("wrong number of arguments to %s", name)
-		}
-		return nil
-	}
-	if exact, ok := scalarExactArguments[name]; ok {
-		if n != exact {
-			return fmt.Errorf("wrong number of arguments to %s", name)
-		}
-		if name == "CAST" {
-			if literal, ok := f.Args[1].(*LiteralExpr); ok {
-				switch strings.ToUpper(mysqlCastTarget(literal.Value.Text)) {
-				case "INT", "INTEGER", "BIGINT", "REAL", "FLOAT", "DOUBLE", "DOUBLE PRECISION", "TEXT", "BLOB", "DECIMAL", "NUMERIC", "JSON", "JSONB", "UNSIGNED", "UNSIGNED INTEGER":
-				default:
-					if _, _, ok := varyingCastType(literal.Value.Text); !ok && PostgresColumnOID(ColumnDef{Declared: literal.Value.Text}) == 0 && !strings.HasPrefix(strings.ToUpper(literal.Value.Text), "DECIMAL(") && !strings.HasPrefix(strings.ToUpper(literal.Value.Text), "NUMERIC(") {
-						return fmt.Errorf("unsupported cast type: %s", literal.Value.Text)
-					}
-				}
-			}
-		}
-		return nil
-	}
-	valid := false
-	switch name {
-	case "COALESCE", "MIN", "MAX":
-		valid = n >= 2
-	case "ROUND", "TRIM", "LTRIM", "RTRIM":
-		valid = n >= 1 && n <= 2
-	case "SUBSTR":
-		valid = n == 2 || n == 3
-	case "DATETIME", "DATE", "TIME", "JULIANDAY":
-		valid = true
-	case "STRFTIME":
-		valid = n >= 1
-	default:
-		return fmt.Errorf("unknown function: %s", name)
-	}
-	if !valid {
-		return fmt.Errorf("wrong number of arguments to %s", name)
-	}
-	return nil
+	return validateResolvedFunction(d, f)
 }
 
 func varyingCastType(name string) (ColumnType, int64, bool) {

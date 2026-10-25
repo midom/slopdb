@@ -51,7 +51,7 @@ func (s *Schema) expressionDependencies(expr Expression) ([]string, bool) {
 				names = append(names, e.Name)
 			}
 		case *FuncCallExpr:
-			if !deterministicFunction(e.Name) {
+			if !s.deterministicFunction(e.Name) {
 				safe = false
 			}
 		case *SubqueryExpr:

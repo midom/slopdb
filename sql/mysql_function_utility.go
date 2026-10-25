@@ -20,11 +20,11 @@ import (
 	"time"
 )
 
-func mysqlUtilityFunctions() map[string]mysqlFunctionSpec {
-	out := map[string]mysqlFunctionSpec{}
+func mysqlUtilityFunctions() map[string]FunctionSpec {
+	out := map[string]FunctionSpec{}
 	add := func(names string, min, max int, typ ColumnType, volatile bool, eval func(*Schema, []Value) (Value, error)) {
 		for _, name := range strings.Fields(names) {
-			out[name] = mysqlFunctionSpec{Min: min, Max: max, Return: typ, Volatile: volatile, Eval: eval}
+			out[name] = FunctionSpec{Min: min, Max: max, Return: typ, Volatile: volatile, Eval: eval}
 		}
 	}
 	add("MD5 SHA SHA1 SHA2", 1, 1, ColText, false, func(s *Schema, a []Value) (Value, error) { return NewNullValue(), nil })
@@ -35,7 +35,7 @@ func mysqlUtilityFunctions() map[string]mysqlFunctionSpec {
 			spec.Min, spec.Max = 2, 2
 		}
 		spec.Eval = func(s *Schema, a []Value) (Value, error) {
-			if mysqlAnyNull(a) {
+			if functionAnyNull(a) {
 				return NewNullValue(), nil
 			}
 			data := []byte(mysqlStringValue(a[0]))
@@ -88,7 +88,7 @@ func mysqlUtilityFunctions() map[string]mysqlFunctionSpec {
 			}
 			if encrypt {
 				pad := aes.BlockSize - len(data)%aes.BlockSize
-				if err := mysqlFunctionSize(s, uint64(len(data))+uint64(pad)); err != nil {
+				if err := functionResultSize(s, uint64(len(data))+uint64(pad)); err != nil {
 					return NewNullValue(), err
 				}
 				result := make([]byte, len(data)+pad)
@@ -104,7 +104,7 @@ func mysqlUtilityFunctions() map[string]mysqlFunctionSpec {
 			if len(data) == 0 || len(data)%16 != 0 {
 				return NewNullValue(), nil
 			}
-			if err := mysqlFunctionSize(s, uint64(len(data))); err != nil {
+			if err := functionResultSize(s, uint64(len(data))); err != nil {
 				return NewNullValue(), err
 			}
 			result := make([]byte, len(data))
@@ -161,7 +161,7 @@ func mysqlUtilityFunctions() map[string]mysqlFunctionSpec {
 		return NewIntValue(0), nil
 	})
 	add("UUID_TO_BIN", 1, 2, ColBlob, false, func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
 		id, ok := mysqlUUIDBytes(mysqlStringValue(a[0]))
@@ -174,7 +174,7 @@ func mysqlUtilityFunctions() map[string]mysqlFunctionSpec {
 		return NewBlobValue(id), nil
 	})
 	add("BIN_TO_UUID", 1, 2, ColText, false, func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
 		id := []byte(mysqlStringValue(a[0]))
@@ -453,7 +453,7 @@ func mysqlCompress(s *Schema, a []Value) (Value, error) {
 	if len(data) == 0 {
 		return NewBlobValue([]byte{}), nil
 	}
-	if err := mysqlFunctionSize(s, uint64(len(data))+uint64(len(data)/100)+64); err != nil {
+	if err := functionResultSize(s, uint64(len(data))+uint64(len(data)/100)+64); err != nil {
 		return NewNullValue(), err
 	}
 	var b bytes.Buffer
@@ -487,7 +487,7 @@ func mysqlUncompress(s *Schema, a []Value) (Value, error) {
 		return NewNullValue(), nil
 	}
 	defer reader.Close()
-	if err := mysqlFunctionSize(s, size); err != nil {
+	if err := functionResultSize(s, size); err != nil {
 		return NewNullValue(), err
 	}
 	out, err := io.ReadAll(io.LimitReader(reader, int64(size)+1))

@@ -15,8 +15,8 @@ type mysqlRegexpProgram struct {
 	anchored   bool
 }
 
-func mysqlRegexpFunctions() map[string]mysqlFunctionSpec {
-	out := make(map[string]mysqlFunctionSpec)
+func mysqlRegexpFunctions() map[string]FunctionSpec {
+	out := make(map[string]FunctionSpec)
 	for _, name := range []string{"REGEXP_LIKE", "REGEXP_INSTR", "REGEXP_SUBSTR", "REGEXP_REPLACE"} {
 		name := name
 		minimum, maximum, typ := 2, 3, ColInteger
@@ -29,7 +29,7 @@ func mysqlRegexpFunctions() map[string]mysqlFunctionSpec {
 		case "REGEXP_REPLACE":
 			minimum, maximum, typ = 3, 6, ColText
 		}
-		out[name] = mysqlFunctionSpec{Min: minimum, Max: maximum, Return: typ, Eval: func(s *Schema, a []Value) (Value, error) { return mysqlRegexpEval(s, name, a) }}
+		out[name] = FunctionSpec{Min: minimum, Max: maximum, Return: typ, Eval: func(s *Schema, a []Value) (Value, error) { return mysqlRegexpEval(s, name, a) }}
 	}
 	return out
 }
@@ -38,7 +38,7 @@ func (s *Schema) mysqlRegexpCompile(pattern, flags string, insensitive bool) (*m
 	if pattern == "" {
 		return nil, fmt.Errorf("empty MySQL regular expression")
 	}
-	if err := mysqlFunctionSize(s, uint64(len(pattern))*64); err != nil {
+	if err := functionResultSize(s, uint64(len(pattern))*64); err != nil {
 		return nil, err
 	}
 	multiline, dotall := false, false
@@ -240,7 +240,7 @@ func mysqlRegexpReplacement(text string, groups int) ([]mysqlRegexpReplacementPa
 }
 
 func mysqlRegexpEval(s *Schema, name string, a []Value) (Value, error) {
-	if mysqlAnyNull(a) {
+	if functionAnyNull(a) {
 		return NewNullValue(), nil
 	}
 	for i, v := range a {
@@ -352,7 +352,7 @@ func mysqlRegexpEval(s *Schema, name string, a []Value) (Value, error) {
 	var result strings.Builder
 	last := 0
 	write := func(part string) error {
-		if err := mysqlFunctionSize(s, uint64(result.Len())+uint64(len(part))); err != nil {
+		if err := functionResultSize(s, uint64(result.Len())+uint64(len(part))); err != nil {
 			return err
 		}
 		result.WriteString(part)

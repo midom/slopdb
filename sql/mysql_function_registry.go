@@ -1,83 +1,15 @@
 package sql
 
 import (
-	"fmt"
 	"math"
 	"strconv"
 	"strings"
 )
 
-// Function families share validation, result metadata and optimizer volatility.
-// The registry is immutable after package initialization.
-type mysqlFunctionSpec struct {
-	Min, Max  int // Max < 0 permits a variadic argument list.
-	Return    ColumnType
-	Metadata  func([]ColumnDef) ColumnDef
-	Volatile  bool
-	MySQLOnly bool // preserve an existing native function outside MySQL mode
-	Eval      func(*Schema, []Value) (Value, error)
-}
+var mysqlFunctionRegistry map[string]FunctionSpec
 
-var mysqlFunctionRegistry map[string]mysqlFunctionSpec
-
-func init() { mysqlFunctionRegistry = buildMySQLFunctionRegistry() }
-
-func buildMySQLFunctionRegistry() map[string]mysqlFunctionSpec {
-	out := make(map[string]mysqlFunctionSpec)
-	for _, family := range []map[string]mysqlFunctionSpec{mysqlStringFunctions(), mysqlTemporalFunctions(), mysqlNumericFunctions(), mysqlUtilityFunctions(), mysqlSessionFunctions()} {
-		for name, spec := range family {
-			if _, exists := out[name]; exists {
-				panic("duplicate MySQL function: " + name)
-			}
-			out[name] = spec
-		}
-	}
-	return out
-}
-
-func validRegisteredMySQLFunction(name string, n int) (bool, bool) {
-	spec, ok := mysqlFunctionRegistry[name]
-	return ok && n >= spec.Min && (spec.Max < 0 || n <= spec.Max), ok
-}
-
-func (s *Schema) evalRegisteredMySQLFunction(name string, args []Value) (Value, bool, error) {
-	spec, ok := mysqlFunctionRegistry[name]
-	if !ok {
-		return Value{}, false, nil
-	}
-	if len(args) < spec.Min || spec.Max >= 0 && len(args) > spec.Max {
-		return NewNullValue(), true, fmt.Errorf("wrong number of arguments to %s", name)
-	}
-	value, err := spec.Eval(s, args)
-	return value, true, err
-}
-
-func (s *Schema) describeRegisteredMySQLFunction(name string, args []ColumnDef) (ColumnDef, bool) {
-	spec, ok := mysqlFunctionRegistry[name]
-	if !ok || spec.MySQLOnly && !s.MySQLMode() {
-		return ColumnDef{}, false
-	}
-	if spec.Metadata != nil {
-		return spec.Metadata(args), true
-	}
-	return ColumnDef{ColType: spec.Return, Unsigned: spec.Return == ColUnsigned}, true
-}
-
-func mysqlAnyNull(args []Value) bool {
-	for _, v := range args {
-		if v.Null {
-			return true
-		}
-	}
-	return false
-}
-
-// Check before allocating repeated/padded/generated output, including overflow.
-func mysqlFunctionSize(s *Schema, n uint64) error {
-	if n > uint64(s.memoryBudget()) {
-		return fmt.Errorf("MySQL function result exceeds query memory budget")
-	}
-	return nil
+func buildMySQLFunctionRegistry() map[string]FunctionSpec {
+	return buildFunctionRegistry(DialectMySQL, mysqlStringFunctions(), mysqlTemporalFunctions(), mysqlNumericFunctions(), mysqlUtilityFunctions(), mysqlSessionFunctions())
 }
 
 // MySQL scalar functions accept a leading numeric prefix in string arguments.

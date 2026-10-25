@@ -9,8 +9,8 @@ import (
 	"unicode/utf8"
 )
 
-func postgresRegexpFunctions() map[string]mysqlFunctionSpec {
-	out := map[string]mysqlFunctionSpec{}
+func postgresRegexpFunctions() map[string]FunctionSpec {
+	out := map[string]FunctionSpec{}
 	for _, name := range strings.Fields("REGEXP_LIKE REGEXP_COUNT REGEXP_INSTR REGEXP_SUBSTR REGEXP_REPLACE") {
 		name := name
 		min, max, typ := 2, 3, ColInteger
@@ -24,7 +24,7 @@ func postgresRegexpFunctions() map[string]mysqlFunctionSpec {
 		case "REGEXP_REPLACE":
 			min, max, typ = 3, 6, ColText
 		}
-		spec := mysqlFunctionSpec{Min: min, Max: max, Return: typ, Eval: func(s *Schema, a []Value) (Value, error) { return postgresRegexpEval(s, name, a) }}
+		spec := FunctionSpec{Min: min, Max: max, Return: typ, Eval: func(s *Schema, a []Value) (Value, error) { return postgresRegexpEval(s, name, a) }}
 		if typ == ColInteger {
 			decl := "INTEGER"
 			if name == "REGEXP_LIKE" {
@@ -36,13 +36,13 @@ func postgresRegexpFunctions() map[string]mysqlFunctionSpec {
 	}
 	for _, name := range []string{"SUBSTR", "SUBSTRING"} {
 		name := name
-		out[name] = mysqlFunctionSpec{Min: 2, Max: 3, Return: ColText, Metadata: func(a []ColumnDef) ColumnDef {
+		out[name] = FunctionSpec{Min: 2, Max: 3, Return: ColText, Metadata: func(a []ColumnDef) ColumnDef {
 			if len(a) > 0 && a[0].ColType == ColBlob {
 				return ColumnDef{ColType: ColBlob, Declared: "BYTEA", Postgres: true}
 			}
 			return ColumnDef{ColType: ColText}
 		}, Eval: func(s *Schema, a []Value) (Value, error) {
-			if mysqlAnyNull(a) {
+			if functionAnyNull(a) {
 				return NewNullValue(), nil
 			}
 			if name == "SUBSTRING" && a[1].Type == ColText {
@@ -106,10 +106,10 @@ func postgresRegexpFunctions() map[string]mysqlFunctionSpec {
 			return NewTextValue(string([]rune(postgresText(a[0]))[lo:hi])), nil
 		}}
 	}
-	out["POSITION"] = mysqlFunctionSpec{Min: 2, Max: 2, Return: ColInteger, Metadata: func([]ColumnDef) ColumnDef {
+	out["POSITION"] = FunctionSpec{Min: 2, Max: 2, Return: ColInteger, Metadata: func([]ColumnDef) ColumnDef {
 		return ColumnDef{ColType: ColInteger, Declared: "INTEGER", Postgres: true}
 	}, Eval: func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
 		needle, haystack := postgresText(a[0]), postgresText(a[1])
@@ -126,7 +126,7 @@ func postgresRegexpFunctions() map[string]mysqlFunctionSpec {
 		}
 		return NewIntValue(int64(i + 1)), nil
 	}}
-	out["OVERLAY"] = mysqlFunctionSpec{Min: 3, Max: 4, Return: ColText, Metadata: func(a []ColumnDef) ColumnDef {
+	out["OVERLAY"] = FunctionSpec{Min: 3, Max: 4, Return: ColText, Metadata: func(a []ColumnDef) ColumnDef {
 		if len(a) > 0 && a[0].ColType == ColBlob {
 			return ColumnDef{ColType: ColBlob, Declared: "BYTEA", Postgres: true}
 		}
@@ -135,7 +135,7 @@ func postgresRegexpFunctions() map[string]mysqlFunctionSpec {
 	return out
 }
 func postgresOverlay(s *Schema, a []Value) (Value, error) {
-	if mysqlAnyNull(a) {
+	if functionAnyNull(a) {
 		return NewNullValue(), nil
 	}
 	start, e := CastPostgresValue(a[2], "INTEGER")
@@ -177,7 +177,7 @@ func postgresOverlay(s *Schema, a []Value) (Value, error) {
 		hi = int64(len(source))
 	}
 	size := uint64(len(source)) + uint64(len(replacement))
-	if e = mysqlFunctionSize(s, size*4); e != nil {
+	if e = functionResultSize(s, size*4); e != nil {
 		return NewNullValue(), e
 	}
 	r := append(append(append([]rune{}, source[:lo]...), replacement...), source[hi:]...)
@@ -191,7 +191,7 @@ func postgresOverlay(s *Schema, a []Value) (Value, error) {
 	return NewTextValue(string(r)), nil
 }
 func (s *Schema) postgresRegexpCompile(pattern, flags string) (*mysqlRegexpProgram, error) {
-	if e := mysqlFunctionSize(s, uint64(len(pattern))*64); e != nil {
+	if e := functionResultSize(s, uint64(len(pattern))*64); e != nil {
 		return nil, e
 	}
 	sensitive, dotall, multiline, expanded, literal := true, true, false, false, false
@@ -346,7 +346,7 @@ func (s *Schema) postgresRegexpCompile(pattern, flags string) (*mysqlRegexpProgr
 	return p, nil
 }
 func postgresRegexpEval(s *Schema, name string, a []Value) (Value, error) {
-	if mysqlAnyNull(a) {
+	if functionAnyNull(a) {
 		return NewNullValue(), nil
 	}
 	text, pattern := postgresText(a[0]), postgresText(a[1])
@@ -541,12 +541,12 @@ func postgresRegexpEval(s *Schema, name string, a []Value) (Value, error) {
 			out.WriteByte(replacement[j])
 		}
 		last = m[1]
-		if e = mysqlFunctionSize(s, uint64(out.Len())); e != nil {
+		if e = functionResultSize(s, uint64(out.Len())); e != nil {
 			return NewNullValue(), e
 		}
 	}
 	out.WriteString(subject[last:])
-	if e = mysqlFunctionSize(s, uint64(out.Len())); e != nil {
+	if e = functionResultSize(s, uint64(out.Len())); e != nil {
 		return NewNullValue(), e
 	}
 	return NewTextValue(out.String()), nil

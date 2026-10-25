@@ -62,7 +62,7 @@ func (s *Schema) evalMySQLRand(expression *FuncCallExpr, row map[string]Value) (
 				state.constant = false
 				return true, nil
 			case *FuncCallExpr:
-				if !deterministicFunction(x.Name) {
+				if !s.deterministicFunction(x.Name) {
 					state.constant = false
 					return true, nil
 				}

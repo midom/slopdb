@@ -131,7 +131,7 @@ func mysqlDateFormat(s *Schema, d mysqlCivil, format string, timeOnly bool) Valu
 				piece = string(code)
 			}
 		}
-		if mysqlFunctionSize(s, uint64(b.Len())+uint64(len(piece))) != nil {
+		if functionResultSize(s, uint64(b.Len())+uint64(len(piece))) != nil {
 			return NewNullValue()
 		}
 		b.WriteString(piece)
@@ -198,7 +198,7 @@ func mysqlTimeFormat(s *Schema, n int64, fsp int, format string) Value {
 				piece = string(format[i])
 			}
 		}
-		if mysqlFunctionSize(s, uint64(b.Len())+uint64(len(piece))) != nil {
+		if functionResultSize(s, uint64(b.Len())+uint64(len(piece))) != nil {
 			return NewNullValue()
 		}
 		b.WriteString(piece)
@@ -477,7 +477,7 @@ func mysqlExpandDateFormat(s *Schema, format string) (string, error) {
 				piece = "%H:%i:%s"
 			}
 		}
-		if err := mysqlFunctionSize(s, uint64(b.Len())+uint64(len(piece))); err != nil {
+		if err := functionResultSize(s, uint64(b.Len())+uint64(len(piece))); err != nil {
 			return "", err
 		}
 		b.WriteString(piece)

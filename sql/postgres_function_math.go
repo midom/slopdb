@@ -7,10 +7,10 @@ import (
 	"strings"
 )
 
-func postgresMathFunctions() map[string]mysqlFunctionSpec {
-	out := map[string]mysqlFunctionSpec{}
+func postgresMathFunctions() map[string]FunctionSpec {
+	out := map[string]FunctionSpec{}
 	add := func(name string, min, max int, typ ColumnType, eval func(*Schema, []Value) (Value, error)) {
-		out[name] = mysqlFunctionSpec{Min: min, Max: max, Return: typ, Eval: eval}
+		out[name] = FunctionSpec{Min: min, Max: max, Return: typ, Eval: eval}
 	}
 	for name, op := range map[string]func(float64) float64{
 		"SQRT": math.Sqrt, "CBRT": math.Cbrt, "EXP": math.Exp, "LN": math.Log, "LOG10": math.Log10, "SIN": math.Sin, "COS": math.Cos, "TAN": math.Tan, "COT": func(x float64) float64 { return 1 / math.Tan(x) }, "ASIN": math.Asin, "ACOS": math.Acos, "ATAN": math.Atan, "SINH": math.Sinh, "COSH": math.Cosh, "TANH": math.Tanh, "ASINH": math.Asinh, "ACOSH": math.Acosh, "ATANH": math.Atanh, "DEGREES": func(x float64) float64 { return x * 180 / math.Pi }, "RADIANS": func(x float64) float64 { return x * math.Pi / 180 },
@@ -76,7 +76,7 @@ func postgresMathFunctions() map[string]mysqlFunctionSpec {
 			min = 1
 		}
 		add(name, min, 2, ColReal, func(s *Schema, a []Value) (Value, error) {
-			if mysqlAnyNull(a) {
+			if functionAnyNull(a) {
 				return NewNullValue(), nil
 			}
 			x, e := postgresNumber(a[0])
@@ -160,7 +160,7 @@ func postgresMathFunctions() map[string]mysqlFunctionSpec {
 		name := name
 		typ := ColDecimal
 		add(name, 2, 2, typ, func(s *Schema, a []Value) (Value, error) {
-			if mysqlAnyNull(a) {
+			if functionAnyNull(a) {
 				return NewNullValue(), nil
 			}
 			x, xs, e := valueDecimal(a[0])
@@ -240,13 +240,13 @@ func postgresMathFunctions() map[string]mysqlFunctionSpec {
 			}
 			n.Mul(n, big.NewInt(i))
 		}
-		if e = mysqlFunctionSize(s, uint64(n.BitLen()/3+1)); e != nil {
+		if e = functionResultSize(s, uint64(n.BitLen()/3+1)); e != nil {
 			return NewNullValue(), e
 		}
 		return NewDecimalValue(n.String())
 	})
 	add("WIDTH_BUCKET", 4, 4, ColInteger, func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
 		for _, v := range a[:3] {
@@ -304,7 +304,7 @@ func postgresMathResult(name string, x float64) (Value, error) {
 	return NewRealValue(x), nil
 }
 func postgresExactUnary(s *Schema, name string, a []Value) (Value, error) {
-	if mysqlAnyNull(a) {
+	if functionAnyNull(a) {
 		return NewNullValue(), nil
 	}
 	v := a[0]

@@ -277,7 +277,7 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 				if e.MySQLGroupConcat {
 					safe = false
 				}
-				if !deterministicFunction(e.Name) {
+				if !s.deterministicFunction(e.Name) {
 					safe = false
 				}
 				if isAggregate(e) {

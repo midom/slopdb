@@ -11,11 +11,11 @@ import (
 	"unicode/utf8"
 )
 
-func postgresStringFunctions() map[string]mysqlFunctionSpec {
-	out := map[string]mysqlFunctionSpec{}
+func postgresStringFunctions() map[string]FunctionSpec {
+	out := map[string]FunctionSpec{}
 	add := func(names string, min, max int, typ ColumnType, eval func(*Schema, []Value) (Value, error)) {
 		for _, n := range strings.Fields(names) {
-			spec := mysqlFunctionSpec{Min: min, Max: max, Return: typ, Eval: eval}
+			spec := FunctionSpec{Min: min, Max: max, Return: typ, Eval: eval}
 			if typ == ColInteger {
 				spec.Metadata = func([]ColumnDef) ColumnDef {
 					return ColumnDef{ColType: ColInteger, Declared: "INTEGER", Postgres: true}
@@ -53,7 +53,7 @@ func postgresStringFunctions() map[string]mysqlFunctionSpec {
 			if len(parts) > 1 {
 				size += uint64(len(parts)-1) * uint64(len(sep))
 			}
-			if err := mysqlFunctionSize(s, size); err != nil {
+			if err := functionResultSize(s, size); err != nil {
 				return NewNullValue(), err
 			}
 			return NewTextValue(strings.Join(parts, sep)), nil
@@ -95,14 +95,17 @@ func postgresStringFunctions() map[string]mysqlFunctionSpec {
 		if a[0].Null {
 			return NewNullValue(), nil
 		}
-		n := mysqlFunctionInt(a[0])
+		n, coercionErr := postgresFunctionInteger(a[0], false)
+		if coercionErr != nil {
+			return NewNullValue(), coercionErr
+		}
 		if n <= 0 || n > utf8.MaxRune || n >= 0xd800 && n <= 0xdfff {
 			return NewNullValue(), fmt.Errorf("invalid Unicode code point")
 		}
 		return NewTextValue(string(rune(n))), nil
 	})
 	add("STRPOS", 2, 2, ColInteger, func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
 		x, y := postgresText(a[0]), postgresText(a[1])
@@ -132,7 +135,7 @@ func postgresStringFunctions() map[string]mysqlFunctionSpec {
 		name := name
 		spec := out[name]
 		spec.Eval = func(s *Schema, a []Value) (Value, error) {
-			if mysqlAnyNull(a) {
+			if functionAnyNull(a) {
 				return NewNullValue(), nil
 			}
 			cut := " "
@@ -173,7 +176,7 @@ func postgresStringFunctions() map[string]mysqlFunctionSpec {
 	}
 	add("FORMAT", 1, -1, ColText, postgresFormat)
 	add("ENCODE", 2, 2, ColText, func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
 		data := a[0].Blob
@@ -182,13 +185,13 @@ func postgresStringFunctions() map[string]mysqlFunctionSpec {
 		}
 		switch strings.ToLower(postgresText(a[1])) {
 		case "hex":
-			if err := mysqlFunctionSize(s, uint64(len(data))*2); err != nil {
+			if err := functionResultSize(s, uint64(len(data))*2); err != nil {
 				return NewNullValue(), err
 			}
 			return NewTextValue(hex.EncodeToString(data)), nil
 		case "base64":
 			n := base64.StdEncoding.EncodedLen(len(data))
-			if err := mysqlFunctionSize(s, uint64(n+n/76)); err != nil {
+			if err := functionResultSize(s, uint64(n+n/76)); err != nil {
 				return NewNullValue(), err
 			}
 			text := base64.StdEncoding.EncodeToString(data)
@@ -201,7 +204,7 @@ func postgresStringFunctions() map[string]mysqlFunctionSpec {
 			b.WriteString(text)
 			return NewTextValue(b.String()), nil
 		case "escape":
-			if err := mysqlFunctionSize(s, uint64(len(data))*4); err != nil {
+			if err := functionResultSize(s, uint64(len(data))*4); err != nil {
 				return NewNullValue(), err
 			}
 			var b strings.Builder
@@ -214,7 +217,7 @@ func postgresStringFunctions() map[string]mysqlFunctionSpec {
 					b.WriteByte(v)
 				}
 			}
-			if err := mysqlFunctionSize(s, uint64(b.Len())); err != nil {
+			if err := functionResultSize(s, uint64(b.Len())); err != nil {
 				return NewNullValue(), err
 			}
 			return NewTextValue(b.String()), nil
@@ -223,11 +226,11 @@ func postgresStringFunctions() map[string]mysqlFunctionSpec {
 		}
 	})
 	add("DECODE", 2, 2, ColBlob, func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
 		text, format := postgresText(a[0]), strings.ToLower(postgresText(a[1]))
-		if err := mysqlFunctionSize(s, uint64(len(text))); err != nil {
+		if err := functionResultSize(s, uint64(len(text))); err != nil {
 			return NewNullValue(), err
 		}
 		var data []byte
@@ -268,27 +271,36 @@ func postgresStringFunctions() map[string]mysqlFunctionSpec {
 		if err != nil {
 			return NewNullValue(), err
 		}
-		if err := mysqlFunctionSize(s, uint64(len(data))); err != nil {
+		if err := functionResultSize(s, uint64(len(data))); err != nil {
 			return NewNullValue(), err
 		}
 		return NewBlobValue(data), nil
 	})
 	add("GET_BYTE", 2, 2, ColInteger, func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
-		i := mysqlFunctionInt(a[1])
+		i, coercionErr := postgresFunctionInteger(a[1], false)
+		if coercionErr != nil {
+			return NewNullValue(), coercionErr
+		}
 		if i < 0 || i >= int64(len(a[0].Blob)) {
 			return NewNullValue(), fmt.Errorf("byte index out of range")
 		}
 		return NewIntValue(int64(a[0].Blob[i])), nil
 	})
 	add("SET_BYTE", 3, 3, ColBlob, func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
-		i := mysqlFunctionInt(a[1])
-		n := mysqlFunctionInt(a[2])
+		i, coercionErr := postgresFunctionInteger(a[1], false)
+		if coercionErr != nil {
+			return NewNullValue(), coercionErr
+		}
+		n, coercionErr := postgresFunctionInteger(a[2], false)
+		if coercionErr != nil {
+			return NewNullValue(), coercionErr
+		}
 		if i < 0 || i >= int64(len(a[0].Blob)) {
 			return NewNullValue(), fmt.Errorf("byte index out of range")
 		}
@@ -297,20 +309,30 @@ func postgresStringFunctions() map[string]mysqlFunctionSpec {
 		return NewBlobValue(data), nil
 	})
 	add("GET_BIT", 2, 2, ColInteger, func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
-		i := mysqlFunctionInt(a[1])
+		i, coercionErr := postgresFunctionInteger(a[1], true)
+		if coercionErr != nil {
+			return NewNullValue(), coercionErr
+		}
 		if i < 0 || i >= int64(len(a[0].Blob))*8 {
 			return NewNullValue(), fmt.Errorf("bit index out of range")
 		}
 		return NewIntValue(int64(a[0].Blob[i/8] >> uint(i%8) & 1)), nil
 	})
 	add("SET_BIT", 3, 3, ColBlob, func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
-		i, n := mysqlFunctionInt(a[1]), mysqlFunctionInt(a[2])
+		i, coercionErr := postgresFunctionInteger(a[1], true)
+		if coercionErr != nil {
+			return NewNullValue(), coercionErr
+		}
+		n, coercionErr := postgresFunctionInteger(a[2], false)
+		if coercionErr != nil {
+			return NewNullValue(), coercionErr
+		}
 		if i < 0 || i >= int64(len(a[0].Blob))*8 || n < 0 || n > 1 {
 			return NewNullValue(), fmt.Errorf("invalid bit index or value")
 		}
@@ -319,7 +341,7 @@ func postgresStringFunctions() map[string]mysqlFunctionSpec {
 		return NewBlobValue(data), nil
 	})
 	add("CONVERT_FROM", 2, 2, ColText, func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
 		if !postgresUTF8Encoding(postgresText(a[1])) {
@@ -335,7 +357,7 @@ func postgresStringFunctions() map[string]mysqlFunctionSpec {
 		return NewTextValue(string(data)), nil
 	})
 	add("CONVERT_TO", 2, 2, ColBlob, func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
 		if !postgresUTF8Encoding(postgresText(a[1])) {
@@ -349,7 +371,7 @@ func postgresUTF8Encoding(text string) bool {
 	return strings.EqualFold(text, "UTF8") || strings.EqualFold(text, "UTF-8") || strings.EqualFold(text, "unicode")
 }
 func postgresText(v Value) string {
-	if strings.EqualFold(v.PGType, "BOOLEAN") {
+	if v.LogicalType().Kind == TypeBoolean {
 		if v.Int != 0 {
 			return "t"
 		}
@@ -361,7 +383,7 @@ func postgresText(v Value) string {
 	return v.String()
 }
 func postgresStringTransform(s *Schema, name string, a []Value) (Value, error) {
-	if mysqlAnyNull(a) {
+	if functionAnyNull(a) {
 		return NewNullValue(), nil
 	}
 	text := postgresText(a[0])
@@ -369,7 +391,10 @@ func postgresStringTransform(s *Schema, name string, a []Value) (Value, error) {
 	n := int64(len(r))
 	switch name {
 	case "LEFT", "RIGHT":
-		count := mysqlFunctionInt(a[1])
+		count, coercionErr := postgresFunctionInteger(a[1], false)
+		if coercionErr != nil {
+			return NewNullValue(), coercionErr
+		}
 		if count < 0 {
 			if count < -n {
 				count = 0
@@ -385,7 +410,10 @@ func postgresStringTransform(s *Schema, name string, a []Value) (Value, error) {
 		}
 		return NewTextValue(string(r[len(r)-int(count):])), nil
 	case "REPEAT":
-		count := mysqlFunctionInt(a[1])
+		count, coercionErr := postgresFunctionInteger(a[1], false)
+		if coercionErr != nil {
+			return NewNullValue(), coercionErr
+		}
 		if count <= 0 || text == "" {
 			return NewTextValue(""), nil
 		}
@@ -433,7 +461,10 @@ func postgresStringTransform(s *Schema, name string, a []Value) (Value, error) {
 		return NewTextValue(out.String()), nil
 	case "SPLIT_PART":
 		delimiter := postgresText(a[1])
-		count := mysqlFunctionInt(a[2])
+		count, coercionErr := postgresFunctionInteger(a[2], false)
+		if coercionErr != nil {
+			return NewNullValue(), coercionErr
+		}
 		if count == 0 {
 			return NewNullValue(), fmt.Errorf("field position must not be zero")
 		}
@@ -452,7 +483,10 @@ func postgresStringTransform(s *Schema, name string, a []Value) (Value, error) {
 		}
 		return NewTextValue(parts[count-1]), nil
 	case "LPAD", "RPAD":
-		count := mysqlFunctionInt(a[1])
+		count, coercionErr := postgresFunctionInteger(a[1], false)
+		if coercionErr != nil {
+			return NewNullValue(), coercionErr
+		}
 		if count <= 0 {
 			return NewTextValue(""), nil
 		}
@@ -466,7 +500,7 @@ func postgresStringTransform(s *Schema, name string, a []Value) (Value, error) {
 		if len(pad) == 0 {
 			return NewTextValue(text), nil
 		}
-		if err := mysqlFunctionSize(s, uint64(count)*4); err != nil {
+		if err := functionResultSize(s, uint64(count)*4); err != nil {
 			return NewNullValue(), err
 		}
 		out := make([]rune, 0, int(count))
@@ -570,7 +604,11 @@ func postgresFormat(s *Schema, a []Value) (Value, error) {
 			if windex >= len(a) {
 				return NewNullValue(), fmt.Errorf("too few arguments for format")
 			}
-			width = int(mysqlFunctionInt(a[windex]))
+			parsedWidth, coercionErr := postgresFunctionInteger(a[windex], false)
+			if coercionErr != nil {
+				return NewNullValue(), coercionErr
+			}
+			width = int(parsedWidth)
 			if width < -int(s.memoryBudget()) || width > int(s.memoryBudget()) {
 				return NewNullValue(), fmt.Errorf("format width exceeds memory budget")
 			}
@@ -625,7 +663,7 @@ func postgresFormat(s *Schema, a []Value) (Value, error) {
 		if pad < 0 {
 			pad = 0
 		}
-		if err := mysqlFunctionSize(s, uint64(b.Len())+uint64(len(text))+uint64(pad)); err != nil {
+		if err := functionResultSize(s, uint64(b.Len())+uint64(len(text))+uint64(pad)); err != nil {
 			return NewNullValue(), err
 		}
 		if !left {

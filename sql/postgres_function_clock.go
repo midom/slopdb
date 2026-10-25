@@ -7,13 +7,13 @@ import (
 	"time"
 )
 
-func postgresClockFunctions() map[string]mysqlFunctionSpec {
-	out := map[string]mysqlFunctionSpec{}
+func postgresClockFunctions() map[string]FunctionSpec {
+	out := map[string]FunctionSpec{}
 	add := func(name string, min, max int, typ ColumnType, decl string, volatile bool, eval func(*Schema, []Value) (Value, error)) {
-		out[name] = mysqlFunctionSpec{Min: min, Max: max, Return: typ, Volatile: volatile, Metadata: func([]ColumnDef) ColumnDef { return ColumnDef{ColType: typ, Declared: decl, Postgres: true} }, Eval: func(s *Schema, a []Value) (Value, error) {
+		out[name] = FunctionSpec{Min: min, Max: max, Return: typ, Volatile: volatile, Metadata: func([]ColumnDef) ColumnDef { return ColumnDef{ColType: typ, Declared: decl, Postgres: true} }, Eval: func(s *Schema, a []Value) (Value, error) {
 			v, e := eval(s, a)
 			if decl != "" {
-				v.PGType = decl
+				v = v.WithDeclaredType(decl)
 			}
 			return v, e
 		}}
@@ -154,7 +154,7 @@ func postgresClockFunctions() map[string]mysqlFunctionSpec {
 		}
 	})
 	add("TO_TIMESTAMP", 1, 2, ColText, "TIMESTAMPTZ", false, func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
 		if len(a) == 1 {
@@ -176,7 +176,7 @@ func postgresClockFunctions() map[string]mysqlFunctionSpec {
 		return NewTextValue(postgresTimeText(t, true)), nil
 	})
 	add("TO_DATE", 2, 2, ColText, "DATE", false, func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
 		t, e := postgresParseFormatted(postgresText(a[0]), postgresText(a[1]))
@@ -186,7 +186,7 @@ func postgresClockFunctions() map[string]mysqlFunctionSpec {
 		return NewTextValue(t.Format("2006-01-02")), nil
 	})
 	add("TO_CHAR", 2, 2, ColText, "TEXT", false, func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
 		t, e := postgresParseTime(a[0])
@@ -200,7 +200,7 @@ func postgresClockFunctions() map[string]mysqlFunctionSpec {
 		return NewTextValue(text), nil
 	})
 	add("DATE_PART", 2, 2, ColReal, "DOUBLE PRECISION", false, func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
 		t, e := postgresParseTime(a[1])
@@ -214,7 +214,7 @@ func postgresClockFunctions() map[string]mysqlFunctionSpec {
 		return NewRealValue(n), nil
 	})
 	add("DATE_TRUNC", 2, 3, ColText, "TIMESTAMPTZ", false, func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
 		t, e := postgresParseTime(a[1])
@@ -238,9 +238,9 @@ func postgresClockFunctions() map[string]mysqlFunctionSpec {
 		}
 		v := NewTextValue(postgresTimeText(t, zoned))
 		if zoned {
-			v.PGType = "TIMESTAMPTZ"
+			v = v.WithSemanticType(TypeTimestampTZ)
 		} else {
-			v.PGType = "TIMESTAMP"
+			v = v.WithSemanticType(TypeTimestamp)
 		}
 		return v, nil
 	})
@@ -256,7 +256,7 @@ func postgresClockFunctions() map[string]mysqlFunctionSpec {
 	spec.Eval = func(s *Schema, a []Value) (Value, error) {
 		v, e := fn(s, a)
 		if len(a) > 1 && PostgresValueOID(a[1]) == 1114 {
-			v.PGType = "TIMESTAMP"
+			v = v.WithSemanticType(TypeTimestamp)
 		}
 		return v, e
 	}
@@ -275,13 +275,13 @@ func postgresClockFunctions() map[string]mysqlFunctionSpec {
 	})
 	add("MAKE_DATE", 3, 3, ColText, "DATE", false, func(s *Schema, a []Value) (Value, error) {
 		t, e := postgresMakeTime(a)
-		if e != nil || mysqlAnyNull(a) {
+		if e != nil || functionAnyNull(a) {
 			return NewNullValue(), e
 		}
 		return NewTextValue(t.Format("2006-01-02")), nil
 	})
 	add("MAKE_TIME", 3, 3, ColText, "TIME", false, func(s *Schema, a []Value) (Value, error) {
-		if mysqlAnyNull(a) {
+		if functionAnyNull(a) {
 			return NewNullValue(), nil
 		}
 		t, e := postgresMakeTime(append([]Value{NewIntValue(2000), NewIntValue(1), NewIntValue(1)}, a...))
@@ -292,7 +292,7 @@ func postgresClockFunctions() map[string]mysqlFunctionSpec {
 	})
 	add("MAKE_TIMESTAMP", 6, 6, ColText, "TIMESTAMP", false, func(s *Schema, a []Value) (Value, error) {
 		t, e := postgresMakeTime(a)
-		if e != nil || mysqlAnyNull(a) {
+		if e != nil || functionAnyNull(a) {
 			return NewNullValue(), e
 		}
 		return NewTextValue(postgresTimeText(t, false)), nil
@@ -316,7 +316,7 @@ func postgresParseTime(v Value) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("invalid or unsupported timestamp %q", text)
 }
 func postgresMakeTime(a []Value) (time.Time, error) {
-	if mysqlAnyNull(a) {
+	if functionAnyNull(a) {
 		return time.Time{}, nil
 	}
 	nums := make([]int, len(a))

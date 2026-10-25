@@ -44,8 +44,8 @@ func (s *Schema) noteMySQLGeneratedID(v Value) {
 	s.mysqlFunctions.generated = true
 }
 
-func mysqlSessionFunctions() map[string]mysqlFunctionSpec {
-	out := map[string]mysqlFunctionSpec{
+func mysqlSessionFunctions() map[string]FunctionSpec {
+	out := map[string]FunctionSpec{
 		"LAST_INSERT_ID": {Min: 0, Max: 1, Return: ColUnsigned, Volatile: true, Eval: func(s *Schema, a []Value) (Value, error) {
 			if len(a) > 0 {
 				if a[0].Null {
@@ -61,7 +61,7 @@ func mysqlSessionFunctions() map[string]mysqlFunctionSpec {
 	}
 	for _, name := range []string{"IS_USED_LOCK", "RELEASE_ALL_LOCKS"} {
 		name := name
-		spec := mysqlFunctionSpec{Min: 1, Max: 1, Return: ColInteger, Volatile: true}
+		spec := FunctionSpec{Min: 1, Max: 1, Return: ColInteger, Volatile: true}
 		if name == "RELEASE_ALL_LOCKS" {
 			spec.Min, spec.Max = 0, 0
 		}

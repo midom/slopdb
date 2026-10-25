@@ -27,17 +27,6 @@ func (s *Schema) evalMySQLFunc(e *FuncCallExpr, row map[string]Value) (Value, bo
 	if name == "RAND" {
 		return s.evalMySQLRand(e, row)
 	}
-	if spec, registered := mysqlFunctionRegistry[name]; registered && (!spec.MySQLOnly || s.MySQLMode()) {
-		args := make([]Value, len(e.Args))
-		for i, expr := range e.Args {
-			value, err := s.evalExpr(expr, row)
-			if err != nil {
-				return NewNullValue(), true, err
-			}
-			args[i] = value
-		}
-		return s.evalRegisteredMySQLFunction(name, args)
-	}
 	if name == "IF" {
 		condition, err := s.evalCondition(e.Args[0], row)
 		if err != nil {
@@ -237,28 +226,8 @@ func mysqlCastTarget(target string) string {
 }
 
 func validMySQLFunction(name string, n int) (bool, bool) {
-	if valid, known := validRegisteredMySQLFunction(name, n); known {
-		return valid, true
-	}
-	switch name {
-	case "IF":
-		return n == 3, true
-	case "GREATEST", "LEAST":
-		return n >= 2, true
-	case "CONCAT":
-		return n >= 1, true
-	case "SUBSTRING":
-		return n == 2 || n == 3, true
-	case "SYSDATE", "NOW", "CURRENT_TIMESTAMP", "UNIX_TIMESTAMP":
-		return n <= 1, true
-	case "GET_LOCK", "__MYSQL_CONVERT":
-		return n == 2, true
-	case "RELEASE_LOCK", "IS_FREE_LOCK":
-		return n == 1, true
-	case "CURRENT_USER", "DATABASE", "VERSION", "CONNECTION_ID":
-		return n == 0, true
-	}
-	return false, false
+	spec, ok := LookupFunction(DialectMySQL, name)
+	return ok && spec.valid(n), ok
 }
 
 // Bound conversion for MySQL CAST(... AS BINARY(n)); zero padding is part of

@@ -10,10 +10,10 @@ import (
 	"strings"
 )
 
-func mysqlNumericFunctions() map[string]mysqlFunctionSpec {
-	functions := make(map[string]mysqlFunctionSpec)
+func mysqlNumericFunctions() map[string]FunctionSpec {
+	functions := make(map[string]FunctionSpec)
 	unary := func(name string, operation func(float64) float64) {
-		functions[name] = mysqlFunctionSpec{Min: 1, Max: 1, Return: ColReal, Eval: func(s *Schema, args []Value) (Value, error) {
+		functions[name] = FunctionSpec{Min: 1, Max: 1, Return: ColReal, Eval: func(s *Schema, args []Value) (Value, error) {
 			if args[0].Null {
 				return NewNullValue(), nil
 			}
@@ -29,9 +29,9 @@ func mysqlNumericFunctions() map[string]mysqlFunctionSpec {
 	} {
 		unary(name, operation)
 	}
-	functions["PI"] = mysqlFunctionSpec{Min: 0, Max: 0, Return: ColReal, Eval: func(_ *Schema, _ []Value) (Value, error) { return NewRealValue(math.Pi), nil }}
-	functions["LOG"] = mysqlFunctionSpec{Min: 1, Max: 2, Return: ColReal, Eval: func(s *Schema, args []Value) (Value, error) {
-		if mysqlAnyNull(args) {
+	functions["PI"] = FunctionSpec{Min: 0, Max: 0, Return: ColReal, Eval: func(_ *Schema, _ []Value) (Value, error) { return NewRealValue(math.Pi), nil }}
+	functions["LOG"] = FunctionSpec{Min: 1, Max: 2, Return: ColReal, Eval: func(s *Schema, args []Value) (Value, error) {
+		if functionAnyNull(args) {
 			return NewNullValue(), nil
 		}
 		x := toFloat(mysqlFunctionNumber(args[0]))
@@ -45,8 +45,8 @@ func mysqlNumericFunctions() map[string]mysqlFunctionSpec {
 		}
 		return mysqlMathResult(s, "LOG", math.Log(y)/math.Log(x))
 	}}
-	functions["ATAN"] = mysqlFunctionSpec{Min: 1, Max: 2, Return: ColReal, Eval: func(s *Schema, args []Value) (Value, error) {
-		if mysqlAnyNull(args) {
+	functions["ATAN"] = FunctionSpec{Min: 1, Max: 2, Return: ColReal, Eval: func(s *Schema, args []Value) (Value, error) {
+		if functionAnyNull(args) {
 			return NewNullValue(), nil
 		}
 		x := toFloat(mysqlFunctionNumber(args[0]))
@@ -59,14 +59,14 @@ func mysqlNumericFunctions() map[string]mysqlFunctionSpec {
 	spec := functions["ATAN2"]
 	spec.Min = 2
 	functions["ATAN2"] = spec
-	functions["POW"] = mysqlFunctionSpec{Min: 2, Max: 2, Return: ColReal, Eval: func(s *Schema, args []Value) (Value, error) {
-		if mysqlAnyNull(args) {
+	functions["POW"] = FunctionSpec{Min: 2, Max: 2, Return: ColReal, Eval: func(s *Schema, args []Value) (Value, error) {
+		if functionAnyNull(args) {
 			return NewNullValue(), nil
 		}
 		return mysqlMathResult(s, "POW", math.Pow(toFloat(mysqlFunctionNumber(args[0])), toFloat(mysqlFunctionNumber(args[1]))))
 	}}
 	functions["POWER"] = functions["POW"]
-	functions["SIGN"] = mysqlFunctionSpec{Min: 1, Max: 1, Return: ColInteger, Eval: func(_ *Schema, args []Value) (Value, error) {
+	functions["SIGN"] = FunctionSpec{Min: 1, Max: 1, Return: ColInteger, Eval: func(_ *Schema, args []Value) (Value, error) {
 		if args[0].Null {
 			return NewNullValue(), nil
 		}
@@ -78,18 +78,18 @@ func mysqlNumericFunctions() map[string]mysqlFunctionSpec {
 	}}
 	for _, name := range []string{"CEIL", "CEILING", "FLOOR"} {
 		name := name
-		functions[name] = mysqlFunctionSpec{Min: 1, Max: 1, Metadata: mysqlIntegralFunctionMetadata, Eval: func(_ *Schema, args []Value) (Value, error) {
+		functions[name] = FunctionSpec{Min: 1, Max: 1, Metadata: mysqlIntegralFunctionMetadata, Eval: func(_ *Schema, args []Value) (Value, error) {
 			return mysqlIntegralFunction(args[0], name != "FLOOR")
 		}}
 	}
-	functions["TRUNCATE"] = mysqlFunctionSpec{Min: 2, Max: 2, Metadata: mysqlNumericFunctionMetadata, Eval: func(_ *Schema, args []Value) (Value, error) {
-		if mysqlAnyNull(args) {
+	functions["TRUNCATE"] = FunctionSpec{Min: 2, Max: 2, Metadata: mysqlNumericFunctionMetadata, Eval: func(_ *Schema, args []Value) (Value, error) {
+		if functionAnyNull(args) {
 			return NewNullValue(), nil
 		}
 		return mysqlTruncateNumber(args[0], mysqlFunctionInt(args[1]))
 	}}
-	functions["ROUND"] = mysqlFunctionSpec{Min: 1, Max: 2, MySQLOnly: true, Metadata: mysqlNumericFunctionMetadata, Eval: func(_ *Schema, args []Value) (Value, error) {
-		if mysqlAnyNull(args) {
+	functions["ROUND"] = FunctionSpec{Min: 1, Max: 2, Dialects: OnlyMySQL, Metadata: mysqlNumericFunctionMetadata, Eval: func(_ *Schema, args []Value) (Value, error) {
+		if functionAnyNull(args) {
 			return NewNullValue(), nil
 		}
 		places := int64(0)
@@ -98,7 +98,7 @@ func mysqlNumericFunctions() map[string]mysqlFunctionSpec {
 		}
 		return mysqlRoundNumber(args[0], places)
 	}}
-	functions["ABS"] = mysqlFunctionSpec{Min: 1, Max: 1, MySQLOnly: true, Metadata: mysqlNumericFunctionMetadata, Eval: func(_ *Schema, args []Value) (Value, error) {
+	functions["ABS"] = FunctionSpec{Min: 1, Max: 1, Dialects: OnlyMySQL, Metadata: mysqlNumericFunctionMetadata, Eval: func(_ *Schema, args []Value) (Value, error) {
 		v := args[0]
 		if v.HexLiteral {
 			v = mysqlHexNumber(v)
@@ -128,9 +128,9 @@ func mysqlNumericFunctions() map[string]mysqlFunctionSpec {
 		n.Abs(n)
 		return Value{Type: ColDecimal, Text: decimalText(n, scale)}, nil
 	}}
-	functions["MOD"] = mysqlFunctionSpec{Min: 2, Max: 2, Metadata: mysqlModMetadata, Eval: mysqlModuloFunction}
-	functions["CONV"] = mysqlFunctionSpec{Min: 3, Max: 3, Return: ColText, Eval: func(_ *Schema, args []Value) (Value, error) {
-		if mysqlAnyNull(args) {
+	functions["MOD"] = FunctionSpec{Min: 2, Max: 2, Metadata: mysqlModMetadata, Eval: mysqlModuloFunction}
+	functions["CONV"] = FunctionSpec{Min: 3, Max: 3, Return: ColText, Eval: func(_ *Schema, args []Value) (Value, error) {
+		if functionAnyNull(args) {
 			return NewNullValue(), nil
 		}
 		return mysqlConvertBase(args[0], mysqlFunctionInt(args[1]), mysqlFunctionInt(args[2])), nil
@@ -140,20 +140,20 @@ func mysqlNumericFunctions() map[string]mysqlFunctionSpec {
 		if name == "OCT" {
 			base = 8
 		}
-		functions[name] = mysqlFunctionSpec{Min: 1, Max: 1, Return: ColText, Eval: func(_ *Schema, args []Value) (Value, error) {
+		functions[name] = FunctionSpec{Min: 1, Max: 1, Return: ColText, Eval: func(_ *Schema, args []Value) (Value, error) {
 			if args[0].Null {
 				return NewNullValue(), nil
 			}
 			return NewTextValue(strconv.FormatUint(mysqlNumericUint(args[0]), base)), nil
 		}}
 	}
-	functions["CRC32"] = mysqlFunctionSpec{Min: 1, Max: 1, Return: ColUnsigned, Eval: func(_ *Schema, args []Value) (Value, error) {
+	functions["CRC32"] = FunctionSpec{Min: 1, Max: 1, Return: ColUnsigned, Eval: func(_ *Schema, args []Value) (Value, error) {
 		if args[0].Null {
 			return NewNullValue(), nil
 		}
 		return NewUnsignedValue(uint64(crc32.ChecksumIEEE([]byte(mysqlStringValue(args[0]))))), nil
 	}}
-	functions["BIT_COUNT"] = mysqlFunctionSpec{Min: 1, Max: 1, Return: ColInteger, Eval: func(_ *Schema, args []Value) (Value, error) {
+	functions["BIT_COUNT"] = FunctionSpec{Min: 1, Max: 1, Return: ColInteger, Eval: func(_ *Schema, args []Value) (Value, error) {
 		v := args[0]
 		if v.Null {
 			return NewNullValue(), nil
@@ -171,8 +171,8 @@ func mysqlNumericFunctions() map[string]mysqlFunctionSpec {
 		}
 		return NewIntValue(int64(count)), nil
 	}}
-	functions["FORMAT"] = mysqlFunctionSpec{Min: 2, Max: 3, Return: ColText, Eval: mysqlFormatFunction}
-	functions["RAND"] = mysqlFunctionSpec{Min: 0, Max: 1, Return: ColReal, Volatile: true, Eval: func(s *Schema, args []Value) (Value, error) {
+	functions["FORMAT"] = FunctionSpec{Min: 2, Max: 3, Return: ColText, Eval: mysqlFormatFunction}
+	functions["RAND"] = FunctionSpec{Min: 0, Max: 1, Return: ColReal, Volatile: true, Eval: func(s *Schema, args []Value) (Value, error) {
 		expression := &FuncCallExpr{Name: "RAND"}
 		for _, arg := range args {
 			expression.Args = append(expression.Args, &LiteralExpr{Value: arg})
@@ -379,7 +379,7 @@ func mysqlRoundNumber(v Value, places int64) (Value, error) {
 }
 
 func mysqlModuloFunction(s *Schema, args []Value) (Value, error) {
-	if mysqlAnyNull(args) {
+	if functionAnyNull(args) {
 		return NewNullValue(), nil
 	}
 	args = append([]Value(nil), args...)
@@ -578,7 +578,7 @@ func mysqlFormatFunction(s *Schema, args []Value) (Value, error) {
 		sign = "-"
 		integer = integer[1:]
 	}
-	if err := mysqlFunctionSize(s, uint64(len(text)+len(integer)/groupWidth*len(group)+8)); err != nil {
+	if err := functionResultSize(s, uint64(len(text)+len(integer)/groupWidth*len(group)+8)); err != nil {
 		return NewNullValue(), err
 	}
 	var result strings.Builder
