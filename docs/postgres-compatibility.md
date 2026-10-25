@@ -105,7 +105,9 @@ publish partial imports. TO uses native streaming query snapshots and bounded
 output chunks. Rows are decoded incrementally, but pending native transaction
 writes consume memory proportional to an import; COPY is not a memory-bounded
 bulk transaction engine. Input currently inserts each row through the native
-prepared DML path, so an immediate foreign key cannot refer forward to a later
+prepared DML path with a new native statement view per row; statement-time
+defaults can therefore vary within one import. An immediate foreign key cannot
+refer forward to a later
 row in the same COPY unless the constraint is deferred.
 
 Server-side filenames and PROGRAM, FREEZE, WHERE/default-marker options,
