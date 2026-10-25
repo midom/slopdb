@@ -62,11 +62,14 @@ func addAggregateValue(a *aggregateState, f *FuncCallExpr, v Value) error {
 		if a.seen == nil {
 			a.seen = make(map[string]bool)
 		}
-		key := string(valueIdentity(v))
-		if a.seen[key] {
+		// Conversion in the lookup borrows scratch only for the lookup. The
+		// insertion below makes an owned string; no stored key aliases scratch.
+		var scratch [128]byte
+		key := appendValueIdentity(scratch[:0], v)
+		if a.seen[string(key)] {
 			return nil
 		}
-		a.seen[key] = true
+		a.seen[string(key)] = true
 	}
 	if a.count == 0 {
 		a.allInt = true
@@ -357,6 +360,24 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 		groups[""] = newGroup()
 	}
 	var keyBuffer [128]byte
+	keyScratch := keyBuffer[:0]
+	// A query-local key buffer covers duplicate wide groups without retaining
+	// unbounded inputs. Charge its heap capacity to the hash-group budget below.
+	keyScratchLimit := min(int64(64<<10), s.memoryBudget()/4)
+	encodeGroupKey := func(input map[string]Value) ([]byte, error) {
+		key := keyScratch[:0]
+		for _, expr := range groupExprs {
+			v, err := s.evalExpr(expr, input)
+			if err != nil {
+				return nil, err
+			}
+			key = s.appendValueIdentity(key, v)
+		}
+		if int64(cap(key)) <= keyScratchLimit {
+			keyScratch = key[:0]
+		}
+		return key, nil
+	}
 	qualified := needsQualifiedRows(stmt)
 	representative := make(map[string]bool)
 	collect := func(expr Expression) {
@@ -498,36 +519,32 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 				return nil
 			}
 		}
-		key := keyBuffer[:0]
-		for _, e := range groupExprs {
-			v, err := s.evalExpr(e, row)
-			if err != nil {
-				return err
-			}
-			key = s.appendValueIdentity(key, v)
+		key, err := encodeGroupKey(row)
+		if err != nil {
+			return err
 		}
-		k := string(key)
 		var g *aggregateGroup
 		var before int64
 		if ordered {
 			if orderedGroup == nil {
 				orderedGroup = &aggregateGroup{states: make([]aggregateState, len(functions))}
-			} else if orderedKey != k {
+				orderedKey = string(key)
+			} else if orderedKey != string(key) {
 				if err := orderedEmit(orderedGroup); err != nil {
 					return err
 				}
 				resetOrderedAggregate(orderedGroup)
+				orderedKey = string(key)
 			}
-			orderedKey = k
 			g = orderedGroup
 		} else {
-			g = groups[k]
+			g = groups[string(key)]
 			if g != nil {
 				before = aggregateGroupMemory(g)
 			}
 			if g == nil {
 				g = newGroup()
-				groups[k] = g
+				groups[string(key)] = g
 			}
 		}
 		first := g.inputs == 0
@@ -559,7 +576,7 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 			return nil
 		}
 		groupMemory += aggregateGroupMemory(g) - before
-		if groupMemory > s.memoryBudget() {
+		if groupMemory+int64(max(0, cap(keyScratch)-len(keyBuffer))) > s.memoryBudget() {
 			return errAggregateSpill
 		}
 		return nil
@@ -666,13 +683,9 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 					return nil
 				}
 			}
-			var key []byte
-			for _, expr := range groupExprs {
-				v, e := s.evalExpr(expr, input)
-				if e != nil {
-					return e
-				}
-				key = s.appendValueIdentity(key, v)
+			key, e := encodeGroupKey(input)
+			if e != nil {
+				return e
 			}
 			inputs++
 			return sorter.add(input, nil, string(key))

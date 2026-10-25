@@ -756,17 +756,20 @@ func (s *Schema) addAggregateValue(a *aggregateState, f *FuncCallExpr, v Value) 
 	return addAggregateValue(a, f, v)
 }
 func (s *Schema) aggregateDistinct(a *aggregateState, v Value) (bool, error) {
-	key := string(s.valueIdentity(v))
+	// Short identities use stack scratch. Duplicate map lookups do not retain
+	// their temporary string conversion; insertions and diskHash use owned keys.
+	var scratch [128]byte
+	encoded := s.appendValueIdentity(scratch[:0], v)
 	if a.distinctDisk == nil {
 		if a.seen == nil {
 			a.seen = make(map[string]bool)
 		}
-		if a.seen[key] {
+		if a.seen[string(encoded)] {
 			return false, nil
 		}
-		if a.seenBytes+int64(len(key)+64) <= s.memoryBudget()/4 {
-			a.seen[key] = true
-			a.seenBytes += int64(len(key) + 64)
+		if a.seenBytes+int64(len(encoded)+64) <= s.memoryBudget()/4 {
+			a.seen[string(encoded)] = true
+			a.seenBytes += int64(len(encoded) + 64)
 			return true, nil
 		}
 		disk, e := newDiskHash(s)
@@ -783,6 +786,7 @@ func (s *Schema) aggregateDistinct(a *aggregateState, v Value) (bool, error) {
 		a.seen = nil
 		a.seenBytes = 0
 	}
+	key := string(encoded) // diskHash.walk may retain lastKey beyond this call.
 	found := false
 	e := a.distinctDisk.walk(key, func(map[string]Value) error { found = true; return errAccessStop })
 	if e != nil && !errors.Is(e, errAccessStop) {
