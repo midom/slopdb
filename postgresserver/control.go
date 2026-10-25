@@ -277,3 +277,7 @@ func (c *client) postgresFunction(ctx context.Context, name string, args []sql.V
 	}
 	return sql.Value{}, false, nil
 }
+
+func (c *client) postgresContext(ctx context.Context) context.Context {
+	return sql.WithPostgresSession(ctx, sql.PostgresSessionOptions{Database: c.server.config.Database, User: c.server.config.Username, BackendPID: c.id, Function: c.postgresFunction})
+}

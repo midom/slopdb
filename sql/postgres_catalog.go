@@ -79,6 +79,11 @@ func pgCatalog(spec string) *ResultSet {
 		case "i":
 			c.ColType = ColInteger
 			c.Declared = "BIGINT"
+		case "o":
+			c.ColType = ColInteger
+			c.Declared = "OID"
+		case "n":
+			c.Declared = "NAME"
 		case "b":
 			c.ColType = ColInteger
 			c.Declared = "BOOLEAN"
@@ -144,6 +149,7 @@ type pgTypeInfo struct {
 }
 
 var pgTypes = []pgTypeInfo{
+	{19, "name", "name", 64, "S"}, {26, "oid", "oid", 4, "N"}, {2205, "regclass", "regclass", 4, "N"}, {2206, "regtype", "regtype", 4, "N"}, {4089, "regnamespace", "regnamespace", 4, "N"},
 	{16, "bool", "boolean", 1, "B"}, {17, "bytea", "bytea", -1, "U"}, {20, "int8", "bigint", 8, "N"}, {21, "int2", "smallint", 2, "N"}, {23, "int4", "integer", 4, "N"}, {25, "text", "text", -1, "S"},
 	{114, "json", "json", -1, "U"}, {700, "float4", "real", 4, "N"}, {701, "float8", "double precision", 8, "N"}, {1043, "varchar", "character varying", -1, "S"},
 	{1082, "date", "date", 4, "D"}, {1083, "time", "time without time zone", 8, "D"}, {1114, "timestamp", "timestamp without time zone", 8, "D"}, {1184, "timestamptz", "timestamp with time zone", 8, "D"}, {1186, "interval", "interval", 16, "T"}, {1266, "timetz", "time with time zone", 12, "D"}, {1700, "numeric", "numeric", -1, "N"}, {2950, "uuid", "uuid", 16, "U"}, {3802, "jsonb", "jsonb", -1, "U"},
@@ -236,7 +242,7 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 	sort.Strings(views)
 	switch name {
 	case "pg_namespace", "information_schema.schemata":
-		r := pgCatalog("oid:i nspname nspowner:i nspacl")
+		r := pgCatalog("oid:o nspname nspowner:o nspacl")
 		if name != "pg_namespace" {
 			r = pgCatalog("catalog_name schema_name schema_owner default_character_set_catalog default_character_set_schema default_character_set_name sql_path")
 		}
@@ -252,22 +258,22 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 		}
 		return r, nil
 	case "pg_type":
-		r := pgCatalog("oid:i typname typnamespace:i typowner:i typlen:i typbyval:b typtype typcategory typispreferred:b typisdefined:b typrelid:i typelem:i typarray:i typbasetype:i typtypmod:i typnotnull:b typdefault")
+		r := pgCatalog("oid:o typname typnamespace:o typowner:o typlen:i typbyval:b typtype typcategory typispreferred:b typisdefined:b typrelid:o typelem:o typarray:o typbasetype:o typtypmod:i typnotnull:b typdefault")
 		for _, t := range pgTypes {
 			pgCatalogRow(r, t.oid, t.name, int64(11), int64(10), t.length, t.length > 0, "b", t.category, false, true, 0, 0, 0, 0, -1, false, nil)
 		}
 		return r, nil
 	case "pg_am":
-		r := pgCatalog("oid:i amname amtype")
+		r := pgCatalog("oid:o amname amtype")
 		pgCatalogRow(r, 8000, "lsm", "t")
 		pgCatalogRow(r, 8001, "lsm_index", "i")
 		return r, nil
 	case "pg_database":
-		r := pgCatalog("oid:i datname datdba:i encoding:i datistemplate:b datallowconn:b datconnlimit:i datcollate datctype")
+		r := pgCatalog("oid:o datname datdba:o encoding:i datistemplate:b datallowconn:b datconnlimit:i datcollate datctype")
 		pgCatalogRow(r, 16384, database, 10, 6, false, true, -1, "C", "C")
 		return r, nil
 	case "pg_class":
-		r := pgCatalog("oid:i relname relnamespace:i reltype:i reloftype:i relowner:i relam:i relfilenode:i reltablespace:i relpages:i reltuples:r relallvisible:i reltoastrelid:i relhasindex:b relisshared:b relpersistence relkind relnatts:i relchecks:i relhasrules:b relhastriggers:b relhassubclass:b relrowsecurity:b relforcerowsecurity:b relispopulated:b relreplident relispartition:b relrewrite:i relacl reloptions")
+		r := pgCatalog("oid:o relname relnamespace:o reltype:o reloftype:o relowner:o relam:o relfilenode:o reltablespace:o relpages:i reltuples:r relallvisible:i reltoastrelid:o relhasindex:b relisshared:b relpersistence relkind relnatts:i relchecks:i relhasrules:b relhastriggers:b relhassubclass:b relrowsecurity:b relforcerowsecurity:b relispopulated:b relreplident relispartition:b relrewrite:o relacl reloptions")
 		add := func(oid int64, n, kind string, cols int, hasindex, temp bool) {
 			ns, obj := pgObjectNames(n)
 			p := "p"
@@ -309,7 +315,7 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 		}
 		return r, nil
 	case "pg_attribute":
-		r := pgCatalog("attrelid:i attname atttypid:i attstattarget:i attlen:i attnum:i attndims:i attcacheoff:i atttypmod:i attbyval:b attstorage attalign attnotnull:b atthasdef:b atthasmissing:b attidentity attgenerated attisdropped:b attislocal:b attinhcount:i attcollation:i attacl attoptions attfdwoptions attmissingval")
+		r := pgCatalog("attrelid:o attname atttypid:o attstattarget:i attlen:i attnum:i attndims:i attcacheoff:i atttypmod:i attbyval:b attstorage attalign attnotnull:b atthasdef:b atthasmissing:b attidentity attgenerated attisdropped:b attislocal:b attinhcount:i attcollation:o attacl attoptions attfdwoptions attmissingval")
 		for _, n := range tables {
 			t := s.tables[n]
 			for i, c := range t.Columns {
@@ -319,7 +325,7 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 		}
 		return r, nil
 	case "pg_attrdef":
-		r := pgCatalog("oid:i adrelid:i adnum:i adbin")
+		r := pgCatalog("oid:o adrelid:o adnum:i adbin")
 		for _, n := range tables {
 			t := s.tables[n]
 			for i, c := range t.Columns {
@@ -330,7 +336,7 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 		}
 		return r, nil
 	case "pg_index":
-		r := pgCatalog("indexrelid:i indrelid:i indnatts:i indnkeyatts:i indisunique:b indnullsnotdistinct:b indisprimary:b indisexclusion:b indimmediate:b indisclustered:b indisvalid:b indcheckxmin:b indisready:b indislive:b indisreplident:b indkey indexprs indpred")
+		r := pgCatalog("indexrelid:o indrelid:o indnatts:i indnkeyatts:i indisunique:b indnullsnotdistinct:b indisprimary:b indisexclusion:b indimmediate:b indisclustered:b indisvalid:b indcheckxmin:b indisready:b indislive:b indisreplident:b indkey indexprs indpred")
 		for _, n := range indexes {
 			idx := s.indexes[n]
 			t := s.tables[idx.Table]
@@ -485,7 +491,7 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 	return nil, fmt.Errorf("unsupported PostgreSQL catalog %s", name)
 }
 func (s *Schema) postgresConstraints(name string, tables []string, database string) *ResultSet {
-	r := pgCatalog("oid:i conname connamespace:i contype condeferrable:b condeferred:b convalidated:b conrelid:i contypid:i conindid:i conparentid:i confrelid:i confupdtype confdeltype confmatchtype conislocal:b coninhcount:i connoinherit:b conkey confkey conbin")
+	r := pgCatalog("oid:o conname connamespace:o contype condeferrable:b condeferred:b convalidated:b conrelid:o contypid:o conindid:o conparentid:o confrelid:o confupdtype confdeltype confmatchtype conislocal:b coninhcount:i connoinherit:b conkey confkey conbin")
 	switch name {
 	case "information_schema.table_constraints":
 		r = pgCatalog("constraint_catalog constraint_schema constraint_name table_catalog table_schema table_name constraint_type is_deferrable initially_deferred enforced nulls_distinct")

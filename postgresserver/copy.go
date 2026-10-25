@@ -150,7 +150,7 @@ func (c *client) runCopy(ctx context.Context, command *copyCommand) (count int64
 	if c.failed {
 		return 0, &protocolError{"25P02", "current transaction is aborted; roll back before continuing"}
 	}
-	ctx = sql.WithPostgresSession(ctx, sql.PostgresSessionOptions{Database: c.server.config.Database, User: c.server.config.Username, BackendPID: c.id})
+	ctx = c.postgresContext(ctx)
 	// Cancellation must also interrupt a COPY TO blocked behind a slow reader.
 	writeCancelled := make(chan struct{})
 	stopWriteCancel := context.AfterFunc(ctx, func() { _ = c.conn.SetWriteDeadline(time.Now()); close(writeCancelled) })

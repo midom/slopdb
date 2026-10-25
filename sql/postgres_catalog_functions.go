@@ -302,7 +302,7 @@ func PostgresTypeDefinition(oid uint32) ColumnDef {
 	t := pgTypeFor(oid)
 	c := ColumnDef{Declared: strings.ToUpper(t.display), Postgres: true, ColType: ColText}
 	switch oid {
-	case 16, 20, 21, 23:
+	case 16, 20, 21, 23, 26, 2205, 2206, 4089:
 		c.ColType = ColInteger
 	case 700, 701:
 		c.ColType = ColReal
