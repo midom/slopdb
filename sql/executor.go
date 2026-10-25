@@ -6183,7 +6183,11 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 		}
 		return NewNullValue(), fmt.Errorf("no such column: %s", e.Name)
 	case *BinaryExpr:
-		return s.evalBinary(e, row)
+		value, err := s.evalBinary(e, row)
+		if s.postgresMode && postgresBooleanOperator(e.Op) {
+			value.PGType = "BOOLEAN"
+		}
+		return value, err
 	case *UnaryExpr:
 		right, err := s.evalExpr(e.Right, row)
 		if err != nil {
@@ -6200,6 +6204,9 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 			return right, nil
 		}
 		if right.Null {
+			if s.postgresMode && e.Op == "NOT" {
+				right.PGType = "BOOLEAN"
+			}
 			return right, nil
 		}
 		if s.mysqlMode && right.HexLiteral {
@@ -6210,10 +6217,7 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 		}
 		switch e.Op {
 		case "NOT":
-			if !truthValue(right) {
-				return NewIntValue(1), nil
-			}
-			return NewIntValue(0), nil
+			return s.postgresBooleanValue(!truthValue(right)), nil
 		case "+":
 			if !isNumeric(right) {
 				return NewNullValue(), fmt.Errorf("unary sign requires a numeric operand")
@@ -6257,9 +6261,17 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 		}
 		return s.evalFunc(e, row)
 	case *InListExpr:
-		return s.evalInList(e, row)
+		value, err := s.evalInList(e, row)
+		if s.postgresMode {
+			value.PGType = "BOOLEAN"
+		}
+		return value, err
 	case *BetweenExpr:
-		return s.evalBetween(e, row)
+		value, err := s.evalBetween(e, row)
+		if s.postgresMode {
+			value.PGType = "BOOLEAN"
+		}
+		return value, err
 	case *CaseExpr:
 		value, err := s.evalCase(e, row)
 		value.HexLiteral = false
@@ -6275,10 +6287,7 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 		if e.Not {
 			exists = !exists
 		}
-		if exists {
-			return NewIntValue(1), nil
-		}
-		return NewIntValue(0), nil
+		return s.postgresBooleanValue(exists), nil
 	}
 	return NewNullValue(), fmt.Errorf("unsupported expression type: %T", expr)
 }

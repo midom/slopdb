@@ -270,12 +270,17 @@ func resultFields(result *db.ExecResult) []field {
 		if col.Postgres {
 			if typed := sql.PostgresColumnOID(col); typed != 0 {
 				oid = typed
+				fields[i] = field{col.Name, oid}
+				continue
 			}
 		}
 		seen := false
 		for _, row := range result.Rows {
 			v := row[col.Name]
 			if v.Null {
+				if typed := sql.PostgresValueOID(v); typed != 0 && !seen {
+					oid, seen = typed, true
+				}
 				continue
 			}
 			if !seen {

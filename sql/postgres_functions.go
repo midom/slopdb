@@ -90,3 +90,27 @@ func (s *Schema) describePostgresFunction(e *FuncCallExpr, env map[string]Column
 	}
 	return ColumnDef{ColType: spec.Return}, true, nil
 }
+
+func postgresBooleanOperator(op string) bool {
+	switch strings.ToUpper(op) {
+	case "=", "!=", "<>", "<", ">", "<=", ">=", "IS", "IS NOT", "AND", "OR", "LIKE", "NOT LIKE", "ILIKE", "NOT ILIKE", "GLOB", "NOT GLOB", "REGEXP", "NOT REGEXP":
+		return true
+	}
+	return false
+}
+func (s *Schema) postgresBooleanValue(b bool) Value {
+	v := NewIntValue(0)
+	if b {
+		v.Int = 1
+	}
+	if s.postgresMode {
+		v.PGType = "BOOLEAN"
+	}
+	return v
+}
+func (s *Schema) booleanColumn() ColumnDef {
+	if s.postgresMode {
+		return ColumnDef{ColType: ColInteger, Declared: "BOOLEAN", Postgres: true}
+	}
+	return ColumnDef{ColType: ColInteger}
+}

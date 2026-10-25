@@ -519,6 +519,7 @@ func (c *client) simple(ctx context.Context, query string) error {
 		}
 		kind := strings.ToUpper(sql.NewTokenizer(part).Next().Value)
 		p := &prepared{native: native, original: part, kind: kind}
+		var parsed sql.Statement
 		if h, ok := c.helperMetadata(native); ok {
 			p.helper = true
 			p.kind = h.kind
@@ -531,12 +532,19 @@ func (c *client) simple(ctx context.Context, query string) error {
 				return &protocolError{"42601", "invalid query boundary"}
 			}
 			p.kind = kindOf(statements[0], p.kind)
+			parsed = statements[0]
 		}
 		result, tag, err := c.executeSQL(ctx, p, nil)
 		if err != nil {
 			return err
 		}
 		fields := resultFields(result)
+		if len(result.Rows) == 0 && len(fields) > 0 && parsed != nil {
+			m := &metadata{client: c, ctx: ctx, prepared: p, tables: make(map[string][]field)}
+			if described, e := m.statement(parsed, nil, 0); e == nil && len(described) == len(fields) {
+				fields = described
+			}
+		}
 		if len(fields) > 0 {
 			if err := c.send(fieldDescription(fields, nil)); err != nil {
 				return err

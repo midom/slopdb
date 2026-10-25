@@ -482,12 +482,14 @@ func (m *metadata) expression(expr sql.Expression, env map[string]uint32) uint32
 			m.hint(v, oid)
 			m.expression(v, env)
 		}
-		return oidInt8
+		return oidBool
 	case *sql.BetweenExpr:
 		oid := m.expression(e.Expr, env)
 		m.hint(e.Low, oid)
 		m.hint(e.High, oid)
-		return oidInt8
+		return oidBool
+	case *sql.ExistsExpr:
+		return oidBool
 	case *sql.CaseExpr:
 		var types []uint32
 		for _, when := range e.Whens {

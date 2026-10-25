@@ -392,7 +392,7 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 		if e.BoundParameter || e.Value.Null {
 			return text, nil
 		}
-		if s.mysqlMode && (e.Value.NumericText != "" && !strings.ContainsAny(e.Value.NumericText, "eE") || e.Value.Type == ColDecimal) {
+		if (s.mysqlMode || s.postgresMode) && (e.Value.NumericText != "" && !strings.ContainsAny(e.Value.NumericText, "eE") || e.Value.Type == ColDecimal) {
 			value := e.Value
 			if value.NumericText != "" {
 				var err error
@@ -411,7 +411,11 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 			}
 			return ColumnDef{ColType: ColDecimal, Precision: max(digits, scale), Scale: scale, NotNull: true}, nil
 		}
-		return ColumnDef{ColType: e.Value.Type, NotNull: true, Declared: e.Value.PGType, Postgres: s.postgresMode && e.Value.PGType != ""}, nil
+		col := ColumnDef{ColType: e.Value.Type, NotNull: true}
+		if s.postgresMode {
+			col.Declared, col.Postgres = e.Value.PGType, e.Value.PGType != ""
+		}
+		return col, nil
 	case *ParameterExpr:
 		return text, nil
 	case *ColumnRefExpr:
@@ -445,13 +449,13 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 		cols[0].NotNull = false
 		return cols[0], nil
 	case *ExistsExpr:
-		return integer, nil
+		return s.booleanColumn(), nil
 	case *InListExpr, *BetweenExpr:
-		return integer, nil
+		return s.booleanColumn(), nil
 	case *UnaryExpr:
 		c, err := s.describeExpression(e.Right, env, scope, depth+1)
 		if strings.EqualFold(e.Op, "NOT") {
-			c = integer
+			c = s.booleanColumn()
 		}
 		return c, err
 	case *BinaryExpr:
