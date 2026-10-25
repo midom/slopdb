@@ -91,7 +91,8 @@ and utf8mb4; other character encodings are not silently rewritten.
 
 Only READ COMMITTED isolation is supported. Ordinary DDL retains SlopDB's
 transactional semantics. Joined mutations require physical source tables;
-derived mutation sources are rejected. Temporary foreign keys are unsupported.
+derived mutation sources are rejected. Temporary foreign keys are unsupported. Temporary table data remains in session
+memory; the query memory budget does not limit its total stored size.
 Cross-database joins and switching databases within a transaction are unsupported.
 Stored routines, general MySQL system schemas and other protocol limits are
 listed in [MySQL server](mysql-server.md).
