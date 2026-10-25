@@ -67,4 +67,8 @@ func TestMySQLPreparedResponseRetentionIsBounded(t *testing.T) {
 	if retainPreparedResult(large) || retainPreparedResult(&db.ExecResult{Rows: make([]map[string]sql.Value, 65)}) {
 		t.Fatal("oversized response remained cached on a prepared statement")
 	}
+	large.Rows = large.Rows[:0]
+	if retainPreparedResult(large) {
+		t.Fatal("empty point answer retained an oversized hidden row buffer")
+	}
 }

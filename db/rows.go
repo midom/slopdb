@@ -63,6 +63,43 @@ func (s *Session) Query(query string) (*Rows, error) {
 func (s *Session) QueryContext(ctx context.Context, query string) (*Rows, error) {
 	return s.queryContext(ctx, query, false, false)
 }
+
+// QueryParsedContext executes a SELECT already parsed with this session's SQL
+// syntax options. query supplies activity text only. The caller must exclusively
+// own statement until Rows.Close and must not modify it during execution.
+// Admission, snapshots, catalog resolution and cancellation match QueryContext.
+func (s *Session) QueryParsedContext(ctx context.Context, query string, statement sql.Statement) (*Rows, error) {
+	if statement == nil {
+		return nil, errors.New("nil parsed statement")
+	}
+	input := parsedRead{statement: statement}
+	return s.queryRowsParsed(ctx, query, nil, nil, false, false, &input)
+}
+
+// QueryParsedContextInto executes a parsed SELECT with one admission, timeout
+// and snapshot. A catalog-proven point lookup returns result == dst and nil Rows;
+// other queries return nil result and streaming Rows, leaving dst unchanged.
+// Close returned Rows. query supplies activity text only. The caller exclusively
+// owns statement until completion/Rows.Close; dst follows ExecPreparedInto's
+// ownership rules. No query answer or SQL text is cached.
+func (s *Session) QueryParsedContextInto(ctx context.Context, dst *ExecResult, query string, statement *sql.SelectStmt) (*ExecResult, *Rows, error) {
+	if dst == nil {
+		return nil, nil, errors.New("nil result destination")
+	}
+	if statement == nil {
+		return nil, nil, errors.New("nil parsed statement")
+	}
+	input := parsedRead{statement: statement, pointDestination: dst}
+	rows, err := s.queryRowsParsed(ctx, query, nil, nil, false, false, &input)
+	return input.pointResult, rows, err
+}
+
+type parsedRead struct {
+	statement        sql.Statement
+	pointDestination *ExecResult
+	pointResult      *ExecResult
+}
+
 func (tx *Tx) Query(query string) (*Rows, error) { return tx.QueryContext(context.Background(), query) }
 func (tx *Tx) QueryContext(ctx context.Context, query string) (*Rows, error) {
 	return tx.session.queryContext(ctx, query, true, false)
@@ -92,6 +129,10 @@ func (s *Stmt) QueryContext(ctx context.Context, args ...any) (*Rows, error) {
 	return rows, err
 }
 func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, args []any, bound, owned bool) (*Rows, error) {
+	return s.queryRowsParsed(ctx, query, prepared, args, bound, owned, nil)
+}
+
+func (s *Session) queryRowsParsed(ctx context.Context, query string, prepared *Stmt, args []any, bound, owned bool, input *parsedRead) (*Rows, error) {
 	ctx, cancel, lockTimeout, err := s.db.queryContext(ctx, ExecOptions{})
 	if err != nil {
 		return nil, err
@@ -173,7 +214,9 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 		return nil, ErrTxDone
 	}
 	var statements []sql.Statement
-	if prepared == nil {
+	if input != nil {
+		statements = []sql.Statement{input.statement}
+	} else if prepared == nil {
 		statements, err = sql.ParseWithOptions(query, s.effectiveParseOptions())
 	} else {
 		binding, err = prepared.bind(s.db, s, bound, args)
@@ -235,6 +278,31 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 		return nil, err
 	}
 	resultStatement = statements[0]
+	if input != nil && input.pointDestination != nil {
+		dst := input.pointDestination
+		s.selectTarget = sql.ResultSet{Columns: dst.Columns, Rows: dst.Rows}
+		defer func() { s.selectTarget = sql.ResultSet{} }()
+		result, handled, pointErr := s.schema.TrySelectPointInto(statements[0].(*sql.SelectStmt), &s.selectTarget)
+		if pointErr != nil {
+			err = pointErr
+			release()
+			return nil, err
+		}
+		if handled {
+			if err = ctx.Err(); err != nil {
+				release()
+				return nil, err
+			}
+			*dst = ExecResult{Columns: result.Columns, Rows: result.Rows, Changes: int64(len(result.Rows))}
+			s.schema.RecordMySQLFunctionResult(resultStatement, dst.Changes, uint64(len(dst.Rows)))
+			successful = true
+			release()
+			if err == nil {
+				input.pointResult = dst
+			}
+			return nil, err
+		}
+	}
 	rows = &Rows{ctx: ctx, finish: release}
 	if selectStmt, ok := statements[0].(*sql.SelectStmt); ok {
 		var handled bool

@@ -266,6 +266,12 @@ func (s *Schema) namespaceName(name string, create bool, scope map[string]bool) 
 // so switching defaults cannot leave a cached binding pointed at another table.
 func (s *Schema) ResolveNamespaces(stmt Statement) (Statement, error) {
 	rootPath := !s.DefaultSchemaNeedsResolution()
+	// A literal equality and bare physical column projection cannot contain
+	// namespace-sensitive expressions. Avoid a reflective AST walk for this
+	// common unprepared shape; non-root paths still resolve against the catalog.
+	if st, ok := stmt.(*SelectStmt); ok && rootPath && !strings.Contains(st.From, ".") && LiteralPointSelectEligible(st) && !catalogRelationName(st.From) {
+		return stmt, nil
+	}
 	requirements, compiled := preparedNamespaceRequirements(stmt)
 	// Extra schemas cannot change an unqualified simple read whose effective
 	// path is exactly main. Retain the private tree and its compiled read plan;

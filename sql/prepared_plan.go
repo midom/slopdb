@@ -118,9 +118,11 @@ func (s *Schema) usePreparedPlan(p *preparedExecutionPlan, info *TableInfo) *pre
 		owner, counter, where, alias := p.owner, p.counter, p.where, p.fromAlias
 		*p = preparedExecutionPlan{owner: owner, counter: counter, where: where, fromAlias: alias, info: info, distribution: distribution, catalogVersion: catalog, stateVersion: state, initialized: true, dialect: s.dialect, dialectEpoch: s.dialectEpoch}
 		p.compilePointBindings()
-		p.compileRangeTerms(info.Name)
-		counter.builds.Add(1)
-	} else {
+		if counter != nil {
+			p.compileRangeTerms(info.Name)
+			counter.builds.Add(1)
+		}
+	} else if p.counter != nil {
 		p.counter.hits.Add(1)
 	}
 	p.pointKey, p.pointKeyReady, p.pointKeyOK = nil, false, false

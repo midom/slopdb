@@ -52,6 +52,7 @@ type client struct {
 	resultColumns                    []sql.ColumnDef
 	metadataPacket                   []byte
 	streamValues                     []sql.Value
+	textResult                       db.ExecResult
 }
 
 func (c *client) run() {

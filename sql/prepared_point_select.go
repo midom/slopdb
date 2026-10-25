@@ -7,11 +7,10 @@ import (
 
 // Each prepared AST belongs to one execution at a time. Cache only immutable
 // projection metadata, invalidated together with its catalog/plan recipe.
-func (s *Schema) selectPreparedPoint(stmt *SelectStmt, info *TableInfo, dst *ResultSet) (*ResultSet, bool, error) {
+func (s *Schema) selectPoint(stmt *SelectStmt, info *TableInfo, p *preparedExecutionPlan, dst *ResultSet) (*ResultSet, bool, error) {
 	if stmt.CalcFoundRows {
 		return nil, false, nil
 	}
-	p := stmt.prepared
 	if !p.pointProjectionReady {
 		p.pointProjectionReady = true
 		if !p.pointComplete() || stmt.FromExpr != nil || stmt.With != nil || stmt.Compound != nil || stmt.Virtual != nil || stmt.materialized != nil || len(stmt.Joins) != 0 || len(stmt.Windows) != 0 || stmt.Lock != nil || stmt.trackRows || stmt.Distinct || len(stmt.GroupBy) != 0 || stmt.Having != nil || len(stmt.OrderBy) != 0 || needsQualifiedRows(stmt) {

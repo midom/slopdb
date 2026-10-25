@@ -43,13 +43,16 @@ func (c *client) streamQuery(query string) (bool, error) {
 	}
 	status := c.status()
 	eof := func() error { return c.resultTerminatorStatus(nil, status) }
-	rows, e := c.session.QueryContext(sql.WithActivityQuery(c.mysqlContext(), query), query)
+	ctx := sql.WithActivityQuery(c.mysqlContext(), query)
+	result, rows, e := c.session.QueryParsedContextInto(ctx, &c.textResult, query, stmt)
 	if e != nil {
 		return true, e
 	}
-	defer rows.Close()
-	// The query context ends on normal row exhaustion. A final batched write
-	// still needs a lifecycle cancellation source after that snapshot is released.
+	if rows != nil {
+		defer rows.Close()
+	}
+	// Keep shutdown cancellation alive through the final response write, even
+	// after a point read or normal row exhaustion has released its snapshot.
 	closed := make(chan struct{})
 	stopClosing := context.AfterFunc(c.session.ClosingContext(), func() {
 		defer close(closed)
@@ -60,6 +63,20 @@ func (c *client) streamQuery(query string) (bool, error) {
 			<-closed
 		}
 	}()
+	if result != nil {
+		defer func() {
+			if !retainPreparedResult(&c.textResult) {
+				c.textResult = db.ExecResult{}
+			}
+		}()
+		if e = c.result(result, false); e != nil {
+			return true, &streamWriteError{e}
+		}
+		if e = c.writer.flush(); e != nil {
+			return true, &streamWriteError{e}
+		}
+		return true, nil
+	}
 	stop := rows.OnCancel(func() { _ = c.conn.SetWriteDeadline(time.Now()) })
 	defer func() { stop(); _ = c.conn.SetWriteDeadline(time.Time{}) }()
 	columns := rows.Columns()

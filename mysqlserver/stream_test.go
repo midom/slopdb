@@ -121,11 +121,13 @@ func (c *blockedWriteConn) Write(p []byte) (int, error) {
 }
 func TestMySQLStreamDatabaseCloseInterruptsBlockedOutput(t *testing.T) {
 	for _, batch := range []bool{false, true} {
-		t.Run(fmt.Sprint(batch), func(t *testing.T) { testMySQLStreamClose(t, batch) })
+		for _, point := range []bool{false, true} {
+			t.Run(fmt.Sprintf("batch=%t/point=%t", batch, point), func(t *testing.T) { testMySQLStreamClose(t, batch, point) })
+		}
 	}
 }
 
-func testMySQLStreamClose(t *testing.T, batch bool) {
+func testMySQLStreamClose(t *testing.T, batch, point bool) {
 	s := startTestServer(t, "tcp", Config{})
 	if _, e := s.database.Exec("CREATE TABLE blocked_stream(id INTEGER PRIMARY KEY,v TEXT);INSERT INTO blocked_stream VALUES(1,'value')"); e != nil {
 		t.Fatal(e)
@@ -149,7 +151,14 @@ func testMySQLStreamClose(t *testing.T, batch bool) {
 		c.writer.beginBatch()
 	}
 	done := make(chan error, 1)
-	go func() { _, e := c.streamQuery("SELECT v FROM blocked_stream"); done <- e }()
+	go func() {
+		query := "SELECT v FROM blocked_stream"
+		if point {
+			query += " WHERE id=1"
+		}
+		_, e := c.streamQuery(query)
+		done <- e
+	}()
 	select {
 	case <-conn.entered:
 	case <-time.After(5 * time.Second):
