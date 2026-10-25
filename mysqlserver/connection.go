@@ -15,34 +15,37 @@ import (
 )
 
 type client struct {
-	observation             *stateObservation
-	capabilities            uint32
-	moreResults             bool
-	preparedPath            []string
-	binlogSkip              []gtidInterval
-	replicaID               uint32
-	replicaUUID             string
-	replicationHeartbeat    time.Duration
-	replicationChecksumNone bool
-	transport               *sessionIOConn
-	server                  *Server
-	conn                    net.Conn
-	writer                  packetWriter
-	ctx                     context.Context
-	cancel                  context.CancelFunc
-	session                 *db.Session
-	id                      uint32
-	selected                string
-	username                string
-	account                 string
-	database                *db.Database
-	variables               sessionVariables
-	warningMu               sync.Mutex
-	warnings                []mysqlWarning
-	warningTotal            uint64
-	autocommit              bool
-	statements              map[uint32]*prepared
-	nextStmt                uint32
+	observation                      *stateObservation
+	infileDecision                   chan infileRequest
+	infilePackets                    chan infilePacket
+	infileAwaiting, infileNegotiated bool
+	capabilities                     uint32
+	moreResults                      bool
+	preparedPath                     []string
+	binlogSkip                       []gtidInterval
+	replicaID                        uint32
+	replicaUUID                      string
+	replicationHeartbeat             time.Duration
+	replicationChecksumNone          bool
+	transport                        *sessionIOConn
+	server                           *Server
+	conn                             net.Conn
+	writer                           packetWriter
+	ctx                              context.Context
+	cancel                           context.CancelFunc
+	session                          *db.Session
+	id                               uint32
+	selected                         string
+	username                         string
+	account                          string
+	database                         *db.Database
+	variables                        sessionVariables
+	warningMu                        sync.Mutex
+	warnings                         []mysqlWarning
+	warningTotal                     uint64
+	autocommit                       bool
+	statements                       map[uint32]*prepared
+	nextStmt                         uint32
 }
 
 func (c *client) run() {
@@ -57,6 +60,8 @@ func (c *client) run() {
 		return
 	}
 	c.installNetworkTimeouts()
+	c.infileDecision = make(chan infileRequest, 1)
+	c.infilePackets = make(chan infilePacket)
 	defer c.closeStatements()
 	// A separate reader detects EOF even while SQL waits on another session's
 	// locks. It cancels execution immediately so disconnects release transactions.
@@ -70,25 +75,52 @@ func (c *client) run() {
 	go func() {
 		defer close(readerDone)
 		defer close(commands)
+		defer close(c.infilePackets)
 		defer c.cancel()
 		defer c.conn.Close()
+		var pending []byte
+		var pendingNext, pendingCompressed byte
 		for {
 			c.transport.beginCommand()
 			compressedSequence := byte(0)
 			if compressed, ok := c.conn.(*compressedConn); ok {
-				compressed.readSequence = 0
+				compressed.readSequence.Store(0)
 			}
-			data, next, err := readPacket(c.conn, 0, c.server.config.MaxPacketBytes)
+			var data []byte
+			var next byte
+			var err error
+			if pending != nil {
+				data, next = pending, pendingNext
+				compressedSequence = pendingCompressed
+				pending = nil
+			} else {
+				data, next, err = readPacket(c.conn, 0, c.server.config.MaxPacketBytes)
+			}
 			if compressed, ok := c.conn.(*compressedConn); ok {
-				compressedSequence = compressed.readSequence
+				if pendingCompressed == 0 {
+					compressedSequence = byte(compressed.readSequence.Load())
+				}
+				pendingCompressed = 0
 			}
 			if err != nil {
 				return
+			}
+			localCommand := c.isLocalCommand(data)
+			if localCommand {
+				if compressed, ok := c.conn.(*compressedConn); ok {
+					compressed.readSequence.Store(0)
+				}
 			}
 			select {
 			case commands <- command{data, next, compressedSequence}:
 			case <-c.ctx.Done():
 				return
+			}
+			if localCommand {
+				pending, pendingNext, pendingCompressed, err = c.receiveLocalUpload()
+				if err != nil {
+					return
+				}
 			}
 		}
 	}()
@@ -110,7 +142,18 @@ func (c *client) run() {
 		if cmd.data[0] == 1 {
 			return
 		} // COM_QUIT has no response.
-		if err := c.dispatch(cmd.data); err != nil {
+
+		c.infileAwaiting = c.isLocalCommand(cmd.data)
+		c.infileNegotiated = false
+		err := c.dispatch(cmd.data)
+		if c.infileAwaiting && !c.infileNegotiated {
+			select {
+			case c.infileDecision <- infileRequest{}:
+			case <-c.ctx.Done():
+			}
+		}
+		c.infileAwaiting = false
+		if err != nil {
 			return
 		}
 	}

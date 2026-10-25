@@ -54,12 +54,29 @@ func (c *client) queryResults(query string) error {
 	if len(commands) > 1 && c.capabilities&clientMultiStatements == 0 {
 		return c.writeError(&protocolError{1064, "42000", "CLIENT_MULTI_STATEMENTS is required"})
 	}
+	if len(commands) > 1 {
+		for _, q := range commands {
+			if loadPrefix(q, c.currentDatabase().ParseOptions()) {
+				return c.writeError(&protocolError{1235, "42000", "LOAD DATA LOCAL must be a standalone query"})
+			}
+		}
+	}
 	if len(commands) == 0 {
 		return c.ok(nil)
 	}
 	defer func() { c.moreResults = false }()
 	for i, command := range commands {
 		c.moreResults = i+1 < len(commands)
+		if result, handled, err := c.loadData(command); handled {
+			if err != nil {
+				c.moreResults = false
+				return c.writeError(err)
+			}
+			if err = c.result(result, false); err != nil {
+				return err
+			}
+			continue
+		}
 
 		if handled, err := c.streamQuery(command); handled {
 			if err != nil {

@@ -72,7 +72,7 @@ func TestMySQLCompressedCommandsAndResults(t *testing.T) {
 	if err := writer.write(append([]byte{3}, query...)); err != nil {
 		t.Fatal(err)
 	}
-	compressed.readSequence = compressed.writeSequence
+	compressed.readSequence.Store(uint32(compressed.writeSequence))
 	sequence := byte(1)
 	// Each SELECT consists of column count/definition/EOF/row/EOF.
 	for result := 0; result < 2; result++ {
@@ -96,7 +96,7 @@ func TestMySQLCompressedCommandsAndResults(t *testing.T) {
 	if err := writer.write([]byte{14}); err != nil {
 		t.Fatal(err)
 	}
-	compressed.readSequence = compressed.writeSequence
+	compressed.readSequence.Store(uint32(compressed.writeSequence))
 	p, _, err := readPacket(compressed, 1, 1<<20)
 	if err != nil || p[0] != 0 {
 		t.Fatal(p, err)

@@ -3,6 +3,7 @@ package mysqlserver
 import (
 	"slopdb/db"
 	"slopdb/sql"
+	"strings"
 	"time"
 )
 
@@ -11,6 +12,9 @@ type streamWriteError struct{ error }
 // Only catalog-typed base-column projections can advertise fixed types before
 // reading every row. Expression/view/mixed shapes retain materialized inference.
 func (c *client) streamQuery(query string) (bool, error) {
+	if !strings.EqualFold(sql.NewTokenizerWithOptions(query, c.currentDatabase().ParseOptions()).Next().Value, "SELECT") {
+		return false, nil
+	}
 	statements, e := sql.ParseWithOptions(query, c.currentDatabase().ParseOptions())
 	if e != nil || len(statements) != 1 {
 		return false, nil

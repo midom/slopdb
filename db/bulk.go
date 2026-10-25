@@ -53,44 +53,59 @@ func (s *Session) BulkInsert(ctx context.Context, table string, columns []string
 func (tx *Tx) BulkInsert(ctx context.Context, table string, columns []string, next BulkSource) (int64, error) {
 	return tx.session.bulkInsert(ctx, table, columns, next, true)
 }
+
+// BulkInsertResult exposes ordinary mutation/commit metadata to wire adapters.
+func (s *Session) BulkInsertResult(ctx context.Context, table string, columns []string, next BulkSource) (*ExecResult, error) {
+	_, r, e := s.bulkApply(ctx, table, columns, next, false)
+	return r, e
+}
+func (tx *Tx) BulkInsertResult(ctx context.Context, table string, columns []string, next BulkSource) (*ExecResult, error) {
+	_, r, e := tx.session.bulkApply(ctx, table, columns, next, true)
+	return r, e
+}
 func (s *Session) bulkInsert(ctx context.Context, table string, columns []string, next BulkSource, bound bool) (int64, error) {
+	n, _, e := s.bulkApply(ctx, table, columns, next, bound)
+	return n, e
+}
+func (s *Session) bulkApply(ctx context.Context, table string, columns []string, next BulkSource, bound bool) (int64, *ExecResult, error) {
 	if next == nil {
-		return 0, fmt.Errorf("nil bulk source")
+		return 0, nil, fmt.Errorf("nil bulk source")
 	}
 	if len(columns) == 0 {
-		return 0, fmt.Errorf("bulk insert requires explicit columns")
+		return 0, nil, fmt.Errorf("bulk insert requires explicit columns")
 	}
 	names := make([]string, len(columns))
 	seen := map[string]bool{}
 	for i, n := range columns {
 		n = strings.ToLower(n)
 		if seen[n] {
-			return 0, fmt.Errorf("duplicate bulk column %s", n)
+			return 0, nil, fmt.Errorf("duplicate bulk column %s", n)
 		}
 		seen[n] = true
 		names[i] = n
 	}
 	ctx, cancel, lockTimeout, err := s.db.queryContext(ctx, ExecOptions{})
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 	defer cancel()
 	if err = s.gate.LockContext(ctx); err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 	defer s.gate.Unlock()
 	ctx = sql.WithStatementTime(ctx, sql.StatementTime(ctx))
 	replay := &bulkReplay{next: next, parent: s.db.opt.QueryTempDir, width: len(names)}
 	defer replay.close()
 	stmt := &sql.InsertStmt{Table: strings.ToLower(table), ColumnNames: names, Source: &sql.RowSource{Reset: replay.reset, Next: replay.read}}
-	if _, err = s.execParsed(ctx, []sql.Statement{stmt}, cancel, bound, lockTimeout); err != nil {
+	result, err := s.execParsed(ctx, []sql.Statement{stmt}, cancel, bound, lockTimeout)
+	if err != nil {
 		var input *bulkInputError
 		if errors.As(err, &input) {
-			return 0, fmt.Errorf("bulk source row %d: %w", replay.produced+1, input.cause)
+			return 0, nil, fmt.Errorf("bulk source row %d: %w", replay.produced+1, input.cause)
 		}
-		return 0, err
+		return 0, nil, err
 	}
-	return replay.position, nil
+	return replay.position, result, nil
 }
 
 // One gob stream retains every exported typed-value field, including transient

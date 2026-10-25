@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync/atomic"
 )
 
 // compressedConn implements the MySQL compression layer after authentication.
@@ -16,10 +17,11 @@ import (
 // responses continue the incoming outer sequence independently of inner frames.
 type compressedConn struct {
 	net.Conn
-	readSequence, writeSequence byte
-	incoming                    []byte
-	compressor                  *zlib.Writer
-	encoded                     bytes.Buffer
+	readSequence  atomic.Uint32
+	writeSequence byte
+	incoming      []byte
+	compressor    *zlib.Writer
+	encoded       bytes.Buffer
 }
 
 func newCompressedConn(conn net.Conn) *compressedConn { return &compressedConn{Conn: conn} }
@@ -34,10 +36,11 @@ func (c *compressedConn) Read(p []byte) (int, error) {
 		}
 		size := int(h[0]) | int(h[1])<<8 | int(h[2])<<16
 		uncompressed := int(h[4]) | int(h[5])<<8 | int(h[6])<<16
-		if h[3] != c.readSequence {
-			return 0, fmt.Errorf("invalid compressed packet sequence: got %d want %d", h[3], c.readSequence)
+		expected := byte(c.readSequence.Load())
+		if h[3] != expected {
+			return 0, fmt.Errorf("invalid compressed packet sequence: got %d want %d", h[3], expected)
 		}
-		c.readSequence++
+		c.readSequence.Store(uint32(expected + 1))
 		if size == 0 {
 			return 0, errMalformed
 		}
