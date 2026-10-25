@@ -1522,6 +1522,7 @@ func (e *emptyIterator) Value() []byte    { return nil }
 func (e *emptyIterator) Close()           {}
 
 type mergeIterator struct {
+	keysOnly     bool
 	reusable     bool
 	closed       bool
 	groupScratch []byte
@@ -1573,7 +1574,10 @@ func newMergeIteratorDirectional(iters []Iterator, key []byte, reverse bool, clo
 	return newMergeIteratorDirectionalMode(iters, key, reverse, false, closers...)
 }
 func newMergeIteratorDirectionalMode(iters []Iterator, key []byte, reverse, reusable bool, closers ...ioCloser) *mergeIterator {
-	m := &mergeIterator{iters: iters, closers: closers, reusable: reusable}
+	return newMergeIteratorDirectionalOptions(iters, key, reverse, reusable, false, closers...)
+}
+func newMergeIteratorDirectionalOptions(iters []Iterator, key []byte, reverse, reusable, keysOnly bool, closers ...ioCloser) *mergeIterator {
+	m := &mergeIterator{iters: iters, closers: closers, reusable: reusable, keysOnly: keysOnly}
 	// Range tombstones may start before Seek's target, so remember them all.
 	for _, it := range iters {
 		m.ranges = append(m.ranges, iteratorRanges(it)...)

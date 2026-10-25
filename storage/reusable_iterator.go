@@ -124,7 +124,9 @@ func (m *mergeIterator) visibleReusable(reverse bool) {
 				if k.OpType != kTypeRangeDelete && (!found || k.SeqNum > best.SeqNum) {
 					best = k
 					best.UserKey = key
-					m.valueScratch = IteratorValueInto(top.iter, m.valueScratch)
+					if !m.keysOnly {
+						m.valueScratch = IteratorValueInto(top.iter, m.valueScratch)
+					}
 					found = true
 				}
 				if reverse {

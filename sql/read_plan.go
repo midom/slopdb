@@ -330,12 +330,31 @@ func (s *Schema) newBorrowedRangeIterator(lower, upper []byte, reverse bool) sto
 }
 
 func (s *Schema) newBorrowedRangeReader(lower, upper []byte, reverse bool, operator string) storage.Iterator {
+	return s.newBorrowedRangeReaderMode(lower, upper, reverse, operator, false)
+}
+
+// Only callbacks with no referenced physical columns may omit encoded values.
+// SQL profiling retains valued reuse so its logical BytesRead includes payloads.
+func (s *Schema) newKeyRangeReader(lower, upper []byte, reverse bool, operator string) storage.Iterator {
+	return s.newBorrowedRangeReaderMode(lower, upper, reverse, operator, true)
+}
+
+func (s *Schema) newBorrowedRangeReaderMode(lower, upper []byte, reverse bool, operator string, keysOnly bool) storage.Iterator {
+	keysOnly = keysOnly && s.profile == nil
 	overlay := s.inTx && len(s.txWrites) > 0
 	var base storage.Iterator
 	if s.statementActive && !s.temporaryKey(lower) {
-		base = s.lsm.NewIteratorAtRangeReusable(s.statementSnapshot, lower, upper, reverse && !overlay)
+		if keysOnly {
+			base = s.lsm.NewIteratorAtRangeKeys(s.statementSnapshot, lower, upper, reverse && !overlay)
+		} else {
+			base = s.lsm.NewIteratorAtRangeReusable(s.statementSnapshot, lower, upper, reverse && !overlay)
+		}
 	} else {
-		base = s.lsm.NewIteratorRangeReusable(lower, upper, reverse && !overlay)
+		if keysOnly {
+			base = s.lsm.NewIteratorRangeKeys(lower, upper, reverse && !overlay)
+		} else {
+			base = s.lsm.NewIteratorRangeReusable(lower, upper, reverse && !overlay)
+		}
 	}
 	if overlay {
 		base = s.txIteratorMode(base, lower, upper, true)

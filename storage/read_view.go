@@ -187,7 +187,25 @@ func (l *LSMTree) NewIteratorRangeReusable(lower, upper []byte, reverse bool) It
 func (l *LSMTree) iteratorViewRange(snapshot uint64, latest bool, key, lower, upper []byte, reverse bool) Iterator {
 	return l.iteratorViewRangeMode(snapshot, latest, key, lower, upper, reverse, false)
 }
+
+// NewIteratorAtRangeKeys visits exactly the visible keys in [lower, upper),
+// without copying encoded values. Key borrows iterator scratch until movement
+// or Close; Value always returns nil. MVCC versions and point/range tombstones
+// use the same rules as NewIteratorAtRange. Keep snapshot pinned until Close.
+func (l *LSMTree) NewIteratorAtRangeKeys(snapshot uint64, lower, upper []byte, reverse bool) Iterator {
+	return l.iteratorViewRangeOptions(snapshot, false, lower, lower, upper, reverse, true, true)
+}
+
+// NewIteratorRangeKeys visits latest committed visible keys. Key borrows
+// iterator scratch until movement or Close; Value always returns nil.
+func (l *LSMTree) NewIteratorRangeKeys(lower, upper []byte, reverse bool) Iterator {
+	return l.iteratorViewRangeOptions(0, true, lower, lower, upper, reverse, true, true)
+}
+
 func (l *LSMTree) iteratorViewRangeMode(snapshot uint64, latest bool, key, lower, upper []byte, reverse, reusable bool) Iterator {
+	return l.iteratorViewRangeOptions(snapshot, latest, key, lower, upper, reverse, reusable, false)
+}
+func (l *LSMTree) iteratorViewRangeOptions(snapshot uint64, latest bool, key, lower, upper []byte, reverse, reusable, keysOnly bool) Iterator {
 	v, seq := l.acquireView()
 	if v == nil {
 		return &emptyIterator{err: fmt.Errorf("database closed")}
@@ -241,7 +259,7 @@ func (l *LSMTree) iteratorViewRangeMode(snapshot uint64, latest bool, key, lower
 	if reverse {
 		key = upper
 	}
-	merged := newMergeIteratorDirectionalMode(iters, key, reverse, reusable, &viewCloser{view: v})
+	merged := newMergeIteratorDirectionalOptions(iters, key, reverse, reusable, keysOnly, &viewCloser{view: v})
 	if lower != nil || upper != nil {
 		return BoundIterator(merged, lower, upper)
 	}

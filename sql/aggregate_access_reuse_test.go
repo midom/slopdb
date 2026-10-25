@@ -392,6 +392,46 @@ func TestBorrowedTransactionIteratorDirectionsOwnershipAndBounds(t *testing.T) {
 	}
 }
 
+func TestConstantAggregateKeyOnlyReadAndProfileBytes(t *testing.T) {
+	s, _ := newAccessReuseSchema(t, 600)
+	for _, where := range []string{"", " WHERE id>=100 AND id<500"} {
+		stmt := statisticsSelect(t, "SELECT COUNT(*) FROM t"+where)
+		paths := s.accessPaths(stmt.Where, s.tables["t"])
+		count := 0
+		if err := s.walkAccessRaw(s.tables["t"], map[string]bool{}, paths, func(data []byte, columns []scanColumn) error {
+			if data != nil || len(columns) != 0 {
+				t.Fatal("key-only reader retained payload/layout")
+			}
+			count++
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		want := 600
+		if where != "" {
+			want = 400
+		}
+		if count != want {
+			t.Fatal("wrong key-only count", count, want)
+		}
+	}
+	for _, dialect := range []Dialect{DialectNative, DialectMySQL, DialectPostgreSQL} {
+		if err := s.SetDialect(dialect); err != nil {
+			t.Fatal(err)
+		}
+		got := accessReuseSQL(t, s, "SELECT COUNT(*) AS n,SUM(1) AS s,MIN(1) AS lo,MAX(1) AS hi FROM t")
+		if got.Rows[0]["n"].Int != 600 || got.Rows[0]["s"].Int != 600 || got.Rows[0]["lo"].Int != 1 || got.Rows[0]["hi"].Int != 1 {
+			t.Fatal("constant aggregate changed", got.Rows)
+		}
+	}
+	profile := s.StartQueryProfile()
+	got := accessReuseSQL(t, s, "SELECT COUNT(*) AS n FROM t")
+	s.StopQueryProfile()
+	if got.Rows[0]["n"].Int != 600 || profile.RowsExamined != 600 || profile.BytesRead < 600*100 {
+		t.Fatal("profile omitted encoded payload bytes", profile)
+	}
+}
+
 func BenchmarkAggregateAccessReuse(b *testing.B) {
 	const n = 4096
 	s, _ := newAccessReuseSchema(b, n)

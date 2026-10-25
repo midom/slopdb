@@ -387,7 +387,12 @@ func (s *Schema) walkAccessRaw(info *TableInfo, needed map[string]bool, paths []
 		if s.profile != nil {
 			upper = nil
 		} // Preserve the Scan visit at the prefix boundary.
-		it := s.newBorrowedRangeReader(prefix, upper, false, "Scan")
+		var it storage.Iterator
+		if len(columns) == 0 {
+			it = s.newKeyRangeReader(prefix, upper, false, "Scan")
+		} else {
+			it = s.newBorrowedRangeReader(prefix, upper, false, "Scan")
+		}
 		defer it.Close()
 		for it.Valid() {
 			key := it.Key().UserKey
@@ -444,7 +449,12 @@ func (s *Schema) walkAccessRaw(info *TableInfo, needed map[string]bool, paths []
 			payloadColumns = columnsFor(payload)
 		}
 		for _, interval := range p.intervals {
-			it := s.newBorrowedRangeIterator(interval.lower, interval.upper, false)
+			var it storage.Iterator
+			if p.index == nil && len(columns) == 0 {
+				it = s.newKeyRangeReader(interval.lower, interval.upper, false, "RangeScan")
+			} else {
+				it = s.newBorrowedRangeIterator(interval.lower, interval.upper, false)
+			}
 			err := func() error {
 				defer it.Close()
 				for it.Valid() {
@@ -526,7 +536,7 @@ func (s *Schema) countAccessPaths(paths []*accessPath, limit int64) (int64, erro
 			continue
 		}
 		for _, interval := range p.intervals {
-			it := s.newBorrowedRangeIterator(interval.lower, interval.upper, false)
+			it := s.newKeyRangeReader(interval.lower, interval.upper, false, "RangeScan")
 			err := func() error {
 				defer it.Close()
 				for it.Valid() {
