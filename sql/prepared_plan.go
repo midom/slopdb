@@ -38,37 +38,38 @@ type preparedRangeTerm struct {
 // Catalog objects and physical candidates are immutable; runtime keys, ranges,
 // costs and typed registers stay private. No snapshots or iterators are retained.
 type preparedExecutionPlan struct {
-	owner                              *PreparedQuery
-	counter                            *preparedCounter
-	where                              Expression
-	fromAlias                          string
-	info                               *TableInfo
-	distribution                       *tableStatistics
-	catalogVersion, stateVersion       uint64
-	dialect                            Dialect
-	dialectEpoch                       uint64
-	initialized, validated             bool
-	equalities                         []preparedEquality
-	pointPossible                      bool
-	pointKey                           []byte
-	pointKeyScratch, pointValueScratch []byte
-	pointWriteScratch                  []byte
-	pointRowScratch                    map[string]Value
-	pointKeyReady, pointKeyOK          bool
-	ranges                             []preparedRangeTerm
-	rangeFallback                      bool
-	coverage                           map[*IndexInfo]bool
-	candidatesReady                    bool
-	pointUpdate                        *PointUpdate
-	pointUpdateReady                   bool
-	aggregate                          *typedAggregate
-	aggregateReady                     bool
-	pointProjectionReady               bool
-	pointProjection                    []ColumnDef
-	pointDecodeColumns                 []bool
-	pointDecodeCount                   int
-	pointSelectScratch                 map[string]Value
-	pointDecodeMetadata                []pointDecodeMetadata
+	owner                                        *PreparedQuery
+	counter                                      *preparedCounter
+	where                                        Expression
+	fromAlias                                    string
+	info                                         *TableInfo
+	distribution                                 *tableStatistics
+	catalogVersion, stateVersion                 uint64
+	dialect                                      Dialect
+	dialectEpoch                                 uint64
+	initialized, validated                       bool
+	equalities                                   []preparedEquality
+	pointPossible                                bool
+	pointPredicateExact, pointPredicateSatisfied bool
+	pointKey                                     []byte
+	pointKeyScratch, pointValueScratch           []byte
+	pointWriteScratch                            []byte
+	pointRowScratch                              map[string]Value
+	pointKeyReady, pointKeyOK                    bool
+	ranges                                       []preparedRangeTerm
+	rangeFallback                                bool
+	coverage                                     map[*IndexInfo]bool
+	candidatesReady                              bool
+	pointUpdate                                  *PointUpdate
+	pointUpdateReady                             bool
+	aggregate                                    *typedAggregate
+	aggregateReady                               bool
+	pointProjectionReady                         bool
+	pointProjection                              []ColumnDef
+	pointDecodeColumns                           []bool
+	pointDecodeCount                             int
+	pointSelectScratch                           map[string]Value
+	pointDecodeMetadata                          []pointDecodeMetadata
 }
 
 func preparedSelectEligible(stmt *SelectStmt) bool {
@@ -123,16 +124,26 @@ func (s *Schema) usePreparedPlan(p *preparedExecutionPlan, info *TableInfo) *pre
 		p.counter.hits.Add(1)
 	}
 	p.pointKey, p.pointKeyReady, p.pointKeyOK = nil, false, false
+	p.pointPredicateSatisfied = false
 	s.preparedPlan = p
 	return previous
 }
 
 func (p *preparedExecutionPlan) compilePointBindings() {
+	pureSignedPoint := true
 	types := make(map[string]ColumnType, len(p.info.PKColumns))
 	for _, name := range p.info.PKColumns {
 		for _, c := range p.info.Columns {
 			if c.Name == name {
 				types[name] = c.ColType
+				kind := c.LogicalType().Kind
+				declared := LogicalTypeFromDeclaration(c.Declared).Kind
+				if declared != TypeUnknown && (declared < TypeInt8 || declared > TypeInt64) {
+					pureSignedPoint = false
+				}
+				if c.ColType != ColInteger || c.Unsigned || c.Binary || kind < TypeInt8 || kind > TypeInt64 {
+					pureSignedPoint = false
+				}
 				break
 			}
 		}
@@ -141,6 +152,7 @@ func (p *preparedExecutionPlan) compilePointBindings() {
 	visit = func(e Expression) {
 		b, ok := e.(*BinaryExpr)
 		if !ok {
+			pureSignedPoint = false
 			return
 		}
 		if b.Op == "AND" {
@@ -149,6 +161,7 @@ func (p *preparedExecutionPlan) compilePointBindings() {
 			return
 		}
 		if b.Op != "=" {
+			pureSignedPoint = false
 			return
 		}
 		col, cOK := b.Left.(*ColumnRefExpr)
@@ -158,10 +171,12 @@ func (p *preparedExecutionPlan) compilePointBindings() {
 			lit, lOK = b.Left.(*LiteralExpr)
 		}
 		if !cOK || !lOK {
+			pureSignedPoint = false
 			return
 		}
 		name := strings.ToLower(col.Name)
 		if prefix, rest, qualified := strings.Cut(name, "."); qualified {
+			pureSignedPoint = false
 			if prefix != p.info.Name {
 				return
 			}
@@ -169,10 +184,15 @@ func (p *preparedExecutionPlan) compilePointBindings() {
 		}
 		if typ, ok := types[name]; ok {
 			p.equalities = append(p.equalities, preparedEquality{name, typ, lit})
+		} else {
+			pureSignedPoint = false
 		}
 	}
 	visit(p.where)
 	p.pointPossible = p.completePointBindings()
+	// Coverage plus exactly one leaf per PK component excludes repeated or
+	// contradictory equalities. Every other operator/conjunct retains residuals.
+	p.pointPredicateExact = pureSignedPoint && p.pointPossible && len(p.equalities) == len(p.info.PKColumns)
 }
 
 func (p *preparedExecutionPlan) pointComplete() bool { return p.pointPossible }
@@ -200,10 +220,12 @@ func (p *preparedExecutionPlan) primaryKey(table string, info *TableInfo) ([]byt
 		return p.pointKey, p.pointKeyOK
 	}
 	p.pointKeyReady = true
+	p.pointPredicateSatisfied = false
 	if !p.pointComplete() {
 		return nil, false
 	}
 	key := append(p.pointKeyScratch[:0], info.storagePrefix(table)...)
+	predicateSatisfied := p.pointPredicateExact
 	for _, name := range info.PKColumns {
 		var value Value
 		found := false
@@ -215,6 +237,9 @@ func (p *preparedExecutionPlan) primaryKey(table string, info *TableInfo) ([]byt
 		if !found {
 			return nil, false
 		}
+		if predicateSatisfied && !preparedPlainSignedInteger(value) {
+			predicateSatisfied = false
+		}
 		if value.Type == ColText && !info.binaryColumn(name) {
 			value.Text = info.columnCollation(name).Key(value.Text)
 		}
@@ -222,6 +247,7 @@ func (p *preparedExecutionPlan) primaryKey(table string, info *TableInfo) ([]byt
 	}
 	p.pointKeyScratch = key
 	p.pointKey, p.pointKeyOK = key, true
+	p.pointPredicateSatisfied = predicateSatisfied
 	return p.pointKey, true
 }
 
@@ -347,7 +373,7 @@ func (p *preparedExecutionPlan) releaseValues() {
 	// Bound the pooled scratch; it must never retain a caller's result BLOB.
 	retained := 0
 	for _, v := range p.pointSelectScratch {
-		retained += len(v.Blob) + len(v.Text)
+		retained += cap(v.Blob) + len(v.Text)
 		if retained > 64<<10 {
 			clear(p.pointSelectScratch)
 			break
@@ -366,6 +392,7 @@ func (p *preparedExecutionPlan) releaseValues() {
 		p.pointWriteScratch = nil
 	}
 	p.pointKey, p.pointKeyReady, p.pointKeyOK = nil, false, false
+	p.pointPredicateSatisfied = false
 	// Plans are pooled. Retain bounded private scratch, never caller results.
 	if cap(p.pointKeyScratch) > 64<<10 {
 		p.pointKeyScratch = nil
@@ -386,4 +413,10 @@ func (p *preparedExecutionPlan) releaseValues() {
 			}
 		}
 	}
+}
+
+// Affinity or expression metadata can change a literal's interpretation. Only
+// plain signed integers qualify for the compiled equality proof on this bind.
+func preparedPlainSignedInteger(v Value) bool {
+	return !v.Null && v.Type == ColInteger && !v.Binary && !v.EnumValue && !v.HexLiteral && v.Collation == "" && v.NumericText == "" && v.NumericExact == "" && v.PGType == "" && (v.SemanticType == TypeUnknown || v.SemanticType >= TypeInt8 && v.SemanticType <= TypeInt64)
 }

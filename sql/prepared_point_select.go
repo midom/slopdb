@@ -158,7 +158,10 @@ func (s *Schema) selectPreparedPoint(stmt *SelectStmt, info *TableInfo, dst *Res
 	if dst != nil && cap(result.Rows) == 0 {
 		result.Rows = append(result.Rows, row)[:0]
 	}
-	matches, err := s.evalCondition(stmt.Where, conditionRow)
+	matches := p.pointPredicateSatisfied
+	if !matches {
+		matches, err = s.evalCondition(stmt.Where, conditionRow)
+	}
 	if conditionRow != nil && p.pointDecodeCount > len(p.pointProjection) {
 		for _, col := range p.pointProjection {
 			conditionRow[col.Name] = NewNullValue()
