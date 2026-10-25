@@ -191,7 +191,7 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 		release()
 		return nil, err
 	}
-	s.schema.SetContext(readStatementContext(ctx, s.schema, statements[0]))
+	s.schema.SetContext(s.db.inspectionContext(readStatementContext(ctx, s.schema, statements[0]), statements[0]))
 	deadline := time.Now().Add(lockTimeout)
 	for {
 		err = s.db.statementCatalogLock(s.schema, statements[0])
