@@ -852,7 +852,7 @@ func FormatResult(result *ExecResult) string {
 	if len(result.Columns) > 0 && len(result.Rows) > 0 {
 		widths := make([]int, len(result.Columns))
 		for i, col := range result.Columns {
-			widths[i] = len(col.Name)
+			widths[i] = len(col.ResultName())
 		}
 		for _, row := range result.Rows {
 			for i, col := range result.Columns {
@@ -867,7 +867,7 @@ func FormatResult(result *ExecResult) string {
 			if i > 0 {
 				b.WriteString(" | ")
 			}
-			fmt.Fprintf(&b, "%-*s", widths[i], col.Name)
+			fmt.Fprintf(&b, "%-*s", widths[i], col.ResultName())
 		}
 		b.WriteString("\n")
 		for i, w := range widths {

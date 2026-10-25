@@ -47,7 +47,7 @@ func formatResultTable(result *db.ExecResult) string {
 	var b strings.Builder
 	widths := make([]int, len(result.Columns))
 	for i, col := range result.Columns {
-		widths[i] = len(col.Name)
+		widths[i] = len(col.ResultName())
 	}
 	for _, row := range result.Rows {
 		for i, col := range result.Columns {
@@ -65,7 +65,7 @@ func formatResultTable(result *db.ExecResult) string {
 		if i > 0 {
 			b.WriteString(" | ")
 		}
-		fmt.Fprintf(&b, "%-*s", widths[i], col.Name)
+		fmt.Fprintf(&b, "%-*s", widths[i], col.ResultName())
 	}
 	b.WriteString("\n")
 	for i, w := range widths {
@@ -99,7 +99,7 @@ func formatResultCSV(result *db.ExecResult) string {
 			b.WriteByte(',')
 		}
 		b.WriteByte('"')
-		b.WriteString(strings.ReplaceAll(col.Name, `"`, `""`))
+		b.WriteString(strings.ReplaceAll(col.ResultName(), `"`, `""`))
 		b.WriteByte('"')
 	}
 	b.WriteByte('\n')
@@ -135,7 +135,7 @@ func formatResultJSON(result *db.ExecResult) string {
 			if j > 0 {
 				b.WriteByte(',')
 			}
-			name, _ := json.Marshal(col.Name)
+			name, _ := json.Marshal(col.ResultName())
 			b.Write(name)
 			b.WriteByte(':')
 			value, err := json.Marshal(row[col.Name])
@@ -174,7 +174,7 @@ func formatResultMarkdown(result *db.ExecResult) string {
 	var b strings.Builder
 	b.WriteByte('|')
 	for _, col := range result.Columns {
-		fmt.Fprintf(&b, " %s |", col.Name)
+		fmt.Fprintf(&b, " %s |", col.ResultName())
 	}
 	b.WriteByte('\n')
 	b.WriteByte('|')
@@ -203,7 +203,7 @@ func formatResultBox(result *db.ExecResult) string {
 	}
 	widths := make([]int, len(result.Columns))
 	for i, col := range result.Columns {
-		widths[i] = len(col.Name)
+		widths[i] = len(col.ResultName())
 	}
 	for _, row := range result.Rows {
 		for i, col := range result.Columns {
@@ -231,7 +231,7 @@ func formatResultBox(result *db.ExecResult) string {
 		if i > 0 {
 			b.WriteString("\u2502")
 		}
-		fmt.Fprintf(&b, " %-*s ", widths[i], col.Name)
+		fmt.Fprintf(&b, " %-*s ", widths[i], col.ResultName())
 	}
 	b.WriteString("\u2502\n")
 	b.WriteString("\u251c")
@@ -274,7 +274,7 @@ func formatResultTabs(result *db.ExecResult) string {
 		if i > 0 {
 			b.WriteByte('\t')
 		}
-		b.WriteString(col.Name)
+		b.WriteString(col.ResultName())
 	}
 	b.WriteByte('\n')
 	for _, row := range result.Rows {

@@ -360,7 +360,7 @@ func (r *Rows) Scan(dest ...any) error {
 	}
 	for i, v := range values {
 		if err = scanValue(dest[i], v); err != nil {
-			return fmt.Errorf("Scan column %d (%s): %w", i+1, r.columns[i].Name, err)
+			return fmt.Errorf("Scan column %d (%s): %w", i+1, r.columns[i].ResultName(), err)
 		}
 	}
 	return nil

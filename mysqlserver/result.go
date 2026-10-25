@@ -218,7 +218,7 @@ func columnPacket(col sql.ColumnDef, database string) []byte {
 	p = appendString(p, []byte(database))
 	p = appendString(p, nil)
 	p = appendString(p, nil)
-	p = appendString(p, []byte(col.Name))
+	p = appendString(p, []byte(col.ResultName()))
 	p = appendString(p, nil)
 	p = append(p, 12)
 	charset := uint16(45)
