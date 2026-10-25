@@ -12,16 +12,17 @@ import (
 )
 
 // Temporary catalogs and rows belong to one SQL session. The ordinary write
-// overlay provides transactional rows; definitions deliberately survive ROLLBACK.
+// overlay provides transactional rows; dialect policy controls definition rollback.
 type temporaryCatalog struct {
-	tables   map[string]*TableInfo
-	indexes  map[string]*IndexInfo
-	base     *schemaState
-	ids      map[uint64]bool
-	dropped  map[uint64]bool
-	autoinc  map[string]int64
-	nextRow  map[string]int64
-	building bool
+	tables         map[string]*TableInfo
+	indexes        map[string]*IndexInfo
+	base           *schemaState
+	ids            map[uint64]bool
+	pendingCleanup map[uint64]bool
+	dropped        map[uint64]bool
+	autoinc        map[string]int64
+	nextRow        map[string]int64
+	building       bool
 }
 
 func (s *Schema) hasTemporaryTables() bool { return s.temporary != nil && len(s.temporary.tables) > 0 }
@@ -169,14 +170,20 @@ func (s *Schema) renameTemporaryTable(table, name string) error {
 }
 
 func (s *Schema) snapshotTemporaryDefinitions() *temporaryCatalog {
-	if s.temporary == nil {
+	return cloneTemporaryDefinitions(s.temporary)
+}
+func cloneTemporaryDefinitions(t *temporaryCatalog) *temporaryCatalog {
+	if t == nil {
 		return nil
 	}
-	copy := *s.temporary
-	copy.tables = maps.Clone(copy.tables)
-	copy.indexes = maps.Clone(copy.indexes)
-	copy.autoinc = maps.Clone(copy.autoinc)
-	copy.dropped = maps.Clone(copy.dropped)
+	copy := *t
+	copy.tables = maps.Clone(t.tables)
+	copy.indexes = maps.Clone(t.indexes)
+	copy.ids = maps.Clone(t.ids)
+	copy.autoinc = maps.Clone(t.autoinc)
+	copy.nextRow = maps.Clone(t.nextRow)
+	copy.dropped = maps.Clone(t.dropped)
+	copy.pendingCleanup = maps.Clone(t.pendingCleanup)
 	return &copy
 }
 
@@ -213,7 +220,14 @@ func (s *Schema) dropTemporaryTable(stmt *DropTableStmt) error {
 	for id := range ids {
 		t.dropped[id] = true
 	}
-	if err := s.cleanupTemporaryIDs(ids); err != nil {
+	if s.inTx && s.Dialect().TemporaryDDLPolicy().TransactionalDefinitions {
+		if t.pendingCleanup == nil {
+			t.pendingCleanup = map[uint64]bool{}
+		}
+		for id := range ids {
+			t.pendingCleanup[id] = true
+		}
+	} else if err := s.cleanupTemporaryIDs(ids); err != nil {
 		return err
 	}
 	s.restoreState(persistent)
@@ -323,16 +337,17 @@ func (s *Schema) prepareTemporaryBatch(batch []storage.Mutation) []storage.Mutat
 	out := batch[:0]
 	for _, w := range batch {
 		if s.temporaryKey(w.Key) {
-			if s.temporary.dropped[binary.BigEndian.Uint64(w.Key[3:11])] {
+			if id := binary.BigEndian.Uint64(w.Key[3:11]); s.temporary.dropped[id] || s.temporary.pendingCleanup[id] {
 				continue
 			}
 			w.NoWAL = true
 		}
 		out = append(out, w)
 	}
+	out = append(out, temporaryCleanupMutations(s.temporary.pendingCleanup)...)
 	return out
 }
-func (s *Schema) cleanupTemporaryIDs(ids map[uint64]bool) error {
+func temporaryCleanupMutations(ids map[uint64]bool) []storage.Mutation {
 	batch := make([]storage.Mutation, 0, len(ids)*2)
 	for id := range ids {
 		for _, kind := range []byte{1, 2} {
@@ -340,7 +355,10 @@ func (s *Schema) cleanupTemporaryIDs(ids map[uint64]bool) error {
 			batch = append(batch, storage.Mutation{Key: prefix, Value: prefixSuccessor(prefix), RangeDelete: true, NoWAL: true})
 		}
 	}
-	return s.lsm.WriteBatch(batch)
+	return batch
+}
+func (s *Schema) cleanupTemporaryIDs(ids map[uint64]bool) error {
+	return s.lsm.WriteBatch(temporaryCleanupMutations(ids))
 }
 
 // Only a physical database's initial catalog open clears crash leftovers.

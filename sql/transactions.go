@@ -437,6 +437,7 @@ func (s *Schema) endTransaction() {
 	s.txWrites = nil
 	s.txLatest = nil
 	s.txState = nil
+	s.txTemporary = nil
 	s.savepoints = nil
 	s.txRowVersions = nil
 	s.txHasWrites = false

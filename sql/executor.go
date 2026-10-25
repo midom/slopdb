@@ -155,6 +155,7 @@ type Schema struct {
 	mysqlFunctions       mysqlFunctionSessionState
 	mysqlConflictChanged bool
 	temporary            *temporaryCatalog
+	txTemporary          *temporaryCatalog
 	nextTemporaryID      atomic.Uint64
 
 	// Sessions share a committed catalog, but keep private transaction state.
@@ -206,6 +207,7 @@ type savepoint struct {
 	name            string
 	pos             int
 	state           *schemaState
+	temporary       *temporaryCatalog
 	outer           bool
 }
 
@@ -1912,6 +1914,7 @@ func (s *Schema) BeginWithOptions(stmt *BeginStmt) error {
 	s.nextIsolation = ""
 	s.txIsolation = level
 	s.txState = s.captureState()
+	s.txTemporary = s.transactionalTemporarySnapshot()
 	s.inTx = true
 	s.postgresTransactionTime = s.statementTime
 	if s.postgresTransactionTime.IsZero() {
@@ -1951,12 +1954,13 @@ func (s *Schema) Commit() error {
 		for _, w := range s.txWrites {
 			batch = append(batch, storage.Mutation{Key: w.key, Value: w.value, Delete: w.del})
 		}
-		if len(batch) > 0 {
+		if len(batch) > 0 || s.hasPendingTemporaryCleanup() {
 			if err := s.writeBatchWithOnlineIndexes(batch); err != nil {
 				return err
 			}
 			s.parent.commitVersion.Add(1)
 		}
+		s.finishTemporaryCommit()
 		s.endTransaction()
 		return nil
 	}
@@ -1986,7 +1990,8 @@ func (s *Schema) Commit() error {
 		s.autoincMax = mergeCounter(nil, s.autoincMax, root.autoincQueued)
 		root.autoincQueued = maps.Clone(s.autoincMax)
 	}
-	if len(s.txWrites) == 0 && !persistent {
+	if len(s.txWrites) == 0 && !persistent && !s.hasPendingTemporaryCleanup() {
+		s.finishTemporaryCommit()
 		s.endTransaction()
 		return nil
 	}
@@ -2047,6 +2052,7 @@ func (s *Schema) Commit() error {
 		root.autoincMax = mergeCounter(nil, s.autoincMax, root.autoincMax)
 		root.stateVersion++
 		root.commitVersion.Add(1)
+		s.finishTemporaryCommit()
 		s.endTransaction()
 		return nil
 	}
@@ -2088,6 +2094,7 @@ func (s *Schema) Commit() error {
 			s.parent.catalogVersion++
 		}
 	}
+	s.finishTemporaryCommit()
 	s.endTransaction()
 	return nil
 }
@@ -2095,6 +2102,7 @@ func (s *Schema) Rollback() error {
 	if !s.inTx {
 		return fmt.Errorf("not in a transaction")
 	}
+	s.restoreTransactionalTemporary(s.txTemporary)
 	s.restoreState(s.txState)
 	s.endTransaction()
 	return nil
@@ -2106,7 +2114,7 @@ func (s *Schema) Savepoint(name string) error {
 			return err
 		}
 	}
-	s.savepoints = append(s.savepoints, savepoint{name: strings.ToLower(name), pos: len(s.txWrites), state: s.captureState(), outer: outer, constraintModes: maps.Clone(s.foreignConstraintModes)})
+	s.savepoints = append(s.savepoints, savepoint{name: strings.ToLower(name), pos: len(s.txWrites), state: s.captureState(), temporary: s.transactionalTemporarySnapshot(), outer: outer, constraintModes: maps.Clone(s.foreignConstraintModes)})
 	return nil
 }
 func (s *Schema) savepointIndex(name string) int {
@@ -2134,6 +2142,7 @@ func (s *Schema) RollbackTo(name string) error {
 		return fmt.Errorf("savepoint %q not found", name)
 	}
 	sp := s.savepoints[idx]
+	s.restoreTransactionalTemporary(sp.temporary)
 	s.restoreState(sp.state)
 	s.foreignConstraintModes = maps.Clone(sp.constraintModes)
 	s.truncateTxWrites(sp.pos)
@@ -2141,6 +2150,7 @@ func (s *Schema) RollbackTo(name string) error {
 	s.savepoints = s.savepoints[:idx+1]
 	// Keep a fresh copy so repeated rollbacks do not mutate the saved state.
 	s.savepoints[idx].state = s.captureState()
+	s.savepoints[idx].temporary = s.transactionalTemporarySnapshot()
 	return nil
 }
 
