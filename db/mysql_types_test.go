@@ -317,3 +317,27 @@ func TestMySQLEnumNumericContextsAndOrder(t *testing.T) {
 		t.Fatalf("clustered enum order: %+v", r.Rows)
 	}
 }
+
+func TestMySQLDeleteIntegerPrimaryKeyInNumericStrings(t *testing.T) {
+	d, err := db.Open(t.TempDir(), storage.DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	s := mysqlTypeSession(t, d)
+	mysqlTypeExec(t, s, "CREATE TABLE revision(rev_id INTEGER PRIMARY KEY,rev_page INTEGER,KEY page_idx(rev_page))")
+	mysqlTypeExec(t, s, "INSERT INTO revision VALUES(1,1),(2,2),(3,3),(4,4)")
+	r := mysqlTypeExec(t, s, "DELETE FROM revision WHERE rev_id IN ('2','3')")
+	if r.Changes != 2 {
+		t.Fatalf("quoted integer IN deleted %d rows", r.Changes)
+	}
+	r = mysqlTypeExec(t, s, "SELECT rev_id FROM revision ORDER BY rev_id")
+	if len(r.Rows) != 2 || r.Rows[0]["rev_id"].Int != 1 || r.Rows[1]["rev_id"].Int != 4 {
+		t.Fatalf("remaining revisions: %+v", r.Rows)
+	}
+	mysqlTypeExec(t, s, "INSERT INTO revision VALUES(2,2),(3,3)")
+	r = mysqlTypeExec(t, s, "DELETE FROM revision WHERE rev_page IN ('2','3')")
+	if r.Changes != 2 {
+		t.Fatalf("secondary quoted integer IN deleted %d rows", r.Changes)
+	}
+}

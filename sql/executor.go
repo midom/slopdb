@@ -6809,6 +6809,9 @@ func compareSQLValues(lv, rv Value, op string) Value {
 
 func (s *Schema) valueCompare(a, b Value) int {
 	if s.mysqlMode {
+		if cmp, ok := mysqlMixedNumericCompare(a, b); ok {
+			return cmp
+		}
 		if cmp, ok := mysqlBinaryCompare(a, b); ok {
 			return cmp
 		}

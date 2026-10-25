@@ -197,6 +197,40 @@ func (s *Schema) orderValueCompare(a, b Value) int {
 	return s.valueCompare(a, b)
 }
 
+func mysqlNumericComparisonValue(v Value) Value {
+	if v.EnumValue {
+		return NewIntValue(v.EnumOrdinal)
+	}
+	if v.Type != ColText && v.Type != ColBlob {
+		return v
+	}
+	text := v.Text
+	if v.Type == ColBlob {
+		text = string(v.Blob)
+	}
+	text = strings.TrimSpace(text)
+	prefix := mysqlNumericPrefix.FindString(text)
+	if i, err := strconv.ParseInt(prefix, 10, 64); err == nil {
+		return NewIntValue(i)
+	}
+	if f, err := strconv.ParseFloat(prefix, 64); err == nil {
+		return NewRealValue(f)
+	}
+	return NewIntValue(0)
+}
+
+func mysqlMixedNumericCompare(a, b Value) (int, bool) {
+	if a.Null || b.Null {
+		return 0, false
+	}
+	numeric := func(v Value) bool { return v.Type == ColInteger || v.Type == ColReal }
+	stringValue := func(v Value) bool { return v.Type == ColText || v.Type == ColBlob }
+	if numeric(a) && stringValue(b) || numeric(b) && stringValue(a) {
+		return ValueCompare(mysqlNumericComparisonValue(a), mysqlNumericComparisonValue(b)), true
+	}
+	return 0, false
+}
+
 // normalizeColumnValue is shared by inserts, updates and ALTER rewrites, before
 // validation and key encoding. It never returns borrowed binary storage.
 func normalizeColumnValue(v Value, col ColumnDef) (Value, error) {
