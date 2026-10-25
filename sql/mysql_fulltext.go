@@ -251,11 +251,11 @@ type fulltextTerm struct {
 	children         []fulltextTerm
 }
 type fulltextQuery struct {
-	terms           []fulltextTerm
-	boolean, myisam bool
-	minWord         int
-	docs            int64
-	frequency       map[string]int64
+	terms     []fulltextTerm
+	boolean   bool
+	minWord   int
+	docs      int64
+	frequency map[string]int64
 }
 
 func foldFulltext(text string) string {
@@ -275,10 +275,7 @@ func (q *fulltextQuery) indexed(word string) bool {
 	if n < q.minWord || n > 84 {
 		return false
 	}
-	if q.myisam {
-		return !myisamStopwords[word]
-	}
-	return !innodbStopwords[word]
+	return !fulltextStopwords[word]
 }
 
 func parseBooleanFulltext(text string, q *fulltextQuery) ([]fulltextTerm, error) {
@@ -456,12 +453,7 @@ func (s *Schema) evalFulltext(f *FuncCallExpr, row map[string]Value) (Value, err
 	key := binding.index.Name + "\x00" + mode + "\x00" + text
 	q := s.fulltextQueries[key]
 	if q == nil {
-		q = &fulltextQuery{boolean: mode == "BOOLEAN", minWord: 3, frequency: map[string]int64{}}
-		// Engine metadata is resolved by a helper to keep legacy catalog entries valid.
-		q.myisam = fulltextMyISAM(binding.table)
-		if q.myisam {
-			q.minWord = 4
-		}
+		q = &fulltextQuery{boolean: mode == "BOOLEAN", minWord: 4, frequency: map[string]int64{}}
 		if q.boolean {
 			q.terms, err = parseBooleanFulltext(text, q)
 		} else {
@@ -516,11 +508,8 @@ func (s *Schema) evalFulltext(f *FuncCallExpr, row map[string]Value) (Value, err
 			continue
 		}
 		df := q.frequency[term.words[0]]
-		if q.myisam && df*2 >= q.docs {
-			continue
-		}
 		idf := math.Log10(float64(q.docs+1) / float64(df+1))
-		if idf == 0 && !q.myisam {
+		if idf == 0 {
 			idf = 1e-9
 		}
 		score += float64(n) * idf * idf
@@ -560,8 +549,6 @@ func (s *Schema) fulltextCorpus(q *fulltextQuery, b fulltextBinding) error {
 	}
 	return storage.IteratorError(it)
 }
-
-func fulltextMyISAM(info *TableInfo) bool { return strings.EqualFold(info.Engine, "MyISAM") }
 
 func (s *Schema) fulltextDocumentWords(text string, remaining int64) ([]string, error) {
 	if int64(len(text))*3 > remaining {
