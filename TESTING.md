@@ -212,7 +212,26 @@ isolation, LIKE schema copies, joined mutations, Unicode charset changes and
 ALTER index prefixes. `db/mysql_types_test.go` and `db/mysql_fulltext_test.go`
 cover persistent types, assignment modes, prepared bindings and search budgets.
 `mysqlserver/*test.go` exercises declared wire types, warnings, named locks,
-account/grant persistence and real database isolation over client connections.
+account metadata and virtual schema isolation over client connections.
+
+`db/temporary_lsm_test.go` exercises reserved-range temporary rows, WAL exclusion,
+flush/reopen and crash cleanup. `db/prefix_indexes_test.go` covers physical keys,
+prefix uniqueness and query residuals. `db/fulltext_inverted_test.go` checks
+posting maintenance, online builds, reopen and selective document reads.
+`db/isolation_test.go` covers retained snapshots, current locking/mutation reads,
+private writes, prepared/streaming queries and snapshot release through compaction.
+`db/namespaces_test.go` and the protocol namespace tests cover qualified objects,
+search paths, prepared binding and transactionally switching default schemas.
+Legacy child-database migration tests use real crash points and retain original
+source directories.
+
+Numeric and JSON tests cover full uint64, exact DECIMAL keys/arithmetic, binary
+row/spill formats, JSON paths/functions and fresh/reopened data. MySQL prepared
+metadata tests assert that preparation does not evaluate user expressions.
+Multiple-result and compression tests exercise standard drivers and raw frames.
+`storage/change_log_test.go` and `db/change_log_test.go` verify transactional CDC
+before/after images, group commit boundaries, restart/crash recovery, deterministic
+replica records, schema checkpoints and temporary/index exclusion.
 
 ```sh
 go test ./db ./sql ./mysqlserver ./tests/regression -run 'Test(MySQL|MediaWiki|Temporary)' -count=1

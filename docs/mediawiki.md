@@ -30,25 +30,29 @@ and visible index names into independently owned catalog objects.
 
 Session-private temporary tables support ordinary queries, joins, indexes and
 transactional row changes. Definitions survive transaction rollback and disappear
-when the session closes or resets; temporary rows and catalog entries are never
-written to the persistent database.
+when the session closes or resets. Their rows and indexes occupy a reserved
+range in the same LSM, bypass the WAL and replication, and are removed on
+shutdown and on restart. They may spill to SSTables; they are not a separate
+in-memory storage engine.
 
 `FULLTEXT` declarations persist and `MATCH ... AGAINST` executes natural-language
 and Boolean searches, including required/excluded terms, prefixes, phrases and
 groups. Searches respect statement snapshots, private transaction changes,
 cancellation and query budgets. Search terms use a four-character minimum and
-the documented stopword vocabulary in the source. Fulltext evaluation currently
-scans documents; the maintained document indexes do not provide inverted posting
-lists. Relevance scores are SlopDB's own scores, not an emulation of either MySQL
+the documented stopword vocabulary in the source. An inverted index stores term
+postings and positions in the LSM. Selective searches fetch candidate documents
+from those postings; corpus statistics use lightweight document markers.
+Relevance scores are SlopDB's own scores, not an emulation of either MySQL
 storage engine's scoring algorithm.
 
 The endpoint also supplies the installer/session settings, named locks with real
 cross-connection ownership and waits, warning packets and `SHOW WARNINGS`,
 `CLIENT_FOUND_ROWS`, declared prepared-result types, MySQL-shaped EXPLAIN rows,
-and the system-catalog views used by MediaWiki. Accounts, password hashes and
-global/database grants persist. Additional databases have separate native
-storage and `USE` selects their sessions. See [MySQL server](mysql-server.md)
-for the supported administration commands and database/backup boundaries.
+and the system-catalog views used by MediaWiki. Login accounts and password
+hashes persist; permission checks are disabled. Additional databases are virtual
+schemas in the same physical LSM, and `USE` changes default name resolution.
+Qualified joins and transactionally switching schemas are supported. See
+[MySQL server](mysql-server.md) for protocol and replication details.
 
 ## Verification
 
@@ -83,16 +87,23 @@ remain outside this repository.
 ## Boundaries
 
 This covers the core application's audited requirements, not complete MySQL
-compatibility or arbitrary extensions. Integers remain signed int64 internally;
-unsigned values above `MaxInt64` are rejected. Nonunique prefix indexes preserve
-their requested lengths in metadata and use full-value physical keys. Unique
-prefix indexes are rejected. Unicode charset conversion supports utf8, utf8mb3
-and utf8mb4; other character encodings are not silently rewritten.
+compatibility or arbitrary extensions. Signed integers retain exact int64 values;
+unsigned integers cover the complete uint64 range. Unique and nonunique prefix
+indexes use character prefixes for TEXT and byte prefixes for binary columns,
+including uniqueness checks and residual query predicates. Unicode charset
+conversion maps utf8, utf8mb3 and utf8mb4 to full Unicode, without imposing the
+three-byte restriction; invalid UTF-8 is still rejected. Other character
+encodings are not silently rewritten. DECIMAL has exact decimal arithmetic and
+up to 65 digits; JSON validates documents and supplies functions and path accessors.
 
-Only READ COMMITTED isolation is supported. Ordinary DDL retains SlopDB's
+MySQL sessions default to REPEATABLE READ: ordinary SELECTs retain the first
+consistent-read snapshot, while locking reads and mutations use current committed
+data plus private writes. READ COMMITTED remains available and is the native API
+default. Ordinary DDL retains SlopDB's
 transactional semantics. Joined mutations require physical source tables;
-derived mutation sources are rejected. Temporary foreign keys are unsupported. Temporary table data remains in session
-memory; the query memory budget does not limit its total stored size.
-Cross-database joins and switching databases within a transaction are unsupported.
+derived mutation sources are rejected. Temporary foreign keys are unsupported.
+Persistent foreign keys support composite/self references, CASCADE, SET NULL,
+SET DEFAULT and deferred checks. MATCH FULL/PARTIAL and MySQL gap locks are not
+implemented.
 Stored routines, general MySQL system schemas and other protocol limits are
 listed in [MySQL server](mysql-server.md).

@@ -43,8 +43,9 @@ A named password environment variable must exist; an explicitly empty value
 permits passwordless login. Authentication uses `mysql_native_password`. There
 is a configured bootstrap account with full access. `CREATE USER`, `ALTER USER`,
 `DROP USER`, `GRANT`, `REVOKE` and `SHOW GRANTS` manage persistent additional accounts.
-Database-wide and global grants are enforced on each statement, including prepared
-executions after a revoke. Password hashes and grants share the database's normal
+Permission checks are currently disabled: authenticated accounts can access all
+schemas. Grant metadata remains available for compatibility. Password hashes and
+grant metadata share the database's normal
 WAL durability. The bootstrap account remains configured by startup flags and
 cannot be changed through SQL. Supported account hosts are exact addresses,
 `localhost` (including loopback TCP), and `%`; authentication uses
@@ -118,24 +119,29 @@ and connection reset. Results carry column metadata, NULLs, binary values,
 affected-row counts, generated IDs and transaction status. `CLIENT_FOUND_ROWS`
 selects matched-row counts; ordinary MySQL updates report changed rows.
 
-`CREATE DATABASE` creates an isolated native SlopDB database under
-`mysql-databases/<hashed-name>` in the configured data directory. It never aliases
-the initial database. The server reopens these databases on startup and flushes
-them on shutdown. Additional databases currently require a standalone server;
-replicated servers reject their creation. `USE` and handshake selection enforce
-grants. Switching databases inside a transaction and cross-database SQL statements
-are unsupported. `information_schema.tables` and `columns` describe the current
-database's live catalog; `schemata` lists authorized databases. Copying only the
-initial database through the backup API does not include additional databases;
-back up each database independently or copy the full closed directory tree.
+`CREATE DATABASE` / `CREATE SCHEMA` create virtual namespaces inside the same
+physical LSM. `USE` changes a connection's default namespace, including inside a
+transaction; qualified names support cross-schema queries and mutations. The
+configured initial database aliases `main`. PostgreSQL clients can use
+`CREATE SCHEMA` and `SET search_path`. A database backup includes all namespaces.
+Existing child databases under `mysql-databases/` are imported at MySQL startup
+using resumable typed batches and durable completion markers. Original sources
+are preserved. Import rejects differing database-wide collations rather than
+changing comparison semantics silently.
 
 `BEGIN` / `START TRANSACTION`, `COMMIT`, `ROLLBACK` and savepoints use the normal
 SlopDB transaction implementation. Disconnect and connection reset discard
 uncommitted writes. `SET [SESSION] autocommit=0` starts transactions lazily;
 `COMMIT` and `ROLLBACK` finish them, and the next SQL statement starts a new one.
 Setting autocommit back to `1` commits pending work. The default is autocommit.
-`SET [SESSION] TRANSACTION ISOLATION LEVEL READ COMMITTED` is accepted; other
-isolation levels and unsupported settings return errors. DDL follows SlopDB's
+MySQL sessions default to REPEATABLE READ. Plain SELECTs use a snapshot established
+by the first consistent table read; `START TRANSACTION WITH CONSISTENT SNAPSHOT`
+establishes it immediately. Locking reads and mutations, including their
+subqueries, read current committed data plus private writes. Own writes remain
+visible to consistent reads. `SET [SESSION] TRANSACTION ISOLATION LEVEL
+READ COMMITTED` or `REPEATABLE READ` changes the session default; unqualified
+`SET TRANSACTION` changes the next transaction. There are no gap locks or
+SERIALIZABLE isolation. DDL follows SlopDB's
 transactional behavior and does not implicitly commit an explicit transaction.
 
 Replicated commits include `slopdb_commit_position` in the OK packet's info
@@ -169,21 +175,26 @@ clauses are ignored; `SHOW TABLE STATUS` and `information_schema.tables` identif
 LSM storage. No alternate storage engine is selected by portable MySQL schemas.
 Other queries run through the native SQL engine, including `SHOW`, `DESCRIBE` and
 introspection. The supported virtual system tables are `information_schema.schemata`,
-`tables`, `columns`, `user_privileges`, `schema_privileges`, and an administrator-only
+`tables`, `columns`, `user_privileges`, `schema_privileges`, and a compatibility
 `mysql.user` view of account names and hosts.
 
-Prepared parameters use anonymous `?` placeholders. Result metadata is sent at
-execution; prepare reports parameter metadata and no result columns. Clients
-that require result metadata before execution are not supported. Statements
-are never executed to discover metadata during prepare. MySQL cursors, multiple
-statements in a single query, multiple result sets, compression, replication,
-LOCAL INFILE, stored procedures, table-specific grants, roles, and general
-administrative MySQL commands are not implemented or advertised. Unsupported commands return protocol errors.
+Prepared parameters use anonymous `?` placeholders. Preparation returns parameter
+and result metadata by inspecting the bound catalog and expression types, without
+executing the statement or evaluating user expressions. Prepared statements retain
+their preparation namespace. Catalog changes invalidate cached plans and metadata.
+Negotiated multi-statements return one result per statement, stop at the first
+failure, and set the protocol's more-results flag. `COM_SET_OPTION` can toggle
+multi-statements. Standard zlib protocol compression uses independently sequenced,
+bounded compressed frames and works with TLS. MySQL cursors, LOCAL INFILE, stored
+procedures and general administrative MySQL commands remain unsupported.
 
 SlopDB validates stored column types. MySQL sessions convert wire strings to
 BLOBs for binary columns, including empty values. Native API sessions retain
-strict BLOB affinity. SQL BLOB literals such as `X'00ff'` also work. Unsigned parameters above `MaxInt64` are
-rejected, consistent with SlopDB's native integer range. Declared MySQL integer widths, unsigned flags, FLOAT, DATE/DATETIME/TIMESTAMP,
+strict BLOB affinity. SQL BLOB literals such as `X'00ff'` also work. Signed int64
+and unsigned uint64 parameters, rows and generated IDs retain their complete
+ranges. DECIMAL values use exact decimal arithmetic and NEWDECIMAL wire metadata;
+JSON uses validated JSON storage, JSON functions/path accessors and JSON wire
+metadata. Declared MySQL integer widths, unsigned flags, FLOAT, DATE/DATETIME/TIMESTAMP,
 fixed BINARY and ENUM are reflected in result metadata and binary prepared rows.
 Native REAL values retain float64 precision on the wire. Mixed-type expression columns use a string wire
 type to preserve their values without rounding large integers.

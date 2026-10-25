@@ -24,7 +24,8 @@ within one open instance. Row data still uses the selected WAL and fsync mode.
 The option applies to all automatic-ID columns in that open instance. Previously
 stored counters are ignored for allocation while this option is enabled.
 
-All columns enforce their declared INTEGER, REAL, TEXT, or BLOB type after the
+All columns enforce their declared INTEGER, unsigned integer, REAL, DECIMAL,
+JSON, TEXT, or BLOB type after the
 existing affinity conversions. `VARCHAR(n)` uses TEXT storage and collation,
 but limits the stored value to `n` Unicode code points. `VARBINARY(n)` uses BLOB
 storage and limits the value to `n` bytes. Both require a positive integer length,
@@ -38,6 +39,23 @@ and an INTEGER can become REAL, but arbitrary text cannot be stored in an
 INTEGER column. Point updates and general DML follow the same rules. UNIQUE
 continues to permit multiple NULL values, and CHECK accepts UNKNOWN as well as
 TRUE.
+
+Signed integer values use int64 and unsigned values use uint64, including keys,
+aggregates, parameters and generated IDs. Declared MySQL integer widths enforce
+their signed/unsigned bounds. DECIMAL supports precision up to 65 and scale up to
+30, with exact comparisons, arithmetic and index keys. Assignment rounds to the
+declared scale and checks overflow atomically. Native REAL expressions still
+return float64; source numeric literals preserve exact spelling through DECIMAL
+assignment and casts. MySQL integer division with `/` returns DECIMAL, including
+four fractional digits for integer operands; native integer division retains
+the native integer behavior.
+
+JSON validates UTF-8 documents, preserves exact JSON numbers and supports nested
+objects/arrays. Functions include JSON_EXTRACT, JSON_VALUE, JSON_SET,
+JSON_INSERT, JSON_REPLACE, JSON_REMOVE, JSON_ARRAY, JSON_OBJECT, JSON_CONTAINS,
+JSON_OVERLAPS, JSON_MERGE_PATCH and JSON_MERGE_PRESERVE. `->` / `->>` provide JSON
+and text access, with `#>` / `#>>` path-array access. JSON depth is limited to 100.
+JSON is not a PostgreSQL JSONB implementation and does not supply JSON_TABLE.
 
 Increasing a VARCHAR or VARBINARY length with `ALTER COLUMN ... TYPE` updates
 catalog metadata without rewriting rows or indexes. A shorter length checks
@@ -67,7 +85,8 @@ unique index are rejected. Referenced parent rows are locked until transaction
 completion, including UNIQUE-key references, so concurrent child inserts and
 parent changes cannot both commit an orphan. Failed statements roll back their
 writes. Renames preserve references, and transaction rollback restores the
-original constraint metadata.
+original constraint metadata. Prefix-only UNIQUE indexes are not candidate keys
+for foreign-key references.
 
 ON DELETE / ON UPDATE CASCADE, SET NULL and SET DEFAULT update dependent rows
 atomically, maintaining indexes and constraints recursively. SET NULL requires

@@ -47,8 +47,12 @@ See [online indexes](docs/online-indexes.md) and
 - [x] Query timeout overrides, lock-wait timeouts and optional deadlock detection
 - [x] SELECT FOR UPDATE / FOR SHARE / LOCK IN SHARE MODE, NOWAIT and SKIP LOCKED
 
-Only READ COMMITTED is supported. Each statement sees the latest committed data
-plus its transaction's writes; nonrepeatable reads and phantoms are allowed.
+READ COMMITTED is the native API default. MySQL sessions default to REPEATABLE
+READ, with a retained consistent-read snapshot for plain SELECT and current
+statement views for locking reads and mutations. Own writes overlay both views.
+READ COMMITTED statements see the latest committed data plus private writes;
+nonrepeatable reads and phantoms are allowed at that level. Gap locks and
+SERIALIZABLE remain unsupported.
 Independent sessions execute statements concurrently using MVCC snapshots;
 commits publish atomic storage batches. Writers hold row and UNIQUE value locks
 until commit or rollback. Blocked statements release their shared execution
@@ -130,11 +134,15 @@ reverse seeks. `VACUUM` flushes writes and compacts SSTables.
 
 - [x] MySQL 4.1 protocol over TCP and Unix sockets, password authentication, independent sessions, text queries and binary prepared execution; see [MySQL server](docs/mysql-server.md) for compatibility limits
 - [x] MySQL TLS 1.2/1.3 with required transport and CA-verified client certificate authentication on both TCP and Unix sockets
-- [x] Persistent MySQL accounts/password hashes, global/database grants and isolated standalone databases
+- [x] Persistent MySQL accounts/password hashes; permission enforcement disabled
+- [x] Virtual MySQL databases / PostgreSQL schemas in one physical LSM, cross-schema SQL and per-session default resolution
 - [x] MediaWiki core schema and workflows: MySQL types/coercions, session settings, named locks, fulltext searches, schema copies, temporary tables and joined mutations; see [MediaWiki compatibility](docs/mediawiki.md)
-- [ ] Prepared result metadata before execution
+- [x] Prepared result metadata before execution without evaluating user expressions
+- [x] MySQL multiple statements/results and zlib protocol compression
+- [x] WAL-less temporary LSM tables, inverted fulltext postings and physical UNIQUE/nonunique prefix indexes
+- [x] Exact signed/unsigned integers, DECIMAL and JSON types with JSON functions/accessors
 - [x] PostgreSQL 3.0 emulation over TCP/Unix sockets with SCRAM-SHA-256, TLS/client CA authentication, simple/extended queries, prepared metadata, typed bindings, portals, cancellation and transaction recovery; see [PostgreSQL emulation](docs/postgres-server.md)
-- [ ] PostgreSQL system catalogs/schemas, COPY, newer wire versions and broader PostgreSQL-specific SQL/types
+- [ ] Broader PostgreSQL system catalogs, COPY, newer wire versions and additional PostgreSQL-specific SQL/types
 
 ## Miscellaneous
 
