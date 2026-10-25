@@ -351,6 +351,9 @@ func (m *metadata) expression(expr sql.Expression, env map[string]uint32) uint32
 		if oid := sql.PostgresValueOID(e.Value); oid != 0 {
 			return oid
 		}
+		if e.Value.NumericText != "" && !strings.ContainsAny(e.Value.NumericText, "eE") {
+			return oidNumeric
+		}
 		return nativeOID(e.Value.Type)
 	case *sql.ColumnRefExpr:
 		if oid := env[e.Name]; oid != 0 {

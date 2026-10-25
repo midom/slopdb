@@ -31,6 +31,64 @@ func postgresClockFunctions() map[string]mysqlFunctionSpec {
 			return NewTextValue(postgresTimeText(t, true)), nil
 		})
 	}
+	for _, name := range strings.Fields("CURRENT_TIMESTAMP CURRENT_DATE CURRENT_TIME LOCALTIME LOCALTIMESTAMP") {
+		name := name
+		decl := "TIMESTAMPTZ"
+		switch name {
+		case "CURRENT_DATE":
+			decl = "DATE"
+		case "CURRENT_TIME":
+			decl = "TIMETZ"
+		case "LOCALTIME":
+			decl = "TIME"
+		case "LOCALTIMESTAMP":
+			decl = "TIMESTAMP"
+		}
+		max := 1
+		if name == "CURRENT_DATE" {
+			max = 0
+		}
+		add(name, 0, max, ColText, decl, true, func(s *Schema, a []Value) (Value, error) {
+			t := s.statementTime
+			if s.inTx && !s.postgresTransactionTime.IsZero() {
+				t = s.postgresTransactionTime
+			}
+			if t.IsZero() {
+				t = time.Now().UTC()
+			}
+			t = t.UTC()
+			precision := int64(6)
+			if len(a) > 0 {
+				if a[0].Null {
+					return NewNullValue(), fmt.Errorf("timestamp precision must not be null")
+				}
+				p, e := CastPostgresValue(a[0], "INTEGER")
+				if e != nil {
+					return NewNullValue(), e
+				}
+				precision = p.Int
+				if precision < 0 {
+					return NewNullValue(), fmt.Errorf("timestamp precision must not be negative")
+				}
+				if precision > 6 {
+					precision = 6
+				}
+			}
+			t = t.Round(time.Duration(math.Pow10(9 - int(precision))))
+			switch name {
+			case "CURRENT_DATE":
+				return NewTextValue(t.Format("2006-01-02")), nil
+			case "CURRENT_TIME":
+				return NewTextValue(t.Format("15:04:05.999999") + "+00:00"), nil
+			case "LOCALTIME":
+				return NewTextValue(t.Format("15:04:05.999999")), nil
+			case "LOCALTIMESTAMP":
+				return NewTextValue(postgresTimeText(t, false)), nil
+			default:
+				return NewTextValue(postgresTimeText(t, true)), nil
+			}
+		})
+	}
 	add("TIMEOFDAY", 0, 0, ColText, "TEXT", true, func(*Schema, []Value) (Value, error) {
 		return NewTextValue(time.Now().UTC().Format("Mon Jan 02 15:04:05.000000 2006 MST")), nil
 	})
@@ -64,7 +122,7 @@ func postgresClockFunctions() map[string]mysqlFunctionSpec {
 			case "PG_CLIENT_ENCODING":
 				return NewTextValue("UTF8"), nil
 			default:
-				return NewTextValue("PostgreSQL 16.0 compatible SlopDB (LSM)"), nil
+				return NewTextValue("PostgreSQL 15.0 (SlopDB protocol emulation)"), nil
 			}
 		})
 	}
@@ -242,6 +300,7 @@ func postgresClockFunctions() map[string]mysqlFunctionSpec {
 	return out
 }
 func postgresTimeText(t time.Time, zoned bool) string {
+	t = t.Round(time.Microsecond)
 	if zoned {
 		return t.UTC().Format("2006-01-02 15:04:05.999999") + "+00"
 	}

@@ -36,7 +36,11 @@ func PostgresFunctionMetadata(name string, args []ColumnDef) (ColumnDef, bool) {
 }
 func validPostgresFunction(name string, n int) (bool, bool) {
 	spec, ok := postgresFunctionRegistry[name]
-	return ok && n >= spec.Min && (spec.Max < 0 || n <= spec.Max), ok
+	valid := ok && n >= spec.Min && (spec.Max < 0 || n <= spec.Max)
+	if name == "JSON_BUILD_OBJECT" || name == "JSONB_BUILD_OBJECT" {
+		valid = valid && n%2 == 0
+	}
+	return valid, ok
 }
 func (s *Schema) evalPostgresFunc(e *FuncCallExpr, row map[string]Value) (Value, bool, error) {
 	if !s.postgresMode {

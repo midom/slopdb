@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"slopdb/sql"
 )
 
 func TestPostgresFunctionTypedMetadata(t *testing.T) {
@@ -158,5 +159,86 @@ func TestPostgresDuplicateLabelsPreserveValues(t *testing.T) {
 	}
 	if e = c.QueryRow(ctx, `SELECT v AS same,upper(v) AS same FROM repeated_returning UNION ALL SELECT 'x','Y' LIMIT 1`).Scan(&a, &b); e != nil || a != "value" || b != "VALUE" {
 		t.Fatal(a, b, e)
+	}
+}
+
+func TestPostgresExactNumericLiteralFunctions(t *testing.T) {
+	s := startTestServer(t, "tcp", Config{})
+	ctx := context.Background()
+	c, e := pgx.Connect(ctx, s.dsn("slopdb", "", "slopdb"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer c.Close(ctx)
+	for _, mode := range []pgx.QueryExecMode{pgx.QueryExecModeCacheStatement, pgx.QueryExecModeSimpleProtocol} {
+		rows, e := c.Query(ctx, `SELECT round(1.5) AS a,round(-123.456,2) AS b,trunc(123.456,2) AS c,1.234567890123456789 AS d`, mode)
+		if e != nil {
+			t.Fatal(e)
+		}
+		for _, f := range rows.FieldDescriptions() {
+			if f.DataTypeOID != oidNumeric {
+				t.Fatalf("mode %v field %s OID %d", mode, f.Name, f.DataTypeOID)
+			}
+		}
+		if !rows.Next() {
+			t.Fatal(rows.Err())
+		}
+		raw := rows.RawValues()
+		for i, w := range []string{"2", "-123.46", "123.45", "1.234567890123456789"} {
+			v, e := decodeValue(raw[i], oidNumeric, rows.FieldDescriptions()[i].Format == 1)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if v.(sql.Value).String() != w {
+				t.Fatal(i, v, w)
+			}
+		}
+		rows.Close()
+	}
+}
+
+func TestPostgresCurrentTimesUseTransactionSnapshot(t *testing.T) {
+	s := startTestServer(t, "tcp", Config{})
+	ctx := context.Background()
+	c, e := pgx.Connect(ctx, s.dsn("slopdb", "", "slopdb"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer c.Close(ctx)
+	if _, e = c.Exec(ctx, "BEGIN"); e != nil {
+		t.Fatal(e)
+	}
+	var initial time.Time
+	if e = c.QueryRow(ctx, "SELECT now()").Scan(&initial); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = c.Exec(ctx, "SELECT pg_sleep(0.001)"); e != nil {
+		t.Fatal(e)
+	}
+	for _, mode := range []pgx.QueryExecMode{pgx.QueryExecModeCacheStatement, pgx.QueryExecModeSimpleProtocol} {
+		rows, e := c.Query(ctx, `SELECT current_timestamp AS ts,current_date AS d,current_time(3) AS tm,localtime(0) AS lt,localtimestamp AS lts,current_timestamp=now() AS same,quote_literal('current_timestamp') AS literal`, mode)
+		if e != nil {
+			t.Fatal(e)
+		}
+		want := []uint32{oidTimestamptz, oidDate, oidTimetz, oidTime, oidTimestamp, oidBool, oidText}
+		for i, f := range rows.FieldDescriptions() {
+			if f.DataTypeOID != want[i] {
+				t.Fatalf("mode %v field %s OID %d want %d", mode, f.Name, f.DataTypeOID, want[i])
+			}
+		}
+		if !rows.Next() {
+			t.Fatal(rows.Err())
+		}
+		values, e := rows.Values()
+		if e != nil {
+			t.Fatal(e)
+		}
+		rows.Close()
+		if !values[0].(time.Time).Equal(initial) || values[5] != true || values[6] != "'current_timestamp'" {
+			t.Fatal(values, initial)
+		}
+	}
+	if _, e = c.Exec(ctx, "ROLLBACK"); e != nil {
+		t.Fatal(e)
 	}
 }

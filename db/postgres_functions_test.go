@@ -11,6 +11,7 @@ import (
 	"slopdb/db"
 	"slopdb/sql"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -45,47 +46,69 @@ func TestPostgresFunctionReference(t *testing.T) {
 	defer s.Close()
 	s.SetPostgresMode(true)
 	for _, tc := range fixture.Cases {
-		t.Run(tc.SQL, func(t *testing.T) {
-			r, err := s.Exec("SELECT " + tc.SQL + " AS v")
-			if tc.Error {
-				if err == nil {
-					t.Fatal("expected PostgreSQL error")
+		for _, prepared := range []bool{false, true} {
+			label := tc.SQL
+			if prepared {
+				label += "/prepared"
+			}
+			t.Run(label, func(t *testing.T) {
+				var r *db.ExecResult
+				var err error
+				query := "SELECT " + tc.SQL + " AS v"
+				if prepared {
+					p, e := s.Prepare(query)
+					err = e
+					if err == nil {
+						r, err = p.Exec()
+						_ = p.Close()
+					}
+				} else {
+					r, err = s.Exec(query)
 				}
-				return
-			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			v := r.Rows[0]["v"]
-			if tc.Value == nil {
-				if !v.Null {
-					t.Fatalf("got %v, want NULL", v)
+				if tc.Error {
+					if err == nil {
+						t.Fatal("expected PostgreSQL error")
+					}
+					return
 				}
-				return
-			}
-			got := v.String()
-			if v.Type == sql.ColBlob {
-				got = "\\x" + hex.EncodeToString(v.Blob)
-			}
-			if tc.JSON && !v.Null {
-				var a, b any
-				if json.Unmarshal([]byte(got), &a) != nil || json.Unmarshal([]byte(*tc.Value), &b) != nil || !reflect.DeepEqual(a, b) {
-					t.Fatalf("JSON %s, want %s", got, *tc.Value)
+				if err != nil {
+					t.Fatal(err)
 				}
-				return
-			}
-			if tc.Float && !v.Null {
-				a, e1 := strconv.ParseFloat(got, 64)
-				b, e2 := strconv.ParseFloat(*tc.Value, 64)
-				if e1 != nil || e2 != nil || math.Abs(a-b) > 1e-12*math.Max(1, math.Abs(b)) {
-					t.Fatalf("float %s, want %s", got, *tc.Value)
+				v := r.Rows[0]["v"]
+				if tc.Value == nil {
+					if !v.Null {
+						t.Fatalf("got %v, want NULL", v)
+					}
+					return
 				}
-				return
-			}
-			if v.Null || got != *tc.Value {
-				t.Fatalf("got %q (type %v), want %q from %s", got, v.Type, *tc.Value, fixture.Source)
-			}
-		})
+				got := v.String()
+				if v.Type == sql.ColBlob {
+					got = "\\x" + hex.EncodeToString(v.Blob)
+				}
+				if tc.JSON && !v.Null {
+					var a, b any
+					decA := json.NewDecoder(strings.NewReader(got))
+					decA.UseNumber()
+					decB := json.NewDecoder(strings.NewReader(*tc.Value))
+					decB.UseNumber()
+					if decA.Decode(&a) != nil || decB.Decode(&b) != nil || !reflect.DeepEqual(a, b) {
+						t.Fatalf("JSON %s, want %s", got, *tc.Value)
+					}
+					return
+				}
+				if tc.Float && !v.Null {
+					a, e1 := strconv.ParseFloat(got, 64)
+					b, e2 := strconv.ParseFloat(*tc.Value, 64)
+					if e1 != nil || e2 != nil || math.Abs(a-b) > 1e-12*math.Max(1, math.Abs(b)) {
+						t.Fatalf("float %s, want %s", got, *tc.Value)
+					}
+					return
+				}
+				if v.Null || got != *tc.Value {
+					t.Fatalf("got %q (type %v), want %q from %s", got, v.Type, *tc.Value, fixture.Source)
+				}
+			})
+		}
 	}
 }
 
@@ -172,5 +195,27 @@ func TestPostgresBareSessionKeywordsPreserveNativeColumns(t *testing.T) {
 	r, e := s.ExecContext(ctx, "SELECT current_user AS u,current_database AS d,current_schema AS s")
 	if e != nil || r.Rows[0]["u"].Text != "alice" || r.Rows[0]["d"].Text != "demo" || r.Rows[0]["s"].Text != "public" {
 		t.Fatal(r, e)
+	}
+}
+
+func TestPostgresFunctionArityOnEmptyInputs(t *testing.T) {
+	d, e := db.Open(t.TempDir(), nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer d.Close()
+	s, e := d.NewSession()
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	s.SetPostgresMode(true)
+	if _, e = s.Exec("CREATE TABLE arity_input(id INTEGER PRIMARY KEY)"); e != nil {
+		t.Fatal(e)
+	}
+	for _, expr := range []string{"CONCAT_WS(',')", "JSON_BUILD_OBJECT('a')", "REGEXP_SUBSTR('a','a',1,1,'',1,1)"} {
+		if _, e = s.Exec("SELECT " + expr + " FROM arity_input"); e == nil {
+			t.Fatal("accepted invalid PostgreSQL arity", expr)
+		}
 	}
 }

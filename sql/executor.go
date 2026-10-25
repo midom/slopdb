@@ -4271,6 +4271,15 @@ func (s *Schema) validateQueryUncached(stmt *SelectStmt, info *TableInfo) error 
 		case *UnaryExpr:
 			return validate(e.Right, allowAlias)
 		case *FuncCallExpr:
+			if !isAggregate(e) && e.Window == nil {
+				if s.postgresMode {
+					if valid, known := validPostgresFunction(strings.ToUpper(e.Name), len(e.Args)); known && !valid {
+						return fmt.Errorf("wrong number of arguments to %s", e.Name)
+					}
+				} else if err := validateScalarFunctionDialect(e, false); err != nil {
+					return err
+				}
+			}
 			if err := validate(e.GroupConcatSeparator, allowAlias); err != nil {
 				return err
 			}

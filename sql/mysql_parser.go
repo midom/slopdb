@@ -7,6 +7,9 @@ import (
 )
 
 func (p *Parser) parseMySQLPrimary() (Expression, bool, error) {
+	if p.cur.Type != TokIdent && p.cur.Type != TokKeyword {
+		return nil, false, nil
+	}
 	if expr, handled, err := p.parseMySQLTemporalPrimary(); handled {
 		return expr, true, err
 	}
