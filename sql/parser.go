@@ -2226,7 +2226,7 @@ func (p *Parser) parsePrimary() (Expression, error) {
 		if typeName == "DOUBLE" && strings.EqualFold(p.cur.Value, "PRECISION") {
 			typeName = "DOUBLE PRECISION"
 			p.advance()
-		} else if typeName == "DECIMAL" || typeName == "NUMERIC" {
+		} else if (typeName == "DECIMAL" || typeName == "NUMERIC") && p.cur.Type == TokLParen {
 			precision, scale, err := p.parseDecimalParameters()
 			if err != nil {
 				return nil, err

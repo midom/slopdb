@@ -20,6 +20,9 @@ const (
 	oidFloat4  uint32 = 700
 	oidFloat8  uint32 = 701
 	oidVarchar uint32 = 1043
+	oidNumeric uint32 = 1700
+	oidJSON    uint32 = 114
+	oidJSONB   uint32 = 3802
 )
 
 type field struct {
@@ -42,7 +45,17 @@ func (p *prepared) close() {
 	}
 }
 func typeName(name string) (string, uint32) {
-	switch strings.ToUpper(name) {
+	upper := strings.ToUpper(name)
+	if strings.HasPrefix(upper, "DECIMAL(") || strings.HasPrefix(upper, "NUMERIC(") {
+		return upper, oidNumeric
+	}
+	switch upper {
+	case "DECIMAL", "NUMERIC":
+		return "DECIMAL", oidNumeric
+	case "JSON":
+		return "JSON", oidJSON
+	case "JSONB":
+		return "JSON", oidJSONB
 	case "INT", "INTEGER", "INT4":
 		return "INTEGER", oidInt4
 	case "BIGINT", "INT8":
@@ -189,7 +202,7 @@ func (c *client) prepare(ctx context.Context, query string, oids []uint32) (*pre
 }
 func supportedOID(oid uint32) bool {
 	switch oid {
-	case oidBool, oidBytea, oidInt8, oidInt2, oidInt4, oidText, oidFloat4, oidFloat8, oidVarchar:
+	case oidBool, oidBytea, oidInt8, oidInt2, oidInt4, oidText, oidFloat4, oidFloat8, oidVarchar, oidNumeric, oidJSON, oidJSONB:
 		return true
 	}
 	return false
@@ -198,6 +211,10 @@ func nativeOID(typ sql.ColumnType) uint32 {
 	switch typ {
 	case sql.ColInteger:
 		return oidInt8
+	case sql.ColUnsigned, sql.ColDecimal:
+		return oidNumeric
+	case sql.ColJSON:
+		return oidJSON
 	case sql.ColReal:
 		return oidFloat8
 	case sql.ColBlob:

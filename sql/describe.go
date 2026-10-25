@@ -317,7 +317,15 @@ func describeColumns(names ...string) []ColumnDef {
 }
 func describeCommon(a, b ColumnDef) ColumnDef {
 	if a.ColType != b.ColType {
-		if a.ColType == ColReal || b.ColType == ColReal {
+		numeric := func(t ColumnType) bool { return t == ColInteger || t == ColUnsigned || t == ColDecimal || t == ColReal }
+		if numeric(a.ColType) && numeric(b.ColType) && (a.ColType == ColDecimal || b.ColType == ColDecimal) {
+			a.ColType = ColDecimal
+			a.Declared = "DECIMAL"
+			a.Unsigned = false
+		} else if numeric(a.ColType) && numeric(b.ColType) && (a.ColType == ColUnsigned || b.ColType == ColUnsigned) {
+			a.ColType = ColUnsigned
+			a.Unsigned = true
+		} else if a.ColType == ColReal || b.ColType == ColReal {
 			a = ColumnDef{Name: a.Name, ColType: ColReal}
 		} else {
 			a = ColumnDef{Name: a.Name, ColType: ColText}
@@ -431,8 +439,10 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 		switch strings.ToUpper(e.Op) {
 		case "=", "!=", "<>", "<", ">", "<=", ">=", "AND", "OR", "IS", "IS NOT", "LIKE", "NOT LIKE", "REGEXP", "GLOB":
 			return integer, nil
-		case "||":
+		case "||", "->>":
 			return text, nil
+		case "->":
+			return describeType("JSON"), nil
 		}
 		if a.ColType == ColReal || b.ColType == ColReal {
 			return real, nil
@@ -495,7 +505,12 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 		switch name {
 		case "COUNT", "LENGTH", "OCTET_LENGTH", "CHAR_LENGTH", "INSTR", "CHANGES", "LAST_INSERT_ROWID", "ROW_NUMBER", "RANK", "DENSE_RANK", "NTILE", "CONNECTION_ID", "GET_LOCK", "RELEASE_LOCK", "IS_FREE_LOCK", "UNIX_TIMESTAMP":
 			return integer, nil
-		case "AVG", "TOTAL", "PERCENT_RANK", "CUME_DIST", fulltextFunction:
+		case "AVG":
+			if common.ColType == ColDecimal || common.ColType == ColUnsigned {
+				return ColumnDef{ColType: ColDecimal, Declared: "DECIMAL"}, nil
+			}
+			return real, nil
+		case "TOTAL", "PERCENT_RANK", "CUME_DIST", fulltextFunction:
 			return real, nil
 		case "MIN", "MAX", "ABS", "SUM", "COALESCE", "IFNULL", "NULLIF", "LAG", "LEAD", "FIRST_VALUE", "LAST_VALUE", "NTH_VALUE", "GREATEST", "LEAST":
 			return common, nil
@@ -511,7 +526,13 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 			}
 			return text, nil
 		}
-		if strings.HasPrefix(name, "JSON_") {
+		if strings.HasPrefix(name, "JSON_") || name == "JSON" || name == "JSONB" {
+			switch name {
+			case "JSON_UNQUOTE", "JSON_TYPE", "JSON_VALUE":
+				return text, nil
+			case "JSON_VALID", "JSON_LENGTH", "JSON_DEPTH", "JSON_CONTAINS", "JSON_CONTAINS_PATH", "JSON_OVERLAPS":
+				return integer, nil
+			}
 			return describeType("JSON"), nil
 		}
 		return text, nil

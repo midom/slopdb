@@ -74,7 +74,13 @@ func (m *metadata) table(name string, scope map[string][]field, depth int) ([]fi
 		typ := strings.ToUpper(row["type"].Text)
 		oid := oidText
 		switch {
-		case strings.HasPrefix(typ, "INT"):
+		case strings.Contains(typ, "UNSIGNED") && strings.HasPrefix(typ, "BIGINT"):
+			oid = oidNumeric
+		case strings.HasPrefix(typ, "DECIMAL") || strings.HasPrefix(typ, "NUMERIC"):
+			oid = oidNumeric
+		case typ == "JSON" || typ == "JSONB":
+			oid = oidJSON
+		case strings.HasPrefix(typ, "INT") || strings.HasPrefix(typ, "BIGINT") || strings.HasPrefix(typ, "SMALLINT") || strings.HasPrefix(typ, "TINYINT") || strings.HasPrefix(typ, "MEDIUMINT"):
 			oid = oidInt8
 		case typ == "REAL":
 			oid = oidFloat8
@@ -380,11 +386,16 @@ func (m *metadata) expression(expr sql.Expression, env map[string]uint32) uint32
 		switch strings.ToUpper(e.Op) {
 		case "=", "!=", "<>", "<", ">", "<=", ">=", "IS", "IS NOT", "AND", "OR", "LIKE", "GLOB", "REGEXP":
 			return oidInt8
-		case "||":
+		case "||", "->>":
 			return oidText
+		case "->":
+			return oidJSON
 		}
 		if left == oidFloat8 || right == oidFloat8 || left == oidFloat4 || right == oidFloat4 {
 			return oidFloat8
+		}
+		if left == oidNumeric || right == oidNumeric {
+			return oidNumeric
 		}
 		if left == oidText || right == oidText {
 			return oidText
@@ -408,10 +419,24 @@ func (m *metadata) expression(expr sql.Expression, env map[string]uint32) uint32
 		switch name {
 		case "COUNT", "LENGTH", "INSTR", "CHANGES", "LAST_INSERT_ROWID", "ROW_NUMBER", "RANK", "DENSE_RANK", "NTILE":
 			return oidInt8
-		case "AVG", "TOTAL", "PERCENT_RANK", "CUME_DIST":
+		case "AVG":
+			if len(types) > 0 && types[0] == oidNumeric {
+				return oidNumeric
+			}
+			return oidFloat8
+		case "TOTAL", "PERCENT_RANK", "CUME_DIST":
 			return oidFloat8
 		case "SUM", "MIN", "MAX", "ABS", "COALESCE", "IFNULL", "NULLIF", "LAG", "LEAD", "FIRST_VALUE", "LAST_VALUE", "NTH_VALUE":
 			return commonType(types)
+		}
+		if strings.HasPrefix(name, "JSON_") || name == "JSON" || name == "JSONB" {
+			switch name {
+			case "JSON_UNQUOTE", "JSON_TYPE", "JSON_VALUE":
+				return oidText
+			case "JSON_VALID", "JSON_LENGTH", "JSON_DEPTH", "JSON_CONTAINS", "JSON_CONTAINS_PATH", "JSON_OVERLAPS":
+				return oidInt8
+			}
+			return oidJSON
 		}
 	case *sql.InListExpr:
 		oid := m.expression(e.Expr, env)

@@ -186,7 +186,7 @@ func validateScalarFunction(f *FuncCallExpr) error {
 		if name == "CAST" {
 			if literal, ok := f.Args[1].(*LiteralExpr); ok {
 				switch strings.ToUpper(mysqlCastTarget(literal.Value.Text)) {
-				case "INT", "INTEGER", "BIGINT", "REAL", "FLOAT", "DOUBLE", "DOUBLE PRECISION", "TEXT", "BLOB", "JSON", "JSONB", "UNSIGNED", "UNSIGNED INTEGER":
+				case "INT", "INTEGER", "BIGINT", "REAL", "FLOAT", "DOUBLE", "DOUBLE PRECISION", "TEXT", "BLOB", "DECIMAL", "NUMERIC", "JSON", "JSONB", "UNSIGNED", "UNSIGNED INTEGER":
 				default:
 					if _, _, ok := varyingCastType(literal.Value.Text); !ok && !strings.HasPrefix(strings.ToUpper(literal.Value.Text), "DECIMAL(") && !strings.HasPrefix(strings.ToUpper(literal.Value.Text), "NUMERIC(") {
 						return fmt.Errorf("unsupported cast type: %s", literal.Value.Text)

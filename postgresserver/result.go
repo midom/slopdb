@@ -126,6 +126,8 @@ func valueText(v sql.Value) []byte {
 	switch v.Type {
 	case sql.ColInteger:
 		return strconv.AppendInt(nil, v.Int, 10)
+	case sql.ColUnsigned:
+		return strconv.AppendUint(nil, v.Uint, 10)
 	case sql.ColReal:
 		return strconv.AppendFloat(nil, v.Real, 'g', -1, 64)
 	case sql.ColBlob:
@@ -159,6 +161,14 @@ func validateValue(v sql.Value, oid uint32) error {
 		if v.Type != sql.ColBlob {
 			return bad
 		}
+	case oidNumeric:
+		if v.Type != sql.ColInteger && v.Type != sql.ColUnsigned && v.Type != sql.ColDecimal {
+			return bad
+		}
+	case oidJSON, oidJSONB:
+		if v.Type != sql.ColJSON {
+			return bad
+		}
 	}
 	return nil
 }
@@ -173,6 +183,17 @@ func wireValue(v sql.Value, oid uint32, binaryFormat bool) ([]byte, error) {
 		return nil, &protocolError{"0A000", "result type changed; prepare the query again or use text projection"}
 	}
 	switch oid {
+	case oidNumeric:
+		text := string(valueText(v))
+		if binaryFormat {
+			return encodeNumeric(text)
+		}
+		return []byte(text), nil
+	case oidJSON, oidJSONB:
+		if oid == oidJSONB && binaryFormat {
+			return append([]byte{1}, []byte(v.Text)...), nil
+		}
+		return []byte(v.Text), nil
 	case oidBool:
 		if v.Type != sql.ColInteger || (v.Int != 0 && v.Int != 1) {
 			return bad()
@@ -287,6 +308,15 @@ func decodeValue(data []byte, oid uint32, binaryFormat bool) (any, error) {
 	invalid := func() (any, error) { return nil, &protocolError{"22P02", "invalid PostgreSQL parameter value"} }
 	if binaryFormat {
 		switch oid {
+		case oidNumeric:
+			return decodeNumeric(data)
+		case oidJSON:
+			return sql.NewJSONValue(string(data))
+		case oidJSONB:
+			if len(data) == 0 || data[0] != 1 {
+				return invalid()
+			}
+			return sql.NewJSONValue(string(data[1:]))
 		case oidBool:
 			if len(data) != 1 || data[0] > 1 {
 				return invalid()
@@ -334,6 +364,10 @@ func decodeValue(data []byte, oid uint32, binaryFormat bool) (any, error) {
 		}
 	}
 	switch oid {
+	case oidNumeric:
+		return sql.NewDecimalValue(string(data))
+	case oidJSON, oidJSONB:
+		return sql.NewJSONValue(string(data))
 	case oidBool:
 		switch strings.ToLower(strings.TrimSpace(string(data))) {
 		case "t", "true", "1", "on", "yes":

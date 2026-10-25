@@ -39,7 +39,9 @@ func (c *client) ok(result *db.ExecResult) error {
 		if result.Changes > 0 {
 			changes = uint64(result.Changes)
 		}
-		if result.LastID > 0 {
+		if result.LastIDUnsigned != 0 {
+			id = result.LastIDUnsigned
+		} else if result.LastID > 0 {
 			id = uint64(result.LastID)
 		}
 	}
@@ -130,11 +132,17 @@ const (
 	typeBlob        byte = 252
 	typeString      byte = 253
 	typeFixedString byte = 254
+	typeNewDecimal  byte = 246
+	typeJSON        byte = 245
 )
 
 func wireType(col sql.ColumnDef) byte {
 	switch col.ColType {
-	case sql.ColInteger:
+	case sql.ColDecimal:
+		return typeNewDecimal
+	case sql.ColJSON:
+		return typeJSON
+	case sql.ColInteger, sql.ColUnsigned:
 		// Legacy native INTEGER columns retain their full int64 domain.
 		if col.MySQL || col.Unsigned || (col.Declared != "" && col.Declared != "INTEGER") {
 			switch col.IntegerBits {
@@ -228,7 +236,7 @@ func columnPacket(col sql.ColumnDef, database string) []byte {
 	if col.Unique {
 		flags |= 4
 	}
-	if col.Unsigned {
+	if col.Unsigned || col.ColType == sql.ColUnsigned {
 		flags |= 32
 	}
 	if col.ColType == sql.ColBlob {
@@ -242,7 +250,7 @@ func columnPacket(col sql.ColumnDef, database string) []byte {
 	}
 	p = append16(p, charset)
 	size := uint32(math.MaxUint32)
-	if col.ColType == sql.ColInteger {
+	if col.ColType == sql.ColInteger || col.ColType == sql.ColUnsigned {
 		size = 20
 		switch wireType(col) {
 		case typeTiny:
@@ -265,12 +273,20 @@ func columnPacket(col sql.ColumnDef, database string) []byte {
 			size *= 4
 		}
 	}
+	if col.ColType == sql.ColDecimal && col.Precision > 0 {
+		size = uint32(col.Precision + 1)
+		if col.Scale > 0 {
+			size++
+		}
+	}
 	p = append32(p, size)
 	p = append(p, wireType(col))
 	p = append16(p, flags)
 	decimals := byte(0)
 	if col.ColType == sql.ColReal {
 		decimals = 31
+	} else if col.ColType == sql.ColDecimal {
+		decimals = byte(col.Scale)
 	}
 	return append(p, decimals, 0, 0)
 }
@@ -278,6 +294,8 @@ func valueBytes(v sql.Value) []byte {
 	switch v.Type {
 	case sql.ColInteger:
 		return strconv.AppendInt(nil, v.Int, 10)
+	case sql.ColUnsigned:
+		return strconv.AppendUint(nil, v.Uint, 10)
 	case sql.ColReal:
 		return strconv.AppendFloat(nil, v.Real, 'g', -1, 64)
 	case sql.ColBlob:
@@ -355,7 +373,11 @@ func (c *client) result(result *db.ExecResult, binaryRows bool) error {
 					p = appendTemporal(p, v.Text, wireType(col))
 					continue
 				case typeLongLong:
-					p = append64(p, uint64(v.Int))
+					value := uint64(v.Int)
+					if v.Type == sql.ColUnsigned {
+						value = v.Uint
+					}
+					p = append64(p, value)
 					continue
 				case typeDouble:
 					p = append64(p, math.Float64bits(v.Real))

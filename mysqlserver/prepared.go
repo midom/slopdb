@@ -225,8 +225,8 @@ func decodeValue(d *decoder, typ uint16) (any, error) {
 		return int64(int32(v)), d.err
 	case 8:
 		v := d.u64()
-		if unsigned && v > math.MaxInt64 {
-			return nil, fmt.Errorf("unsigned integer exceeds int64")
+		if unsigned {
+			return sql.NewUnsignedValue(v), d.err
 		}
 		return int64(v), d.err
 	case 4:
@@ -238,6 +238,16 @@ func decodeValue(d *decoder, typ uint16) (any, error) {
 		switch byte(typ) {
 		case 16, 249, 250, 251, 252, 255:
 			return value, d.err
+		case 0, 246:
+			if d.err != nil {
+				return nil, d.err
+			}
+			return sql.NewDecimalValue(string(value))
+		case 245:
+			if d.err != nil {
+				return nil, d.err
+			}
+			return sql.NewJSONValue(string(value))
 		default:
 			return string(value), d.err
 		}
