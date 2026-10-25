@@ -47,7 +47,8 @@ SQL dump consistent. FTWRL and automatic snapshot provisioning are unavailable.
 
 Interoperability tests include independent `mysqlbinlog` decoding and an actual
 isolated Oracle MySQL 8 replica applying CREATE TABLE, uint64, DECIMAL, JSON,
-INSERT and UPDATE with GTID auto-positioning. The external-server test is
+large Unicode TEXT, prefix indexes, cascades, INSERT/UPDATE/DELETE and receiver
+restart with GTID auto-positioning. The external-server test is
 optional; raw protocol and recovery tests run in the ordinary Go suite.
 
 ## Typed API
@@ -89,3 +90,6 @@ files have uint32 positions and transactions cannot cross the file-size limit.
 There is no journal purge/retention configuration, RESET BINARY LOGS, GTID tags,
 semi-synchronous MySQL replication, or MySQL receiver/applier. Journal storage
 and the in-memory transaction-position index grow with retained history.
+CDC observes local committed publications under the selected durability mode.
+If offline recovery discards previously published asynchronous commits, downstream
+consumers need a fresh snapshot; the stream cannot undo an already applied tail.
