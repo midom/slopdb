@@ -8,11 +8,12 @@ import (
 // Function families share validation, result metadata and optimizer volatility.
 // The registry is immutable after package initialization.
 type mysqlFunctionSpec struct {
-	Min, Max int // Max < 0 permits a variadic argument list.
-	Return   ColumnType
-	Metadata func([]ColumnDef) ColumnDef
-	Volatile bool
-	Eval     func(*Schema, []Value) (Value, error)
+	Min, Max  int // Max < 0 permits a variadic argument list.
+	Return    ColumnType
+	Metadata  func([]ColumnDef) ColumnDef
+	Volatile  bool
+	MySQLOnly bool // preserve an existing native function outside MySQL mode
+	Eval      func(*Schema, []Value) (Value, error)
 }
 
 var mysqlFunctionRegistry map[string]mysqlFunctionSpec
@@ -49,9 +50,9 @@ func (s *Schema) evalRegisteredMySQLFunction(name string, args []Value) (Value, 
 	return value, true, err
 }
 
-func describeRegisteredMySQLFunction(name string, args []ColumnDef) (ColumnDef, bool) {
+func (s *Schema) describeRegisteredMySQLFunction(name string, args []ColumnDef) (ColumnDef, bool) {
 	spec, ok := mysqlFunctionRegistry[name]
-	if !ok {
+	if !ok || spec.MySQLOnly && !s.mysqlMode {
 		return ColumnDef{}, false
 	}
 	if spec.Metadata != nil {
