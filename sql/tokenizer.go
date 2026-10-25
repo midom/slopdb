@@ -40,6 +40,7 @@ const (
 	TokJSONArrowText
 	TokJSONPath
 	TokJSONPathText
+	TokTypeCast
 )
 
 type Token struct {
@@ -62,7 +63,7 @@ var keywords = map[string]bool{
 	"LEFT": true, "RIGHT": true, "INNER": true, "OUTER": true,
 	"GROUP": true, "HAVING": true, "COUNT": true, "SUM": true,
 	"AVG": true, "MIN": true, "MAX": true, "DISTINCT": true,
-	"LIKE": true, "IN": true, "BETWEEN": true, "IS": true,
+	"LIKE": true, "ILIKE": true, "IN": true, "BETWEEN": true, "IS": true,
 	"GLOB": true, "REGEXP": true,
 	"EXISTS": true, "CASE": true, "WHEN": true, "THEN": true,
 	"COLLATE": true, "BINARY": true,
@@ -111,6 +112,14 @@ func (t *Tokenizer) Next() (tok Token) {
 	}
 
 	ch := t.input[t.pos]
+	if (ch == 'E' || ch == 'e') && t.pos+1 < len(t.input) && t.input[t.pos+1] == '\'' {
+		return t.scanPostgresEscapeString()
+	}
+	if ch == '$' {
+		if tok, ok := t.scanPostgresDollarString(); ok {
+			return tok
+		}
+	}
 
 	if (ch == 'X' || ch == 'x') && t.pos+1 < len(t.input) && t.input[t.pos+1] == '\'' {
 		t.pos += 2
@@ -128,6 +137,11 @@ func (t *Tokenizer) Next() (tok Token) {
 	}
 
 	switch ch {
+	case ':':
+		if t.pos+1 < len(t.input) && t.input[t.pos+1] == ':' {
+			t.pos += 2
+			return Token{Type: TokTypeCast, Value: "::"}
+		}
 	case '?':
 		t.pos++
 		return Token{Type: TokParameter, Value: "?"}

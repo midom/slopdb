@@ -107,7 +107,7 @@ func TestLibPQTCPAndUnix(t *testing.T) {
 			if err := client.Ping(); err != nil {
 				t.Fatal(err)
 			}
-			mustExec(t, client, `CREATE TABLE items(id INTEGER PRIMARY KEY, label TEXT, payload BLOB, amount REAL, optional TEXT)`)
+			mustExec(t, client, `CREATE TABLE items(id BIGINT PRIMARY KEY, label TEXT, payload BLOB, amount DOUBLE PRECISION, optional TEXT)`)
 			result := mustExec(t, client, `INSERT INTO items VALUES($1,$2,$3,$4,$5)`, int64(9223372036854775807), "héllo", []byte{0, 255, 1}, 1.2345678901234567, nil)
 			if n, err := result.RowsAffected(); err != nil || n != 1 {
 				t.Fatalf("affected %d %v", n, err)

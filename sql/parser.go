@@ -1743,6 +1743,13 @@ func (p *Parser) parseComparison() (Expression, error) {
 			not = true
 			p.advance()
 		}
+		if p.showWord("DISTINCT") {
+			p.advance()
+			if err := p.expectKeyword("FROM"); err != nil {
+				return nil, err
+			}
+			not = !not
+		}
 		right, err := p.parseBitwise()
 		if err != nil {
 			return nil, err
@@ -1755,11 +1762,16 @@ func (p *Parser) parseComparison() (Expression, error) {
 
 	}
 
-	if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "LIKE" {
+	if p.cur.Type == TokKeyword && (strings.ToUpper(p.cur.Value) == "LIKE" || strings.ToUpper(p.cur.Value) == "ILIKE") {
+		ilike := p.showWord("ILIKE")
 		p.advance()
 		right, err := p.parseBitwise()
 		if err != nil {
 			return nil, err
+		}
+		if ilike {
+			left = &FuncCallExpr{Name: "LOWER", Args: []Expression{left}}
+			right = &FuncCallExpr{Name: "LOWER", Args: []Expression{right}}
 		}
 		be := &BinaryExpr{Left: left, Op: "LIKE", Right: right}
 		if p.tok.options.MySQLQuoting {
@@ -1809,12 +1821,16 @@ func (p *Parser) parseComparison() (Expression, error) {
 
 	if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "NOT" {
 		peek := p.tok.Peek()
-		if peek.Type == TokKeyword && strings.ToUpper(peek.Value) == "LIKE" {
+		if peek.Type == TokKeyword && (strings.ToUpper(peek.Value) == "LIKE" || strings.ToUpper(peek.Value) == "ILIKE") {
 			p.advance()
 			p.advance()
 			right, err := p.parseBitwise()
 			if err != nil {
 				return nil, err
+			}
+			if strings.EqualFold(peek.Value, "ILIKE") {
+				left = &FuncCallExpr{Name: "LOWER", Args: []Expression{left}}
+				right = &FuncCallExpr{Name: "LOWER", Args: []Expression{right}}
 			}
 			be := &BinaryExpr{Left: left, Op: "NOT LIKE", Right: right}
 			if p.tok.options.MySQLQuoting {
@@ -2066,6 +2082,14 @@ func (p *Parser) parseUnary() (Expression, error) {
 	if err != nil {
 		return nil, err
 	}
+	for p.cur.Type == TokTypeCast {
+		p.advance()
+		name, err := p.parsePostgresCastType()
+		if err != nil {
+			return nil, err
+		}
+		expr = &FuncCallExpr{Name: "CAST", Args: []Expression{expr, &LiteralExpr{Value: NewTextValue(name)}}}
+	}
 	for p.cur.Type == TokJSONArrow || p.cur.Type == TokJSONArrowText || p.cur.Type == TokJSONPath || p.cur.Type == TokJSONPathText {
 		operator := p.cur.Type
 		p.advance()
@@ -2235,30 +2259,9 @@ func (p *Parser) parsePrimary() (Expression, error) {
 		if err := p.expectKeyword("AS"); err != nil {
 			return nil, err
 		}
-		typeName := strings.ToUpper(p.cur.Value)
-		p.advance()
-		if typeName == "DOUBLE" && strings.EqualFold(p.cur.Value, "PRECISION") {
-			typeName = "DOUBLE PRECISION"
-			p.advance()
-		} else if (typeName == "DECIMAL" || typeName == "NUMERIC") && p.cur.Type == TokLParen {
-			precision, scale, err := p.parseDecimalParameters()
-			if err != nil {
-				return nil, err
-			}
-			typeName = fmt.Sprintf("DECIMAL(%d,%d)", precision, scale)
-		} else if typeName == "BINARY" && p.cur.Type == TokLParen {
-			typeName, err = p.parseBinaryCastLength()
-			if err != nil {
-				return nil, err
-			}
-		} else if typeName == "SIGNED" && strings.EqualFold(p.cur.Value, "INTEGER") {
-			p.advance()
-		} else if typeName == "VARCHAR" || typeName == "VARBINARY" {
-			length, err := p.parseStringLength()
-			if err != nil {
-				return nil, err
-			}
-			typeName = fmt.Sprintf("%s(%d)", typeName, length)
+		typeName, err := p.parsePostgresCastType()
+		if err != nil {
+			return nil, err
 		}
 		if err := p.expect(TokRParen); err != nil {
 			return nil, err
@@ -2273,12 +2276,12 @@ func (p *Parser) parsePrimary() (Expression, error) {
 
 	if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "TRUE" {
 		p.advance()
-		return &LiteralExpr{Value: NewIntValue(1)}, nil
+		return &LiteralExpr{Value: Value{Type: ColInteger, Int: 1, PGType: "BOOLEAN"}}, nil
 	}
 
 	if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "FALSE" {
 		p.advance()
-		return &LiteralExpr{Value: NewIntValue(0)}, nil
+		return &LiteralExpr{Value: Value{Type: ColInteger, Int: 0, PGType: "BOOLEAN"}}, nil
 	}
 
 	if p.cur.Type == TokIdent {
@@ -2301,6 +2304,9 @@ func (p *Parser) parsePrimary() (Expression, error) {
 			if parts > 3 {
 				return nil, fmt.Errorf("too many column qualifiers")
 			}
+		}
+		if parts == 2 && strings.HasPrefix(name, "pg_catalog.") && p.cur.Type == TokLParen {
+			return p.parseFunctionCall(strings.TrimPrefix(name, "pg_catalog."))
 		}
 		if parts > 1 {
 			return &ColumnRefExpr{Name: name}, nil

@@ -69,6 +69,8 @@ func (c *client) writeError(err error) error {
 			code = "22012"
 		case strings.Contains(message, "overflow") || strings.Contains(message, "out of range"):
 			code = "22003"
+		case strings.Contains(message, "invalid input syntax"):
+			code = "22P02"
 		case strings.Contains(message, "datatype mismatch"):
 			code = "42804"
 		case strings.Contains(message, "parse") || strings.Contains(message, "expected"):
@@ -93,10 +95,14 @@ func fieldDescription(fields []field, formats []int16) *pgproto3.RowDescription 
 			size = 1
 		case oidInt2:
 			size = 2
-		case oidInt4, oidFloat4:
+		case oidInt4, oidFloat4, oidDate, 26, 2205, 2206, 4089:
 			size = 4
-		case oidInt8, oidFloat8:
+		case oidInt8, oidFloat8, oidTime, oidTimestamp, oidTimestamptz:
 			size = 8
+		case oidInterval, oidUUID:
+			size = 16
+		case oidTimetz:
+			size = 12
 		}
 		descriptions[i] = pgproto3.FieldDescription{Name: []byte(f.name), DataTypeOID: f.oid, DataTypeSize: size, TypeModifier: -1, Format: formatAt(formats, i)}
 	}
@@ -140,7 +146,7 @@ func validateValue(v sql.Value, oid uint32) error {
 	if v.Null {
 		return nil
 	}
-	bad := &protocolError{"0A000", "result type changed; prepare the query again or use text projection"}
+	bad := &protocolError{"0A000", fmt.Sprintf("result type changed (%s, OID %d); prepare the query again or use text projection", v.Type.String(), oid)}
 	switch oid {
 	case oidBool:
 		if v.Type != sql.ColInteger || (v.Int != 0 && v.Int != 1) {
@@ -183,6 +189,16 @@ func wireValue(v sql.Value, oid uint32, binaryFormat bool) ([]byte, error) {
 		return nil, &protocolError{"0A000", "result type changed; prepare the query again or use text projection"}
 	}
 	switch oid {
+	case 26, 2205, 2206, 4089:
+		if v.Type != sql.ColInteger || v.Int < 0 || v.Int > math.MaxUint32 {
+			return nil, &protocolError{"22003", "OID out of range"}
+		}
+		if binaryFormat {
+			return binary.BigEndian.AppendUint32(nil, uint32(v.Int)), nil
+		}
+		return strconv.AppendInt(nil, v.Int, 10), nil
+	case oidUUID, oidDate, oidTime, oidTimestamp, oidTimestamptz, oidInterval, oidTimetz:
+		return encodePostgresTypedValue(v, oid, binaryFormat)
 	case oidNumeric:
 		text := string(valueText(v))
 		if binaryFormat {
@@ -250,6 +266,11 @@ func resultFields(result *db.ExecResult) []field {
 	fields := make([]field, len(result.Columns))
 	for i, col := range result.Columns {
 		oid := nativeOID(col.ColType)
+		if col.Postgres {
+			if typed := sql.PostgresColumnOID(col); typed != 0 {
+				oid = typed
+			}
+		}
 		seen := false
 		for _, row := range result.Rows {
 			v := row[col.Name]
@@ -258,8 +279,11 @@ func resultFields(result *db.ExecResult) []field {
 			}
 			if !seen {
 				oid = nativeOID(v.Type)
+				if typed := sql.PostgresValueOID(v); typed != 0 {
+					oid = typed
+				}
 				seen = true
-			} else if oid != nativeOID(v.Type) {
+			} else if typed := sql.PostgresValueOID(v); typed != 0 && oid != typed || typed == 0 && oid != nativeOID(v.Type) {
 				oid = oidText
 				break
 			}
@@ -306,6 +330,25 @@ func decodeValue(data []byte, oid uint32, binaryFormat bool) (any, error) {
 		return nil, nil
 	}
 	invalid := func() (any, error) { return nil, &protocolError{"22P02", "invalid PostgreSQL parameter value"} }
+	if oid == 26 || oid == 2205 || oid == 2206 || oid == 4089 {
+		var n uint64
+		var err error
+		if binaryFormat {
+			if len(data) != 4 {
+				return invalid()
+			}
+			n = uint64(binary.BigEndian.Uint32(data))
+		} else {
+			n, err = strconv.ParseUint(string(data), 10, 32)
+		}
+		if err != nil {
+			return invalid()
+		}
+		return sql.Value{Type: sql.ColInteger, Int: int64(n), PGType: "OID"}, nil
+	}
+	if postgresOIDName(oid) != "" {
+		return decodePostgresTypedValue(data, oid, binaryFormat)
+	}
 	if binaryFormat {
 		switch oid {
 		case oidNumeric:
@@ -321,7 +364,7 @@ func decodeValue(data []byte, oid uint32, binaryFormat bool) (any, error) {
 			if len(data) != 1 || data[0] > 1 {
 				return invalid()
 			}
-			return data[0] == 1, nil
+			return sql.Value{Type: sql.ColInteger, Int: int64(data[0]), PGType: "BOOLEAN"}, nil
 		case oidInt2:
 			if len(data) != 2 {
 				return invalid()
@@ -357,7 +400,7 @@ func decodeValue(data []byte, oid uint32, binaryFormat bool) (any, error) {
 			return v, nil
 		case oidBytea:
 			return append([]byte{}, data...), nil
-		case oidText, oidVarchar:
+		case oidText, oidVarchar, 19:
 			return string(data), nil
 		default:
 			return nil, &protocolError{"0A000", "unsupported binary parameter type"}
@@ -371,9 +414,9 @@ func decodeValue(data []byte, oid uint32, binaryFormat bool) (any, error) {
 	case oidBool:
 		switch strings.ToLower(strings.TrimSpace(string(data))) {
 		case "t", "true", "1", "on", "yes":
-			return true, nil
+			return sql.Value{Type: sql.ColInteger, Int: 1, PGType: "BOOLEAN"}, nil
 		case "f", "false", "0", "off", "no":
-			return false, nil
+			return sql.Value{Type: sql.ColInteger, Int: 0, PGType: "BOOLEAN"}, nil
 		}
 		return invalid()
 	case oidInt2, oidInt4, oidInt8:

@@ -92,6 +92,9 @@ type ColumnDef struct {
 // The underlying SQL value remains TEXT or BLOB.
 func (col ColumnDef) DeclaredType() string {
 	if col.Postgres && col.Declared != "" {
+		if col.Unsigned {
+			return col.Declared + " UNSIGNED"
+		}
 		if col.ColType == ColDecimal && col.Precision > 0 {
 			return fmt.Sprintf("NUMERIC(%d,%d)", col.Precision, col.Scale)
 		}

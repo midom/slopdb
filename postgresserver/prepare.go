@@ -11,18 +11,25 @@ import (
 )
 
 const (
-	oidBool    uint32 = 16
-	oidBytea   uint32 = 17
-	oidInt8    uint32 = 20
-	oidInt2    uint32 = 21
-	oidInt4    uint32 = 23
-	oidText    uint32 = 25
-	oidFloat4  uint32 = 700
-	oidFloat8  uint32 = 701
-	oidVarchar uint32 = 1043
-	oidNumeric uint32 = 1700
-	oidJSON    uint32 = 114
-	oidJSONB   uint32 = 3802
+	oidBool        uint32 = 16
+	oidBytea       uint32 = 17
+	oidInt8        uint32 = 20
+	oidInt2        uint32 = 21
+	oidInt4        uint32 = 23
+	oidText        uint32 = 25
+	oidFloat4      uint32 = 700
+	oidFloat8      uint32 = 701
+	oidVarchar     uint32 = 1043
+	oidNumeric     uint32 = 1700
+	oidJSON        uint32 = 114
+	oidJSONB       uint32 = 3802
+	oidDate        uint32 = 1082
+	oidTime        uint32 = 1083
+	oidTimestamp   uint32 = 1114
+	oidTimestamptz uint32 = 1184
+	oidInterval    uint32 = 1186
+	oidTimetz      uint32 = 1266
+	oidUUID        uint32 = 2950
 )
 
 type field struct {
@@ -46,30 +53,14 @@ func (p *prepared) close() {
 }
 func typeName(name string) (string, uint32) {
 	upper := strings.ToUpper(name)
-	if strings.HasPrefix(upper, "DECIMAL(") || strings.HasPrefix(upper, "NUMERIC(") {
-		return upper, oidNumeric
+	if oid := sql.PostgresColumnOID(sql.ColumnDef{Declared: upper}); oid != 0 {
+		return upper, oid
 	}
 	switch upper {
-	case "DECIMAL", "NUMERIC":
-		return "DECIMAL", oidNumeric
-	case "JSON":
-		return "JSON", oidJSON
-	case "JSONB":
-		return "JSON", oidJSONB
-	case "INT", "INTEGER", "INT4":
-		return "INTEGER", oidInt4
-	case "BIGINT", "INT8":
-		return "BIGINT", oidInt8
-	case "SMALLINT", "INT2":
-		return "INTEGER", oidInt2
-	case "FLOAT8", "DOUBLE":
-		return "REAL", oidFloat8
-	case "REAL", "FLOAT4":
-		return "REAL", oidFloat4
-	case "TEXT", "VARCHAR":
-		return "TEXT", oidText
-	case "BYTEA", "BLOB":
+	case "BLOB":
 		return "BLOB", oidBytea
+	case "FLOAT":
+		return "FLOAT", oidFloat8
 	}
 	return "", 0
 }
@@ -101,21 +92,11 @@ func translate(query string) (string, []int, map[int]uint32, error) {
 			return "", nil, nil, &protocolError{"54000", "invalid or excessive PostgreSQL parameters"}
 		}
 		replacement := "?"
-		if strings.HasPrefix(query[end:], "::") {
-			// PostgreSQL parameter casts are translated without changing identifiers.
-			first := tokenizer.Next()
-			second := tokenizer.Next()
-			typ := tokenizer.Next()
-			if first.Start != end || second.Start != end+1 || first.Value != ":" || second.Value != ":" || (typ.Type != sql.TokIdent && typ.Type != sql.TokKeyword) {
-				return "", nil, nil, &protocolError{"42601", "invalid parameter cast"}
-			}
-			native, oid := typeName(typ.Value)
-			if oid == 0 {
-				return "", nil, nil, &protocolError{"0A000", "unsupported parameter cast: " + typ.Value}
-			}
-			replacement = "CAST(? AS " + native + ")"
-			end = tokenizer.Pos()
-			if hints[int(n)-1] == 0 {
+		if strings.HasPrefix(strings.TrimSpace(query[end:]), "::") {
+			look := sql.NewTokenizer(strings.TrimSpace(query[end:])[2:])
+			typ := look.Next()
+			_, oid := typeName(typ.Value)
+			if oid != 0 && hints[int(n)-1] == 0 {
 				hints[int(n)-1] = oid
 			}
 		}
@@ -202,7 +183,7 @@ func (c *client) prepare(ctx context.Context, query string, oids []uint32) (*pre
 }
 func supportedOID(oid uint32) bool {
 	switch oid {
-	case oidBool, oidBytea, oidInt8, oidInt2, oidInt4, oidText, oidFloat4, oidFloat8, oidVarchar, oidNumeric, oidJSON, oidJSONB:
+	case oidBool, oidBytea, 19, 26, 2205, 2206, 4089, oidInt8, oidInt2, oidInt4, oidText, oidFloat4, oidFloat8, oidVarchar, oidNumeric, oidJSON, oidJSONB, oidDate, oidTime, oidTimestamp, oidTimestamptz, oidInterval, oidTimetz, oidUUID:
 		return true
 	}
 	return false

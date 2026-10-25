@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math"
+	"math/big"
 	"strconv"
 	"strings"
 	"time"
@@ -14,9 +15,24 @@ import (
 func PostgresColumnOID(col ColumnDef) uint32 {
 	name := strings.ToUpper(strings.TrimSpace(col.Declared))
 	if i := strings.IndexByte(name, '('); i >= 0 {
-		name = name[:i]
+		if j := strings.IndexByte(name[i:], ')'); j >= 0 {
+			name = name[:i] + name[i+j+1:]
+		}
 	}
 	switch name {
+	case "NAME":
+		return 19
+	case "OID", "REGCLASS", "REGTYPE", "REGNAMESPACE":
+		switch name {
+		case "OID":
+			return 26
+		case "REGCLASS":
+			return 2205
+		case "REGTYPE":
+			return 2206
+		default:
+			return 4089
+		}
 	case "BOOL", "BOOLEAN":
 		return 16
 	case "BYTEA":
@@ -64,6 +80,9 @@ func postgresColumnDefinition(col *ColumnDef) {
 	col.Postgres = true
 	if col.Declared == "" {
 		col.Declared = col.ColType.String()
+		if col.ColType == ColText && col.Length > 0 {
+			col.Declared = "VARCHAR"
+		}
 	}
 	switch strings.ToUpper(col.Declared) {
 	case "INTEGER", "INT", "INT4", "SERIAL", "SERIAL4":
@@ -75,6 +94,13 @@ func postgresColumnDefinition(col *ColumnDef) {
 	}
 }
 func normalizePostgresColumnValue(v Value, col ColumnDef) (Value, error) {
+	if col.Unsigned {
+		copy := col
+		copy.Postgres = false
+		r, e := normalizeColumnValue(v, copy)
+		r.PGType = "NUMERIC"
+		return r, e
+	}
 	if v.Null {
 		v.PGType = col.Declared
 		return v, nil
@@ -143,7 +169,29 @@ func CastPostgresValue(v Value, target string) (Value, error) {
 		default:
 			return invalid()
 		}
-	case 20, 21, 23:
+	case 20, 21, 23, 26, 2205, 2206, 4089:
+		if v.NumericText != "" {
+			v, err = NewDecimalValue(v.NumericText)
+			if err != nil {
+				return NewNullValue(), err
+			}
+		}
+		if v.Type == ColDecimal {
+			n, scale, e := valueDecimal(v)
+			if e != nil {
+				return NewNullValue(), e
+			}
+			den := decimalPower(scale)
+			q, rem := new(big.Int), new(big.Int)
+			q.QuoRem(n, den, rem)
+			if new(big.Int).Lsh(new(big.Int).Abs(rem), 1).Cmp(den) >= 0 {
+				q.Add(q, big.NewInt(int64(n.Sign())))
+			}
+			if !q.IsInt64() {
+				return NewNullValue(), fmt.Errorf("%s out of range", name)
+			}
+			v = NewIntValue(q.Int64())
+		}
 		if v.Type == ColText {
 			n, e := strconv.ParseInt(strings.TrimSpace(v.Text), 10, 64)
 			if e != nil {
@@ -158,6 +206,9 @@ func CastPostgresValue(v Value, target string) (Value, error) {
 			result = NewIntValue(int64(rounded))
 		} else {
 			result, err = castSQLValue(v, "BIGINT")
+		}
+		if err == nil && (oid == 26 || oid == 2205 || oid == 2206 || oid == 4089) && (result.Int < 0 || result.Int > math.MaxUint32) {
+			return NewNullValue(), fmt.Errorf("%s out of range", name)
 		}
 		if err == nil && (oid == 21 && (result.Int < math.MinInt16 || result.Int > math.MaxInt16) || oid == 23 && (result.Int < math.MinInt32 || result.Int > math.MaxInt32)) {
 			return NewNullValue(), fmt.Errorf("%s out of range", name)
@@ -184,6 +235,12 @@ func CastPostgresValue(v Value, target string) (Value, error) {
 			return invalid()
 		}
 		result = NewBlobValue(raw)
+	case 1186:
+		m, d, u, e := ParsePostgresInterval(v.String())
+		if e != nil {
+			return NewNullValue(), e
+		}
+		result = NewTextValue(FormatPostgresInterval(m, d, u))
 	case 1082, 1083, 1114, 1184, 1266:
 		result, err = postgresTemporalValue(v, name, oid)
 	case 17:
@@ -192,7 +249,11 @@ func CastPostgresValue(v Value, target string) (Value, error) {
 		} else {
 			result = NewBlobValue([]byte(v.String()))
 		}
-	case 25, 1043:
+	case 19, 25, 1043:
+		if _, _, ok := varyingCastType(name); ok {
+			result, err = castSQLValue(v, name)
+			break
+		}
 		if v.PGType == "BOOLEAN" || v.PGType == "BOOL" {
 			if v.Int != 0 {
 				result = NewTextValue("true")

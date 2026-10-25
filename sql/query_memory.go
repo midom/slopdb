@@ -434,6 +434,9 @@ func (h *diskHash) add(key string, row map[string]Value) error {
 		if value.HexLiteral {
 			flags |= 32
 		}
+		if value.PGType != "" {
+			flags |= 64
+		}
 		payload = append(payload, flags)
 		if value.EnumValue {
 			payload = binary.AppendVarint(payload, value.EnumOrdinal)
@@ -442,7 +445,7 @@ func (h *diskHash) add(key string, row map[string]Value) error {
 			payload = binary.AppendUvarint(payload, uint64(len(value.Collation)))
 			payload = append(payload, value.Collation...)
 		}
-		for _, text := range []string{value.NumericText, value.NumericExact} {
+		for _, text := range []string{value.NumericText, value.NumericExact, value.PGType} {
 			if text != "" {
 				payload = binary.AppendUvarint(payload, uint64(len(text)))
 				payload = append(payload, text...)
@@ -501,11 +504,12 @@ func decodeSpillMap(data []byte) (map[string]Value, error) {
 			return nil, fmt.Errorf("invalid temporary spill value length")
 		}
 		data = data[size:]
-		if len(data) == 0 || data[0] & ^byte(63) != 0 {
+		if len(data) == 0 || data[0] & ^byte(127) != 0 {
 			return nil, fmt.Errorf("invalid temporary spill value metadata")
 		}
 		value.Binary, value.EnumValue = data[0]&1 != 0, data[0]&2 != 0
 		value.HexLiteral = data[0]&32 != 0
+		hasPGType := data[0]&64 != 0
 		hasCollation := data[0]&4 != 0
 		hasNumericText, hasNumericExact := data[0]&8 != 0, data[0]&16 != 0
 		data = data[1:]
@@ -525,7 +529,7 @@ func decodeSpillMap(data []byte) (map[string]Value, error) {
 			value.Collation = Collation(data[used : used+int(length)])
 			data = data[used+int(length):]
 		}
-		for i, has := range []bool{hasNumericText, hasNumericExact} {
+		for i, has := range []bool{hasNumericText, hasNumericExact, hasPGType} {
 			if !has {
 				continue
 			}
@@ -537,8 +541,10 @@ func decodeSpillMap(data []byte) (map[string]Value, error) {
 			data = data[used+int(length):]
 			if i == 0 {
 				value.NumericText = text
-			} else {
+			} else if i == 1 {
 				value.NumericExact = text
+			} else {
+				value.PGType = text
 			}
 		}
 		row[name] = value

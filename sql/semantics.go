@@ -196,7 +196,7 @@ func validateScalarFunctionDialect(f *FuncCallExpr, allowPostgres bool) error {
 				switch strings.ToUpper(mysqlCastTarget(literal.Value.Text)) {
 				case "INT", "INTEGER", "BIGINT", "REAL", "FLOAT", "DOUBLE", "DOUBLE PRECISION", "TEXT", "BLOB", "DECIMAL", "NUMERIC", "JSON", "JSONB", "UNSIGNED", "UNSIGNED INTEGER":
 				default:
-					if _, _, ok := varyingCastType(literal.Value.Text); !ok && !strings.HasPrefix(strings.ToUpper(literal.Value.Text), "DECIMAL(") && !strings.HasPrefix(strings.ToUpper(literal.Value.Text), "NUMERIC(") {
+					if _, _, ok := varyingCastType(literal.Value.Text); !ok && PostgresColumnOID(ColumnDef{Declared: literal.Value.Text}) == 0 && !strings.HasPrefix(strings.ToUpper(literal.Value.Text), "DECIMAL(") && !strings.HasPrefix(strings.ToUpper(literal.Value.Text), "NUMERIC(") {
 						return fmt.Errorf("unsupported cast type: %s", literal.Value.Text)
 					}
 				}

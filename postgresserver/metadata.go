@@ -102,6 +102,9 @@ func (m *metadata) table(name string, scope map[string][]field, depth int) ([]fi
 		case typ == "BLOB" || strings.HasPrefix(typ, "VARBINARY"):
 			oid = oidBytea
 		}
+		if _, pgOID := typeName(typ); pgOID != 0 {
+			oid = pgOID
+		}
 		fields = append(fields, field{row["name"].Text, oid})
 	}
 	m.tables[name] = fields
@@ -374,6 +377,9 @@ func (m *metadata) expression(expr sql.Expression, env map[string]uint32) uint32
 		if e.Value.Null {
 			return oidText
 		}
+		if oid := sql.PostgresValueOID(e.Value); oid != 0 {
+			return oid
+		}
 		return nativeOID(e.Value.Type)
 	case *sql.ColumnRefExpr:
 		if oid := env[e.Name]; oid != 0 {
@@ -381,6 +387,9 @@ func (m *metadata) expression(expr sql.Expression, env map[string]uint32) uint32
 		}
 		return oidText
 	case *sql.UnaryExpr:
+		if strings.EqualFold(e.Op, "NOT") {
+			return oidBool
+		}
 		return m.expression(e.Right, env)
 	case *sql.BinaryExpr:
 		left, right := m.expression(e.Left, env), m.expression(e.Right, env)
@@ -399,8 +408,8 @@ func (m *metadata) expression(expr sql.Expression, env map[string]uint32) uint32
 		left = m.currentType(e.Left, left)
 		right = m.currentType(e.Right, right)
 		switch strings.ToUpper(e.Op) {
-		case "=", "!=", "<>", "<", ">", "<=", ">=", "IS", "IS NOT", "AND", "OR", "LIKE", "GLOB", "REGEXP":
-			return oidInt8
+		case "=", "!=", "<>", "<", ">", "<=", ">=", "IS", "IS NOT", "AND", "OR", "LIKE", "NOT LIKE", "GLOB", "NOT GLOB", "REGEXP", "NOT REGEXP":
+			return oidBool
 		case "||", "->>":
 			return oidText
 		case "->":
@@ -423,7 +432,7 @@ func (m *metadata) expression(expr sql.Expression, env map[string]uint32) uint32
 				_, oid := typeName(typ.Value.Text)
 				if oid != 0 {
 					m.hint(e.Args[0], oid)
-					return nativeOIDForCast(oid)
+					return oid
 				}
 			}
 		}

@@ -22,6 +22,9 @@ func (s *Schema) MySQLMode() bool { return s.mysqlMode }
 // parseColumnType consumes only the type portion, leaving constraints to the
 // shared parser. Unknown words are deliberately left for its useful error.
 func (p *Parser) parseColumnType(col *ColumnDef) error {
+	if handled, err := p.parsePostgresColumnType(col); handled {
+		return err
+	}
 	word := strings.ToUpper(p.cur.Value)
 	col.ColType = ColText
 	bits := 0
@@ -68,7 +71,7 @@ func (p *Parser) parseColumnType(col *ColumnDef) error {
 		}
 	case "JSON", "JSONB":
 		col.ColType = ColJSON
-		col.Declared = "JSON"
+		col.Declared = word
 		p.advance()
 	case "REAL", "DOUBLE", "FLOAT":
 		col.ColType = ColReal
@@ -77,9 +80,7 @@ func (p *Parser) parseColumnType(col *ColumnDef) error {
 			p.advance()
 			word = "DOUBLE PRECISION"
 		}
-		if word == "FLOAT" {
-			col.Declared = word
-		}
+		col.Declared = word
 	case "TEXT", "TINYTEXT", "MEDIUMTEXT", "LONGTEXT":
 		col.ColType = ColText
 		p.advance()
@@ -146,6 +147,20 @@ func (p *Parser) parseColumnType(col *ColumnDef) error {
 				return err
 			}
 		}
+		if word == "TIMESTAMP" && (p.showWord("WITH") || p.showWord("WITHOUT")) {
+			zone := strings.ToUpper(p.cur.Value)
+			p.advance()
+			if !p.showWord("TIME") {
+				return fmt.Errorf("expected TIME ZONE")
+			}
+			p.advance()
+			if !p.showWord("ZONE") {
+				return fmt.Errorf("expected TIME ZONE")
+			}
+			p.advance()
+			col.Declared += " " + zone + " TIME ZONE"
+			col.Postgres = true
+		}
 	case "ENUM":
 		col.ColType = ColText
 		col.Declared = word
@@ -195,6 +210,9 @@ func (p *Parser) parseColumnType(col *ColumnDef) error {
 func decorateColumnValue(v Value, col ColumnDef) Value {
 	if col.Postgres {
 		v.PGType = col.Declared
+		if col.Unsigned {
+			v.PGType = "NUMERIC"
+		}
 	}
 	v.HexLiteral = false
 	v.Binary = col.Binary

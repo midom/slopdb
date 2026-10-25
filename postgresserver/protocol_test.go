@@ -98,7 +98,7 @@ func TestPortalsAndPreparedLifetime(t *testing.T) {
 	receive[*pgproto3.ParseComplete](t, c)
 	receive[*pgproto3.ParameterDescription](t, c)
 	fields := receive[*pgproto3.RowDescription](t, c)
-	if len(fields.Fields) != 1 || fields.Fields[0].DataTypeOID != oidInt8 {
+	if len(fields.Fields) != 1 || fields.Fields[0].DataTypeOID != oidInt4 {
 		t.Fatal(fields)
 	}
 	c.send(t, &pgproto3.Bind{DestinationPortal: "cursor", PreparedStatement: "read", ResultFormatCodes: []int16{1}}, &pgproto3.Describe{ObjectType: 'P', Name: "cursor"}, &pgproto3.Execute{Portal: "cursor", MaxRows: 2}, &pgproto3.Flush{})
@@ -108,14 +108,14 @@ func TestPortalsAndPreparedLifetime(t *testing.T) {
 	}
 	for _, expected := range []uint64{1, 2} {
 		row := receive[*pgproto3.DataRow](t, c)
-		if len(row.Values) != 1 || len(row.Values[0]) != 8 || binary.BigEndian.Uint64(row.Values[0]) != expected {
+		if len(row.Values) != 1 || len(row.Values[0]) != 4 || uint64(binary.BigEndian.Uint32(row.Values[0])) != expected {
 			t.Fatalf("binary row %+v", row)
 		}
 	}
 	receive[*pgproto3.PortalSuspended](t, c)
 	c.send(t, &pgproto3.Execute{Portal: "cursor", MaxRows: 2}, &pgproto3.Sync{})
 	row := receive[*pgproto3.DataRow](t, c)
-	if binary.BigEndian.Uint64(row.Values[0]) != 3 {
+	if binary.BigEndian.Uint32(row.Values[0]) != 3 {
 		t.Fatal(row)
 	}
 	if tag := receive[*pgproto3.CommandComplete](t, c); string(tag.CommandTag) != "SELECT 3" {
