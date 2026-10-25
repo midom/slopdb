@@ -263,7 +263,7 @@ func (b *BoundQuery) clone(v reflect.Value) reflect.Value {
 		out := reflect.New(v.Type()).Elem()
 		out.Set(v)
 		for i := 0; i < v.NumField(); i++ {
-			if v.Type().Field(i).IsExported() {
+			if out.Field(i).CanSet() {
 				out.Field(i).Set(b.clone(v.Field(i)))
 			}
 		}

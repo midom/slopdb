@@ -330,7 +330,7 @@ func resolveNativeBareExpressions(v reflect.Value) {
 		}
 	case reflect.Struct:
 		for i := 0; i < v.NumField(); i++ {
-			if v.Type().Field(i).IsExported() {
+			if v.Field(i).CanSet() {
 				resolveNativeBareExpressions(v.Field(i))
 			}
 		}
@@ -340,12 +340,20 @@ func resolveNativeBareExpressions(v reflect.Value) {
 		}
 	}
 }
+
+// namespaceVisit visits AST pointers and the value-form relation/projection
+// nodes used by namespace classifiers. Literal Values cannot contain AST nodes;
+// neither they nor unrelated structs need to be boxed for each callback.
 func namespaceVisit(v reflect.Value, visit func(any)) {
 	if !v.IsValid() {
 		return
 	}
 	switch v.Kind() {
-	case reflect.Interface, reflect.Pointer:
+	case reflect.Interface:
+		if !v.IsNil() {
+			namespaceVisit(v.Elem(), visit)
+		}
+	case reflect.Pointer:
 		if v.IsNil() {
 			return
 		}
@@ -354,12 +362,18 @@ func namespaceVisit(v reflect.Value, visit func(any)) {
 		}
 		namespaceVisit(v.Elem(), visit)
 	case reflect.Struct:
-		if v.CanInterface() {
-			visit(v.Interface())
+		switch v.Type() {
+		case reflect.TypeOf(Value{}):
+			return
+		case reflect.TypeOf(SelectColumn{}), reflect.TypeOf(JoinClause{}):
+			if v.CanInterface() {
+				visit(v.Interface())
+			}
 		}
 		for i := 0; i < v.NumField(); i++ {
-			if v.Type().Field(i).IsExported() {
-				namespaceVisit(v.Field(i), visit)
+			field := v.Field(i)
+			if field.CanInterface() {
+				namespaceVisit(field, visit)
 			}
 		}
 	case reflect.Slice:
@@ -368,6 +382,7 @@ func namespaceVisit(v reflect.Value, visit func(any)) {
 		}
 	}
 }
+
 func (s *Schema) resolveNamespaceStatement(stmt Statement, outer map[string]bool) error {
 	scope := maps.Clone(outer)
 	if scope == nil {
@@ -689,13 +704,17 @@ func namespaceExpressionVisit(v reflect.Value, root bool, visit func(any)) {
 	if !v.IsValid() {
 		return
 	}
-	if !root && v.CanInterface() {
+	if !root && (v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface) && v.CanInterface() {
 		if _, statement := v.Interface().(Statement); statement {
 			return
 		}
 	}
 	switch v.Kind() {
-	case reflect.Interface, reflect.Pointer:
+	case reflect.Interface:
+		if !v.IsNil() {
+			namespaceExpressionVisit(v.Elem(), root, visit)
+		}
+	case reflect.Pointer:
 		if v.IsNil() {
 			return
 		}
@@ -704,8 +723,11 @@ func namespaceExpressionVisit(v reflect.Value, root bool, visit func(any)) {
 		}
 		namespaceExpressionVisit(v.Elem(), root, visit)
 	case reflect.Struct:
+		if v.Type() == reflect.TypeOf(Value{}) {
+			return
+		}
 		for i := 0; i < v.NumField(); i++ {
-			if v.Type().Field(i).IsExported() {
+			if v.Field(i).CanInterface() {
 				namespaceExpressionVisit(v.Field(i), false, visit)
 			}
 		}
