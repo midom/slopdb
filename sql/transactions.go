@@ -419,6 +419,9 @@ func (s *Schema) prepareCommit() error {
 }
 
 func (s *Schema) endTransaction() {
+	s.foreignChanges = nil
+	s.foreignConstraintModes = nil
+	s.checkingDeferred = false
 	s.releaseConsistentSnapshot()
 	s.consistentIndexDeletes = nil
 	s.txIsolation = ""

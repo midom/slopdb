@@ -1,6 +1,10 @@
 package sql
 
-import "fmt"
+import (
+	"fmt"
+	"slices"
+	"strings"
+)
 
 type referencingKey struct {
 	table string
@@ -11,7 +15,17 @@ func tableForeignKeys(info *TableInfo) []ForeignKeyDef {
 	keys := append([]ForeignKeyDef(nil), info.ForeignKeys...)
 	for _, col := range info.Columns {
 		if col.RefTable != "" {
-			keys = append(keys, ForeignKeyDef{Columns: []string{col.Name}, RefTable: col.RefTable, RefColumns: col.RefColumns})
+			keys = append(keys, ForeignKeyDef{Name: col.ConstraintNames["FOREIGN"], Columns: []string{col.Name}, RefTable: col.RefTable, RefColumns: col.RefColumns, OnDelete: col.RefOnDelete, OnUpdate: col.RefOnUpdate, Deferrable: col.RefDeferrable, InitiallyDeferred: col.RefInitiallyDeferred})
+		}
+	}
+	for i := range keys {
+		if keys[i].Name == "" {
+			for _, constraint := range info.Constraints {
+				if constraint.Kind == "FOREIGN" && slices.Equal(constraint.Columns, keys[i].Columns) && constraint.RefTable == keys[i].RefTable && slices.Equal(constraint.RefColumns, keys[i].RefColumns) && constraint.OnDelete == keys[i].OnDelete && constraint.OnUpdate == keys[i].OnUpdate && constraint.Deferrable == keys[i].Deferrable && constraint.InitiallyDeferred == keys[i].InitiallyDeferred {
+					keys[i].Name = constraint.Name
+					break
+				}
+			}
 		}
 	}
 	return keys
@@ -19,6 +33,25 @@ func tableForeignKeys(info *TableInfo) []ForeignKeyDef {
 
 func (s *Schema) foreignDefinitions(info *TableInfo) error {
 	for _, fk := range tableForeignKeys(info) {
+		for _, action := range []string{fk.OnDelete, fk.OnUpdate} {
+			switch action {
+			case "", "NO ACTION", "RESTRICT", "CASCADE", "SET NULL", "SET DEFAULT":
+			default:
+				return fmt.Errorf("invalid foreign key action %q", action)
+			}
+		}
+		if fk.InitiallyDeferred && !fk.Deferrable {
+			return fmt.Errorf("INITIALLY DEFERRED requires DEFERRABLE")
+		}
+		if fk.OnDelete == "SET NULL" || fk.OnUpdate == "SET NULL" {
+			for _, name := range fk.Columns {
+				for _, column := range info.Columns {
+					if column.Name == name && column.NotNull {
+						return fmt.Errorf("SET NULL requires nullable foreign-key columns")
+					}
+				}
+			}
+		}
 		if s.isTemporaryTable(fk.RefTable) {
 			return fmt.Errorf("foreign keys cannot reference temporary table %s", fk.RefTable)
 		}
@@ -53,18 +86,18 @@ func (s *Schema) foreignDefinitions(info *TableInfo) error {
 			return fmt.Errorf("foreign key on %s must reference a PRIMARY KEY or UNIQUE key", info.Name)
 		}
 		for i, name := range fk.Columns {
-			var sourceType, targetType ColumnType
+			var source, target ColumnDef
 			for _, col := range info.Columns {
 				if col.Name == name {
-					sourceType = col.ColType
+					source = col
 				}
 			}
 			for _, col := range parent.Columns {
 				if col.Name == ref[i] {
-					targetType = col.ColType
+					target = col
 				}
 			}
-			if sourceType != targetType {
+			if source.ColType != target.ColType || source.Unsigned != target.Unsigned || (source.ColType == ColDecimal && (source.Precision != target.Precision || source.Scale != target.Scale)) || (source.ColType == ColText && source.Binary != target.Binary) || ((source.MySQL || target.MySQL) && source.ColType == ColInteger && source.IntegerBits != target.IntegerBits) {
 				return fmt.Errorf("foreign key type mismatch: %s.%s and %s.%s", info.Name, name, parent.Name, ref[i])
 			}
 		}
@@ -98,6 +131,9 @@ func foreignValues(columns []string, row map[string]Value) ([]Value, bool) {
 
 func (s *Schema) checkForeignRow(table string, row map[string]Value) error {
 	for _, fk := range s.lookups().foreign[table] {
+		if s.foreignKeyDeferred(table, fk) {
+			continue
+		}
 		if s.isTemporaryTable(fk.RefTable) {
 			return fmt.Errorf("foreign-key parent %s is shadowed by a temporary table", fk.RefTable)
 		}
@@ -182,6 +218,9 @@ func (s *Schema) checkStatementForeignKeys(pos int) error {
 	defer func() { s.statementActive = active }()
 	checked := make(map[string]bool)
 	for i := pos; i < len(s.txWrites); i++ {
+		if err := s.checkInterrupt(); err != nil {
+			return err
+		}
 		w := s.txWrites[i]
 		name := string(w.key)
 		if checked[name] {
@@ -368,4 +407,22 @@ func candidateColumns(columns, key []string) bool {
 		delete(seen, col)
 	}
 	return len(seen) == 0
+}
+
+func foreignOptionsSQL(fk ForeignKeyDef) string {
+	var text strings.Builder
+	if fk.OnDelete != "" {
+		text.WriteString(" ON DELETE " + fk.OnDelete)
+	}
+	if fk.OnUpdate != "" {
+		text.WriteString(" ON UPDATE " + fk.OnUpdate)
+	}
+	if fk.Deferrable {
+		if fk.InitiallyDeferred {
+			text.WriteString(" DEFERRABLE INITIALLY DEFERRED")
+		} else {
+			text.WriteString(" DEFERRABLE INITIALLY IMMEDIATE")
+		}
+	}
+	return text.String()
 }

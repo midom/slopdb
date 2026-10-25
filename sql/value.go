@@ -44,38 +44,47 @@ func (ct ColumnType) String() string {
 }
 
 type ForeignKeyDef struct {
-	Columns    []string
-	RefTable   string
-	RefColumns []string
+	Name              string `json:"name,omitempty"`
+	OnDelete          string `json:"on_delete,omitempty"`
+	OnUpdate          string `json:"on_update,omitempty"`
+	Deferrable        bool   `json:"deferrable,omitempty"`
+	InitiallyDeferred bool   `json:"initially_deferred,omitempty"`
+	Columns           []string
+	RefTable          string
+	RefColumns        []string
 }
 
 type ColumnDef struct {
-	Precision           int               `json:"decimal_precision,omitempty"`
-	Scale               int               `json:"decimal_scale,omitempty"`
-	Declared            string            `json:"declared_type,omitempty"`
-	Unsigned            bool              `json:"unsigned,omitempty"`
-	IntegerBits         int               `json:"integer_bits,omitempty"`
-	FixedBinary         bool              `json:"fixed_binary,omitempty"`
-	EnumValues          []string          `json:"enum_values,omitempty"`
-	MySQL               bool              `json:"mysql_affinity,omitempty"`
-	MySQLAutoIncrement  bool              `json:"mysql_auto_increment,omitempty"`
-	TemporalPrecision   int               `json:"temporal_precision,omitempty"`
-	ConstraintNames     map[string]string `json:"constraint_names,omitempty"`
-	Name                string
-	ColType             ColumnType
-	Length              int64 `json:"length,omitempty"`                // positive VARCHAR/VARBINARY character/byte limit
-	AllowExistingLength bool  `json:"allow_existing_length,omitempty"` // preserve preexisting overlength values on unrelated updates
-	Binary              bool  `json:"binary,omitempty"`
-	NotNull             bool
-	Default             Expression `json:"-"`
-	DefaultSQL          string     `json:"default_sql,omitempty"`
-	PrimaryKey          bool
-	Unique              bool
-	Check               Expression `json:"-"`
-	CheckSQL            string     `json:"check_sql,omitempty"`
-	AutoIncrement       bool
-	RefTable            string
-	RefColumns          []string
+	RefOnDelete          string            `json:"ref_on_delete,omitempty"`
+	RefOnUpdate          string            `json:"ref_on_update,omitempty"`
+	RefDeferrable        bool              `json:"ref_deferrable,omitempty"`
+	RefInitiallyDeferred bool              `json:"ref_initially_deferred,omitempty"`
+	Precision            int               `json:"decimal_precision,omitempty"`
+	Scale                int               `json:"decimal_scale,omitempty"`
+	Declared             string            `json:"declared_type,omitempty"`
+	Unsigned             bool              `json:"unsigned,omitempty"`
+	IntegerBits          int               `json:"integer_bits,omitempty"`
+	FixedBinary          bool              `json:"fixed_binary,omitempty"`
+	EnumValues           []string          `json:"enum_values,omitempty"`
+	MySQL                bool              `json:"mysql_affinity,omitempty"`
+	MySQLAutoIncrement   bool              `json:"mysql_auto_increment,omitempty"`
+	TemporalPrecision    int               `json:"temporal_precision,omitempty"`
+	ConstraintNames      map[string]string `json:"constraint_names,omitempty"`
+	Name                 string
+	ColType              ColumnType
+	Length               int64 `json:"length,omitempty"`                // positive VARCHAR/VARBINARY character/byte limit
+	AllowExistingLength  bool  `json:"allow_existing_length,omitempty"` // preserve preexisting overlength values on unrelated updates
+	Binary               bool  `json:"binary,omitempty"`
+	NotNull              bool
+	Default              Expression `json:"-"`
+	DefaultSQL           string     `json:"default_sql,omitempty"`
+	PrimaryKey           bool
+	Unique               bool
+	Check                Expression `json:"-"`
+	CheckSQL             string     `json:"check_sql,omitempty"`
+	AutoIncrement        bool
+	RefTable             string
+	RefColumns           []string
 }
 
 // DeclaredType preserves bounded string declarations for schema introspection.
@@ -350,17 +359,21 @@ type DropIndexStmt struct {
 }
 
 type ConstraintDef struct {
-	PrefixLengths []int64    `json:"prefix_lengths,omitempty"`
-	Name          string     `json:"name"`
-	Kind          string     `json:"kind"`
-	Columns       []string   `json:"columns,omitempty"`
-	Check         Expression `json:"-"`
-	CheckSQL      string     `json:"check_sql,omitempty"`
-	RefTable      string     `json:"ref_table,omitempty"`
-	RefColumns    []string   `json:"ref_columns,omitempty"`
-	IndexID       uint64     `json:"index_id,omitempty"`
-	Inline        bool       `json:"inline,omitempty"`
-	Fulltext      bool       `json:"fulltext,omitempty"`
+	OnDelete          string     `json:"on_delete,omitempty"`
+	OnUpdate          string     `json:"on_update,omitempty"`
+	Deferrable        bool       `json:"deferrable,omitempty"`
+	InitiallyDeferred bool       `json:"initially_deferred,omitempty"`
+	PrefixLengths     []int64    `json:"prefix_lengths,omitempty"`
+	Name              string     `json:"name"`
+	Kind              string     `json:"kind"`
+	Columns           []string   `json:"columns,omitempty"`
+	Check             Expression `json:"-"`
+	CheckSQL          string     `json:"check_sql,omitempty"`
+	RefTable          string     `json:"ref_table,omitempty"`
+	RefColumns        []string   `json:"ref_columns,omitempty"`
+	IndexID           uint64     `json:"index_id,omitempty"`
+	Inline            bool       `json:"inline,omitempty"`
+	Fulltext          bool       `json:"fulltext,omitempty"`
 }
 
 type AlterTableStmt struct {
@@ -822,3 +835,10 @@ func ValueDeserialize(data []byte) Value {
 }
 
 func (*DropTriggerStmt) stmt() {}
+
+type SetConstraintsStmt struct {
+	Names         []string
+	All, Deferred bool
+}
+
+func (*SetConstraintsStmt) stmt() {}

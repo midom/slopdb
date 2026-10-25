@@ -365,19 +365,7 @@ func (s *Schema) deleteJoined(stmt *DeleteStmt) (int64, *ResultSet, error) {
 	}
 	for _, candidate := range candidates {
 		table, info, row := candidate.table.name, candidate.table.info, candidate.original
-		if err := s.lockRow(table, info, row, candidate.key); err != nil {
-			return 0, nil, err
-		}
-		if err := s.fireTriggers(table, "DELETE", "BEFORE", row, nil); err != nil {
-			return 0, nil, err
-		}
-		if err := s.updateIndexes(table, info, row, candidate.key, false); err != nil {
-			return 0, nil, err
-		}
-		if err := s.remove(candidate.key); err != nil {
-			return 0, nil, err
-		}
-		if err := s.fireTriggers(table, "DELETE", "AFTER", row, nil); err != nil {
+		if err := s.deletePhysicalRow(table, info, candidate.key, row); err != nil {
 			return 0, nil, err
 		}
 	}

@@ -9,7 +9,7 @@ import (
 )
 
 func sameConstraint(a, b ConstraintDef) bool {
-	return a.Kind == b.Kind && (a.Kind == "PRIMARY" || a.Inline == b.Inline) && slices.Equal(a.Columns, b.Columns) && slices.Equal(a.PrefixLengths, b.PrefixLengths) && a.CheckSQL == b.CheckSQL && a.RefTable == b.RefTable && slices.Equal(a.RefColumns, b.RefColumns)
+	return a.Kind == b.Kind && (a.Kind == "PRIMARY" || a.Inline == b.Inline) && slices.Equal(a.Columns, b.Columns) && slices.Equal(a.PrefixLengths, b.PrefixLengths) && a.CheckSQL == b.CheckSQL && a.RefTable == b.RefTable && slices.Equal(a.RefColumns, b.RefColumns) && a.OnDelete == b.OnDelete && a.OnUpdate == b.OnUpdate && a.Deferrable == b.Deferrable && a.InitiallyDeferred == b.InitiallyDeferred
 }
 func (s *Schema) initializeConstraintNames(info *TableInfo, createIndexes ...bool) error {
 	build := len(createIndexes) == 0 || createIndexes[0]
@@ -55,7 +55,7 @@ func (s *Schema) initializeConstraintNames(info *TableInfo, createIndexes ...boo
 			ensure(ConstraintDef{Kind: "CHECK", Columns: []string{col.Name}, Check: col.Check, CheckSQL: col.CheckSQL, Inline: true})
 		}
 		if col.RefTable != "" {
-			ensure(ConstraintDef{Kind: "FOREIGN", Columns: []string{col.Name}, RefTable: col.RefTable, RefColumns: slices.Clone(col.RefColumns), Inline: true})
+			ensure(ConstraintDef{Kind: "FOREIGN", Columns: []string{col.Name}, RefTable: col.RefTable, RefColumns: slices.Clone(col.RefColumns), OnDelete: col.RefOnDelete, OnUpdate: col.RefOnUpdate, Deferrable: col.RefDeferrable, InitiallyDeferred: col.RefInitiallyDeferred, Inline: true})
 		}
 	}
 	for _, cols := range info.TableUnique {
@@ -65,7 +65,7 @@ func (s *Schema) initializeConstraintNames(info *TableInfo, createIndexes ...boo
 		ensure(ConstraintDef{Kind: "CHECK", Check: info.TableCheck[i], CheckSQL: sql})
 	}
 	for _, fk := range info.ForeignKeys {
-		ensure(ConstraintDef{Kind: "FOREIGN", Columns: slices.Clone(fk.Columns), RefTable: fk.RefTable, RefColumns: slices.Clone(fk.RefColumns)})
+		ensure(ConstraintDef{Kind: "FOREIGN", Columns: slices.Clone(fk.Columns), RefTable: fk.RefTable, RefColumns: slices.Clone(fk.RefColumns), OnDelete: fk.OnDelete, OnUpdate: fk.OnUpdate, Deferrable: fk.Deferrable, InitiallyDeferred: fk.InitiallyDeferred})
 	}
 	for i := range info.Constraints {
 		c := &info.Constraints[i]
@@ -133,7 +133,7 @@ func (s *Schema) addTableConstraint(info *TableInfo, c ConstraintDef) error {
 		info.TableCheck = append(info.TableCheck, c.Check)
 		info.TableCheckSQL = append(info.TableCheckSQL, c.CheckSQL)
 	case "FOREIGN":
-		info.ForeignKeys = append(info.ForeignKeys, ForeignKeyDef{Columns: slices.Clone(c.Columns), RefTable: c.RefTable, RefColumns: slices.Clone(c.RefColumns)})
+		info.ForeignKeys = append(info.ForeignKeys, ForeignKeyDef{Name: c.Name, Columns: slices.Clone(c.Columns), RefTable: c.RefTable, RefColumns: slices.Clone(c.RefColumns), OnDelete: c.OnDelete, OnUpdate: c.OnUpdate, Deferrable: c.Deferrable, InitiallyDeferred: c.InitiallyDeferred})
 	default:
 		return fmt.Errorf("unsupported constraint %s", c.Kind)
 	}
@@ -218,7 +218,7 @@ func (s *Schema) dropTableConstraint(info *TableInfo, name string, ifExists, cas
 			}
 		} else {
 			for i, fk := range info.ForeignKeys {
-				if fk.RefTable == c.RefTable && slices.Equal(fk.Columns, c.Columns) && slices.Equal(fk.RefColumns, c.RefColumns) {
+				if fk.RefTable == c.RefTable && slices.Equal(fk.Columns, c.Columns) && slices.Equal(fk.RefColumns, c.RefColumns) && fk.OnDelete == c.OnDelete && fk.OnUpdate == c.OnUpdate && fk.Deferrable == c.Deferrable && fk.InitiallyDeferred == c.InitiallyDeferred {
 					info.ForeignKeys = append(info.ForeignKeys[:i], info.ForeignKeys[i+1:]...)
 					break
 				}

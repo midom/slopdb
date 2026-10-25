@@ -64,6 +64,9 @@ type ViewInfo struct {
 }
 
 type Schema struct {
+	foreignChanges           []foreignChange
+	foreignConstraintModes   map[string]bool
+	checkingDeferred         bool
 	namespaces               map[string]bool
 	defaultSchema            string
 	searchPath               []string
@@ -190,10 +193,11 @@ type txWrite struct {
 }
 
 type savepoint struct {
-	name  string
-	pos   int
-	state *schemaState
-	outer bool
+	constraintModes map[string]bool
+	name            string
+	pos             int
+	state           *schemaState
+	outer           bool
 }
 
 type TriggerInfo struct {
@@ -929,6 +933,7 @@ func (s *Schema) getCreateTableSQL(tableName string, inlineIndexes bool) string 
 			if len(col.RefColumns) > 0 {
 				fmt.Fprintf(&b, "(%s)", quotedNames(col.RefColumns))
 			}
+			b.WriteString(foreignOptionsSQL(ForeignKeyDef{OnDelete: col.RefOnDelete, OnUpdate: col.RefOnUpdate, Deferrable: col.RefDeferrable, InitiallyDeferred: col.RefInitiallyDeferred}))
 		}
 	}
 	for _, c := range info.Constraints {
@@ -952,6 +957,7 @@ func (s *Schema) getCreateTableSQL(tableName string, inlineIndexes bool) string 
 			if len(c.RefColumns) > 0 {
 				b.WriteString(" (" + quotedNames(c.RefColumns) + ")")
 			}
+			b.WriteString(foreignOptionsSQL(ForeignKeyDef{OnDelete: c.OnDelete, OnUpdate: c.OnUpdate, Deferrable: c.Deferrable, InitiallyDeferred: c.InitiallyDeferred}))
 		}
 	}
 	if inlineIndexes {
@@ -1885,6 +1891,9 @@ func (s *Schema) BeginWithOptions(stmt *BeginStmt) error {
 	return nil
 }
 func (s *Schema) Commit() error {
+	if err := s.checkDeferredForeignKeys(); err != nil {
+		return err
+	}
 	// Logical catalog/row/predicate locks protect data-only commits. Publishing
 	// an atomic batch needs no catalog rewrite or exclusive catalog mutex.
 	if s.inTx && s.parent != nil && s.lockHandler != nil && !s.persistentStateChanged() {
@@ -2056,7 +2065,7 @@ func (s *Schema) Savepoint(name string) error {
 			return err
 		}
 	}
-	s.savepoints = append(s.savepoints, savepoint{name: strings.ToLower(name), pos: len(s.txWrites), state: s.captureState(), outer: outer})
+	s.savepoints = append(s.savepoints, savepoint{name: strings.ToLower(name), pos: len(s.txWrites), state: s.captureState(), outer: outer, constraintModes: maps.Clone(s.foreignConstraintModes)})
 	return nil
 }
 func (s *Schema) savepointIndex(name string) int {
@@ -2085,6 +2094,7 @@ func (s *Schema) RollbackTo(name string) error {
 	}
 	sp := s.savepoints[idx]
 	s.restoreState(sp.state)
+	s.foreignConstraintModes = maps.Clone(sp.constraintModes)
 	s.truncateTxWrites(sp.pos)
 	s.resetRolledBackWrites()
 	s.savepoints = s.savepoints[:idx+1]
@@ -2105,7 +2115,18 @@ func (s *Schema) ExecuteStatement(run func() error) error {
 	state := s.captureState()
 	temporaryBefore := s.snapshotTemporaryDefinitions()
 	pos := len(s.txWrites)
+	foreignStart := len(s.foreignChanges)
+	defer func() {
+		if len(s.foreignChanges) > foreignStart {
+			clear(s.foreignChanges[foreignStart:])
+			s.foreignChanges = s.foreignChanges[:foreignStart]
+		}
+	}()
+	modesBefore := maps.Clone(s.foreignConstraintModes)
 	err := run()
+	if err == nil {
+		err = s.processForeignActions(foreignStart)
+	}
 	if err == nil {
 		err = s.checkStatementForeignKeys(pos)
 	}
@@ -2116,6 +2137,7 @@ func (s *Schema) ExecuteStatement(run func() error) error {
 		err = s.recordWrites(pos)
 	}
 	if err != nil {
+		s.foreignConstraintModes = modesBefore
 		s.temporary = temporaryBefore
 		s.restoreState(state)
 		s.truncateTxWrites(pos)
@@ -2202,6 +2224,9 @@ func (s *Schema) txDelete(key []byte)     { s.txAppend(key, nil, true) }
 // Undo only the discarded suffix; savepoints and failed statements restore
 // prior values without rebuilding or scanning the transaction's write set.
 func (s *Schema) truncateTxWrites(pos int) {
+	for len(s.foreignChanges) > 0 && s.foreignChanges[len(s.foreignChanges)-1].position > pos {
+		s.foreignChanges = s.foreignChanges[:len(s.foreignChanges)-1]
+	}
 	for i := len(s.txWrites) - 1; i >= pos; i-- {
 		w := s.txWrites[i]
 		if w.previous >= 0 {
@@ -5802,19 +5827,7 @@ func (s *Schema) Delete(stmt *DeleteStmt) (int64, *ResultSet, error) {
 	var returning []map[string]Value
 	for _, entry := range entries {
 		row := decodeRow(entry.Value, info)
-		if err := s.lockRow(table, info, row, entry.Key.UserKey); err != nil {
-			return 0, nil, err
-		}
-		if err := s.fireTriggers(table, "DELETE", "BEFORE", row, nil); err != nil {
-			return 0, nil, err
-		}
-		if err := s.updateIndexes(table, info, row, entry.Key.UserKey, false); err != nil {
-			return 0, nil, err
-		}
-		if err := s.remove(entry.Key.UserKey); err != nil {
-			return 0, nil, err
-		}
-		if err := s.fireTriggers(table, "DELETE", "AFTER", row, nil); err != nil {
+		if err := s.deletePhysicalRow(table, info, entry.Key.UserKey, row); err != nil {
 			return 0, nil, err
 		}
 		returning = append(returning, row)
@@ -5990,6 +6003,7 @@ func (s *Schema) applyRowUpdate(table string, info *TableInfo, oldKey []byte, or
 			s.rowIDDirty = true
 		}
 	}
+	s.recordForeignChange(table, oldKey, original, row)
 	if err := s.fireTriggers(table, "UPDATE", "AFTER", original, row); err != nil {
 		return nil, err
 	}
@@ -6083,13 +6097,7 @@ func (s *Schema) deleteConflicts(table string, info *TableInfo, row map[string]V
 			}
 		}
 		if conflict {
-			if err := s.lockRow(table, info, old, entry.Key.UserKey); err != nil {
-				return err
-			}
-			if err := s.updateIndexes(table, info, old, entry.Key.UserKey, false); err != nil {
-				return err
-			}
-			if err := s.remove(entry.Key.UserKey); err != nil {
+			if err := s.deletePhysicalRow(table, info, entry.Key.UserKey, old); err != nil {
 				return err
 			}
 			if s.mysqlMode {

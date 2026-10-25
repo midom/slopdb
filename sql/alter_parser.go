@@ -409,6 +409,8 @@ func (p *Parser) parseAlterConstraint() (*ConstraintDef, error) {
 		c.Columns = fk.Columns
 		c.RefTable = fk.RefTable
 		c.RefColumns = fk.RefColumns
+		c.OnDelete, c.OnUpdate = fk.OnDelete, fk.OnUpdate
+		c.Deferrable, c.InitiallyDeferred = fk.Deferrable, fk.InitiallyDeferred
 	default:
 		return nil, fmt.Errorf("unsupported constraint kind %s", kind)
 	}

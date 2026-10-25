@@ -93,7 +93,7 @@ func (d *Database) checkStatementReplication(ctx context.Context, statements []s
 		local := len(statements) > 0
 		for _, statement := range statements {
 			switch s := statement.(type) {
-			case *sql.BeginStmt, *sql.SetIsolationStmt, *sql.RollbackStmt, *sql.SavepointStmt, *sql.ReleaseStmt:
+			case *sql.BeginStmt, *sql.SetIsolationStmt, *sql.SetConstraintsStmt, *sql.RollbackStmt, *sql.SavepointStmt, *sql.ReleaseStmt:
 			case *sql.CommitStmt:
 				if s.Durability == "durable" {
 					local = false

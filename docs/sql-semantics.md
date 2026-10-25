@@ -69,12 +69,21 @@ parent changes cannot both commit an orphan. Failed statements roll back their
 writes. Renames preserve references, and transaction rollback restores the
 original constraint metadata.
 
-ON DELETE / ON UPDATE NO ACTION and RESTRICT are accepted with immediate
-statement validation. CASCADE, SET NULL, SET DEFAULT, deferred constraints, and
-other unsupported constraint options are rejected explicitly. Existing foreign
-key data is not scanned or repaired automatically on open; older versions did
-not enforce those references. New writes and changes to referenced parents are
-validated.
+ON DELETE / ON UPDATE CASCADE, SET NULL and SET DEFAULT update dependent rows
+atomically, maintaining indexes and constraints recursively. SET NULL requires
+nullable child columns; SET DEFAULT uses each column default (or NULL), and fails
+if the resulting value has no parent or violates another constraint. NO ACTION
+and RESTRICT normally validate at statement end. RESTRICT remains immediate
+when its constraint is deferred. Cascades run immediately even for deferred keys.
+
+DEFERRABLE INITIALLY DEFERRED postpones reference validation until COMMIT;
+DEFERRABLE INITIALLY IMMEDIATE starts with statement checks. Within a transaction,
+SET CONSTRAINTS ALL or a comma-separated list of constraint names changes those
+modes. Switching to IMMEDIATE validates pending writes atomically; a failed
+switch preserves the prior modes. Savepoint rollback restores constraint modes
+and writes. A deferred validation failure leaves the transaction open so callers
+can fix the reference or roll back. Existing foreign-key data is not scanned or
+repaired automatically on open; new writes and changed parents are validated.
 
 ## Expressions and grouping
 

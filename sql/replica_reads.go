@@ -13,7 +13,7 @@ func IsReplicaReadStatement(statement Statement) bool {
 	switch s := statement.(type) {
 	case *ReplicationPositionStmt, *ReadBarrierStmt:
 		return true
-	case *BeginStmt, *SetIsolationStmt, *RollbackStmt, *SavepointStmt, *ReleaseStmt:
+	case *BeginStmt, *SetIsolationStmt, *SetConstraintsStmt, *RollbackStmt, *SavepointStmt, *ReleaseStmt:
 		return true
 	case *CommitStmt:
 		return s.Durability != "durable"

@@ -140,7 +140,7 @@ func TestSQLSemantics(testT *testing.T) {
 	ok("CREATE TABLE tableactions(pid INTEGER,FOREIGN KEY(pid) REFERENCES parents ON DELETE NO ACTION)")
 	ok("INSERT INTO tableactions VALUES(2)")
 	bad("INSERT INTO tableactions VALUES(999)")
-	bad("CREATE TABLE cascadebad(pid INTEGER REFERENCES parents ON DELETE CASCADE)")
+	ok("CREATE TABLE cascadeok(pid INTEGER REFERENCES parents ON DELETE CASCADE)")
 	for _, q := range []string{"UPDATE empty SET id=missing", "UPDATE empty SET id=mystery(id)", "DELETE FROM empty WHERE missing=1", "DELETE FROM empty WHERE COUNT(*)=1", "SELECT CAST(NULL AS UNKNOWN)", "SELECT +('bad')", "SELECT -('bad')", "SELECT ABS('bad')", "SELECT ROUND('bad')"} {
 		bad(q)
 	}

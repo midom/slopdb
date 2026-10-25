@@ -204,7 +204,11 @@ func (p *Parser) parseStatement() (Statement, error) {
 	}
 	if p.showWord("SET") {
 		look := *p.tok
-		if strings.EqualFold(look.Next().Value, "READ") {
+		next := look.Next().Value
+		if strings.EqualFold(next, "CONSTRAINTS") {
+			return p.parseSetConstraints()
+		}
+		if strings.EqualFold(next, "READ") {
 			return p.parseReadBarrierSetting()
 		}
 		return p.parseSetIsolation()
@@ -398,7 +402,7 @@ func (p *Parser) parseCreateTable() (Statement, error) {
 			case "CHECK":
 				stmt.TableCheck = append(stmt.TableCheck, c.Check)
 			case "FOREIGN":
-				stmt.ForeignKeys = append(stmt.ForeignKeys, ForeignKeyDef{Columns: c.Columns, RefTable: c.RefTable, RefColumns: c.RefColumns})
+				stmt.ForeignKeys = append(stmt.ForeignKeys, ForeignKeyDef{Name: c.Name, Columns: c.Columns, RefTable: c.RefTable, RefColumns: c.RefColumns, OnDelete: c.OnDelete, OnUpdate: c.OnUpdate, Deferrable: c.Deferrable, InitiallyDeferred: c.InitiallyDeferred})
 			}
 			continue
 		}
@@ -578,10 +582,11 @@ func (p *Parser) parseColumnDef(col *ColumnDef, alteration ...bool) error {
 		if p.cur.Type == TokKeyword && kw == "REFERENCES" {
 			p.advance()
 			nameConstraint("FOREIGN")
-			col.RefTable = strings.ToLower(p.cur.Value)
-			if err := p.expect(TokIdent); err != nil {
+			refName, err := p.qualifiedName()
+			if err != nil {
 				return err
 			}
+			col.RefTable = refName
 			if p.cur.Type == TokLParen {
 				p.advance()
 				for {
@@ -598,9 +603,12 @@ func (p *Parser) parseColumnDef(col *ColumnDef, alteration ...bool) error {
 					return err
 				}
 			}
-			if err := p.parseReferenceActions(); err != nil {
+			fk := ForeignKeyDef{}
+			if err := p.parseReferenceActions(&fk); err != nil {
 				return err
 			}
+			col.RefOnDelete, col.RefOnUpdate = fk.OnDelete, fk.OnUpdate
+			col.RefDeferrable, col.RefInitiallyDeferred = fk.Deferrable, fk.InitiallyDeferred
 			continue
 		}
 
@@ -767,9 +775,9 @@ func (p *Parser) parseTableConstraint(stmt *CreateTableStmt) error {
 		if err := p.expectKeyword("REFERENCES"); err != nil {
 			return err
 		}
-		refTable := strings.ToLower(p.cur.Value)
-		if p.cur.Type == TokIdent || p.cur.Type == TokKeyword {
-			p.advance()
+		refTable, err := p.qualifiedName()
+		if err != nil {
+			return err
 		}
 		var refCols []string
 		if p.cur.Type == TokLParen {
@@ -788,15 +796,11 @@ func (p *Parser) parseTableConstraint(stmt *CreateTableStmt) error {
 				return err
 			}
 		}
-		if err := p.parseReferenceActions(); err != nil {
+		fk := ForeignKeyDef{Columns: cols, RefTable: refTable, RefColumns: refCols}
+		if err := p.parseReferenceActions(&fk); err != nil {
 			return err
 		}
-
-		stmt.ForeignKeys = append(stmt.ForeignKeys, ForeignKeyDef{
-			Columns:    cols,
-			RefTable:   refTable,
-			RefColumns: refCols,
-		})
+		stmt.ForeignKeys = append(stmt.ForeignKeys, fk)
 		return nil
 	}
 
@@ -2882,10 +2886,8 @@ func formatExpr(e Expression) string {
 	return fmt.Sprintf("%T", e)
 }
 
-// NO ACTION and RESTRICT use immediate statement validation. Unsupported
-// referential actions must never be accepted as if they were enforced.
-func (p *Parser) parseReferenceActions() error {
-	seen := make(map[string]bool)
+func (p *Parser) parseReferenceActions(fk *ForeignKeyDef) error {
+	seen := map[string]bool{}
 	for p.showWord("ON") {
 		p.advance()
 		event := strings.ToUpper(p.cur.Value)
@@ -2897,17 +2899,83 @@ func (p *Parser) parseReferenceActions() error {
 		}
 		seen[event] = true
 		p.advance()
-		if p.showWord("RESTRICT") {
-			p.advance()
-		} else if p.showWord("NO") {
-			p.advance()
-			if !p.showWord("ACTION") {
+		action := strings.ToUpper(p.cur.Value)
+		p.advance()
+		switch action {
+		case "CASCADE", "RESTRICT":
+		case "NO":
+			if !p.optionalAlterWord("ACTION") {
 				return fmt.Errorf("expected NO ACTION")
 			}
-			p.advance()
+			action = "NO ACTION"
+		case "SET":
+			if p.optionalAlterWord("NULL") {
+				action = "SET NULL"
+			} else if p.optionalAlterWord("DEFAULT") {
+				action = "SET DEFAULT"
+			} else {
+				return fmt.Errorf("expected SET NULL or SET DEFAULT")
+			}
+		default:
+			return fmt.Errorf("unsupported foreign key action: %s", action)
+		}
+		if event == "DELETE" {
+			fk.OnDelete = action
 		} else {
-			return fmt.Errorf("unsupported foreign key action: %s", p.cur.Value)
+			fk.OnUpdate = action
+		}
+	}
+	look := *p.tok
+	notDeferrable := p.showWord("NOT") && strings.EqualFold(look.Next().Value, "DEFERRABLE")
+	if notDeferrable {
+		p.advance()
+		if !p.optionalAlterWord("DEFERRABLE") {
+			return fmt.Errorf("expected DEFERRABLE")
+		}
+	} else if p.optionalAlterWord("DEFERRABLE") {
+		fk.Deferrable = true
+	}
+	if p.optionalAlterWord("INITIALLY") {
+		if !fk.Deferrable && !notDeferrable {
+			return fmt.Errorf("INITIALLY requires DEFERRABLE")
+		}
+		if p.optionalAlterWord("DEFERRED") {
+			if !fk.Deferrable {
+				return fmt.Errorf("INITIALLY DEFERRED requires DEFERRABLE")
+			}
+			fk.InitiallyDeferred = true
+		} else if !p.optionalAlterWord("IMMEDIATE") {
+			return fmt.Errorf("expected DEFERRED or IMMEDIATE")
 		}
 	}
 	return nil
+}
+
+func (p *Parser) parseSetConstraints() (Statement, error) {
+	p.advance()
+	if !p.optionalAlterWord("CONSTRAINTS") {
+		return nil, fmt.Errorf("expected CONSTRAINTS")
+	}
+	statement := &SetConstraintsStmt{}
+	if p.optionalAlterWord("ALL") {
+		statement.All = true
+	} else {
+		for {
+			name, err := p.qualifiedName()
+			if err != nil {
+				return nil, err
+			}
+			statement.Names = append(statement.Names, name)
+			if p.cur.Type != TokComma {
+				break
+			}
+			p.advance()
+		}
+	}
+	if p.optionalAlterWord("DEFERRED") {
+		statement.Deferred = true
+	} else if !p.optionalAlterWord("IMMEDIATE") {
+		return nil, fmt.Errorf("expected DEFERRED or IMMEDIATE")
+	}
+	return statement, nil
 }
