@@ -217,6 +217,9 @@ func (p *schemaChangePlanner) alter(st *AlterTableStmt, online bool) error {
 	work, detail := "table rewrite", "Scans and rewrites table rows and maintained indexes; cost grows with table size."
 	scan, rewrite, indexes := true, true, true
 	switch st.Operation {
+	case "IGNORE_ENGINE":
+		p.add(st.Operation, st.Table, "no-op", schemaExclusiveLock, "ENGINE options are ignored; tables use the LSM engine.", false, false, false)
+		return nil
 	case "ADD_INDEX":
 		name := st.Constraint.Name
 		if name == "" {

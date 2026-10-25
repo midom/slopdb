@@ -145,6 +145,11 @@ func TestMySQLEngineOptionIsIgnored(t *testing.T) {
 	for _, engine := range []string{"InnoDB", "MyISAM", "AnythingElse", "'unrecognized-engine'"} {
 		mysqlTypeExec(t, s, "CREATE TABLE engine_test(id INTEGER PRIMARY KEY) ENGINE="+engine)
 		mysqlTypeExec(t, s, "INSERT INTO engine_test VALUES(1)")
+		mysqlTypeExec(t, s, "ALTER TABLE engine_test ENGINE="+engine)
+		mysqlTypeExec(t, s, "EXPLAIN ALTER TABLE engine_test ENGINE="+engine)
+		if rows := mysqlTypeExec(t, s, "SELECT id FROM engine_test").Rows; len(rows) != 1 || rows[0]["id"].Int != 1 {
+			t.Fatalf("ENGINE changed data: %+v", rows)
+		}
 		mysqlTypeExec(t, s, "DROP TABLE engine_test")
 	}
 }

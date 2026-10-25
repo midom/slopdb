@@ -51,6 +51,9 @@ func (s *Schema) AlterTable(a *AlterTableStmt) error {
 		}
 		return fmt.Errorf("table %q does not exist", a.Table)
 	}
+	if a.Operation == "IGNORE_ENGINE" {
+		return nil
+	}
 	if a.Operation == "ADD_COLUMN" && a.IfNotExists && slices.ContainsFunc(info.Columns, func(c ColumnDef) bool { return c.Name == a.Column.Name }) {
 		return nil
 	}

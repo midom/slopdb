@@ -132,6 +132,15 @@ func (p *Parser) parseAlterAction(table string) (*AlterTableStmt, error) {
 	p.advance()
 	var err error
 	switch kw {
+	case "ENGINE":
+		if p.cur.Type == TokEq {
+			p.advance()
+		}
+		if p.cur.Type != TokIdent && p.cur.Type != TokKeyword && p.cur.Type != TokString {
+			return nil, fmt.Errorf("expected storage engine name")
+		}
+		p.advance()
+		a.Operation = "IGNORE_ENGINE"
 	case "ADD":
 		if p.optionalAlterWord("FULLTEXT") {
 			if p.showWord("INDEX") || p.showWord("KEY") {
