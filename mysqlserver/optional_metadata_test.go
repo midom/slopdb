@@ -227,3 +227,103 @@ func TestOptionalMetadataPrepareCapabilityAndSessionReset(t *testing.T) {
 		})
 	}
 }
+
+// Read complete server results without relying on a client library's metadata
+// defaults. The expected row payloads are fixed MySQL protocol bytes.
+func readOptionalMetadataResult(t *testing.T, c *rawClient, flags uint32, full bool, columns []string, rows [][]byte, status uint16, sequence byte) byte {
+	t.Helper()
+	read := func() []byte {
+		t.Helper()
+		p, next, err := readPacket(c.conn, sequence, 1<<20)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sequence = next
+		return p
+	}
+	header := read()
+	expected := []byte{byte(len(columns))}
+	if flags&clientOptionalMetadata != 0 {
+		flag := byte(0)
+		if full {
+			flag = 1
+		}
+		expected = append(expected, flag)
+	}
+	if !bytes.Equal(header, expected) {
+		t.Fatalf("header %x, want %x", header, expected)
+	}
+	if full {
+		for _, name := range columns {
+			packet := read()
+			d := decoder{data: packet}
+			for i := 0; i < 4; i++ {
+				d.str()
+			}
+			if got := string(d.str()); got != name || d.err != nil {
+				t.Fatalf("column name %q, want %q: %x", got, name, packet)
+			}
+		}
+	}
+	if flags&clientDeprecateEOF == 0 {
+		if packet := read(); !bytes.Equal(packet, []byte{0xfe, 0, 0, byte(status), byte(status >> 8)}) {
+			t.Fatalf("metadata EOF %x", packet)
+		}
+	}
+	for _, expected := range rows {
+		if packet := read(); !bytes.Equal(packet, expected) {
+			t.Fatalf("row %x, want %x", packet, expected)
+		}
+	}
+	packet := read()
+	terminator := []byte{0xfe, 0, 0, byte(status), byte(status >> 8)}
+	if flags&clientDeprecateEOF != 0 {
+		terminator = []byte{0xfe, 0, 0, byte(status), byte(status >> 8), 0, 0}
+		if flags&clientSessionTrack != 0 {
+			terminator = append(terminator, 0)
+		}
+	}
+	if !bytes.Equal(packet, terminator) {
+		t.Fatalf("result terminator %x, want %x", packet, terminator)
+	}
+	return sequence
+}
+
+func TestOptionalMetadataTextPreparedAndMultipleResultsets(t *testing.T) {
+	for _, negotiated := range []uint32{0, clientDeprecateEOF, clientOptionalMetadata, clientOptionalMetadata | clientDeprecateEOF, clientOptionalMetadata | clientDeprecateEOF | clientSessionTrack} {
+		t.Run(fmt.Sprintf("flags%x", negotiated), func(t *testing.T) {
+			s := startTestServer(t, "tcp", Config{})
+			flags := negotiated | clientMultiStatements | clientMultiResults
+			c := connectRawWithFlags(t, s, flags)
+			expectOK(t, c.command(t, append([]byte{3}, "CREATE TABLE lean_metadata_rows(id INTEGER PRIMARY KEY, v TEXT)"...)), 2)
+			expectOK(t, c.command(t, append([]byte{3}, "INSERT INTO lean_metadata_rows VALUES(7,'value')"...)), 2)
+			for _, full := range []bool{true, false, true} {
+				if !full && flags&clientOptionalMetadata == 0 {
+					continue
+				}
+				mode := "NONE"
+				if full {
+					mode = "FULL"
+				}
+				expectOK(t, c.command(t, append([]byte{3}, "SET resultset_metadata="+mode...)), 2)
+				// A literal SELECT takes the materialized response path.
+				c.send(t, append([]byte{3}, "SELECT 7 AS lean_column_name"...))
+				readOptionalMetadataResult(t, c, flags, full, []string{"lean_column_name"}, [][]byte{{1, '7'}}, 2, 1)
+				// A typed base-table projection takes the streaming response path.
+				c.send(t, append([]byte{3}, "SELECT id,v FROM lean_metadata_rows WHERE id=7"...))
+				readOptionalMetadataResult(t, c, flags, full, []string{"id", "v"}, [][]byte{{1, '7', 5, 'v', 'a', 'l', 'u', 'e'}}, 2, 1)
+				c.send(t, append([]byte{3}, "SELECT id,v FROM lean_metadata_rows WHERE id=8"...))
+				readOptionalMetadataResult(t, c, flags, full, []string{"id", "v"}, nil, 2, 1)
+				id := optionalMetadataPrepare(t, c, flags, full, "SELECT id FROM lean_metadata_rows WHERE id=?")
+				execute := append32([]byte{23}, id)
+				execute = append(execute, 0, 1, 0, 0, 0, 0, 1, 8, 0, 7, 0, 0, 0, 0, 0, 0, 0)
+				c.send(t, execute)
+				readOptionalMetadataResult(t, c, flags, full, []string{"id"}, [][]byte{{0, 0, 7, 0, 0, 0, 0, 0, 0, 0}}, 2, 1)
+				c.send(t, append([]byte{3}, "SELECT 7 AS first_result; SELECT 8 AS second_result"...))
+				sequence := readOptionalMetadataResult(t, c, flags, full, []string{"first_result"}, [][]byte{{1, '7'}}, 10, 1)
+				readOptionalMetadataResult(t, c, flags, full, []string{"second_result"}, [][]byte{{1, '8'}}, 2, sequence)
+				expectOK(t, c.command(t, []byte{14}), 2)
+			}
+		})
+	}
+}
