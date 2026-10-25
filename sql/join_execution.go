@@ -128,7 +128,14 @@ func joinKeyPairs(stmt *SelectStmt, jc JoinClause, alias string, columns []Colum
 
 func (s *Schema) joinRowKey(row map[string]Value, pairs []joinKeyPair, right bool) (string, bool) {
 	var local [64]byte
-	key := local[:0]
+	key, valid := s.appendJoinRowKey(local[:0], row, pairs, right)
+	return string(key), valid
+}
+
+// The caller owns dst. A hash probe can use string(key) directly in a map
+// lookup without allocating an owned identity for every left input row.
+func (s *Schema) appendJoinRowKey(dst []byte, row map[string]Value, pairs []joinKeyPair, right bool) ([]byte, bool) {
+	key := dst[:0]
 	for _, pair := range pairs {
 		name := pair.left
 		if right {
@@ -136,11 +143,56 @@ func (s *Schema) joinRowKey(row map[string]Value, pairs []joinKeyPair, right boo
 		}
 		value, ok := row[name]
 		if !ok || value.Null {
-			return "", false
+			return key, false
 		}
 		key = s.appendEqualityKey(key, value)
 	}
-	return string(key), true
+	return key, true
+}
+
+// Rejected ON candidates may reuse dst. Once a candidate is accepted, its map
+// belongs to the result and the caller must use a different destination. Alias
+// keys are immutable and shared by all candidates in this join stage.
+func combineJoinRowInto(dst, left, right map[string]Value, alias string, names map[string]string) map[string]Value {
+	if dst == nil {
+		dst = make(map[string]Value, len(left)+2*len(right))
+	} else {
+		// Preserve existing slots for this row shape: Value is large enough
+		// that clearing/reinserting even one map entry allocates its storage.
+		// Drop only names absent from the next candidate, including aliases.
+		for k := range dst {
+			if _, ok := left[k]; ok {
+				continue
+			}
+			if _, ok := right[k]; ok {
+				continue
+			}
+			if alias != "" && len(k) > len(alias)+1 && strings.HasPrefix(k, alias) && k[len(alias)] == '.' {
+				base := k[len(alias)+1:]
+				if _, ok := right[base]; ok && !strings.Contains(base, ".") {
+					continue
+				}
+			}
+			delete(dst, k)
+		}
+	}
+	for k, v := range left {
+		dst[k] = v
+	}
+	for k, v := range right {
+		if alias != "" && !strings.Contains(k, ".") {
+			qualified := names[k]
+			if qualified == "" {
+				qualified = alias + "." + k
+				names[k] = qualified
+			}
+			dst[qualified] = v
+		}
+		if _, exists := left[k]; !exists {
+			dst[k] = v
+		}
+	}
+	return dst
 }
 
 func (s *Schema) filterJoinInput(rows []map[string]Value, keys [][]string, terms []Expression, localNames map[string]bool, alias string) ([]map[string]Value, [][]string, error) {
@@ -338,14 +390,22 @@ func (s *Schema) executeJoins(stmt *SelectStmt, baseRows []map[string]Value, bas
 		}
 		var next []map[string]Value
 		var nextKeys [][]string
+		var candidateRow map[string]Value
+		aliasNames := make(map[string]string)
+		var probeBuffer [128]byte
+		probeScratch := probeBuffer[:0]
 		for i, left := range result {
 			if err := s.checkInterrupt(); err != nil {
 				return nil, nil, err
 			}
 			var candidates []int
 			if buckets != nil {
-				if key, valid := s.joinRowKey(left, pairs, false); valid {
-					candidates = buckets[key]
+				key, valid := s.appendJoinRowKey(probeScratch, left, pairs, false)
+				if valid {
+					candidates = buckets[string(key)]
+				}
+				if cap(key) <= 64<<10 {
+					probeScratch = key[:0]
 				}
 			}
 			matched := false
@@ -378,16 +438,17 @@ func (s *Schema) executeJoins(stmt *SelectStmt, baseRows []map[string]Value, bas
 				if !match {
 					return nil
 				}
-				combined := s.combineRowsWithAlias(left, right, alias)
+				candidateRow = combineJoinRowInto(candidateRow, left, right, alias, aliasNames)
 				if jc.On != nil {
-					match, err = s.evalCondition(jc.On, combined)
+					match, err = s.evalCondition(jc.On, candidateRow)
 					if err != nil {
 						return err
 					}
 				}
 				if match {
 					matched = true
-					next = append(next, combined)
+					next = append(next, candidateRow)
+					candidateRow = nil // accepted rows are independently owned
 					if trackKeys {
 						var keys []string
 						if resultKeys != nil {

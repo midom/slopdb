@@ -141,6 +141,24 @@ source to establish actual work.
 go tool pprof -top -cum /tmp/slopdb-tpch /tmp/tpch-profiles/q03.cpu.pprof
 ```
 
+For a small allocation regression workload that needs no DBGEN installation:
+
+```sh
+go test ./sql -run 'Test(TypedAggregateBatchOwnership|TypedOrderedBlobRepresentativeOwnership|TPCHJoinReuseAnswers)$'
+go test ./sql -run '^$' -bench 'Benchmark(TPCHAggregateReuse|TPCHJoinReuse|JoinCandidateReuse)$' -benchmem -count 3
+```
+
+These deterministic fixtures exercise Q1/Q6-shaped aggregates, grouped joins,
+and residual join predicates. Expected counts, sums and BLOB extrema come from
+the fixture formulas, independently of SQL execution. They supplement the full
+DBGEN/reference comparison; they are not TPC-H scores. Run performance samples
+serially. Setup, loading and reference calculation are outside benchmark timing.
+
+Typed scans reuse private BLOB batches, while group representatives and MIN/MAX
+states own retained BLOBs. Join probes reuse key buffers and immutable qualified
+names; the first input streams without materializing every fact row. Regression
+tests cover batch boundaries, forced spill and retained result ownership.
+
 Queries follow the qualification definitions in the
 [TPC-H specification](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf)
 and DuckDB's [TPC-H extension](https://github.com/duckdb/duckdb/tree/main/extension/tpch).

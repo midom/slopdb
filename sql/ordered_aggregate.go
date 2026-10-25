@@ -37,6 +37,7 @@ func (s *Schema) walkTypedOrderedAggregate(t *typedAggregate, info *TableInfo, n
 	batch := make([]Value, typedBatchRows*t.width)
 	rows := 0
 	var keyBuffer [128]byte
+	keyScratch := keyBuffer[:0]
 	var current *aggregateGroup
 	var lastKey string
 	flush := func() error {
@@ -54,7 +55,7 @@ func (s *Schema) walkTypedOrderedAggregate(t *typedAggregate, info *TableInfo, n
 					continue
 				}
 			}
-			key := keyBuffer[:0]
+			key := keyScratch[:0]
 			for _, p := range t.group {
 				v, err := p.eval(row)
 				if err != nil {
@@ -75,6 +76,9 @@ func (s *Schema) walkTypedOrderedAggregate(t *typedAggregate, info *TableInfo, n
 				resetOrderedAggregate(current)
 				lastKey = string(key)
 			}
+			if cap(key) <= typedScratchLimit {
+				keyScratch = key[:0]
+			}
 			if current.inputs == 0 {
 				if cap(current.baseValues) < len(t.baseSlots) {
 					current.baseValues = make([]Value, len(t.baseSlots))
@@ -83,6 +87,9 @@ func (s *Schema) walkTypedOrderedAggregate(t *typedAggregate, info *TableInfo, n
 				}
 				for i, slot := range t.baseSlots {
 					current.baseValues[i] = row[slot]
+					if row[slot].Type == ColBlob {
+						current.baseValues[i].Blob = copyBytes(row[slot].Blob)
+					}
 				}
 			}
 			current.inputs++
@@ -100,7 +107,7 @@ func (s *Schema) walkTypedOrderedAggregate(t *typedAggregate, info *TableInfo, n
 				}
 			}
 		}
-		clear(batch)
+		resetTypedBatch(batch)
 		rows = 0
 		return nil
 	}
@@ -109,7 +116,11 @@ func (s *Schema) walkTypedOrderedAggregate(t *typedAggregate, info *TableInfo, n
 	err := s.walkAccessRaw(info, needed, paths, func(data []byte, columns []scanColumn) error {
 		if len(columns) > 0 && lastLayout != &columns[0] {
 			lastLayout = &columns[0]
-			layout = make([]int, len(columns))
+			if cap(layout) < len(columns) {
+				layout = make([]int, len(columns))
+			} else {
+				layout = layout[:len(columns)]
+			}
 			for i, col := range columns {
 				layout[i] = -1
 				if col.needed {

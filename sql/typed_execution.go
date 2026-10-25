@@ -373,6 +373,7 @@ func (s *Schema) walkTypedAggregate(t *typedAggregate, info *TableInfo, needed m
 		groupMemory += aggregateGroupMemory(g)
 	}
 	var keyBuffer [128]byte
+	keyScratch := keyBuffer[:0]
 	flush := func() error {
 		if err := s.checkInterrupt(); err != nil {
 			return err
@@ -388,7 +389,7 @@ func (s *Schema) walkTypedAggregate(t *typedAggregate, info *TableInfo, needed m
 					continue
 				}
 			}
-			key := keyBuffer[:0]
+			key := keyScratch[:0]
 			for _, p := range t.group {
 				v, err := p.eval(row)
 				if err != nil {
@@ -396,20 +397,27 @@ func (s *Schema) walkTypedAggregate(t *typedAggregate, info *TableInfo, needed m
 				}
 				key = appendValueIdentity(key, v)
 			}
-			k := string(key)
-			g := groups[k]
+			// The conversion in a map lookup borrows key for the lookup only.
+			// Copy it only when a new group retains the identity.
+			g := groups[string(key)]
 			var before int64
 			if g != nil {
 				before = aggregateGroupMemory(g)
 			}
 			if g == nil {
 				g = newGroup()
-				groups[k] = g
+				groups[string(key)] = g
+			}
+			if cap(key) <= typedScratchLimit {
+				keyScratch = key[:0]
 			}
 			if g.inputs == 0 {
 				g.baseValues = make([]Value, len(t.baseSlots))
 				for i, slot := range t.baseSlots {
 					g.baseValues[i] = row[slot]
+					if row[slot].Type == ColBlob {
+						g.baseValues[i].Blob = copyBytes(row[slot].Blob)
+					}
 				}
 			}
 			g.inputs++
@@ -431,9 +439,10 @@ func (s *Schema) walkTypedAggregate(t *typedAggregate, info *TableInfo, needed m
 				return errAggregateSpill
 			}
 		}
-		// Release variable-width inputs, including rows rejected by WHERE,
-		// before the next batch and after the final partial batch.
-		clear(batch)
+		// Only this private batch may reuse BLOB storage. Group representatives
+		// and MIN/MAX states own their retained values. Do not pin unusually
+		// large inputs for the rest of the scan.
+		resetTypedBatch(batch)
 		rows = 0
 		return nil
 	}
@@ -442,7 +451,11 @@ func (s *Schema) walkTypedAggregate(t *typedAggregate, info *TableInfo, needed m
 	err := s.walkAccessRaw(info, needed, paths, func(data []byte, columns []scanColumn) error {
 		if len(columns) > 0 && lastLayout != &columns[0] {
 			lastLayout = &columns[0]
-			layout = make([]int, len(columns))
+			if cap(layout) < len(columns) {
+				layout = make([]int, len(columns))
+			} else {
+				layout = layout[:len(columns)]
+			}
 			for i, col := range columns {
 				layout[i] = -1
 				if col.needed {
@@ -468,8 +481,24 @@ func (s *Schema) walkTypedAggregate(t *typedAggregate, info *TableInfo, needed m
 	return nil
 }
 
+const typedScratchLimit = 64 << 10
+
+func resetTypedBatch(batch []Value) {
+	retained := 0
+	for i := range batch {
+		buffer := batch[i].Blob
+		if cap(buffer) > typedScratchLimit || retained+cap(buffer) > 8<<20 {
+			buffer = nil
+		}
+		retained += cap(buffer)
+		batch[i] = Value{Blob: buffer[:0]}
+	}
+}
+
 // Decode only bound slots, skipping unused variable-width columns without
 // constructing strings/blobs. Old rows missing ALTER-added columns yield NULL.
+// The destination is private scratch: decoding a later row can overwrite its
+// previous BLOB contents. Retained values must be copied before reusing it.
 func decodeTypedRow(data []byte, layout []int, row []Value) {
 	offset := 0
 	for _, slot := range layout {
@@ -480,7 +509,7 @@ func decodeTypedRow(data []byte, layout []int, row []Value) {
 			continue
 		}
 		if slot >= 0 {
-			v, n := decodeValue(data[offset:])
+			v, n := decodeValueInto(data[offset:], row[slot].Blob)
 			offset += n
 			row[slot] = v
 			continue

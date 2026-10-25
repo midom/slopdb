@@ -300,12 +300,40 @@ func (s *Schema) loadJoinRelation(r *joinRelation) error {
 	if r.loaded {
 		return nil
 	}
-	err := s.walkFilteredAccess(r.info, r.needed, r.filter, r.paths, func(row map[string]Value) error {
+	err := s.walkJoinRelation(r, func(row map[string]Value) error {
+		r.rows = append(r.rows, copyRow(row))
+		return nil
+	})
+	if err == nil {
+		r.loaded = true
+		r.count = float64(len(r.rows))
+	}
+	return err
+}
+
+// Visitors consume the access reader's private scratch synchronously. Retained
+// hash/cache/materialized rows must be copied by their respective consumers.
+func (s *Schema) walkJoinRelation(r *joinRelation, visit func(map[string]Value) error) error {
+	type filterColumn struct{ name, alias, table string }
+	var filterColumns []filterColumn
+	var qualified map[string]Value
+	if r.qualifiedFilter {
+		qualified = make(map[string]Value, len(r.needed)*3)
+		for name := range r.needed {
+			filterColumns = append(filterColumns, filterColumn{name, r.alias + "." + name, r.table + "." + name})
+		}
+	}
+	return s.walkFilteredAccess(r.info, r.needed, r.filter, r.paths, func(row map[string]Value) error {
 		if r.filter != nil {
 			q := row
 			if r.qualifiedFilter {
-				q = copyRow(row)
-				qualifyAccessRow(q, r.table, r.alias)
+				for _, column := range filterColumns {
+					v := row[column.name]
+					qualified[column.name] = v
+					qualified[column.alias] = v
+					qualified[column.table] = v
+				}
+				q = qualified
 			}
 			ok, err := s.evalCondition(r.filter, q)
 			if err != nil {
@@ -315,14 +343,8 @@ func (s *Schema) loadJoinRelation(r *joinRelation) error {
 				return nil
 			}
 		}
-		r.rows = append(r.rows, copyRow(row))
-		return nil
+		return visit(row)
 	})
-	if err == nil {
-		r.loaded = true
-		r.count = float64(len(r.rows))
-	}
-	return err
 }
 
 func (p *joinPlan) fanout(i int, mask uint64) (factor float64) {
@@ -422,6 +444,7 @@ type joinReader struct {
 	buckets    map[string][]map[string]Value
 	cache      map[string][]map[string]Value
 	cacheRows  int
+	keyScratch []byte
 }
 
 func (s *Schema) joinReader(r *joinRelation, pairs []joinKeyPair) *joinReader {
@@ -503,19 +526,25 @@ func joinTypedValue(v Value, typ ColumnType) (Value, bool) {
 
 func (s *Schema) readerRows(reader *joinReader, left map[string]Value) ([]map[string]Value, error) {
 	r := reader.relation
-	key, valid := s.joinRowKey(left, reader.pairs, false)
-	if !valid {
-		return nil, nil
-	}
 	if reader.disk != nil {
 		return nil, nil
 	}
-	if reader.buckets != nil {
-		return reader.buckets[key], nil
+	keyBytes, valid := s.appendJoinRowKey(reader.keyScratch, left, reader.pairs, false)
+	if cap(keyBytes) <= 64<<10 {
+		reader.keyScratch = keyBytes[:0]
 	}
-	if rows, ok := reader.cache[key]; ok {
+	if !valid {
+		return nil, nil
+	}
+	if reader.buckets != nil {
+		return reader.buckets[string(keyBytes)], nil
+	}
+	if rows, ok := reader.cache[string(keyBytes)]; ok {
 		return rows, nil
 	}
+	// Cache misses and storage callbacks may retain the identity. Hits above
+	// only borrow the scratch bytes for the duration of the map lookup.
+	key := string(keyBytes)
 	if !r.loaded && len(reader.columns) > 0 {
 		values := make(map[string]*tupleConstraint)
 		typed := true
@@ -602,6 +631,7 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 	p.chooseOrder()
 	row := make(map[string]Value)
 	readers := make([]*joinReader, len(p.order))
+	qualifiedNames := make([]map[string]string, len(p.order))
 	defer func() {
 		for _, reader := range readers {
 			if reader != nil && reader.disk != nil {
@@ -619,6 +649,15 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 		}
 		readers[depth] = s.joinReader(p.relations[i], pairs)
 		r := p.relations[i]
+		names := make(map[string]string, len(r.needed))
+		for name := range r.needed {
+			names[name] = r.alias + "." + name
+			row[names[name]] = NewNullValue()
+			if p.firstOwner[name] == i {
+				row[name] = NewNullValue()
+			}
+		}
+		qualifiedNames[depth] = names
 		hash := p.preferHashJoin(i, mask, estimatedLeft, readers[depth])
 		if depth > 0 && len(readers[depth].pairs) > 0 && hash {
 			// The cost decision must survive the memory guard. Build directly
@@ -695,11 +734,13 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 		}
 		reader := readers[depth]
 		r := reader.relation
+		names := qualifiedNames[depth]
 		var candidates []map[string]Value
 		var err error
+		streamInput := depth == 0 && !r.loaded
 		if len(reader.pairs) > 0 {
 			candidates, err = s.readerRows(reader, row)
-		} else {
+		} else if !streamInput {
 			err = s.loadJoinRelation(r)
 			candidates = r.rows
 		}
@@ -726,7 +767,12 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 				s.profile.Operators[joinProfiles[depth]].RowsExamined++
 			}
 			for k, v := range candidate {
-				row[r.alias+"."+k] = v
+				qualified := names[k]
+				if qualified == "" {
+					qualified = r.alias + "." + k
+					names[k] = qualified
+				}
+				row[qualified] = v
 				if p.firstOwner[k] == i {
 					row[k] = v
 				}
@@ -753,7 +799,13 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 			}
 			return nil
 		}
-		if reader.disk != nil {
+		if streamInput {
+			// The first input is traversed once, so retaining one map per fact
+			// row only wastes memory. Nested probes finish before scratch moves.
+			if err := s.walkJoinRelation(r, acceptCandidate); err != nil {
+				return err
+			}
+		} else if reader.disk != nil {
 			key, valid := s.joinRowKey(row, reader.pairs, false)
 			if valid {
 				if err := reader.disk.walk(key, acceptCandidate); err != nil {
@@ -772,7 +824,7 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 				s.profile.Operators[joinProfiles[depth]].RowsReturned++
 			}
 			for k := range r.needed {
-				row[r.alias+"."+k] = NewNullValue()
+				row[names[k]] = NewNullValue()
 				if p.firstOwner[k] == i {
 					row[k] = NewNullValue()
 				}
@@ -782,9 +834,12 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 			}
 		}
 		for k := range r.needed {
-			delete(row, r.alias+"."+k)
+			// Keep the private map slots allocated. All predicate/probe inputs
+			// are gated by their relation masks; unbound relations stay NULL.
+			// Deleting and reinserting large Value entries allocates per row.
+			row[names[k]] = NewNullValue()
 			if p.firstOwner[k] == i {
-				delete(row, k)
+				row[k] = NewNullValue()
 			}
 		}
 		return nil
