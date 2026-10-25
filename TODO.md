@@ -150,6 +150,7 @@ reverse seeks. `VACUUM` flushes writes and compacts SSTables.
 - [x] PostgreSQL 3.0 emulation over TCP/Unix sockets with SCRAM-SHA-256, TLS/client CA authentication, simple/extended queries, prepared metadata, typed bindings, portals, cancellation and transaction recovery; see [PostgreSQL emulation](docs/postgres-server.md)
 - [x] PostgreSQL text/CSV/binary COPY FROM STDIN / TO STDOUT, pgx.CopyFrom/libpq CopyIn, native declared types and codecs, cast/literal syntax, scalar function families and native system-catalog projections; see [compatibility](docs/postgres-compatibility.md)
 - [x] Shared typed information_schema relations and schema SHOW projections for MySQL/PostgreSQL/native sessions; see [catalogs](docs/catalogs.md)
+- [x] Shared live PROCESSLIST/pg_stat_activity and SHOW [FULL] PROCESSLIST, with bounded source SQL, transaction state and real lock waits; see [session activity](docs/activity.md)
 - [ ] Remaining PostgreSQL compatibility: full catalogs/psql introspection, arrays/table-valued functions, standalone sequences/identity, native snapshot/SERIALIZABLE isolation, PostgreSQL replication, notifications, extensions and newer wire versions
 
 ## Miscellaneous

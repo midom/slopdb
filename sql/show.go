@@ -13,6 +13,9 @@ func (s *Schema) ExecuteShow(stmt *ShowStmt) (*ResultSet, error) {
 		return nil, err
 	}
 	if stmt.Kind == "PROCESSLIST" {
+		if stmt.Object != "" || stmt.Database != "" || stmt.Column != "" || stmt.Where != nil || stmt.Like != nil {
+			return nil, fmt.Errorf("SHOW PROCESSLIST does not accept object or filter clauses")
+		}
 		activities, err := s.snapshotActivities()
 		if err != nil {
 			return nil, err

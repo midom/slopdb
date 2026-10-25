@@ -11,8 +11,9 @@ Available relations are `schemata`, `tables`, `columns`, `views`, `statistics`,
 `table_indexes`, `table_constraints`, `key_column_usage`,
 `referential_constraints`, `check_constraints`, `constraint_column_usage`,
 `triggers`, `character_sets`, `collations`,
-`collation_character_set_applicability`, `engines`, `routines`, and `parameters`.
-The last two are empty because stored routines are unsupported. `table_indexes`
+`collation_character_set_applicability`, `engines`, `routines`, `parameters`,
+and the live `processlist` view. `routines` and `parameters` are empty because
+stored routines are unsupported. `table_indexes`
 and `slopdb_*` columns are native extensions. Native object IDs are independent
 of PostgreSQL wire OIDs. `statistics` describes logical primary/unique keys as
 well as maintained indexes, including prefix lengths and fulltext indexes.
@@ -46,7 +47,11 @@ Catalog results are currently materialized, and capturing the catalog view
 copies metadata map headers; this is not a constant-memory catalog cursor.
 Explicitly requested table cardinalities are sampled and storage sizes include
 retained versions; they are estimates rather than exact row counts. Unknown
-sizes, creation
-timestamps, ownership and privileges remain NULL; introspection does not invent
-a permissions model. Complete upstream catalogs, arrays and PostgreSQL internal
+sizes, creation timestamps, ownership and privileges remain NULL; introspection
+does not invent a permissions model. Complete upstream catalogs, arrays and PostgreSQL internal
 expression binary representations remain unsupported.
+
+Live PROCESSLIST and PostgreSQL pg_stat_activity are projections of the shared
+activity registry, rather than persistent catalog objects or user-table scans.
+See [session activity](activity.md) for identities, text bounds, wait information
+and the deliberately unavailable upstream fields.

@@ -48,6 +48,7 @@ func (s *Schema) resolveCatalogTables(stmt *SelectStmt) (*SelectStmt, error) {
 	old := s.catalogView
 	defer func() { s.catalogView = old }()
 	var activities []SessionActivity
+	activityNow := s.statementTime
 	activityLoaded := false
 	resolve := func(name, alias string) (string, *SelectStmt, error) {
 		if activityName, known := ActivityRelationName(name, s.ExpressionDialect()); known {
@@ -57,9 +58,10 @@ func (s *Schema) resolveCatalogTables(stmt *SelectStmt) (*SelectStmt, error) {
 				if err != nil {
 					return "", nil, err
 				}
+				activityNow = StatementTime(s.ctx)
 				activityLoaded = true
 			}
-			data, err := ProjectSessionActivity(activityName, activities, StatementTime(s.ctx))
+			data, err := ProjectSessionActivity(activityName, activities, activityNow)
 			if err != nil {
 				return "", nil, err
 			}

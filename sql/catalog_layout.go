@@ -12,6 +12,7 @@ func catalogResult(spec string) *ResultSet {
 		case "j":
 			c.ColType = ColInteger
 			c.Declared = "INTEGER"
+			c.IntegerBits = 32
 			c.SemanticType = TypeInt32
 		case "z":
 			c.Declared = "TIMESTAMPTZ"
