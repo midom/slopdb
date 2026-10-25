@@ -2,12 +2,30 @@ package storage
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestMutationNoWALRemainsLocalMetadata(t *testing.T) {
+	mutation := Mutation{Key: []byte("key"), Value: []byte("value")}
+	durable, err := json.Marshal(mutation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutation.NoWAL = true
+	local, err := json.Marshal(mutation)
+	if err != nil || !bytes.Equal(durable, local) {
+		t.Fatalf("local publication flag changed persisted mutation format: %s %s %v", durable, local, err)
+	}
+	var decoded Mutation
+	if err := json.Unmarshal([]byte(`{"Key":"a2V5","Value":"dmFsdWU=","NoWAL":true}`), &decoded); err != nil || decoded.NoWAL || string(decoded.Key) != "key" {
+		t.Fatalf("persisted mutation adopted a local publication flag: %+v %v", decoded, err)
+	}
+}
 
 func TestAtomicBatchOmitsLocalMutationsFromWAL(t *testing.T) {
 	dir := t.TempDir()

@@ -351,7 +351,7 @@ type Mutation struct {
 	Key, Value  []byte
 	Delete      bool
 	RangeDelete bool // Value is the exclusive end key
-	NoWAL       bool // session-local data: publish normally, omit from WAL and replication
+	NoWAL       bool `json:"-"` // session-local data: publish normally, omit from WAL and replication
 }
 
 func (l *LSMTree) writeBatchDirect(batch []Mutation) error {
