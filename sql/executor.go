@@ -6071,6 +6071,9 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 		}
 		if strings.HasPrefix(e.Op, "COLLATE:") {
 			right.Collation = Collation(strings.TrimPrefix(e.Op, "COLLATE:"))
+			if right.Collation == "DEFAULT" {
+				right.Collation = s.collation
+			}
 			right.Binary = false
 			return right, nil
 		}

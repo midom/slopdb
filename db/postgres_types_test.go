@@ -104,3 +104,41 @@ func TestPostgresTypeModeIsolation(t *testing.T) {
 		}
 	}
 }
+
+func TestPostgresQualifiedCollationMappings(t *testing.T) {
+	database, e := db.Open(t.TempDir(), nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer database.Close()
+	if _, e = database.Exec(`PRAGMA collation = 'NFC_CI'`); e != nil {
+		t.Fatal(e)
+	}
+	pg, e := database.NewSession()
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer pg.Close()
+	if e = pg.SetPostgresMode(true); e != nil {
+		t.Fatal(e)
+	}
+	r, e := pg.Exec(`SELECT 'A' COLLATE pg_catalog."default" = 'a' AS d, 'A' COLLATE pg_catalog."C" = 'a' AS c, 'A' COLLATE "POSIX" = 'a' AS p`)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if r.Rows[0]["d"].Int != 1 || r.Rows[0]["c"].Int != 0 || r.Rows[0]["p"].Int != 0 {
+		t.Fatal(r.Rows)
+	}
+	if _, e = pg.Exec(`CREATE TABLE pg_collated(a TEXT COLLATE pg_catalog."C", b TEXT COLLATE pg_catalog."default"); INSERT INTO pg_collated VALUES('A','A')`); e != nil {
+		t.Fatal(e)
+	}
+	r, e = pg.Exec(`SELECT a='a' AS a, b='a' AS b FROM pg_collated`)
+	if e != nil || r.Rows[0]["a"].Int != 0 || r.Rows[0]["b"].Int != 1 {
+		t.Fatal(r, e)
+	}
+	for _, q := range []string{`SELECT 'x' COLLATE pg_catalog."de_DE"`, `SELECT 'x' COLLATE other."default"`} {
+		if _, e = pg.Exec(q); e == nil {
+			t.Fatalf("accepted unsupported collation %s", q)
+		}
+	}
+}

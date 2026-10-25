@@ -614,16 +614,20 @@ func (p *Parser) parseColumnDef(col *ColumnDef, alteration ...bool) error {
 
 		if p.cur.Type == TokKeyword && kw == "COLLATE" {
 			p.advance()
-			if !strings.EqualFold(p.cur.Value, "BINARY") {
-				return fmt.Errorf("unsupported collation: %s", p.cur.Value)
+			name, err := p.parseExpressionCollation()
+			if err != nil {
+				return err
+			}
+			if name != "BINARY" && name != "DEFAULT" {
+				return fmt.Errorf("unsupported column collation: %s", name)
 			}
 			if col.ColType != ColText {
-				return fmt.Errorf("BINARY collation requires a TEXT column")
+				return fmt.Errorf("text collation requires a TEXT column")
 			}
-			col.Binary = true
-			p.advance()
+			col.Binary = name == "BINARY"
 			continue
 		}
+
 		if p.cur.Type == TokKeyword && kw == "BINARY" {
 			if col.ColType != ColText {
 				return fmt.Errorf("BINARY modifier requires a TEXT column")
@@ -2148,16 +2152,10 @@ func (p *Parser) parseUnary() (Expression, error) {
 	}
 	for p.cur.Type == TokKeyword && strings.EqualFold(p.cur.Value, "COLLATE") {
 		p.advance()
-		if p.cur.Type != TokIdent && p.cur.Type != TokKeyword {
-			return nil, fmt.Errorf("expected collation name")
+		name, err := p.parseExpressionCollation()
+		if err != nil {
+			return nil, err
 		}
-		name := strings.ToUpper(p.cur.Value)
-		if name != "BINARY" {
-			if _, ok := mysqlCollation(name); !ok {
-				return nil, fmt.Errorf("unsupported collation: %s", p.cur.Value)
-			}
-		}
-		p.advance()
 		if name == "BINARY" {
 			expr = &UnaryExpr{Op: "BINARY", Right: expr}
 		} else {

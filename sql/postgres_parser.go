@@ -329,3 +329,42 @@ func postgresRegexExpression(left, right Expression, op string) Expression {
 	}
 	return &BinaryExpr{Left: left, Op: name, Right: right}
 }
+
+// PostgreSQL's built-in collations map to the existing bytewise or database
+// default collations. Other locales need an actual collation implementation.
+func (p *Parser) parseExpressionCollation() (string, error) {
+	if p.cur.Type != TokIdent && p.cur.Type != TokKeyword {
+		return "", fmt.Errorf("expected collation name")
+	}
+	name := strings.ToUpper(p.cur.Value)
+	p.advance()
+	qualified := false
+	if p.cur.Type == TokDot {
+		if name != "PG_CATALOG" {
+			return "", fmt.Errorf("unsupported collation schema: %s", name)
+		}
+		qualified = true
+		p.advance()
+		if p.cur.Type != TokIdent && p.cur.Type != TokKeyword {
+			return "", fmt.Errorf("expected collation name")
+		}
+		name = strings.ToUpper(p.cur.Value)
+		p.advance()
+	}
+	switch name {
+	case "C", "POSIX":
+		return "BINARY", nil
+	case "DEFAULT":
+		return "DEFAULT", nil
+	case "BINARY":
+		if !qualified {
+			return name, nil
+		}
+	}
+	if !qualified {
+		if _, ok := mysqlCollation(name); ok {
+			return name, nil
+		}
+	}
+	return "", fmt.Errorf("unsupported collation: %s", name)
+}
