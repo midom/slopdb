@@ -169,12 +169,13 @@ type CreateTableStmt struct {
 }
 
 type IndexDef struct {
-	DisplayName   string
-	Name          string
-	Columns       []string
-	Unique        bool
-	Fulltext      bool
-	PrefixLengths []int64
+	FullTextConfig *FullTextConfig `json:"fulltext_config,omitempty"`
+	DisplayName    string
+	Name           string
+	Columns        []string
+	Unique         bool
+	Fulltext       bool
+	PrefixLengths  []int64
 }
 
 type RowSource struct {
@@ -325,6 +326,7 @@ type CreateTriggerStmt struct {
 }
 
 type CreateIndexStmt struct {
+	FullTextConfig        *FullTextConfig `json:"fulltext_config,omitempty"`
 	PrefixLengths         []int64
 	PublicationAbortAfter *time.Duration
 	Index                 string
@@ -392,21 +394,22 @@ type DropIndexStmt struct {
 }
 
 type ConstraintDef struct {
-	OnDelete          string     `json:"on_delete,omitempty"`
-	OnUpdate          string     `json:"on_update,omitempty"`
-	Deferrable        bool       `json:"deferrable,omitempty"`
-	InitiallyDeferred bool       `json:"initially_deferred,omitempty"`
-	PrefixLengths     []int64    `json:"prefix_lengths,omitempty"`
-	Name              string     `json:"name"`
-	Kind              string     `json:"kind"`
-	Columns           []string   `json:"columns,omitempty"`
-	Check             Expression `json:"-"`
-	CheckSQL          string     `json:"check_sql,omitempty"`
-	RefTable          string     `json:"ref_table,omitempty"`
-	RefColumns        []string   `json:"ref_columns,omitempty"`
-	IndexID           uint64     `json:"index_id,omitempty"`
-	Inline            bool       `json:"inline,omitempty"`
-	Fulltext          bool       `json:"fulltext,omitempty"`
+	FullTextConfig    *FullTextConfig `json:"fulltext_config,omitempty"`
+	OnDelete          string          `json:"on_delete,omitempty"`
+	OnUpdate          string          `json:"on_update,omitempty"`
+	Deferrable        bool            `json:"deferrable,omitempty"`
+	InitiallyDeferred bool            `json:"initially_deferred,omitempty"`
+	PrefixLengths     []int64         `json:"prefix_lengths,omitempty"`
+	Name              string          `json:"name"`
+	Kind              string          `json:"kind"`
+	Columns           []string        `json:"columns,omitempty"`
+	Check             Expression      `json:"-"`
+	CheckSQL          string          `json:"check_sql,omitempty"`
+	RefTable          string          `json:"ref_table,omitempty"`
+	RefColumns        []string        `json:"ref_columns,omitempty"`
+	IndexID           uint64          `json:"index_id,omitempty"`
+	Inline            bool            `json:"inline,omitempty"`
+	Fulltext          bool            `json:"fulltext,omitempty"`
 }
 
 type AlterTableStmt struct {

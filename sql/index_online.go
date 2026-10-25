@@ -124,7 +124,7 @@ func (s *Schema) OnlineCreateIndex(stmt Statement) (*CreateIndexStmt, bool, erro
 		if name == "" {
 			name = info.Name + "_" + strings.Join(c.Columns, "_") + "_idx"
 		}
-		return &CreateIndexStmt{Table: info.Name, Index: name, Columns: c.Columns, PrefixLengths: c.PrefixLengths, Unique: c.Kind == "UNIQUE_INDEX", Fulltext: c.Fulltext, IfNotExists: a.IfNotExists, PublicationAbortAfter: a.PublicationAbortAfter}, true, nil
+		return &CreateIndexStmt{Table: info.Name, Index: name, Columns: c.Columns, PrefixLengths: c.PrefixLengths, Unique: c.Kind == "UNIQUE_INDEX", Fulltext: c.Fulltext, FullTextConfig: c.FullTextConfig, IfNotExists: a.IfNotExists, PublicationAbortAfter: a.PublicationAbortAfter}, true, nil
 	}
 	return nil, false, nil
 }
@@ -162,6 +162,11 @@ func (s *Schema) StartOnlineIndex(stmt *CreateIndexStmt) (*OnlineIndexBuild, err
 	idx := newIndexInfo(name, table, columns, stmt.Unique)
 	idx.DisplayName = displayName
 	idx.Fulltext = stmt.Fulltext
+	if err := configureFullTextIndex(idx, stmt.FullTextConfig); err != nil {
+		log.Close()
+		disk.close()
+		return nil, err
+	}
 	if idx.Fulltext {
 		idx.FulltextVersion = fulltextIndexVersion
 	}

@@ -57,5 +57,9 @@ func (p *Parser) parseInlineIndex(unique bool, name string) (IndexDef, error) {
 		p.advance()
 	}
 	columns, prefixes, err := p.parseIndexColumnsDetailed()
-	return IndexDef{Name: name, Columns: columns, Unique: unique, PrefixLengths: prefixes}, err
+	if err != nil {
+		return IndexDef{}, err
+	}
+	config, err := p.parseFullTextConfig()
+	return IndexDef{Name: name, Columns: columns, Unique: unique, PrefixLengths: prefixes, FullTextConfig: config}, err
 }

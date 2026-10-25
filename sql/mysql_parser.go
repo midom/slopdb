@@ -122,6 +122,18 @@ func (p *Parser) parseFunctionCall(name string) (Expression, error) {
 	if err := p.expect(TokRParen); err != nil {
 		return nil, err
 	}
+	if f.Name == "FULLTEXT_MATCH" {
+		if len(f.Args) < 2 || len(f.Args) > 3 {
+			return nil, fmt.Errorf("FULLTEXT_MATCH requires a column, search and optional mode")
+		}
+		if len(f.Args) == 2 {
+			f.Args = append(f.Args, &LiteralExpr{Value: NewTextValue("NATURAL")})
+		}
+		f.Name = fulltextFunction
+		if err := validateFulltextFunction(f); err != nil {
+			return nil, err
+		}
+	}
 	return p.parseWindowCall(f)
 }
 

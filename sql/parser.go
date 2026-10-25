@@ -879,11 +879,19 @@ func (p *Parser) parseCreateIndex() (Statement, error) {
 		return nil, err
 	}
 
+	config, err := p.parseFullTextConfig()
+	if err != nil {
+		return nil, err
+	}
+	if config != nil && !fulltext {
+		return nil, fmt.Errorf("full-text configuration requires a FULLTEXT index")
+	}
+
 	abortAfter, err := p.parsePublicationPolicy()
 	if err != nil {
 		return nil, err
 	}
-	return &CreateIndexStmt{Index: strings.ToLower(indexName), Table: strings.ToLower(tableName), Column: columns[0], Columns: columns, PrefixLengths: prefixes, Unique: unique, Fulltext: fulltext, IfNotExists: ifNotExists, PublicationAbortAfter: abortAfter}, nil
+	return &CreateIndexStmt{Index: strings.ToLower(indexName), Table: strings.ToLower(tableName), Column: columns[0], Columns: columns, PrefixLengths: prefixes, Unique: unique, Fulltext: fulltext, FullTextConfig: config, IfNotExists: ifNotExists, PublicationAbortAfter: abortAfter}, nil
 }
 
 // parsePublicationPolicy accepts only quoted Go duration syntax, including an

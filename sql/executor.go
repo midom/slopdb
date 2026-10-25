@@ -42,6 +42,7 @@ type TableInfo struct {
 }
 
 type IndexInfo struct {
+	FullTextConfig   *FullTextConfig      `json:"fulltext_config,omitempty"`
 	columnCollations map[string]Collation `json:"-"`
 	FulltextVersion  int                  `json:"fulltext_version,omitempty"`
 	PrefixEncoding   int                  `json:"prefix_encoding,omitempty"`
@@ -2620,7 +2621,7 @@ func (s *Schema) GetIndexSQL(name string) string {
 	if idx.Fulltext {
 		unique = "FULLTEXT "
 	}
-	return fmt.Sprintf("CREATE %sINDEX %s ON %s(%s)", unique, quoteIdent(idx.SQLName()), quoteIdent(idx.Table), strings.Join(quoted, ", "))
+	return fmt.Sprintf("CREATE %sINDEX %s ON %s(%s)", unique, quoteIdent(idx.SQLName()), quoteIdent(idx.Table), strings.Join(quoted, ", ")) + formatFullTextConfig(idx.FullTextConfig)
 }
 
 func tableDataPrefix(tableName string) string {
@@ -2668,6 +2669,9 @@ func (s *Schema) CreateIndex(stmt *CreateIndexStmt) error {
 	idx := newIndexInfo(idxName, tableName, columns, stmt.Unique)
 	idx.DisplayName = displayName
 	idx.Fulltext = stmt.Fulltext
+	if err := configureFullTextIndex(idx, stmt.FullTextConfig); err != nil {
+		return err
+	}
 	if idx.Fulltext {
 		idx.FulltextVersion = fulltextIndexVersion
 	}

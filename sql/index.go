@@ -127,6 +127,9 @@ func (s *Schema) prepareInlineIndexes(table string, stmt *CreateTableStmt) ([]*I
 		idx := newIndexInfo(name, table, columns, def.Unique)
 		idx.DisplayName = display
 		idx.Fulltext = def.Fulltext
+		if err := configureFullTextIndex(idx, def.FullTextConfig); err != nil {
+			return nil, err
+		}
 		if idx.Fulltext {
 			idx.FulltextVersion = fulltextIndexVersion
 		}

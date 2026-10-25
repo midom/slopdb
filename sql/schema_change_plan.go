@@ -96,6 +96,9 @@ func (p *schemaChangePlanner) createIndex(st *CreateIndexStmt, online bool) erro
 	idx := newIndexInfo(name, table, columns, st.Unique)
 	idx.DisplayName = displayName
 	idx.PrefixLengths, idx.Fulltext = st.PrefixLengths, st.Fulltext
+	if err := configureFullTextIndex(idx, st.FullTextConfig); err != nil {
+		return err
+	}
 	if err := validateIndexPrefixes(info.Columns, idx); err != nil {
 		return err
 	}
@@ -255,7 +258,7 @@ func (p *schemaChangePlanner) alter(st *AlterTableStmt, online bool) error {
 		if name == "" {
 			name = info.Name + "_" + strings.Join(st.Constraint.Columns, "_") + "_idx"
 		}
-		return p.createIndex(&CreateIndexStmt{Table: st.Table, Index: name, Columns: st.Constraint.Columns, PrefixLengths: st.Constraint.PrefixLengths, Fulltext: st.Constraint.Fulltext, Unique: st.Constraint.Kind == "UNIQUE_INDEX", PublicationAbortAfter: st.PublicationAbortAfter}, online)
+		return p.createIndex(&CreateIndexStmt{Table: st.Table, Index: name, Columns: st.Constraint.Columns, PrefixLengths: st.Constraint.PrefixLengths, Fulltext: st.Constraint.Fulltext, FullTextConfig: st.Constraint.FullTextConfig, Unique: st.Constraint.Kind == "UNIQUE_INDEX", PublicationAbortAfter: st.PublicationAbortAfter}, online)
 	case "DROP_INDEX":
 		if p.findIndex(st.Table, st.NewName) == nil && st.IfExists {
 			p.add(st.Operation, st.NewName, "no-op", schemaExclusiveLock, "The index does not exist.", false, false, false)

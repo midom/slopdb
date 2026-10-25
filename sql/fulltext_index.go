@@ -26,6 +26,10 @@ func fulltextPostingPrefix(idx *IndexInfo, word string) []byte {
 // (or hidden) row key. Positions include short/stop words so phrase boundaries
 // remain exact. Document markers make corpus statistics independent of rows.
 func (s *Schema) fulltextIndexMutations(idx *IndexInfo, row map[string]Value, key []byte, remove bool) ([]storage.Mutation, error) {
+	analysis, err := fullTextAnalyzerForIndex(idx)
+	if err != nil {
+		return nil, err
+	}
 	words := make([]string, 0)
 	for _, name := range idx.columnNames() {
 		value := row[name]
@@ -33,7 +37,7 @@ func (s *Schema) fulltextIndexMutations(idx *IndexInfo, row map[string]Value, ke
 			words = append(words, "")
 			continue
 		}
-		part, err := s.fulltextDocumentWords(mysqlStringValue(value), s.memoryBudget()-int64(len(words))*16)
+		part, err := analysis.words(value.String(), s.memoryBudget()-int64(len(words))*16)
 		if err != nil {
 			return nil, err
 		}
@@ -41,7 +45,7 @@ func (s *Schema) fulltextIndexMutations(idx *IndexInfo, row map[string]Value, ke
 		words = append(words, "") // phrases never cross fields
 	}
 	positions := make(map[string][]uint64)
-	query := fulltextQuery{minWord: 4}
+	query := fulltextQuery{analysis: analysis}
 	var used int64
 	for position, word := range words {
 		if !query.indexed(word) {
@@ -150,7 +154,7 @@ func (s *Schema) fulltextBindingForInfo(f *FuncCallExpr, info *TableInfo) (fullt
 	if len(f.Args) < 3 {
 		return fulltextBinding{}, false
 	}
-	names := make(map[string]bool)
+	var names []string
 	for _, arg := range f.Args[:len(f.Args)-2] {
 		column, ok := arg.(*ColumnRefExpr)
 		if !ok {
@@ -160,19 +164,11 @@ func (s *Schema) fulltextBindingForInfo(f *FuncCallExpr, info *TableInfo) (fullt
 		if dot := strings.LastIndexByte(name, '.'); dot >= 0 {
 			name = name[dot+1:]
 		}
-		names[name] = true
+		names = append(names, name)
 	}
-	for _, idx := range s.tableIndexes(info.Name) {
-		if !idx.Fulltext || len(idx.columnNames()) != len(names) {
-			continue
-		}
-		same := true
-		for _, name := range idx.columnNames() {
-			same = same && names[name]
-		}
-		if same {
-			return fulltextBinding{table: info, index: idx}, true
-		}
+	idx, err := s.selectFullTextIndex(info.Name, names)
+	if err == nil && idx != nil {
+		return fulltextBinding{table: info, index: idx}, true
 	}
 	return fulltextBinding{}, false
 }

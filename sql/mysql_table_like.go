@@ -107,7 +107,7 @@ func (s *Schema) expandCreateTableLike(input *CreateTableStmt) (*CreateTableStmt
 			name = fmt.Sprintf("%s_%d", base, n)
 		}
 		reserved[name] = true
-		stmt.Indexes = append(stmt.Indexes, IndexDef{Name: name, DisplayName: idx.SQLName(), Columns: slices.Clone(idx.columnNames()), PrefixLengths: slices.Clone(idx.PrefixLengths), Unique: idx.IsUnique, Fulltext: idx.Fulltext})
+		stmt.Indexes = append(stmt.Indexes, IndexDef{Name: name, DisplayName: idx.SQLName(), Columns: slices.Clone(idx.columnNames()), PrefixLengths: slices.Clone(idx.PrefixLengths), Unique: idx.IsUnique, Fulltext: idx.Fulltext, FullTextConfig: idx.FullTextConfig})
 	}
 	return &stmt, nil
 }

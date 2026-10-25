@@ -165,7 +165,7 @@ func (p *Parser) parseAlterAction(table string) (*AlterTableStmt, error) {
 				return nil, err
 			}
 			a.Operation = "ADD_INDEX"
-			a.Constraint = &ConstraintDef{Name: def.Name, Kind: "INDEX", Columns: def.Columns, Fulltext: true, PrefixLengths: def.PrefixLengths}
+			a.Constraint = &ConstraintDef{Name: def.Name, Kind: "INDEX", Columns: def.Columns, Fulltext: true, FullTextConfig: def.FullTextConfig, PrefixLengths: def.PrefixLengths}
 			return a, nil
 		}
 		if p.showWord("UNIQUE") && (strings.EqualFold(p.tok.Peek().Value, "INDEX") || strings.EqualFold(p.tok.Peek().Value, "KEY")) {
