@@ -13,9 +13,15 @@ func (c *client) authorize(statement sql.Statement) error {
 		return nil
 	}
 	required := make(map[string]bool)
-	switch statement.(type) {
+	switch stmt := statement.(type) {
 	case *sql.InsertStmt:
 		required["INSERT"] = true
+		if stmt.Replace {
+			required["DELETE"] = true
+		}
+		if stmt.OnConflict != nil && !stmt.OnConflict.DoNothing {
+			required["UPDATE"] = true
+		}
 	case *sql.UpdateStmt:
 		required["UPDATE"] = true
 	case *sql.DeleteStmt:

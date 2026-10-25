@@ -79,6 +79,17 @@ func (s *Schema) mysqlCatalogTable(name string, options MySQLSessionOptions) (*R
 			return copyCTEResult(data), nil
 		}
 	}
+	schemaVisible := func() bool {
+		if options.SchemaNames == nil {
+			return true
+		}
+		for _, schema := range options.SchemaNames() {
+			if strings.EqualFold(schema, options.Database) {
+				return true
+			}
+		}
+		return false
+	}
 	switch name {
 	case "information_schema.schemata":
 		r := mysqlCatalog("catalog_name", "schema_name", "default_character_set_name", "default_collation_name", "sql_path")
@@ -95,27 +106,42 @@ func (s *Schema) mysqlCatalogTable(name string, options MySQLSessionOptions) (*R
 		return r, nil
 	case "information_schema.tables":
 		r := mysqlCatalog("table_catalog", "table_schema", "table_name", "table_type", "engine", "version", "row_format", "table_rows", "avg_row_length", "data_length", "max_data_length", "index_length", "data_free", "auto_increment", "create_time", "update_time", "check_time", "table_collation", "checksum", "create_options", "table_comment")
-		for _, table := range s.GetTableList() {
+		if !schemaVisible() {
+			return r, nil
+		}
+		for _, table := range append(s.GetTableList(), s.GetViewList()...) {
 			row := map[string]Value{}
 			for _, c := range r.Columns {
 				row[c.Name] = NewNullValue()
 			}
 			row["table_catalog"], row["table_schema"], row["table_name"] = NewTextValue("def"), NewTextValue(options.Database), NewTextValue(table)
-			row["table_type"], row["engine"], row["row_format"] = NewTextValue("BASE TABLE"), NewTextValue("LSM"), NewTextValue("Dynamic")
+			row["table_type"], row["engine"], row["row_format"] = NewTextValue("BASE TABLE"), NewTextValue("LSM"), NewTextValue("LSM")
 			row["table_collation"] = NewTextValue("binary")
 			row["table_comment"], row["create_options"] = NewTextValue("SlopDB transactional LSM storage"), NewTextValue("")
-			for _, n := range []string{"version", "table_rows", "avg_row_length", "data_length", "max_data_length", "index_length", "data_free"} {
-				row[n] = NewIntValue(0)
+			// Size/cardinality estimates are available from SHOW TABLE STATUS.
+			// Unknown sizes remain NULL rather than claiming every table is empty.
+			if _, view := s.views[table]; view {
+				row["table_type"] = NewTextValue("VIEW")
+				row["engine"] = NewNullValue()
+				row["row_format"] = NewNullValue()
 			}
 			r.Rows = append(r.Rows, row)
 		}
 		return r, nil
 	case "information_schema.columns":
 		r := mysqlCatalog("table_catalog", "table_schema", "table_name", "column_name", "ordinal_position", "column_default", "is_nullable", "data_type", "column_type", "column_key", "extra", "character_set_name", "collation_name")
+		if !schemaVisible() {
+			return r, nil
+		}
 		for _, table := range s.GetTableList() {
 			info := s.GetTableInfo(table)
 			for i, c := range info.Columns {
 				row := map[string]Value{"table_catalog": NewTextValue("def"), "table_schema": NewTextValue(options.Database), "table_name": NewTextValue(table), "column_name": NewTextValue(c.Name), "ordinal_position": NewIntValue(int64(i + 1)), "column_default": NewNullValue(), "is_nullable": NewTextValue("YES"), "data_type": NewTextValue(strings.ToLower(c.ColType.String())), "column_type": NewTextValue(strings.ToLower(c.DeclaredType())), "column_key": NewTextValue(""), "extra": NewTextValue(""), "character_set_name": NewNullValue(), "collation_name": NewNullValue()}
+				dataType := strings.ToLower(c.DeclaredType())
+				if index := strings.IndexAny(dataType, "( "); index >= 0 {
+					dataType = dataType[:index]
+				}
+				row["data_type"] = NewTextValue(dataType)
 				if c.NotNull {
 					row["is_nullable"] = NewTextValue("NO")
 				}
@@ -124,10 +150,10 @@ func (s *Schema) mysqlCatalogTable(name string, options MySQLSessionOptions) (*R
 				} else if c.Unique {
 					row["column_key"] = NewTextValue("UNI")
 				}
-				if c.AutoIncrement {
+				if c.AutoIncrement || c.MySQLAutoIncrement {
 					row["extra"] = NewTextValue("auto_increment")
 				}
-				if c.ColType == ColText {
+				if c.ColType == ColText && c.Declared != "DATE" && c.Declared != "DATETIME" && c.Declared != "TIMESTAMP" {
 					row["character_set_name"] = NewTextValue("utf8mb4")
 					row["collation_name"] = NewTextValue("utf8mb4_bin")
 				}

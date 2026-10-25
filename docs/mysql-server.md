@@ -1,7 +1,7 @@
 # MySQL protocol server
 
 SlopDB can serve an existing database directory to MySQL clients over TCP, a
-Unix socket, or both. The wire protocol does not change SlopDB's SQL semantics.
+Unix socket, or both. MySQL sessions enable the supported MySQL type, expression and affected-row rules; native API sessions retain SlopDB semantics.
 One process owns the database; use client connections instead of opening that
 directory from another process while the server is running.
 
@@ -41,9 +41,14 @@ mysql --protocol=TCP -h 127.0.0.1 -P 3306 -u app -p app
 
 A named password environment variable must exist; an explicitly empty value
 permits passwordless login. Authentication uses `mysql_native_password`. There
-is one configured account, with access to the whole database. MySQL account/grant
-management is not implemented. TLS encryption and CA-verified client certificate
-authentication can be enabled as described below.
+is a configured bootstrap account with full access. `CREATE USER`, `ALTER USER`,
+`DROP USER`, `GRANT`, `REVOKE` and `SHOW GRANTS` manage persistent additional accounts.
+Database-wide and global grants are enforced on each statement, including prepared
+executions after a revoke. Password hashes and grants share the database's normal
+WAL durability. The bootstrap account remains configured by startup flags and
+cannot be changed through SQL. Supported account hosts are exact addresses,
+`localhost` (including loopback TCP), and `%`; authentication uses
+`mysql_native_password`. TLS and client certificate checks apply to all accounts.
 
 Server mode enables [MySQL quoting](sql-quoting.md) by default. Pass
 `--mysql-quoting=false` to use SlopDB's ordinary quoting rules. Other CLI storage,
@@ -108,9 +113,19 @@ Each authenticated connection owns an independent SlopDB session. Supported
 commands include text queries, ping, database selection, binary prepared
 statements with typed parameters, long parameter data, statement reset/close,
 and connection reset. Results carry column metadata, NULLs, binary values,
-affected-row counts, generated IDs and transaction status. Clients may connect
-without selecting a database; tables still refer to the single exposed database.
-`USE` and the handshake database name must select that configured name.
+affected-row counts, generated IDs and transaction status. `CLIENT_FOUND_ROWS`
+selects matched-row counts; ordinary MySQL updates report changed rows.
+
+`CREATE DATABASE` creates an isolated native SlopDB database under
+`mysql-databases/<hashed-name>` in the configured data directory. It never aliases
+the initial database. The server reopens these databases on startup and flushes
+them on shutdown. Additional databases currently require a standalone server;
+replicated servers reject their creation. `USE` and handshake selection enforce
+grants. Switching databases inside a transaction and cross-database SQL statements
+are unsupported. `information_schema.tables` and `columns` describe the current
+database's live catalog; `schemata` lists authorized databases. Copying only the
+initial database through the backup API does not include additional databases;
+back up each database independently or copy the full closed directory tree.
 
 `BEGIN` / `START TRANSACTION`, `COMMIT`, `ROLLBACK` and savepoints use the normal
 SlopDB transaction implementation. Disconnect and connection reset discard
@@ -132,27 +147,43 @@ The framing follows the [MySQL OK packet specification](https://dev.mysql.com/do
 `DEFAULT` restores the node default and `COMMITTED` restores ordinary admission.
 See [durable read barriers](replication.md#reading-durable-barriers).
 
-Basic client helpers include `SHOW DATABASES`, `SELECT DATABASE()`,
-`SELECT VERSION()`, `SELECT CONNECTION_ID()`, `SELECT @@autocommit`, and
-`SET NAMES utf8` / `utf8mb3` / `utf8mb4`. Other queries run through the SlopDB SQL
-engine, including its existing `SHOW`, `DESCRIBE` and introspection support.
-MySQL system schemas and general `@@` variables are not emulated.
+Client helpers include `SHOW DATABASES`, `DATABASE()`, `VERSION()`,
+`CONNECTION_ID()`, `CURRENT_USER()`, `SHOW [GLOBAL] VARIABLES [LIKE ...]`,
+`@@GLOBAL.read_only`, and common session variable reads. `SET` supports multiple
+assignments atomically for `autocommit`, `group_concat_max_len`, `sql_mode`, and
+UTF-8 character settings. The supported mode flags are `STRICT_TRANS_TABLES`,
+`STRICT_ALL_TABLES`, and `NO_AUTO_VALUE_ON_ZERO`; an empty mode enables supported
+nonstrict conversions. Unknown variables or unsupported mode flags fail.
+`SHOW WARNINGS`, `@@warning_count` and protocol warning counts expose conversion
+warnings.
+
+`GET_LOCK(name, timeout)`, `IS_FREE_LOCK(name)` and `RELEASE_LOCK(name)` use real
+connection-owned, reentrant named locks across sessions. Waits block with deadlines
+and cancellation; disconnect/reset releases all owned locks. MySQL-session
+`EXPLAIN SELECT` returns MySQL-shaped planner metadata without executing the query.
+
+`SHOW ENGINES` advertises the native transactional LSM engine. Table `ENGINE=`
+clauses are ignored; `SHOW TABLE STATUS` and `information_schema.tables` identify
+LSM storage. No alternate storage engine is selected by portable MySQL schemas.
+Other queries run through the native SQL engine, including `SHOW`, `DESCRIBE` and
+introspection. The supported virtual system tables are `information_schema.schemata`,
+`tables`, `columns`, `user_privileges`, `schema_privileges`, and an administrator-only
+`mysql.user` view of account names and hosts.
 
 Prepared parameters use anonymous `?` placeholders. Result metadata is sent at
 execution; prepare reports parameter metadata and no result columns. Clients
 that require result metadata before execution are not supported. Statements
 are never executed to discover metadata during prepare. MySQL cursors, multiple
 statements in a single query, multiple result sets, compression, replication,
-LOCAL INFILE, stored procedures, and administrative MySQL commands are not
-implemented or advertised. Unsupported commands return protocol errors.
+LOCAL INFILE, stored procedures, table-specific grants, roles, and general
+administrative MySQL commands are not implemented or advertised. Unsupported commands return protocol errors.
 
-SlopDB validates stored column types. MySQL wire string parameters bind as TEXT;
-wire BLOB parameters bind as BLOB. Some drivers, including Go's MySQL driver,
-encode both strings and byte slices as wire strings. Use `CAST(? AS BLOB)` for
-BLOB assignments with those drivers, including empty byte slices. SQL BLOB
-literals such as `X'00ff'` also work. Unsigned parameters above `MaxInt64` are
-rejected, consistent with SlopDB's native integer range. REAL values retain
-float64 precision on the wire. Mixed-type expression columns use a string wire
+SlopDB validates stored column types. MySQL sessions convert wire strings to
+BLOBs for binary columns, including empty values. Native API sessions retain
+strict BLOB affinity. SQL BLOB literals such as `X'00ff'` also work. Unsigned parameters above `MaxInt64` are
+rejected, consistent with SlopDB's native integer range. Declared MySQL integer widths, unsigned flags, FLOAT, DATE/DATETIME/TIMESTAMP,
+fixed BINARY and ENUM are reflected in result metadata and binary prepared rows.
+Native REAL values retain float64 precision on the wire. Mixed-type expression columns use a string wire
 type to preserve their values without rounding large integers.
 
 ## Go clients and embedding

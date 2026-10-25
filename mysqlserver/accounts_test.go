@@ -152,3 +152,25 @@ func TestMySQLUseDoesNotAbandonTransaction(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestMySQLInsertConflictPrivilegeChecks(t *testing.T) {
+	s := accountServer(t, t.TempDir())
+	owner := s.open(t, "owner", "owner-password", "wiki")
+	mustExec(t, owner, "CREATE TABLE guarded(id INT PRIMARY KEY,v TEXT)")
+	mustExec(t, owner, "INSERT INTO guarded VALUES(1,'protected')")
+	mustExec(t, owner, "CREATE USER 'inserter'@'localhost' IDENTIFIED BY 'password'")
+	mustExec(t, owner, "GRANT INSERT,SELECT ON wiki.* TO 'inserter'@'localhost'")
+	inserter := s.open(t, "inserter", "password", "wiki")
+	for _, query := range []string{"REPLACE INTO guarded VALUES(1,'bad')", "INSERT INTO guarded VALUES(1,'bad') ON DUPLICATE KEY UPDATE v='bad'"} {
+		if _, err := inserter.Exec(query); err == nil {
+			t.Fatal("mutation bypassed required privilege", query)
+		}
+	}
+	var value string
+	if err := owner.QueryRow("SELECT v FROM guarded WHERE id=1").Scan(&value); err != nil || value != "protected" {
+		t.Fatal(value, err)
+	}
+	mustExec(t, owner, "GRANT UPDATE,DELETE ON wiki.* TO 'inserter'@'localhost'")
+	mustExec(t, inserter, "REPLACE INTO guarded VALUES(1,'allowed')")
+	mustExec(t, inserter, "INSERT INTO guarded VALUES(1,'value') ON DUPLICATE KEY UPDATE v='updated'")
+}
