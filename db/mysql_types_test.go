@@ -61,7 +61,7 @@ func TestMySQLDeclaredTypesBinaryAffinityAndReopen(t *testing.T) {
 		t.Fatalf("stored types: %+v", r.Rows)
 	}
 	create := mysqlTypeExec(t, s, "SHOW CREATE TABLE typed")
-	if !strings.Contains(create.Rows[0]["Create table"].Text, "BINARY(14)") || !strings.Contains(create.Rows[0]["Create table"].Text, "name\"(8)") {
+	if !strings.Contains(create.Rows[0]["Create table"].Text, "BINARY(14)") || !strings.Contains(create.Rows[0]["Create table"].Text, "`name`(8)") {
 		t.Fatalf("lost metadata: %+v", create.Rows)
 	}
 	idx := mysqlTypeExec(t, s, "SHOW INDEX FROM typed")

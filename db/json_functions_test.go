@@ -39,7 +39,7 @@ func TestJSONFunctionsAccessorsAndNumbers(t *testing.T) {
 		{`SELECT JSON_LENGTH('{"a":[1,2]}','$.a') AS v`, `2`},
 		{`SELECT JSON_DEPTH('{"a":[1,2]}') AS v`, `3`},
 		{`SELECT JSON_TYPE('{"a":1}') AS v`, `OBJECT`},
-		{`SELECT JSON_UNQUOTE('"a\nb"') AS v`, "a\nb"},
+		{`SELECT JSON_UNQUOTE('"a\\nb"') AS v`, "a\nb"},
 		{`SELECT JSON_QUOTE('a"b') AS v`, `"a\"b"`},
 		{`SELECT JSON_VALID('{"a":') AS v`, `0`},
 		{`SELECT JSON_VALUE('{"a":18446744073709551615}','$.a') AS v`, `18446744073709551615`},
