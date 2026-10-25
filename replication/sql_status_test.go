@@ -99,6 +99,10 @@ func TestRaftSQLInspectionOnLeaderAndFollower(t *testing.T) {
 				t.Fatal(e)
 			}
 			rows.Close()
+			var metric, engine string
+			if e = c.QueryRow("SHOW LSM STATUS LIKE 'engine'").Scan(&metric, &engine); e != nil || metric != "engine" || engine != "LSM" {
+				t.Fatalf("%s LSM status on %s: %s %s %v", protocol, n.config.ID, metric, engine, e)
+			}
 			want := "Leader"
 			if n == n2 {
 				want = "Follower"

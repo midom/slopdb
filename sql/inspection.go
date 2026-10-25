@@ -12,7 +12,7 @@ func IsLocalInspectionStatement(stmt Statement) bool {
 	case *NamespaceStmt:
 		return st.Operation == "use" || st.Operation == "search_path"
 	case *ShowStmt:
-		return st.Kind == "RAFT STATUS" || st.Kind == "GLOBAL VARIABLES"
+		return st.Kind == "LSM STATUS" || st.Kind == "RAFT STATUS" || st.Kind == "GLOBAL VARIABLES"
 	case *SelectStmt:
 		if st.From != "" || st.FromExpr != nil || st.With != nil || st.Compound != nil || len(st.Joins) > 0 || st.Virtual != nil {
 			return false

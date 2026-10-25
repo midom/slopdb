@@ -33,6 +33,7 @@ type LSMTree struct {
 	pageSize              atomic.Int64
 	writeQueue            batchQueue
 	walWriteScratch       []byte // writerMu protects encoding scratch
+	walStats              walStatistics
 	writeGroups           atomic.Int64
 	writeBatches          atomic.Int64
 	completedCompactions  atomic.Int64
@@ -554,6 +555,7 @@ func (l *LSMTree) ensureWAL() error {
 		return err
 	}
 	l.wal = wal
+	wal.stats = &l.walStats
 	return nil
 }
 
@@ -1859,24 +1861,38 @@ func (h *mergeHeap) Pop() interface{} {
 }
 
 type LSMStats struct {
-	BlockCachePolicy      BlockCachePolicy
-	BlockCacheMemory      BlockCacheMemory
-	PageSize              int64 // effective uncompressed SSTable data-block target
-	CompletedCompactions  int64 // successfully installed compactions in this open instance
-	CompactionInputBytes  int64 // total input SSTable file sizes, not device I/O
-	CompactionOutputBytes int64 // installed output SSTable file sizes
-	CompletedFlushes      int64 // successfully installed nonempty memtable flushes
-	FlushOutputBytes      int64 // installed flush SSTable file sizes
-	WriteGroups           int64 // successful grouped batch publications
-	WriteBatches          int64 // successful caller batches in those groups
-	Dir                   string
-	MemSize               int
-	ImmSize               int
-	WALActive             bool
-	WALSyncDisabled       bool
-	SeqNum                uint64
-	FileNum               uint64
-	Levels                [maxLevels]LevelStats
+	DataBlockReadAttempts, DataBlockReadBytes, DataBlockReadErrors, DecodedBlockBytes int64
+	WALRecords, WALPayloadBytes, WALSyncs, WALWriteErrors, WALSyncErrors              int64
+	Memtable, ImmutableMemtable                                                       MemTableStats
+	WriteBufferBytes, BlockCacheCapacityBytes                                         int64
+	MaxOpenFiles, MaxBackgroundJobs, CompactionL0Trigger                              int
+	BaseLevelBytes                                                                    int64
+	BloomBitsPerKey                                                                   int
+	ParallelMemtableWrites, FlushPending, CompactionScheduled, Closed                 bool
+	ActiveCompactions, CompactingFiles                                                int
+	BackgroundError                                                                   string
+	WALFileNumber, FlushWALFileNumber, PublishedSequence, TableSequence               uint64
+	SnapshotPins, ReaderSnapshotPins                                                  int
+	OldestSnapshot                                                                    uint64
+	CachedTableReaders, LoadingTableReaders                                           int
+	BlockCachePolicy                                                                  BlockCachePolicy
+	BlockCacheMemory                                                                  BlockCacheMemory
+	PageSize                                                                          int64 // effective uncompressed SSTable data-block target
+	CompletedCompactions                                                              int64 // successfully installed compactions in this open instance
+	CompactionInputBytes                                                              int64 // total input SSTable file sizes, not device I/O
+	CompactionOutputBytes                                                             int64 // installed output SSTable file sizes
+	CompletedFlushes                                                                  int64 // successfully installed nonempty memtable flushes
+	FlushOutputBytes                                                                  int64 // installed flush SSTable file sizes
+	WriteGroups                                                                       int64 // successful grouped batch publications
+	WriteBatches                                                                      int64 // successful caller batches in those groups
+	Dir                                                                               string
+	MemSize                                                                           int
+	ImmSize                                                                           int
+	WALActive                                                                         bool
+	WALSyncDisabled                                                                   bool
+	SeqNum                                                                            uint64
+	FileNum                                                                           uint64
+	Levels                                                                            [maxLevels]LevelStats
 
 	BloomHits                 int64
 	BloomMisses               int64
@@ -1893,20 +1909,36 @@ type LSMStats struct {
 }
 
 type LevelStats struct {
-	FileCount int
-	TotalSize int64
-	Files     []FileStats
+	TargetBytes      int64
+	WriteCompression CompressionType
+	Ordered          bool
+	FileCount        int
+	TotalSize        int64
+	Files            []FileStats
 }
 
 type FileStats struct {
-	Number   uint64
-	Size     uint64
-	Smallest string
-	Largest  string
-	Seeks    int32
+	Compacting              bool
+	MaxSequence             uint64
+	RangeTombstones         int
+	IndexBytes, FilterBytes int
+	Number                  uint64
+	Size                    uint64
+	Smallest                string
+	Largest                 string
+	Seeks                   int32
 }
 
 func (l *LSMTree) Stats() LSMStats {
+	return l.stats(false)
+}
+
+// Status includes snapshot, reader and file-layout details. Unlike Stats it
+// walks registration and cache metadata, so it is intended for explicit
+// inspection rather than frequently evaluated scalar variables.
+func (l *LSMTree) Status() LSMStats { return l.stats(true) }
+
+func (l *LSMTree) stats(detailed bool) LSMStats {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	blockHits, blockMisses := l.tableCache.blocks.statistics()
@@ -1962,6 +1994,9 @@ func (l *LSMTree) Stats() LSMStats {
 		}
 		s.Levels[lv].FileCount = len(l.levels[lv])
 		s.Levels[lv].TotalSize = total
+	}
+	if detailed {
+		l.populateStatusLocked(&s)
 	}
 	return s
 }

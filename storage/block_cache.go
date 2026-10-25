@@ -14,20 +14,21 @@ type blockCacheKey struct {
 }
 
 type blockCacheShard struct {
-	mu              sync.RWMutex
-	capacity, used  int
-	lru             blockCacheList
-	hand            uint64                   // arena offset+1; zero is an empty CLOCK ring
-	blocks          map[blockCacheKey]uint64 // pointer-free arena offsets
-	arena           *blockArena
-	arenaStats      blockArenaStats
-	heapBlocks      map[blockCacheKey]*cachedHeapBlock
-	heapLRU         heapBlockCacheList
-	heapHand        *cachedHeapBlock
-	closed, evicted bool
-	hits, misses    atomic.Int64
-	admissionSkips  atomic.Int64
-	padding         [16]byte
+	mu                                                sync.RWMutex
+	capacity, used                                    int
+	lru                                               blockCacheList
+	hand                                              uint64                   // arena offset+1; zero is an empty CLOCK ring
+	blocks                                            map[blockCacheKey]uint64 // pointer-free arena offsets
+	arena                                             *blockArena
+	arenaStats                                        blockArenaStats
+	heapBlocks                                        map[blockCacheKey]*cachedHeapBlock
+	heapLRU                                           heapBlockCacheList
+	heapHand                                          *cachedHeapBlock
+	closed, evicted                                   bool
+	hits, misses                                      atomic.Int64
+	readAttempts, readBytes, readErrors, decodedBytes atomic.Int64
+	admissionSkips                                    atomic.Int64
+	padding                                           [16]byte
 }
 
 // Both memory backends share shard locks, budgets, policies and counters.

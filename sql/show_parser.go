@@ -89,12 +89,12 @@ func (p *Parser) parseShow() (Statement, error) {
 		return nil, fmt.Errorf("FULL is only supported for SHOW TABLES and SHOW COLUMNS")
 	}
 	switch kind {
-	case "RAFT":
+	case "LSM", "RAFT":
 		if !p.showWord("STATUS") {
-			return nil, fmt.Errorf("expected STATUS after SHOW RAFT")
+			return nil, fmt.Errorf("expected STATUS after SHOW %s", kind)
 		}
 		p.advance()
-		stmt.Kind = "RAFT STATUS"
+		stmt.Kind = kind + " STATUS"
 	case "GLOBAL":
 		if !p.showWord("VARIABLES") {
 			return nil, fmt.Errorf("expected VARIABLES after SHOW GLOBAL")

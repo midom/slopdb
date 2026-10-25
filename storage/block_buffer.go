@@ -16,6 +16,17 @@ var blockReadBuffers = sync.Pool{New: func() any { return new(blockReadBuffer) }
 var blockDecodeBuffers = sync.Pool{New: func() any { return new(blockDecodeBuffer) }}
 
 func (r *SSTableReader) readBlockBytes(offset, size uint64) ([]byte, *blockDecodeBuffer, error) {
+	var counters *blockCacheShard
+	if r.blocks != nil {
+		counters = r.blocks.shard(blockCacheKey{table: r.cacheID, offset: offset})
+		counters.readAttempts.Add(1)
+	}
+	success := false
+	defer func() {
+		if counters != nil && !success {
+			counters.readErrors.Add(1)
+		}
+	}()
 	compressed := r.hasCompressedBlocks.Load()
 	var scratch *blockReadBuffer
 	var data []byte
@@ -26,8 +37,12 @@ func (r *SSTableReader) readBlockBytes(offset, size uint64) ([]byte, *blockDecod
 	} else {
 		data = make([]byte, size)
 	}
-	if _, err := r.file.ReadAt(data, int64(offset)); err != nil {
-		return nil, nil, err
+	n, readErr := r.file.ReadAt(data, int64(offset))
+	if counters != nil {
+		counters.readBytes.Add(int64(n))
+	}
+	if readErr != nil {
+		return nil, nil, readErr
 	}
 	var decoded *blockDecodeBuffer
 	var destination []byte
@@ -54,6 +69,10 @@ func (r *SSTableReader) readBlockBytes(offset, size uint64) ([]byte, *blockDecod
 		// A compressed SSTable can also contain raw pages. Detach their data
 		// before returning scratch so readers/cached blocks retain ownership.
 		block = append([]byte(nil), block...)
+	}
+	success = true
+	if counters != nil {
+		counters.decodedBytes.Add(int64(len(block)))
 	}
 	return block, decoded, nil
 }

@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 )
 
 const (
@@ -25,6 +26,7 @@ type walFile interface {
 }
 
 type WalWriter struct {
+	stats  *walStatistics
 	file   walFile
 	writer *bufio.Writer
 	block  []byte
@@ -33,6 +35,8 @@ type WalWriter struct {
 	directory       string
 	directorySynced bool
 }
+
+type walStatistics struct{ records, payloadBytes, syncs, writeErrors, syncErrors atomic.Int64 }
 
 func NewWalWriter(path string) (*WalWriter, error) {
 	f, err := os.Create(path)
@@ -48,7 +52,19 @@ func NewWalWriter(path string) (*WalWriter, error) {
 	}, nil
 }
 
-func (w *WalWriter) AddRecord(data []byte) error {
+func (w *WalWriter) AddRecord(data []byte) (err error) {
+	length := len(data)
+	defer func() {
+		if w.stats == nil {
+			return
+		}
+		if err != nil {
+			w.stats.writeErrors.Add(1)
+		} else {
+			w.stats.records.Add(1)
+			w.stats.payloadBytes.Add(int64(length))
+		}
+	}()
 	begin := true
 	for begin || len(data) > 0 {
 		left := kBlockSize - w.offset
@@ -94,7 +110,17 @@ func (w *WalWriter) AddRecord(data []byte) error {
 	return w.writer.Flush()
 }
 
-func (w *WalWriter) Sync() error {
+func (w *WalWriter) Sync() (err error) {
+	defer func() {
+		if w.stats == nil {
+			return
+		}
+		if err != nil {
+			w.stats.syncErrors.Add(1)
+		} else {
+			w.stats.syncs.Add(1)
+		}
+	}()
 	if err := w.writer.Flush(); err != nil {
 		return err
 	}

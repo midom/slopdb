@@ -278,7 +278,7 @@ func (db *Database) execAdmittedStatementsInto(ctx context.Context, stmts []sql.
 			}
 			continue
 		}
-		if show, ok := stmt.(*sql.ShowStmt); ok && (show.Kind == "RAFT STATUS" || show.Kind == "GLOBAL VARIABLES") {
+		if show, ok := stmt.(*sql.ShowStmt); ok && (show.Kind == "LSM STATUS" || show.Kind == "RAFT STATUS" || show.Kind == "GLOBAL VARIABLES") {
 			if transactionBound && !schema.InTransaction() {
 				return nil, ErrTxDone
 			}

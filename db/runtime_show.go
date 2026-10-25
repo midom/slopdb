@@ -22,7 +22,13 @@ func (d *Database) runtimeShow(ctx context.Context, show *sql.ShowStmt) (*ExecRe
 		return nil, fmt.Errorf("runtime status supports LIKE filtering only")
 	}
 	var values map[string]string
-	if show.Kind == "RAFT STATUS" {
+	if show.Kind == "LSM STATUS" {
+		v, e := d.LSMStatus(ctx)
+		if e != nil {
+			return nil, e
+		}
+		values = lsmVariables(v)
+	} else if show.Kind == "RAFT STATUS" {
 		v, e := d.RaftState(ctx)
 		if e != nil {
 			return nil, e

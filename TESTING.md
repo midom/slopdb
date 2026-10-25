@@ -297,3 +297,9 @@ and transaction atomicity. All databases and protocol test artifacts use
 go test ./sql ./db ./postgresserver -run 'TestPostgres|TestCopy' -count=1
 go test -race ./db ./postgresserver -run 'TestPostgres|TestCopy' -count=1
 ```
+
+LSM SQL inspection is covered by `storage/status_test.go`,
+`db/lsm_status_test.go`, and `replication/sql_status_test.go`: both memtable
+implementations, concurrent publication/snapshot pins, flush/full compaction,
+reopen, passive counters, filters/prepared execution, and actual MySQL/PostgreSQL
+inspection on a Raft leader and follower.

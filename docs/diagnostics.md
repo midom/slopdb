@@ -87,3 +87,40 @@ executing it; see [online indexes](online-indexes.md) for details.
 For slow SQL, `EXPLAIN ANALYZE` includes actual reads, plan work, timings,
 allocation, spill metrics, and time spent waiting for locks as `lock_wait_ms`.
 Use `EXPLAIN` to inspect a plan without running the statement.
+
+## LSM storage status
+
+`SHOW LSM STATUS` works through native SQL, MySQL and PostgreSQL, including
+prepared statements. It returns sorted `Variable_name`, `Value` text columns;
+`SHOW LSM STATUS LIKE 'level.%'` selects the seven levels and
+`SHOW LSM STATUS LIKE 'file.%'` shows individual SSTables. `WHERE` filters are
+rejected. Status remains available on Raft followers without acquiring a
+quorum read fence, proposing entries or enabling change capture.
+
+Metric groups cover mutable/immutable memtable bytes, internal entry counts,
+range tombstones, skip-list height/hash buckets and sequence bounds; WAL mode,
+file generations, records, payload bytes, syncs and errors; completed/pending
+flushes; active/scheduled/completed compactions and input/output bytes; snapshot
+pins and oldest retained sequence; bloom, reader-cache and decoded-block-cache
+counters and capacity; mmap arena usage/failures; and data-block read attempts,
+actual bytes returned by file reads, decoded bytes and read/checksum errors.
+Per-level rows report file count, bytes, target bytes, nonoverlapping ordering
+and the compression policy for future writers. File rows include level, bytes,
+maximum sequence, range tombstones, resident index/filter bytes, remaining seek
+budget and compaction membership. Key bounds are hex-encoded physical user keys.
+L0 has a file-count trigger instead of a byte target (`target_bytes=0`).
+
+Counters are cumulative for the current open engine instance and reset on
+restart. File/layout gauges survive restart as persisted metadata. Memtable
+bytes are approximate internal allocation accounting; entries count versions
+and deletion markers, rather than SQL rows. Compaction/flush byte counters
+measure installed SSTable file sizes, rather than device traffic. Data-block
+reads measure OS file calls, which can hit the OS page cache; metadata/startup
+reads are excluded. Compression is a writer policy, since existing blocks can
+use different codecs. Concurrent counter samples can advance independently;
+the file layout itself is captured under the engine metadata lock.
+
+Inspection reads existing metadata and bounded registration/cache structures;
+it neither scans data blocks nor opens SSTables. The detailed snapshot is
+available to Go callers as `Database.LSMStatus(ctx)` or `LSMTree.Status()`;
+`LSMTree.Stats()` retains the lighter frequently sampled statistics path.
