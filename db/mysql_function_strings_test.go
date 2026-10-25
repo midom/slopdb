@@ -23,9 +23,12 @@ func TestMySQLStringFunctionFamilies(t *testing.T) {
 		{"CONCAT_WS(',', 'a', NULL, '', 'b')", "a,,b"}, {"CONCAT_WS(',',NULL,NULL)", ""},
 		{"LEFT('café🪐',4)", "café"}, {"RIGHT('café🪐',2)", "é🪐"}, {"LEFT('abc',-1)", ""}, {"LEFT('abc',1.5)", "ab"}, {"LEFT('abc','1.9')", "a"},
 		{"RIGHT('abc',18446744073709551615)", "abc"}, {"LEFT('abc','18446744073709551615')", ""},
+		{"LEFT('abcd',CAST(2.5 AS DOUBLE))", "ab"}, {"LEFT('abcd',CAST(2.5 AS DECIMAL(5,1)))", "abc"},
 		{"LPAD('é',4,'xy')", "xyxé"}, {"RPAD('é',4,'xy')", "éxyx"}, {"LPAD('abcdef',3,'x')", "abc"}, {"LPAD('x',0,'')", ""},
 		{"REPEAT('ab',1.5)", "abab"}, {"REPEAT('a','1.9')", "a"}, {"REVERSE('café🪐')", "🪐éfac"}, {"SPACE(3)", "   "},
 		{"SUBSTRING_INDEX('a.b.c','.',2)", "a.b"}, {"SUBSTRING_INDEX('a.b.c','.',-2)", "b.c"}, {"SUBSTRING_INDEX('abc','.',-2)", "abc"},
+		{"SUBSTRING_INDEX('a...b','..',-1)", ".b"}, {"SUBSTRING_INDEX('a...b','..',1)", "a"},
+		{"LPAD('é',4,X'7879')", "xyxé"}, {"INSERT('éé',2,1,X'78')", "éx"}, {"HEX(SOUNDEX(X'C3A961'))", "41303030"},
 		{"LOCATE('é','aéx')", "2"}, {"LOCATE('x',X'C3A978')", "3"}, {"POSITION('é' IN 'aéx')", "2"}, {"LOCATE('a','baab',3)", "3"},
 		{"LOCATE('a ','a' COLLATE utf8mb4_general_ci)", "0"}, {"LOCATE('A','a' COLLATE utf8mb4_general_ci)", "1"},
 		{"STRCMP('a','b')", "-1"}, {"STRCMP('a','a')", "0"}, {"STRCMP('a','a ')", "-1"}, {"STRCMP('a','a ' COLLATE utf8mb4_bin)", "0"},
@@ -38,6 +41,7 @@ func TestMySQLStringFunctionFamilies(t *testing.T) {
 		{"MAKE_SET(5,'a','b','c')", "a,c"}, {"MAKE_SET(5,'a',NULL,NULL)", "a"}, {"MAKE_SET(1.9,'a','b')", "b"}, {"MAKE_SET('1.9','a','b')", "a"},
 		{"EXPORT_SET(5,'Y','N',',',4)", "Y,N,Y,N"}, {"EXPORT_SET(0,'Y','N','',0)", ""},
 		{"SOUNDEX('Ashcraft')", "A2613"}, {"SOUNDEX('hello')", "H400"}, {"SOUNDEX('Pfister')", "P236"}, {"SOUNDEX('éàb')", "é100"}, {"SOUNDEX('123')", ""},
+		{"SOUNDEX('bob-bob')", "B000"}, {"SOUNDEX('Tymczak')", "T520"},
 		{"TRIM(BOTH 'xy' FROM 'xyxyabxy')", "ab"}, {"TRIM(LEADING 'xy' FROM 'xyabxy')", "abxy"}, {"TRIM(TRAILING FROM ' a  ')", " a"}, {"TRIM(FROM ' a ')", "a"},
 	} {
 		r := mysqlTypeExec(t, s, "SELECT "+tc.expression+" AS v")

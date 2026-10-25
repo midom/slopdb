@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math"
-	"math/big"
 	"sort"
 	"strings"
 	"unicode"
@@ -142,6 +141,9 @@ func mysqlStringFunctions() map[string]mysqlFunctionSpec {
 		if a[n].Null {
 			return NewNullValue(), nil
 		}
+		if err := mysqlFunctionSize(s, uint64(len(mysqlStringValue(a[n])))); err != nil {
+			return NewNullValue(), err
+		}
 		return mysqlStringResult(mysqlStringValue(a[n]), mysqlHasBlob(a[1:])), nil
 	})
 	spec = m["ELT"]
@@ -263,6 +265,9 @@ func mysqlStringFunctions() map[string]mysqlFunctionSpec {
 				}
 			}
 		}
+		if err := mysqlFunctionSize(s, uint64(len(text))); err != nil {
+			return NewNullValue(), err
+		}
 		return mysqlStringResult(text, a[0].Type == ColBlob), nil
 	})
 	spec = m["__MYSQL_TRIM"]
@@ -310,7 +315,7 @@ func mysqlStringCount(v Value) int64 {
 	}
 	v = mysqlFunctionNumber(v)
 	if v.Type == ColReal {
-		f := math.Round(v.Real)
+		f := math.RoundToEven(v.Real)
 		if f >= float64(math.MaxInt64) {
 			return math.MaxInt64
 		}
@@ -499,6 +504,15 @@ func mysqlStringTransform(s *Schema, name string, a []Value) (Value, error) {
 			result = ""
 			break
 		}
+		cutAfter := false
+		if n < 0 {
+			count := int64(strings.Count(text, delim))
+			if n < -count {
+				return mysqlStringResult(text, binary), nil
+			}
+			n = count + n + 1
+			cutAfter = true
+		}
 		if n > 0 {
 			offset := 0
 			for ; n > 0; n-- {
@@ -513,28 +527,14 @@ func mysqlStringTransform(s *Schema, name string, a []Value) (Value, error) {
 				}
 				at += offset
 				if n == 1 {
-					result = text[:at]
+					if cutAfter {
+						result = text[at+len(delim):]
+					} else {
+						result = text[:at]
+					}
 					break
 				}
 				offset = at + len(delim)
-			}
-		} else {
-			end := len(text)
-			for ; n < 0; n++ {
-				if n&63 == 0 {
-					if err := s.checkInterrupt(); err != nil {
-						return NewNullValue(), err
-					}
-				}
-				at := strings.LastIndex(text[:end], delim)
-				if at < 0 {
-					return mysqlStringResult(text, binary), nil
-				}
-				if n == -1 {
-					result = text[at+len(delim):]
-					break
-				}
-				end = at
 			}
 		}
 	}
@@ -707,30 +707,36 @@ func mysqlSetBits(v Value) uint64 {
 func mysqlStringIntegerBits(v Value) uint64 {
 	text := strings.TrimSpace(mysqlStringValue(v))
 	end := 0
+	negative := false
 	if end < len(text) && (text[end] == '+' || text[end] == '-') {
+		negative = text[end] == '-'
 		end++
 	}
 	start := end
+	n := uint64(0)
+	overflow := false
 	for end < len(text) && text[end] >= '0' && text[end] <= '9' {
+		digit := uint64(text[end] - '0')
+		if n > (math.MaxUint64-digit)/10 {
+			overflow = true
+		} else if !overflow {
+			n = n*10 + digit
+		}
 		end++
 	}
 	if start == end {
 		return 0
 	}
-	n, ok := new(big.Int).SetString(text[:end], 10)
-	if !ok {
-		return 0
-	}
-	if n.Sign() < 0 {
-		if !n.IsInt64() {
+	if negative {
+		if overflow || n > uint64(1)<<63 {
 			return uint64(1) << 63
 		}
-		return uint64(n.Int64())
+		return uint64(-int64(n))
 	}
-	if !n.IsUint64() {
+	if overflow {
 		return math.MaxUint64
 	}
-	return n.Uint64()
+	return n
 }
 func mysqlMakeSet(s *Schema, a []Value) (Value, error) {
 	if a[0].Null {
@@ -840,7 +846,7 @@ func mysqlSoundex(s *Schema, a []Value) (Value, error) {
 			previous = c
 			continue
 		}
-		if r == 'H' || r == 'W' {
+		if c == 0 {
 			continue
 		}
 		if c != 0 && c != previous {
@@ -856,6 +862,9 @@ func mysqlSoundex(s *Schema, a []Value) (Value, error) {
 	}
 	for utf8.RuneCountInString(out.String()) < 4 {
 		out.WriteByte('0')
+	}
+	if err := mysqlFunctionSize(s, uint64(out.Len())); err != nil {
+		return NewNullValue(), err
 	}
 	return mysqlStringResult(out.String(), a[0].Type == ColBlob), nil
 }
