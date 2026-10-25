@@ -4,6 +4,16 @@ SlopDB can stream its committed changes using the MySQL binary-log protocol.
 This is a replication **source**, backed by a durable journal in the native LSM.
 It does not run another storage engine or accept replication from a MySQL source.
 
+CDC always uses **row-based data changes**: `binlog_format=ROW` and
+`binlog_row_image=FULL`. Inserts carry the complete after image, deletes the
+complete before image, and updates both images. SQL DML statements are never
+replayed or substituted for row events; unsupported values produce an error.
+Statement/mixed logging and partial row images are unsupported.
+
+Schema DDL and transaction markers still use MySQL query events. MySQL logs
+DDL as statements even with ROW logging; those events do not make the data
+stream statement-based. See the [MySQL binary logging documentation](https://dev.mysql.com/doc/refman/8.4/en/replication-options-binary-log.html).
+
 `SHOW MASTER STATUS`, `SHOW BINARY LOG STATUS`, a binlog dump, or a replication
 identity-variable query activates the journal. Embedders can call
 `Database.EnableCDC(ctx)` explicitly. Activation and subsequent records use the

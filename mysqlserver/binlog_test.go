@@ -67,6 +67,18 @@ func TestBinlogDurableProtocolResumeAndExactRows(t *testing.T) {
 	if err := pool.QueryRow("SHOW MASTER STATUS").Scan(&file, &position, &doDB, &ignoreDB, &gtid); err != nil {
 		t.Fatal(err)
 	}
+	var sessionFormat, globalFormat, sessionImage, globalImage string
+	if err := pool.QueryRow("SELECT @@session.binlog_format, @@global.binlog_format, @@session.binlog_row_image, @@global.binlog_row_image").Scan(&sessionFormat, &globalFormat, &sessionImage, &globalImage); err != nil {
+		t.Fatal(err)
+	}
+	if sessionFormat != "ROW" || globalFormat != "ROW" || sessionImage != "FULL" || globalImage != "FULL" {
+		t.Fatalf("CDC format/image: session=%s/%s global=%s/%s", sessionFormat, sessionImage, globalFormat, globalImage)
+	}
+	for _, query := range []string{"SET SESSION binlog_format='STATEMENT'", "SET SESSION binlog_format='MIXED'", "SET SESSION binlog_row_image='MINIMAL'", "SET GLOBAL binlog_format='STATEMENT'"} {
+		if _, err := pool.Exec(query); err == nil {
+			t.Fatalf("accepted unsupported CDC format: %s", query)
+		}
+	}
 	mustExec(t, pool, "CREATE DATABASE stream")
 	mustExec(t, pool, "CREATE TABLE stream.events(id BIGINT UNSIGNED PRIMARY KEY,d DECIMAL(30,5),j JSON,b BLOB)")
 	mustExec(t, pool, `INSERT INTO stream.events VALUES(18446744073709551615,-12345678901234567890.01234,'{"n":18446744073709551615,"f":1.2500,"a":[true,null,"🪐"]}',X'00FF')`)
@@ -81,9 +93,41 @@ func TestBinlogDurableProtocolResumeAndExactRows(t *testing.T) {
 	last := uint32(4)
 	var resume uint32
 	var writes [][]byte
+	var gtidFlags byte
 	for _, event := range events {
 		kind := event[4]
 		counts[kind]++
+		body := event[binlogHeaderSize : len(event)-4]
+		switch kind {
+		case binlogGTID:
+			gtidFlags = body[0]
+		case binlogQuery:
+			if len(body) < 13 {
+				t.Fatal("truncated query event")
+			}
+			queryOffset := 13 + int(binary.LittleEndian.Uint16(body[11:])) + int(body[8]) + 1
+			if queryOffset > len(body) {
+				t.Fatal("invalid query event offsets")
+			}
+			query := string(body[queryOffset:])
+			switch {
+			case query == "BEGIN":
+				if gtidFlags&1 != 0 {
+					t.Fatal("row transaction advertises statement-based replication")
+				}
+			case strings.HasPrefix(query, "CREATE DATABASE "), strings.HasPrefix(query, "CREATE TABLE "):
+				// MySQL logs schema DDL as query events even in ROW mode.
+			default:
+				t.Fatalf("unexpected statement in row-based CDC: %s", query)
+			}
+		case binlogWriteRows, binlogUpdateRows, binlogDeleteRows:
+			if len(body) < 12 || body[10] != 4 || body[11]&15 != 15 {
+				t.Fatalf("row event omits columns from the full image: %x", body)
+			}
+			if kind == binlogUpdateRows && (len(body) < 13 || body[12]&15 != 15) {
+				t.Fatalf("update event omits columns from the full after image: %x", body)
+			}
+		}
 		end := binary.LittleEndian.Uint32(event[13:])
 		if end == 0 {
 			continue
