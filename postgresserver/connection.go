@@ -286,7 +286,7 @@ func (c *client) dispatch(ctx context.Context, message pgproto3.FrontendMessage)
 	}
 }
 func (c *client) executeSQL(ctx context.Context, p *prepared, args []any) (*db.ExecResult, string, error) {
-	ctx = sql.WithPostgresSession(ctx, sql.PostgresSessionOptions{Database: c.server.config.Database, User: c.server.config.Username, BackendPID: c.id})
+	ctx = sql.WithPostgresSession(ctx, sql.PostgresSessionOptions{Database: c.server.config.Database, User: c.server.config.Username, BackendPID: c.id, Function: c.postgresFunction})
 	c.currentSQL = p.original
 	c.reportPositions = false
 	wasInTx := c.session.InTransaction()

@@ -268,3 +268,12 @@ func splitQueries(query string) []string {
 	appendPart(len(query))
 	return out
 }
+
+// postgresFunction handles connection-local values without re-entering a locked
+// native session. All catalog and namespace work stays inside the SQL engine.
+func (c *client) postgresFunction(ctx context.Context, name string, args []sql.Value) (sql.Value, bool, error) {
+	if name == "CURRENT_SETTING" && len(args) > 0 && strings.EqualFold(args[0].String(), "application_name") {
+		return sql.NewTextValue(c.applicationName), true, nil
+	}
+	return sql.Value{}, false, nil
+}

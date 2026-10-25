@@ -174,6 +174,76 @@ func postgresCatalogFunctions() map[string]mysqlFunctionSpec {
 		}
 		return NewTextValue(""), nil
 	})
+
+	add("CURRENT_SETTING", 1, 2, ColText, "TEXT", func(s *Schema, a []Value) (Value, error) {
+		if a[0].Null {
+			return NewNullValue(), nil
+		}
+		name := strings.ToLower(a[0].String())
+		value := ""
+		switch name {
+		case "server_version":
+			value = "15.0"
+		case "server_version_num":
+			value = "150000"
+		case "server_encoding", "client_encoding":
+			value = "UTF8"
+		case "datestyle":
+			value = "ISO, MDY"
+		case "timezone":
+			value = "UTC"
+		case "standard_conforming_strings":
+			value = "on"
+		case "integer_datetimes":
+			value = "on"
+		case "transaction_isolation", "default_transaction_isolation":
+			value = strings.ToLower(string(s.IsolationLevel()))
+		case "search_path":
+			path := s.SessionSearchPath()
+			for i := range path {
+				path[i] = pgNamespaceName(path[i])
+			}
+			value = strings.Join(path, ", ")
+		default:
+			if opts, ok := PostgresSession(s.ctx); ok && opts.Function != nil {
+				if v, handled, e := opts.Function(s.ctx, "CURRENT_SETTING", a); handled || e != nil {
+					return v, e
+				}
+			}
+			missing := false
+			if len(a) > 1 && !a[1].Null {
+				v, e := CastPostgresValue(a[1], "BOOLEAN")
+				if e != nil {
+					return NewNullValue(), e
+				}
+				missing = v.Int != 0
+			}
+			if missing {
+				return NewNullValue(), nil
+			}
+			return NewNullValue(), fmt.Errorf("unrecognized configuration parameter %q", name)
+		}
+		return NewTextValue(value), nil
+	})
+	add("PG_CLIENT_ENCODING", 0, 0, ColText, "TEXT", func(*Schema, []Value) (Value, error) { return NewTextValue("UTF8"), nil })
+	add("PG_GET_USERBYID", 1, 1, ColText, "TEXT", func(s *Schema, a []Value) (Value, error) {
+		if a[0].Null {
+			return NewNullValue(), nil
+		}
+		id, e := pgCatalogInt(a[0])
+		if e != nil {
+			return NewNullValue(), e
+		}
+		if id == 10 {
+			opts, _ := PostgresSession(s.ctx)
+			name := opts.User
+			if name == "" {
+				name = "slopdb"
+			}
+			return NewTextValue(name), nil
+		}
+		return NewTextValue(fmt.Sprintf("unknown (OID=%d)", id)), nil
+	})
 	return out
 }
 func pgConstraintSQL(c ConstraintDef) string {
