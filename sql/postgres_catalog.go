@@ -9,7 +9,8 @@ import (
 // These virtual relations are projections of this session's actual catalog.
 // They use the ordinary SELECT pipeline and never scan user table contents.
 var postgresCatalogNames = map[string]bool{
-	"pg_namespace": true, "pg_class": true, "pg_attribute": true, "pg_type": true,
+	"pg_stat_activity": true,
+	"pg_namespace":     true, "pg_class": true, "pg_attribute": true, "pg_type": true,
 	"pg_index": true, "pg_constraint": true, "pg_attrdef": true, "pg_tables": true,
 	"pg_indexes": true, "pg_views": true, "pg_database": true, "pg_am": true,
 }
@@ -165,6 +166,13 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 	}
 	if strings.HasPrefix(name, "information_schema.") {
 		return s.informationSchemaTable(name, catalogFilter{})
+	}
+	if name == "pg_stat_activity" {
+		activities, err := s.snapshotActivities()
+		if err != nil {
+			return nil, err
+		}
+		return ProjectSessionActivity(name, activities, StatementTime(s.ctx))
 	}
 	opts, _ := PostgresSession(s.ctx)
 	database := opts.Database

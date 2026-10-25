@@ -12,6 +12,13 @@ func (s *Schema) ExecuteShow(stmt *ShowStmt) (*ResultSet, error) {
 	if err := s.checkInterrupt(); err != nil {
 		return nil, err
 	}
+	if stmt.Kind == "PROCESSLIST" {
+		activities, err := s.snapshotActivities()
+		if err != nil {
+			return nil, err
+		}
+		return ProcesslistResult(activities, stmt.Full, StatementTime(s.ctx)), nil
+	}
 	oldView := s.catalogView
 	if s.catalogView == nil {
 		s.catalogView = s.CatalogSnapshot()

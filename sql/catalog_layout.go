@@ -9,6 +9,13 @@ func catalogResult(spec string) *ResultSet {
 		name, typ, _ := strings.Cut(part, ":")
 		c := ColumnDef{Name: name, ColType: ColText, Declared: "TEXT"}
 		switch typ {
+		case "j":
+			c.ColType = ColInteger
+			c.Declared = "INTEGER"
+			c.SemanticType = TypeInt32
+		case "z":
+			c.Declared = "TIMESTAMPTZ"
+			c.SemanticType = TypeTimestampTZ
 		case "i":
 			c.ColType = ColInteger
 			c.Declared = "BIGINT"

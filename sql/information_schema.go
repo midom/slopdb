@@ -10,6 +10,7 @@ import (
 // by execution, preparation and wire adapters. Missing facts stay NULL; these
 // relations never evaluate defaults or infer permissions from connection names.
 var informationSchemaSchemas = map[string]string{
+	"processlist":                           "id:u user host db command time:i state info slopdb_session_id:u slopdb_backend_id:u slopdb_protocol slopdb_application_name slopdb_wait_kind slopdb_wait_resource",
 	"schemata":                              "catalog_name schema_name default_character_set_name default_collation_name sql_path schema_owner default_character_set_catalog default_character_set_schema",
 	"tables":                                "table_catalog table_schema table_name table_type engine version:i row_format table_rows:i avg_row_length:i data_length:i max_data_length:i index_length:i data_free:i auto_increment:i create_time update_time check_time table_collation checksum:i create_options table_comment self_referencing_column_name reference_generation user_defined_type_catalog user_defined_type_schema user_defined_type_name is_insertable_into is_typed commit_action slopdb_table_id:u slopdb_temporary slopdb_create_sql",
 	"columns":                               "table_catalog table_schema table_name column_name ordinal_position:i column_default is_nullable data_type column_type column_key extra character_set_name collation_name character_maximum_length:i character_octet_length:i numeric_precision:i numeric_precision_radix:i numeric_scale:i datetime_precision:i interval_type interval_precision:i character_set_catalog character_set_schema collation_catalog collation_schema domain_catalog domain_schema domain_name udt_catalog udt_schema udt_name scope_catalog scope_schema scope_name maximum_cardinality:i dtd_identifier is_self_referencing is_identity identity_generation identity_start identity_increment identity_maximum identity_minimum identity_cycle is_generated generation_expression is_updatable privileges column_comment slopdb_default_expression slopdb_declared_type slopdb_column_ordinal:i",
@@ -235,6 +236,13 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 	n, known := informationSchemaName(name)
 	if !known {
 		return nil, fmt.Errorf("unknown information_schema table %q", name)
+	}
+	if n == "processlist" {
+		activities, err := s.snapshotActivities()
+		if err != nil {
+			return nil, err
+		}
+		return ProjectSessionActivity("information_schema.processlist", activities, StatementTime(s.ctx))
 	}
 	cols, _ := informationSchemaColumns(n)
 	r := &ResultSet{Columns: cols}

@@ -47,7 +47,24 @@ func (s *Schema) resolveCatalogTables(stmt *SelectStmt) (*SelectStmt, error) {
 	cp.Joins = append([]JoinClause(nil), stmt.Joins...)
 	old := s.catalogView
 	defer func() { s.catalogView = old }()
+	var activities []SessionActivity
+	activityLoaded := false
 	resolve := func(name, alias string) (string, *SelectStmt, error) {
+		if activityName, known := ActivityRelationName(name, s.ExpressionDialect()); known {
+			if !activityLoaded {
+				var err error
+				activities, err = s.snapshotActivities()
+				if err != nil {
+					return "", nil, err
+				}
+				activityLoaded = true
+			}
+			data, err := ProjectSessionActivity(activityName, activities, StatementTime(s.ctx))
+			if err != nil {
+				return "", nil, err
+			}
+			return "", &SelectStmt{materialized: data}, nil
+		}
 		var data *ResultSet
 		var err error
 		_, shared := informationSchemaName(name)

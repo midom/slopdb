@@ -85,10 +85,13 @@ func (p *Parser) parseShow() (Statement, error) {
 		return nil, fmt.Errorf("expected SHOW command, got %q", p.cur.Value)
 	}
 	p.advance()
-	if stmt.Full && kind != "TABLES" && kind != "COLUMNS" && kind != "FIELDS" {
-		return nil, fmt.Errorf("FULL is only supported for SHOW TABLES and SHOW COLUMNS")
+	if stmt.Full && kind != "TABLES" && kind != "COLUMNS" && kind != "FIELDS" && kind != "PROCESSLIST" {
+		return nil, fmt.Errorf("FULL is only supported for SHOW TABLES, SHOW COLUMNS and SHOW PROCESSLIST")
 	}
 	switch kind {
+	case "PROCESSLIST":
+		stmt.Kind = "PROCESSLIST"
+		return stmt, nil
 	case "LSM", "RAFT":
 		if !p.showWord("STATUS") {
 			return nil, fmt.Errorf("expected STATUS after SHOW %s", kind)

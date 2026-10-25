@@ -5,6 +5,7 @@ import "fmt"
 // Schema SHOW layouts are defined once for Prepare/Describe and execution.
 // Runtime SHOW commands keep their separate observation providers.
 var showSchemas = map[string]string{
+	"PROCESSLIST":    "Id:u User Host db Command Time:i State Info",
 	"DATABASES":      "Database",
 	"COLUMNS":        "Field Type Null Key Default Extra",
 	"FULL COLUMNS":   "Field Type Collation Null Key Default Extra Privileges Comment",
