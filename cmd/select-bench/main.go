@@ -13,6 +13,7 @@ import (
 	"math/bits"
 	"math/rand"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"runtime/pprof"
@@ -39,6 +40,7 @@ type seedInfo struct {
 }
 
 type config struct {
+	ServerStatsURL                         string
 	API, QueryMode, Endpoint               string
 	ServeMySQL, ServePostgres, StatsListen string
 	CachePolicy                            string
@@ -56,17 +58,20 @@ type config struct {
 }
 
 type sample struct {
-	CPUSeconds, AverageCPUCores, CPUPercent              float64
-	Queries                                              int64
-	Seconds                                              float64
-	QueriesPerSecond                                     float64
-	MeanUS, P50US, P95US, P99US                          float64
-	AllocatedBytesPerQuery, AllocationsPerQuery          float64
-	GCs                                                  uint32
-	GCPauseSeconds                                       float64
-	VoluntaryContextSwitches, InvoluntaryContextSwitches int64
-	Before, After                                        storage.LSMStats
-	PoolBefore, PoolAfter                                poolCounters
+	ServerBefore, ServerAfter                               *remoteCounters `json:",omitempty"`
+	ServerCPUSeconds, ServerAverageCPUCores                 float64
+	ServerAllocatedBytesPerQuery, ServerAllocationsPerQuery float64
+	CPUSeconds, AverageCPUCores, CPUPercent                 float64
+	Queries                                                 int64
+	Seconds                                                 float64
+	QueriesPerSecond                                        float64
+	MeanUS, P50US, P95US, P99US                             float64
+	AllocatedBytesPerQuery, AllocationsPerQuery             float64
+	GCs                                                     uint32
+	GCPauseSeconds                                          float64
+	VoluntaryContextSwitches, InvoluntaryContextSwitches    int64
+	Before, After                                           storage.LSMStats
+	PoolBefore, PoolAfter                                   poolCounters
 }
 
 type report struct {
@@ -445,6 +450,16 @@ func run(c config) (r report, err error) {
 			}(i, reader)
 		}
 		ready.Wait()
+		sample.ServerBefore, err = readRemoteCounters(c.ServerStatsURL)
+		if err != nil {
+			stop.Store(true)
+			close(startGate)
+			wg.Wait()
+			return r, err
+		}
+		if sample.ServerBefore != nil {
+			sample.Before = sample.ServerBefore.Stats
+		}
 		// Worker creation, PRNG setup, validation buffers and sample metadata
 		// are outside the allocation/GC window, just as they are for CPU time.
 		runtime.ReadMemStats(&beforeMem)
@@ -488,6 +503,17 @@ func run(c config) (r report, err error) {
 		sample.GCPauseSeconds = float64(afterMem.PauseTotalNs-beforeMem.PauseTotalNs) / 1e9
 		sample.After = storageStats()
 		sample.PoolAfter = poolStats()
+		sample.ServerAfter, err = readRemoteCounters(c.ServerStatsURL)
+		if err != nil {
+			return r, err
+		}
+		if sample.ServerBefore != nil && sample.ServerAfter != nil {
+			sample.After = sample.ServerAfter.Stats
+			sample.ServerCPUSeconds = sample.ServerAfter.CPUSeconds - sample.ServerBefore.CPUSeconds
+			sample.ServerAverageCPUCores = sample.ServerCPUSeconds / sample.Seconds
+			sample.ServerAllocatedBytesPerQuery = float64(sample.ServerAfter.MemStats.TotalAlloc-sample.ServerBefore.MemStats.TotalAlloc) / float64(sample.Queries)
+			sample.ServerAllocationsPerQuery = float64(sample.ServerAfter.MemStats.Mallocs-sample.ServerBefore.MemStats.Mallocs) / float64(sample.Queries)
+		}
 		r.Samples = append(r.Samples, sample)
 		fmt.Fprintf(os.Stderr, "sample %d: %.0f SELECT/s; mean %.1f us p99 <= %.1f us; cache %.3f GB; %.1f CPU cores (%.1f%% of host)\n", n+1, sample.QueriesPerSecond, sample.MeanUS, sample.P99US, float64(sample.After.BlockCacheBytes)/1e9, sample.AverageCPUCores, sample.CPUPercent)
 	}
@@ -523,6 +549,7 @@ func writeJSON(path string, v any) error {
 
 func main() {
 	var c config
+	flag.StringVar(&c.ServerStatsURL, "server-stats-url", "", "external benchmark server /stats URL")
 	flag.StringVar(&c.API, "api", "native", "native, embedded, mysql, pq or pgx")
 	flag.StringVar(&c.QueryMode, "query-mode", "prepared", "text or prepared")
 	flag.StringVar(&c.Endpoint, "endpoint", "", "external TCP host:port (wire APIs only)")
@@ -547,7 +574,11 @@ func main() {
 		os.Exit(1)
 	}
 	var err error
-	if c.SeedBytes != 0 {
+	if c.ServeMySQL != "" || c.ServePostgres != "" {
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		err = serveBenchmark(ctx, c)
+	} else if c.SeedBytes != 0 {
 		err = seed(c)
 	} else {
 		_, err = run(c)

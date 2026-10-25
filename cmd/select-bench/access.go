@@ -81,10 +81,11 @@ func apiMode(c config) string {
 }
 func newNativeBackend(c config, d *db.Database) (backend *benchmarkBackend, err error) {
 	backend = &benchmarkBackend{}
+	owned := backend
 	var statement *db.Stmt
 	closeBackend := func() error {
 		var first error
-		for _, reader := range backend.readers {
+		for _, reader := range owned.readers {
 			if e := reader.(*nativeReader).session.Close(); e != nil && first == nil {
 				first = e
 			}
