@@ -7,6 +7,39 @@ import (
 	"testing"
 )
 
+func TestQuotedDottedColumnLabelsAcrossDialects(t *testing.T) {
+	for _, dialect := range []sql.Dialect{sql.DialectNative, sql.DialectMySQL, sql.DialectPostgreSQL} {
+		t.Run(dialect.String(), func(t *testing.T) {
+			d := projectionDatabase(t)
+			s, e := d.NewSession()
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer s.Close()
+			if e = s.SetDialect(dialect); e != nil {
+				t.Fatal(e)
+			}
+			quote := `"`
+			if dialect == sql.DialectMySQL {
+				quote = "`"
+			}
+			column := quote + "a.b" + quote
+			if _, e = s.Exec("CREATE TABLE dotted_names(" + column + " INTEGER); INSERT INTO dotted_names VALUES(1)"); e != nil {
+				t.Fatal(e)
+			}
+			p, e := s.Prepare("SELECT " + column + " FROM dotted_names WHERE " + column + "=?")
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer p.Close()
+			r, e := p.Exec(1)
+			if e != nil || len(r.Columns) != 1 || r.Columns[0].ResultName() != "a.b" || len(r.Rows) != 1 || r.Rows[0][r.Columns[0].Name].Int != 1 {
+				t.Fatalf("quoted dotted result: %+v %v", r, e)
+			}
+		})
+	}
+}
+
 func TestQualifiedStarAcrossDialects(t *testing.T) {
 	for _, dialect := range []sql.Dialect{sql.DialectNative, sql.DialectMySQL, sql.DialectPostgreSQL} {
 		t.Run(dialect.String(), func(t *testing.T) {

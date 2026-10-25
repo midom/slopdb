@@ -469,12 +469,12 @@ func (s *Schema) describeProjection(columns []SelectColumn, all []ColumnDef, env
 		}
 		if sc.Alias == "" {
 			if ref, ok := sc.Expr.(*ColumnRefExpr); ok {
-				label := c.DeclaredName()
+				label := c.ResultName()
 				if label == "" {
 					label = ref.Name
-				}
-				if dot := strings.LastIndexByte(label, '.'); dot >= 0 {
-					label = label[dot+1:]
+					if dot := strings.LastIndexByte(label, '.'); dot >= 0 {
+						label = label[dot+1:]
+					}
 				}
 				if label != name {
 					c.DisplayName = label

@@ -12,12 +12,25 @@ func TestQualifiedColumnLabelsInWordPressTermQueries(t *testing.T) {
 	for _, q := range []string{
 		"CREATE TABLE wp_terms(term_id BIGINT PRIMARY KEY,name TEXT,slug TEXT)",
 		"CREATE TABLE wp_term_taxonomy(term_taxonomy_id BIGINT PRIMARY KEY,term_id BIGINT,taxonomy TEXT)",
+		"CREATE TABLE dotted_label(`a.b` INTEGER)",
+		"INSERT INTO dotted_label VALUES(1)",
 		"INSERT INTO wp_terms VALUES(3,'SlopDB Category','slopdb-category')",
 		"INSERT INTO wp_term_taxonomy VALUES(7,3,'category')",
 	} {
 		if _, e := c.Exec(q); e != nil {
 			t.Fatal(e)
 		}
+	}
+	for _, q := range []string{"SELECT `a.b` FROM dotted_label", "SELECT d.`a.b` FROM dotted_label d"} {
+		rows, e := c.Query(q)
+		if e != nil {
+			t.Fatal(e)
+		}
+		cols, e := rows.Columns()
+		if e != nil || !reflect.DeepEqual(cols, []string{"a.b"}) {
+			t.Fatalf("quoted label %s: %v %v", q, cols, e)
+		}
+		rows.Close()
 	}
 	for _, q := range []string{
 		"SELECT t.term_id FROM wp_terms t WHERE t.slug='slopdb-category'",
