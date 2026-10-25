@@ -121,10 +121,10 @@ func boundedActivityQuery(q string) string {
 
 // beginActivity is called while the execution owner's gate is held. Snapshot
 // readers only lock this small record and never touch another session's schema.
-func (d *Database) beginActivity(s *sql.Schema, ctx context.Context, query string) func() {
+func (d *Database) beginActivity(s *sql.Schema, ctx context.Context, query string) *activityRecord {
 	r := d.activityRecord(s)
 	if r == nil {
-		return func() {}
+		return nil
 	}
 	if original, ok := sql.ActivityQueryFromContext(ctx); ok {
 		query = original
@@ -136,19 +136,27 @@ func (d *Database) beginActivity(s *sql.Schema, ctx context.Context, query strin
 	r.value.QueryStart = now
 	r.value.Query = boundedActivityQuery(query)
 	r.mu.Unlock()
-	return func() {
-		r.mu.Lock()
-		defer r.mu.Unlock()
-		state := sql.ActivityIdle
-		if r.inTransaction {
-			state = sql.ActivityIdleInTransaction
-			if r.failed {
-				state = sql.ActivityIdleInTransactionAborted
-			}
-		}
-		r.value.State = state
-		r.value.StateChange = time.Now()
+	return r
+}
+
+// end needs only the retained record, so releasing an execution view before
+// this call cannot race shutdown or a replacement catalog. Native callers
+// defer this method directly instead of allocating a per-query closure.
+func (r *activityRecord) end() {
+	if r == nil {
+		return
 	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	state := sql.ActivityIdle
+	if r.inTransaction {
+		state = sql.ActivityIdleInTransaction
+		if r.failed {
+			state = sql.ActivityIdleInTransactionAborted
+		}
+	}
+	r.value.State = state
+	r.value.StateChange = time.Now()
 }
 
 // syncActivity runs only under the owning session gate and lifecycle read view.
@@ -219,5 +227,5 @@ func (d *Database) Activity(ctx context.Context) ([]sql.SessionActivity, error) 
 // SQL. Call the returned function when the command finishes. Adapters must not
 // nest this scope around calls which already track their native execution.
 func (s *Session) TrackActivity(ctx context.Context, source string) func() {
-	return s.db.beginActivity(s.schema, ctx, source)
+	return s.db.beginActivity(s.schema, ctx, source).end
 }

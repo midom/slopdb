@@ -142,7 +142,7 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 				_ = s.finishTransactionAbort(err)
 			}
 		}
-		finishActivity()
+		finishActivity.end()
 		s.clearActive()
 		s.db.execution.RUnlockForReader(s.executionReader)
 		s.gate.Unlock()

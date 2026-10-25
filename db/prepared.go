@@ -144,7 +144,7 @@ func (s *Stmt) ExecContextWithOptions(ctx context.Context, options ExecOptions, 
 		return nil, err
 	}
 	defer s.db.defaultGate.Unlock()
-	defer s.db.beginActivity(s.db.schema, ctx, s.text)()
+	defer s.db.beginActivity(s.db.schema, ctx, s.text).end()
 	if err := s.db.execution.RLockContextForReader(ctx, s.db.executionReader); err != nil {
 		return nil, err
 	}
@@ -235,7 +235,7 @@ func (s *Session) execPreparedInto(ctx context.Context, stmt *Stmt, options Exec
 	if stmt != nil {
 		query = stmt.text
 	}
-	defer s.db.beginActivity(s.schema, ctx, query)()
+	defer s.db.beginActivity(s.schema, ctx, query).end()
 	b, err := stmt.bind(s.db, s, bound, args)
 	if err != nil {
 		return nil, err

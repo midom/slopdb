@@ -93,7 +93,7 @@ func (s *Session) bulkApply(ctx context.Context, table string, columns []string,
 		return 0, nil, err
 	}
 	defer s.gate.Unlock()
-	defer s.db.beginActivity(s.schema, ctx, "INSERT INTO "+table)()
+	defer s.db.beginActivity(s.schema, ctx, "INSERT INTO "+table).end()
 	ctx = sql.WithStatementTime(ctx, sql.StatementTime(ctx))
 	replay := &bulkReplay{next: next, parent: s.db.opt.QueryTempDir, width: len(names)}
 	defer replay.close()

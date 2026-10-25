@@ -175,7 +175,7 @@ func (db *Database) ExecContextWithOptions(ctx context.Context, sqlText string, 
 		return nil, err
 	}
 	defer db.defaultGate.Unlock()
-	defer db.beginActivity(db.schema, ctx, sqlText)()
+	defer db.beginActivity(db.schema, ctx, sqlText).end()
 	if err := db.execution.RLockContextForReader(ctx, db.executionReader); err != nil {
 		return nil, err
 	}

@@ -138,7 +138,7 @@ func (s *Session) ExecContextWithOptions(ctx context.Context, query string, opti
 		return nil, err
 	}
 	defer s.gate.Unlock()
-	defer s.db.beginActivity(s.schema, ctx, query)()
+	defer s.db.beginActivity(s.schema, ctx, query).end()
 	statements, parseErr := sql.ParseWithOptions(query, s.effectiveParseOptions())
 	if parseErr != nil {
 		return nil, fmt.Errorf("parse error: %w", parseErr)
@@ -259,7 +259,7 @@ func (db *Database) BeginContext(ctx context.Context) (*Tx, error) {
 	session.gate.Lock()
 	finishActivity := db.beginActivity(session.schema, ctx, "BEGIN")
 	_, err = session.execParsed(ctx, []sql.Statement{&sql.BeginStmt{}}, cancel, false, lockTimeout)
-	finishActivity()
+	finishActivity.end()
 	session.gate.Unlock()
 	if err != nil {
 		session.Close()
@@ -291,7 +291,7 @@ func (tx *Tx) ExecContextWithOptions(ctx context.Context, query string, options 
 		return nil, err
 	}
 	defer s.gate.Unlock()
-	defer s.db.beginActivity(s.schema, ctx, query)()
+	defer s.db.beginActivity(s.schema, ctx, query).end()
 	statements, err := sql.ParseWithOptions(query, s.effectiveParseOptions())
 	if err != nil {
 		return nil, fmt.Errorf("parse error: %w", err)
