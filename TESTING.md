@@ -212,6 +212,12 @@ answers for the documented FORMAT locale set. The optional temporal reference
 check uses `SLOPDB_MYSQL_REFERENCE_SOCKET` to compare deterministic generated
 calendar/week queries with an existing isolated MySQL server; ordinary tests
 require no external reference server.
+`mysqlserver/mysql_functions_reference_test.go` checks 360 independent Oracle
+fixtures in text and prepared modes (720 protocol checks), including invalid
+calls. `scripts/regenerate_mysql_function_references.py --socket ...` regenerates
+the factual fixture using MySQL alone; never derive expected answers from SlopDB.
+Regex tests cover Unicode offsets, occurrence counts, capture replacements,
+empty-match progress, RE2 boundaries, cancellation and statement-cache cleanup.
 
 `tests/regression/mediawiki_test.go` loads all 64 tables from the factual
 MediaWiki 1.46.2 schema fixture, then checks binary predicates, GROUP_CONCAT,

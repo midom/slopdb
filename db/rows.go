@@ -23,6 +23,7 @@ type Rows struct {
 	cursor               *sql.RowCursor
 	buffered             []map[string]sql.Value
 	position             int
+	delivered            uint64
 	current              map[string]sql.Value
 	err                  error
 	closed, materialized bool
@@ -114,6 +115,9 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 	successful := false
 	held := s.db.locks.snapshot(s.schema)
 	release := func() {
+		if successful && rows != nil && rows.err == nil {
+			s.schema.RecordMySQLFunctionResult(&sql.SelectStmt{}, 0, rows.delivered)
+		}
 		s.schema.EndStatement()
 		if binding != nil {
 			binding.Release()
@@ -298,6 +302,7 @@ func (r *Rows) Next() bool {
 		return false
 	}
 	r.current = row
+	r.delivered++
 	return true
 }
 func (r *Rows) Err() error   { r.mu.Lock(); defer r.mu.Unlock(); return r.err }

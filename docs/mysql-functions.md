@@ -12,6 +12,7 @@ MySQL mode; MySQL sessions use MySQL-specific LENGTH, HEX, ROUND and ABS rules.
 | --- | --- |
 | Strings | CONCAT_WS, LEFT, RIGHT, LPAD, RPAD, REPEAT, REVERSE, SPACE, INSERT, SUBSTRING_INDEX, MID, LOCATE, POSITION, STRCMP, FIELD, FIND_IN_SET, ELT, MAKE_SET, EXPORT_SET, SOUNDEX, LCASE, UCASE |
 | Lengths and encodings | ASCII, ORD, CHAR, CHAR_LENGTH, CHARACTER_LENGTH, OCTET_LENGTH, BIT_LENGTH, UNHEX, TO_BASE64, FROM_BASE64 |
+| Regular expressions | REGEXP_LIKE, REGEXP_INSTR, REGEXP_SUBSTR, REGEXP_REPLACE |
 | Exact numbers and formatting | CEIL, CEILING, FLOOR, SIGN, TRUNCATE, MOD, CONV, BIN, OCT, BIT_COUNT, CRC32, FORMAT, exact MySQL ROUND and ABS |
 | Math | PI, POW, POWER, SQRT, EXP, LN, LOG, LOG2, LOG10, SIN, COS, TAN, ASIN, ACOS, ATAN, ATAN2, COT, DEGREES, RADIANS, RAND |
 | Date components | YEAR, MONTH, DAY, DAYOFMONTH, DAYOFWEEK, DAYOFYEAR, WEEKDAY, QUARTER, WEEK, WEEKOFYEAR, YEARWEEK, DAYNAME, MONTHNAME, LAST_DAY |
@@ -74,12 +75,23 @@ aes-128-ecb behavior and padding; other block modes and KDF arguments are not
 implemented. COMPRESS uses MySQL's length-prefix/zlib format and reads MySQL
 compressed values; compressed byte sequences may differ between zlib encoders.
 
+Regular-expression functions support character positions, occurrence selection,
+capture replacements and match flags, with a bounded statement-local compiled
+pattern cache. They use RE2. Lookarounds and pattern backreferences produce an
+unsupported-pattern error. Unicode line-ending and end-anchor rules retain RE2
+semantics; anchored SUBSTR/REPLACE patterns at a noninitial position are rejected.
+This is not a complete implementation of MySQL's ICU regular-expression engine.
+
 ## Verification and boundaries
 
 Permanent tests cover NULLs, Unicode and binary values, exact decimals, uint64,
 coercion, prepared calls, metadata, cancellation, memory budgets and persisted
 views. Oracle MySQL 8.0.46 supplies independent fixed and generated reference
 answers. The normal suite uses checked-in answers; it does not require MySQL.
+The independent scalar fixture covers 360 cases through both text and prepared
+MySQL protocol execution. Regenerate it against an isolated Oracle MySQL server
+using `scripts/regenerate_mysql_function_references.py --socket /path/to/socket`.
+The generator obtains answers only from that server.
 
 This is an implementation of the listed functions, not a complete emulation of
 every MySQL function, sql_mode, warning, collation or temporal coercion. Native

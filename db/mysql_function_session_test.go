@@ -40,6 +40,19 @@ func TestMySQLInformationFunctionsConnectionState(t *testing.T) {
 	expect("SELECT LAST_INSERT_ID() AS v", "33")
 	mysqlTypeExec(t, s, "SELECT n FROM ids LIMIT 1")
 	expect("SELECT FOUND_ROWS() AS v", "1")
+	rows, err := s.Query("SELECT n FROM ids ORDER BY n LIMIT 2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatal(err)
+	}
+	expect("SELECT FOUND_ROWS() AS v", "2")
 	expect("SELECT LAST_INSERT_ID('18446744073709551615') AS v", "18446744073709551615")
 	expect("SELECT LAST_INSERT_ID(18446744073709551615) AS v", "18446744073709551615")
 	other := mysqlTypeSession(t, d)
