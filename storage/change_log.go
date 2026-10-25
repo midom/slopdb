@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -12,6 +13,64 @@ import (
 	"sort"
 	"time"
 )
+
+// Physical replication snapshots already cap individual values at 256 MiB.
+// Keep journal records/catalog checkpoints inside that envelope; ordinary read
+// pages use a soft byte target but always retain a whole first transaction.
+const maxChangeLogValueBytes = (256 << 20) - 1024
+const changeLogReadPageBytes = 16 << 20
+
+func changeLogSizeError() error {
+	return fmt.Errorf("CDC transaction or catalog exceeds %d byte limit", maxChangeLogValueBytes)
+}
+
+// Account before allocating copies. The subtraction form also avoids overflow
+// for adversarial length/count combinations in persisted data.
+func changeLogCharge(used *uint64, amount uint64, limit uint64) error {
+	if amount > limit || *used > limit-amount {
+		return changeLogSizeError()
+	}
+	*used += amount
+	return nil
+}
+
+func changeCatalogSize(catalog map[string][]byte) (uint64, error) {
+	used := uint64(2)
+	for key, value := range catalog {
+		if len(key) > maxChangeLogValueBytes || len(value) > maxChangeLogValueBytes {
+			return 0, changeLogSizeError()
+		}
+		encodedKey, _ := json.Marshal(key)
+		amount := uint64(len(encodedKey)) + uint64(base64.StdEncoding.EncodedLen(len(value))) + 4
+		if err := changeLogCharge(&used, amount, maxChangeLogValueBytes); err != nil {
+			return 0, err
+		}
+	}
+	return used, nil
+}
+
+func (l *LSMTree) readChangeCatalog() (map[string][]byte, error) {
+	catalog := make(map[string][]byte)
+	it := l.NewIteratorRange([]byte{0}, []byte{1}, false)
+	defer it.Close()
+	used := uint64(2)
+	for ; it.Valid(); it.Next() {
+		key, value := it.Key().UserKey, it.Value()
+		if !changeCatalogKey(key) {
+			continue
+		}
+		if len(key) > maxChangeLogValueBytes || len(value) > maxChangeLogValueBytes {
+			return nil, changeLogSizeError()
+		}
+		encodedKey, _ := json.Marshal(string(key))
+		amount := uint64(len(encodedKey)) + uint64(base64.StdEncoding.EncodedLen(len(value))) + 4
+		if err := changeLogCharge(&used, amount, maxChangeLogValueBytes); err != nil {
+			return nil, err
+		}
+		catalog[string(key)] = bytes.Clone(value)
+	}
+	return catalog, IteratorError(it)
+}
 
 var changeLogHeaderKey = []byte("\x00__change_log_v1__")
 var changeLogPrefix = []byte{4}
@@ -65,6 +124,9 @@ func (l *LSMTree) ChangeLogHeader() (*ChangeLogHeader, error) {
 	if err != nil || !found {
 		return nil, err
 	}
+	if len(data) > maxChangeLogValueBytes {
+		return nil, changeLogSizeError()
+	}
 	var header ChangeLogHeader
 	if err = json.Unmarshal(data, &header); err != nil {
 		return nil, fmt.Errorf("change log header: %w", err)
@@ -111,6 +173,10 @@ func (l *LSMTree) initChangeLog() error {
 // image is taken before publication; a local overlay incorporates earlier
 // writes in this group. Journal bytes share the same WAL record and watermark.
 func (l *LSMTree) appendChangeLog(batch []Mutation, base uint64, boundaries []int, rangeDelete bool) ([]Mutation, bool, error) {
+	return l.appendChangeLogBounded(batch, base, boundaries, rangeDelete, maxChangeLogValueBytes)
+}
+
+func (l *LSMTree) appendChangeLogBounded(batch []Mutation, base uint64, boundaries []int, rangeDelete bool, recordLimit uint64) ([]Mutation, bool, error) {
 	enabled := l.changeLogEnabled.Load()
 	activation := -1
 	for i, w := range batch {
@@ -140,15 +206,8 @@ func (l *LSMTree) appendChangeLog(batch []Mutation, base uint64, boundaries []in
 				return nil, false, fmt.Errorf("invalid change log activation")
 			}
 			initial.StartSequence = 0
-			initial.Catalog = make(map[string][]byte)
-			it := l.NewIteratorRange([]byte{0}, []byte{1}, false)
-			for ; it.Valid(); it.Next() {
-				if changeCatalogKey(it.Key().UserKey) {
-					initial.Catalog[string(it.Key().UserKey)] = bytes.Clone(it.Value())
-				}
-			}
-			err := IteratorError(it)
-			it.Close()
+			var err error
+			initial.Catalog, err = l.readChangeCatalog()
 			if err != nil {
 				return nil, false, err
 			}
@@ -157,6 +216,9 @@ func (l *LSMTree) appendChangeLog(batch []Mutation, base uint64, boundaries []in
 		data, err := json.Marshal(header)
 		if err != nil {
 			return nil, false, err
+		}
+		if len(data) > maxChangeLogValueBytes {
+			return nil, false, changeLogSizeError()
 		}
 		batch = append([]Mutation(nil), batch...)
 		for i := range batch {
@@ -181,7 +243,7 @@ func (l *LSMTree) appendChangeLog(batch []Mutation, base uint64, boundaries []in
 		if err != nil {
 			return image{}, err
 		}
-		return image{bytes.Clone(value), found}, nil
+		return image{value, found}, nil
 	}
 	var records []ChangeRecord
 	start := 0
@@ -190,6 +252,7 @@ func (l *LSMTree) appendChangeLog(batch []Mutation, base uint64, boundaries []in
 			return nil, false, fmt.Errorf("invalid change log transaction boundary")
 		}
 		record := ChangeRecord{Time: time.Now().UTC().UnixNano()}
+		recordBytes := uint64(17 + binary.MaxVarintLen64)
 		for _, w := range batch[start:end] {
 			if bytes.Equal(w.Key, changeLogClockKey) && len(w.Value) == 8 {
 				record.Time = int64(binary.BigEndian.Uint64(w.Value))
@@ -200,9 +263,13 @@ func (l *LSMTree) appendChangeLog(batch []Mutation, base uint64, boundaries []in
 			if err != nil {
 				return err
 			}
-			staged[string(key)] = image{bytes.Clone(value), !deleted}
+			staged[string(key)] = image{value, !deleted}
 			if deleted && !before.found || !deleted && before.found && bytes.Equal(before.value, value) {
 				return nil
+			}
+			amount := uint64(1+3*binary.MaxVarintLen64) + uint64(len(key)) + uint64(len(before.value)) + uint64(len(value))
+			if err := changeLogCharge(&recordBytes, amount, recordLimit); err != nil {
+				return err
 			}
 			record.Mutations = append(record.Mutations, ChangeMutation{Key: bytes.Clone(key), Before: bytes.Clone(before.value), After: bytes.Clone(value), BeforeExists: before.found, Delete: deleted})
 			return nil
@@ -216,11 +283,25 @@ func (l *LSMTree) appendChangeLog(batch []Mutation, base uint64, boundaries []in
 					continue
 				}
 				keys := make(map[string]bool)
+				keyBytes := uint64(0)
+				addKey := func(key []byte) error {
+					if keys[string(key)] {
+						return nil
+					}
+					if err := changeLogCharge(&keyBytes, uint64(len(key))+64, recordLimit); err != nil {
+						return err
+					}
+					keys[string(key)] = true
+					return nil
+				}
 				it := l.NewIteratorRange(w.Key, w.Value, false)
 				for ; it.Valid(); it.Next() {
 					key := it.Key().UserKey
 					if changeRowKey(key) || changeCatalogKey(key) {
-						keys[string(key)] = true
+						if err := addKey(key); err != nil {
+							it.Close()
+							return nil, false, err
+						}
 					}
 				}
 				err := IteratorError(it)
@@ -231,7 +312,9 @@ func (l *LSMTree) appendChangeLog(batch []Mutation, base uint64, boundaries []in
 				for key := range staged {
 					data := []byte(key)
 					if bytes.Compare(data, w.Key) >= 0 && (len(w.Value) == 0 || bytes.Compare(data, w.Value) < 0) && (changeRowKey(data) || changeCatalogKey(data)) {
-						keys[key] = true
+						if err := addKey(data); err != nil {
+							return nil, false, err
+						}
 					}
 				}
 				ordered := make([]string, 0, len(keys))
@@ -289,15 +372,8 @@ func (l *LSMTree) appendChangeLog(batch []Mutation, base uint64, boundaries []in
 				continue
 			}
 			if catalog == nil {
-				catalog = make(map[string][]byte)
-				it := l.NewIteratorRange([]byte{0}, []byte{1}, false)
-				for ; it.Valid(); it.Next() {
-					if changeCatalogKey(it.Key().UserKey) {
-						catalog[string(it.Key().UserKey)] = bytes.Clone(it.Value())
-					}
-				}
-				err := IteratorError(it)
-				it.Close()
+				var err error
+				catalog, err = l.readChangeCatalog()
 				if err != nil {
 					return nil, false, err
 				}
@@ -310,6 +386,9 @@ func (l *LSMTree) appendChangeLog(batch []Mutation, base uint64, boundaries []in
 			}
 		}
 		if changedCatalog {
+			if _, err := changeCatalogSize(catalog); err != nil {
+				return nil, false, err
+			}
 			data, err := json.Marshal(catalog)
 			if err != nil {
 				return nil, false, err
@@ -393,11 +472,19 @@ func (l *LSMTree) ReadChanges(ctx context.Context, after uint64, limit int) ([]C
 	it := l.NewIteratorRange(changeLogKey(after+1), []byte{5}, false)
 	defer it.Close()
 	var records []ChangeRecord
+	used := 0
 	for ; it.Valid() && len(records) < limit; it.Next() {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		record, err := decodeChangeRecord(it.Value())
+		data := it.Value()
+		if len(data) > maxChangeLogValueBytes {
+			return nil, changeLogSizeError()
+		}
+		if len(records) > 0 && len(data) > changeLogReadPageBytes-used {
+			break
+		}
+		record, err := decodeChangeRecord(data)
 		if err != nil {
 			return nil, err
 		}
@@ -405,6 +492,10 @@ func (l *LSMTree) ReadChanges(ctx context.Context, after uint64, limit int) ([]C
 			return nil, fmt.Errorf("change record key mismatch")
 		}
 		records = append(records, record)
+		used += len(data)
+		if len(records) >= limit || used >= changeLogReadPageBytes {
+			break
+		}
 	}
 	return records, IteratorError(it)
 }
@@ -421,8 +512,17 @@ func (l *LSMTree) ChangeCatalogAt(ctx context.Context, sequence uint64) (map[str
 	}
 	it := l.NewIteratorRange(changeCatalogPrefix, upper, true)
 	if it.Valid() {
+		key, data := it.Key().UserKey, it.Value()
+		if len(key) != 9 || binary.BigEndian.Uint64(key[1:]) > sequence {
+			it.Close()
+			return nil, fmt.Errorf("invalid change catalog checkpoint key")
+		}
+		if len(data) > maxChangeLogValueBytes {
+			it.Close()
+			return nil, changeLogSizeError()
+		}
 		var catalog map[string][]byte
-		err := json.Unmarshal(it.Value(), &catalog)
+		err := json.Unmarshal(data, &catalog)
 		it.Close()
 		if err != nil {
 			return nil, fmt.Errorf("change catalog checkpoint: %w", err)

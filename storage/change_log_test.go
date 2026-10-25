@@ -326,3 +326,68 @@ func TestChangeLogPhysicalSnapshotRestorePreservesHistory(t *testing.T) {
 		t.Fatal(records, err)
 	}
 }
+
+func TestChangeLogReadBytePagesPreserveWholeTransactions(t *testing.T) {
+	tree := openReaderViewTest(t)
+	ctx := context.Background()
+	if _, err := tree.EnableChangeLog(ctx); err != nil {
+		t.Fatal(err)
+	}
+	payload := bytes.Repeat([]byte{'x'}, 6<<20)
+	for i := uint64(1); i <= 3; i++ {
+		if err := tree.Put(changeRow(i), payload); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first, err := tree.ReadChanges(ctx, 0, 4096)
+	if err != nil || len(first) != 2 {
+		t.Fatalf("read ignored byte page: count=%d err=%v", len(first), err)
+	}
+	second, err := tree.ReadChanges(ctx, first[1].Sequence, 4096)
+	if err != nil || len(second) != 1 || second[0].Sequence != 3 {
+		t.Fatal(second, err)
+	}
+	large := bytes.Repeat([]byte{'y'}, changeLogReadPageBytes+1)
+	if err = tree.Put(changeRow(4), large); err != nil {
+		t.Fatal(err)
+	}
+	last, err := tree.ReadChanges(ctx, 3, 4096)
+	if err != nil || len(last) != 1 || len(last[0].Mutations) != 1 || !bytes.Equal(last[0].Mutations[0].After, large) {
+		t.Fatalf("large transaction truncated: count=%d err=%v", len(last), err)
+	}
+}
+
+func TestChangeLogBudgetFailuresPreserveSourceAndPositions(t *testing.T) {
+	tree := openReaderViewTest(t)
+	ctx := context.Background()
+	if _, err := tree.EnableChangeLog(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := tree.Put(changeRow(1), []byte("original")); err != nil {
+		t.Fatal(err)
+	}
+	before, err := tree.ChangeLogPosition()
+	if err != nil {
+		t.Fatal(err)
+	}
+	batches := [][]Mutation{
+		{{Key: changeRow(1), Value: bytes.Repeat([]byte{'a'}, 1024)}},
+		{{Key: []byte{1}, Value: []byte{2}, RangeDelete: true}},
+	}
+	for _, batch := range batches {
+		tree.writerMu.Lock()
+		_, _, err = tree.appendChangeLogBounded(batch, tree.published.Load(), nil, false, 32)
+		tree.writerMu.Unlock()
+		if err == nil {
+			t.Fatal("unbounded journal expansion")
+		}
+		value, ok, e := tree.Get(changeRow(1))
+		if e != nil || !ok || string(value) != "original" {
+			t.Fatal("failed journal planning changed row", string(value), ok, e)
+		}
+		after, e := tree.ChangeLogPosition()
+		if e != nil || after != before {
+			t.Fatal("failed journal planning advanced position", after, e)
+		}
+	}
+}
