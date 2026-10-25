@@ -51,3 +51,39 @@ func TestPostgresParserExtensions(t *testing.T) {
 		}
 	}
 }
+
+func TestPostgresIntervalExactComponents(t *testing.T) {
+	for _, c := range []struct {
+		text string
+		m, d int32
+		u    int64
+	}{
+		{"1.5 months 2.5 days", 1, 17, 43200000000},
+		{"1 ms 2 us", 0, 0, 1002},
+		{"0.000001 seconds", 0, 0, 1},
+		{"0.0000015 seconds", 0, 0, 1},
+		{"0.0000025 seconds", 0, 0, 2},
+		{"00:00:00.0000015", 0, 0, 2},
+		{"0.1 year", 1, 0, 0},
+		{"2562047788:00:54.775807", 0, 0, 9223372036854775807},
+		{"-2562047788:00:54.775808", 0, 0, -9223372036854775808},
+		{"1 month 2 days 03:04:05.123456 ago", -1, -2, -11045123456},
+	} {
+		m, d, u, e := ParsePostgresInterval(c.text)
+		if e != nil || m != c.m || d != c.d || u != c.u {
+			t.Errorf("%s => %d %d %d %v", c.text, m, d, u, e)
+		}
+		if e == nil {
+			round := FormatPostgresInterval(m, d, u)
+			m2, d2, u2, e := ParsePostgresInterval(round)
+			if e != nil || m2 != m || d2 != d || u2 != u {
+				t.Errorf("roundtrip %s: %d %d %d %v", round, m2, d2, u2, e)
+			}
+		}
+	}
+	for _, bad := range []string{"bad:01:02", "1 / 2 day", "1 nanosecond", "2147483648 months", "2562047788:00:54.775808"} {
+		if _, _, _, e := ParsePostgresInterval(bad); e == nil {
+			t.Errorf("accepted %s", bad)
+		}
+	}
+}

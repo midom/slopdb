@@ -3,6 +3,7 @@ package sql
 import (
 	"fmt"
 	"math"
+	"math/big"
 	"strconv"
 	"strings"
 )
@@ -16,8 +17,32 @@ func ParsePostgresInterval(text string) (months, days int32, micros int64, err e
 	if len(fields) == 0 {
 		return 0, 0, 0, fmt.Errorf("invalid input syntax for type INTERVAL: %q", original)
 	}
-	var mon, day float64
-	var us float64
+
+	mon, day, us := new(big.Rat), new(big.Rat), new(big.Rat)
+	round := func(r *big.Rat, even bool) *big.Int {
+		q, rem := new(big.Int), new(big.Int)
+		q.QuoRem(r.Num(), r.Denom(), rem)
+		cmp := new(big.Int).Lsh(new(big.Int).Abs(rem), 1).Cmp(r.Denom())
+		if cmp > 0 || cmp == 0 && even && q.Bit(0) == 1 {
+			q.Add(q, big.NewInt(int64(r.Sign())))
+		}
+		return q
+	}
+	add := func(dst, n *big.Rat, multiplier int64) {
+		value := new(big.Rat).Mul(n, new(big.Rat).SetInt64(multiplier))
+		// PostgreSQL unit spellings round half microseconds toward zero.
+		if dst == us {
+			value.SetInt(round(value, false))
+		}
+		dst.Add(dst, value)
+	}
+	quantity := func(text string) (*big.Rat, bool) {
+		if strings.ContainsAny(text, "/xXpP") {
+			return nil, false
+		}
+		r, ok := new(big.Rat).SetString(text)
+		return r, ok
+	}
 	ago := false
 	for i := 0; i < len(fields); i++ {
 		f := fields[i]
@@ -26,7 +51,7 @@ func ParsePostgresInterval(text string) (months, days int32, micros int64, err e
 			break
 		}
 		if strings.Contains(f, ":") {
-			sign := 1.0
+			sign := int64(1)
 			if strings.HasPrefix(f, "-") {
 				sign = -1
 				f = f[1:]
@@ -40,19 +65,24 @@ func ParsePostgresInterval(text string) (months, days int32, micros int64, err e
 			}
 			h, e := strconv.ParseInt(pieces[0], 10, 64)
 			m, e2 := strconv.ParseInt(pieces[1], 10, 64)
-			sec := 0.0
+			sec := new(big.Rat)
+			ok := true
 			if len(pieces) == 3 {
-				sec, e = strconv.ParseFloat(pieces[2], 64)
+				sec, ok = quantity(pieces[2])
 			}
-			if e != nil || e2 != nil || m < 0 || m > 59 || sec < 0 || sec >= 60 {
+			if e != nil || e2 != nil || h < 0 || m < 0 || m > 59 || !ok || sec.Sign() < 0 || sec.Cmp(big.NewRat(60, 1)) >= 0 {
 				err = fmt.Errorf("invalid interval time")
 				break
 			}
-			us += sign * (float64(h)*3600 + float64(m)*60 + sec) * 1e6
+			clock := new(big.Rat).Mul(new(big.Rat).SetInt64(h), big.NewRat(3600, 1))
+			clock.Add(clock, new(big.Rat).Mul(new(big.Rat).SetInt64(m), big.NewRat(60, 1)))
+			clock.Add(clock, sec)
+			clock.Mul(clock, big.NewRat(sign*1e6, 1))
+			us.Add(us, new(big.Rat).SetInt(round(clock, true)))
 			continue
 		}
-		n, e := strconv.ParseFloat(f, 64)
-		if e != nil || math.IsNaN(n) || math.IsInf(n, 0) {
+		n, ok := quantity(f)
+		if !ok {
 			err = fmt.Errorf("invalid interval quantity")
 			break
 		}
@@ -61,32 +91,34 @@ func ParsePostgresInterval(text string) (months, days int32, micros int64, err e
 			i++
 			unit = strings.ToLower(fields[i])
 		}
-		unit = strings.TrimSuffix(unit, "s")
+		if len(unit) > 2 {
+			unit = strings.TrimSuffix(unit, "s")
+		}
 		switch unit {
 		case "millennium", "millennia":
-			mon += n * 12000
+			mon.Add(mon, new(big.Rat).SetInt(round(new(big.Rat).Mul(n, big.NewRat(12000, 1)), true)))
 		case "century", "centurie":
-			mon += n * 1200
+			mon.Add(mon, new(big.Rat).SetInt(round(new(big.Rat).Mul(n, big.NewRat(1200, 1)), true)))
 		case "decade":
-			mon += n * 120
+			mon.Add(mon, new(big.Rat).SetInt(round(new(big.Rat).Mul(n, big.NewRat(120, 1)), true)))
 		case "year", "yr", "y":
-			mon += n * 12
+			mon.Add(mon, new(big.Rat).SetInt(round(new(big.Rat).Mul(n, big.NewRat(12, 1)), true)))
 		case "month", "mon":
-			mon += n
+			add(mon, n, 1)
 		case "week", "w":
-			day += n * 7
+			add(day, n, 7)
 		case "day", "d":
-			day += n
+			add(day, n, 1)
 		case "hour", "hr", "h":
-			us += n * 3600e6
+			add(us, n, 3600e6)
 		case "minute", "min", "m":
-			us += n * 60e6
+			add(us, n, 60e6)
 		case "second", "sec", "s":
-			us += n * 1e6
+			add(us, n, 1e6)
 		case "millisecond", "msec", "ms":
-			us += n * 1000
+			add(us, n, 1000)
 		case "microsecond", "usec", "us":
-			us += n
+			add(us, n, 1)
 		default:
 			err = fmt.Errorf("invalid interval unit %s", unit)
 		}
@@ -94,20 +126,29 @@ func ParsePostgresInterval(text string) (months, days int32, micros int64, err e
 			break
 		}
 	}
-	day += (mon - math.Trunc(mon)) * 30
-	us += (day - math.Trunc(day)) * 86400e6
-	if ago {
-		mon = -mon
-		day = -day
-		us = -us
-	}
 	if err != nil {
 		return 0, 0, 0, fmt.Errorf("invalid input syntax for type INTERVAL: %q: %w", original, err)
 	}
-	if mon < math.MinInt32 || mon > math.MaxInt32 || day < math.MinInt32 || day > math.MaxInt32 || us < math.MinInt64 || us >= 9223372036854775808.0 {
+	if ago {
+		mon.Neg(mon)
+		day.Neg(day)
+		us.Neg(us)
+	}
+	wholeMonths := new(big.Int).Quo(mon.Num(), mon.Denom())
+	add(day, new(big.Rat).Sub(mon, new(big.Rat).SetInt(wholeMonths)), 30)
+	wholeDays := new(big.Int).Quo(day.Num(), day.Denom())
+	add(us, new(big.Rat).Sub(day, new(big.Rat).SetInt(wholeDays)), 86400e6)
+	micro, rem := new(big.Int), new(big.Int)
+	micro.QuoRem(us.Num(), us.Denom(), rem)
+	cmp := new(big.Int).Lsh(new(big.Int).Abs(rem), 1).Cmp(us.Denom())
+	if cmp > 0 || cmp == 0 && micro.Bit(0) == 1 {
+		micro.Add(micro, big.NewInt(int64(us.Sign())))
+	}
+	if !wholeMonths.IsInt64() || wholeMonths.Int64() < math.MinInt32 || wholeMonths.Int64() > math.MaxInt32 || !wholeDays.IsInt64() || wholeDays.Int64() < math.MinInt32 || wholeDays.Int64() > math.MaxInt32 || !micro.IsInt64() {
 		return 0, 0, 0, fmt.Errorf("INTERVAL out of range")
 	}
-	return int32(mon), int32(day), int64(math.RoundToEven(us)), nil
+	return int32(wholeMonths.Int64()), int32(wholeDays.Int64()), micro.Int64(), nil
+
 }
 func FormatPostgresInterval(months, days int32, micros int64) string {
 	pieces := []string{}

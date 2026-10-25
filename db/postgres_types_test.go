@@ -94,11 +94,11 @@ func TestPostgresTypeModeIsolation(t *testing.T) {
 	if _, e = pg.Exec(`INSERT INTO pg_ints VALUES(2147483648)`); e == nil {
 		t.Fatal("PostgreSQL INTEGER accepted 64-bit value")
 	}
-	r, e = pg.Exec(`SELECT 'AbC' ~* '^a' AS a, 'AbC' !~ 'a' AS b, 'AbC' !~* '^z' AS c`)
+	r, e = pg.Exec(`SELECT 'AbC' ~* '^a' AS a, 'AbC' !~ 'a' AS b, 'AbC' !~* '^z' AS c, 'AbC' OPERATOR(pg_catalog.~*) '^a' AS d`)
 	if e != nil {
 		t.Fatal(e)
 	}
-	for _, name := range []string{"a", "b", "c"} {
+	for _, name := range []string{"a", "b", "c", "d"} {
 		if r.Rows[0][name].Int != 1 {
 			t.Fatal(r.Rows)
 		}

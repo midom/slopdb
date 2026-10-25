@@ -1718,6 +1718,23 @@ func (p *Parser) parseComparison() (Expression, error) {
 		return nil, err
 	}
 
+	if p.showWord("OPERATOR") {
+		op, e := p.parsePostgresQualifiedOperator()
+		if e != nil {
+			return nil, e
+		}
+		right, e := p.parseBitwise()
+		if e != nil {
+			return nil, e
+		}
+		if strings.Contains(op, "~") {
+			return postgresRegexExpression(left, right, op), nil
+		}
+		if op == "!=" {
+			op = "<>"
+		}
+		return &BinaryExpr{Left: left, Op: op, Right: right}, nil
+	}
 	if p.cur.Type == TokTilde || p.cur.Type == TokRegex {
 		op := p.cur.Value
 		p.advance()
@@ -1729,14 +1746,7 @@ func (p *Parser) parseComparison() (Expression, error) {
 		if e != nil {
 			return nil, e
 		}
-		if strings.HasSuffix(op, "*") {
-			right = &BinaryExpr{Left: &LiteralExpr{Value: NewTextValue("(?i)")}, Op: "||", Right: right}
-		}
-		name := "REGEXP"
-		if strings.HasPrefix(op, "!") {
-			name = "NOT REGEXP"
-		}
-		return &BinaryExpr{Left: left, Op: name, Right: right}, nil
+		return postgresRegexExpression(left, right, op), nil
 	}
 	ops := map[TokenType]string{TokEq: "=", TokLt: "<", TokGt: ">", TokLe: "<=", TokGe: ">=", TokNe: "<>"}
 	if op, ok := ops[p.cur.Type]; ok {

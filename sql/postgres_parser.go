@@ -287,3 +287,42 @@ func (p *Parser) parsePostgresPrimary() (Expression, bool, error) {
 	p.advance()
 	return &FuncCallExpr{Name: "CAST", Args: []Expression{&LiteralExpr{Value: value}, &LiteralExpr{Value: NewTextValue(name)}}}, true, nil
 }
+
+// psql qualifies operators with OPERATOR(pg_catalog.~) in catalog queries.
+func (p *Parser) parsePostgresQualifiedOperator() (string, error) {
+	p.advance()
+	if e := p.expect(TokLParen); e != nil {
+		return "", e
+	}
+	if p.showWord("PG_CATALOG") {
+		p.advance()
+		if e := p.expect(TokDot); e != nil {
+			return "", e
+		}
+	}
+	op := p.cur.Value
+	switch p.cur.Type {
+	case TokTilde, TokRegex, TokEq, TokNe, TokLt, TokGt, TokLe, TokGe, TokPlus, TokMinus, TokStar, TokSlash, TokPercent, TokConcat:
+	default:
+		return "", fmt.Errorf("unsupported qualified PostgreSQL operator %s", op)
+	}
+	p.advance()
+	if op == "~" && p.cur.Type == TokStar {
+		op += "*"
+		p.advance()
+	}
+	if e := p.expect(TokRParen); e != nil {
+		return "", e
+	}
+	return op, nil
+}
+func postgresRegexExpression(left, right Expression, op string) Expression {
+	if strings.HasSuffix(op, "*") {
+		right = &BinaryExpr{Left: &LiteralExpr{Value: NewTextValue("(?i)")}, Op: "||", Right: right}
+	}
+	name := "REGEXP"
+	if strings.HasPrefix(op, "!") {
+		name = "NOT REGEXP"
+	}
+	return &BinaryExpr{Left: left, Op: name, Right: right}
+}
