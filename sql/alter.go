@@ -130,9 +130,11 @@ func (s *Schema) AlterTable(a *AlterTableStmt) error {
 		switch a.Operation {
 		case "SET_DEFAULT":
 			col.Default = a.Default
+			col.DefaultDialect = definitionDialect(s.ExpressionDialect())
 			col.DefaultSQL = formatExpr(a.Default)
 		case "DROP_DEFAULT":
 			col.Default = nil
+			col.DefaultDialect = 0
 			col.DefaultSQL = ""
 		case "DROP_NOT_NULL":
 			if slices.Contains(info.PKColumns, col.Name) {
@@ -242,6 +244,7 @@ func (s *Schema) AlterTable(a *AlterTableStmt) error {
 			return fmt.Errorf("duplicate column: %s", a.Column.Name)
 		}
 		col := *a.Column
+		s.stampColumnDefinitions(&col)
 		col.MySQL = col.MySQL || s.MySQLMode()
 		if col.ColType == ColText && !col.Binary && col.Collation == "" {
 			col.Collation = info.DefaultCollation
@@ -256,7 +259,7 @@ func (s *Schema) AlterTable(a *AlterTableStmt) error {
 		for _, row := range rows {
 			v := NewNullValue()
 			if col.Default != nil {
-				v, err = s.evalExpr(col.Default, nil)
+				v, err = s.evalDefinitionExpression(col.Default, col.DefaultDialect, nil)
 				if err != nil {
 					return err
 				}
@@ -323,6 +326,7 @@ func (s *Schema) AlterTable(a *AlterTableStmt) error {
 		}
 		if a.Operation == "MODIFY_COLUMN" {
 			replacement := *a.Column
+			s.stampColumnDefinitions(&replacement)
 			replacement.PrimaryKey = col.PrimaryKey
 			replacement.Unique = col.Unique || replacement.Unique
 			replacement.AutoIncrement = col.AutoIncrement || replacement.AutoIncrement

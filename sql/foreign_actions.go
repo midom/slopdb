@@ -129,7 +129,7 @@ func (s *Schema) processForeignActions(start int) error {
 						for _, column := range child.Columns {
 							if column.Name == name && column.Default != nil {
 								var err error
-								value, err = s.evalExpr(column.Default, nil)
+								value, err = s.evalDefinitionExpression(column.Default, column.DefaultDialect, nil)
 								if err != nil {
 									return err
 								}

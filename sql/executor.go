@@ -26,19 +26,20 @@ import (
 )
 
 type TableInfo struct {
-	DefaultCollation Collation       `json:"default_collation,omitempty"`
-	Engine           string          `json:"engine,omitempty"`
-	Charset          string          `json:"charset,omitempty"`
-	collation        Collation       `json:"-"`
-	ID               uint64          `json:"id,omitempty"`
-	Constraints      []ConstraintDef `json:"constraints,omitempty"`
-	Name             string          `json:"name"`
-	Columns          []ColumnDef     `json:"columns"`
-	TableCheck       []Expression    `json:"-"`
-	TableCheckSQL    []string        `json:"table_check_sql,omitempty"`
-	TableUnique      [][]string      `json:"table_unique,omitempty"`
-	ForeignKeys      []ForeignKeyDef `json:"foreign_keys,omitempty"`
-	PKColumns        []string        `json:"pk_columns,omitempty"`
+	TableCheckDialects []DefinitionDialect `json:"table_check_dialects,omitempty"`
+	DefaultCollation   Collation           `json:"default_collation,omitempty"`
+	Engine             string              `json:"engine,omitempty"`
+	Charset            string              `json:"charset,omitempty"`
+	collation          Collation           `json:"-"`
+	ID                 uint64              `json:"id,omitempty"`
+	Constraints        []ConstraintDef     `json:"constraints,omitempty"`
+	Name               string              `json:"name"`
+	Columns            []ColumnDef         `json:"columns"`
+	TableCheck         []Expression        `json:"-"`
+	TableCheckSQL      []string            `json:"table_check_sql,omitempty"`
+	TableUnique        [][]string          `json:"table_unique,omitempty"`
+	ForeignKeys        []ForeignKeyDef     `json:"foreign_keys,omitempty"`
+	PKColumns          []string            `json:"pk_columns,omitempty"`
 }
 
 type IndexInfo struct {
@@ -392,8 +393,24 @@ func (s *Schema) loadSchema() error {
 				}
 			}
 		}
+		if len(info.TableCheckDialects) != 0 && len(info.TableCheckDialects) != len(info.TableCheckSQL) {
+			return fmt.Errorf("invalid CHECK dialect metadata on %s", info.Name)
+		}
+		for _, d := range info.TableCheckDialects {
+			if !d.valid() {
+				return fmt.Errorf("invalid CHECK dialect on %s", info.Name)
+			}
+		}
+		for _, c := range info.Constraints {
+			if !c.DefinitionDialect.valid() {
+				return fmt.Errorf("invalid constraint dialect on %s", info.Name)
+			}
+		}
 		for i := range info.Columns {
 			col := &info.Columns[i]
+			if !col.DefaultDialect.valid() || !col.CheckDialect.valid() {
+				return fmt.Errorf("invalid expression dialect on %s.%s", info.Name, col.Name)
+			}
 			if col.Collation != "" {
 				if _, err := ParseCollation(string(col.Collation)); err != nil {
 					return fmt.Errorf("invalid stored column collation on %s.%s: %w", info.Name, col.Name, err)
@@ -600,6 +617,9 @@ func (s *Schema) CreateTable(stmt *CreateTableStmt) error {
 	}
 
 	for i := range stmt.Columns {
+		if !stmt.definitionOriginsCopied {
+			s.stampColumnDefinitions(&stmt.Columns[i])
+		}
 		if s.MySQLMode() {
 			stmt.Columns[i].MySQL = true
 		}
@@ -617,6 +637,17 @@ func (s *Schema) CreateTable(stmt *CreateTableStmt) error {
 		tcsql[i] = formatExpr(tc)
 	}
 
+	if !stmt.definitionOriginsCopied {
+		stmt.TableCheckDialects = make([]DefinitionDialect, len(stmt.TableCheck))
+		for i := range stmt.TableCheckDialects {
+			stmt.TableCheckDialects[i] = definitionDialect(s.ExpressionDialect())
+		}
+		for i := range stmt.Constraints {
+			if stmt.Constraints[i].Kind == "CHECK" && stmt.Constraints[i].DefinitionDialect == 0 {
+				stmt.Constraints[i].DefinitionDialect = definitionDialect(s.ExpressionDialect())
+			}
+		}
+	}
 	tableUnique := stmt.TableUnique
 
 	if len(stmt.PKColumns) == 0 {
@@ -636,19 +667,20 @@ func (s *Schema) CreateTable(stmt *CreateTableStmt) error {
 		return err
 	}
 	info := &TableInfo{
-		DefaultCollation: stmt.DefaultCollation,
-		Engine:           stmt.Engine,
-		Charset:          stmt.Charset,
-		collation:        s.collation,
-		ID:               id,
-		Constraints:      stmt.Constraints,
-		Name:             name,
-		Columns:          stmt.Columns,
-		TableCheck:       tcexpr,
-		TableCheckSQL:    tcsql,
-		TableUnique:      tableUnique,
-		ForeignKeys:      stmt.ForeignKeys,
-		PKColumns:        stmt.PKColumns,
+		DefaultCollation:   stmt.DefaultCollation,
+		Engine:             stmt.Engine,
+		Charset:            stmt.Charset,
+		collation:          s.collation,
+		ID:                 id,
+		Constraints:        stmt.Constraints,
+		Name:               name,
+		Columns:            stmt.Columns,
+		TableCheck:         tcexpr,
+		TableCheckSQL:      tcsql,
+		TableCheckDialects: slices.Clone(stmt.TableCheckDialects),
+		TableUnique:        tableUnique,
+		ForeignKeys:        stmt.ForeignKeys,
+		PKColumns:          stmt.PKColumns,
 	}
 	if err := validateConstraintExpressions(info); err != nil {
 		return err
@@ -1902,6 +1934,7 @@ func (s *Schema) ensureCatalogWritable() {
 		c.PKColumns = slices.Clone(v.PKColumns)
 		c.TableCheck = slices.Clone(v.TableCheck)
 		c.TableCheckSQL = slices.Clone(v.TableCheckSQL)
+		c.TableCheckDialects = slices.Clone(v.TableCheckDialects)
 		tables[k] = &c
 	}
 	for k, v := range s.indexes {
@@ -3468,7 +3501,7 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 				}
 				row[col.Name] = assignmentAffinity(v, col)
 			} else if col.Default != nil {
-				val, err := s.evalExpr(col.Default, nil)
+				val, err := s.evalDefinitionExpression(col.Default, col.DefaultDialect, nil)
 				if err != nil {
 					return 0, nil, err
 				}
@@ -3812,7 +3845,7 @@ func (s *Schema) checkNonUniqueConstraintsPreserving(tableName string, info *Tab
 			}
 		}
 		if col.Check != nil {
-			v, err := s.evalExpr(col.Check, row)
+			v, err := s.evalDefinitionExpression(col.Check, col.CheckDialect, row)
 			match := v.Null || truthValue(v)
 			if err != nil {
 				return fmt.Errorf("CHECK constraint failed: %s.%s: %v", tableName, col.Name, err)
@@ -3823,8 +3856,8 @@ func (s *Schema) checkNonUniqueConstraintsPreserving(tableName string, info *Tab
 		}
 	}
 
-	for _, expr := range info.TableCheck {
-		v, err := s.evalExpr(expr, row)
+	for i, expr := range info.TableCheck {
+		v, err := s.evalDefinitionExpression(expr, info.tableCheckDialect(i), row)
 		match := v.Null || truthValue(v)
 		if err != nil || !match {
 			return fmt.Errorf("CHECK constraint failed: %s", tableName)
@@ -4113,7 +4146,7 @@ func (s *Schema) insertFromSelect(stmt *InsertStmt, info *TableInfo) (int64, *Re
 				if !included {
 					if col.Default != nil {
 						var defaultErr error
-						val, defaultErr = s.evalExpr(col.Default, nil)
+						val, defaultErr = s.evalDefinitionExpression(col.Default, col.DefaultDialect, nil)
 						if defaultErr != nil {
 							return 0, nil, defaultErr
 						}

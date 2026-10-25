@@ -56,11 +56,13 @@ type ForeignKeyDef struct {
 }
 
 type ColumnDef struct {
-	OriginalName      string    `json:"original_name,omitempty"`
-	Collation         Collation `json:"collation,omitempty"` // explicit stored comparison policy
-	SemanticCollation Collation `json:"-"`                   // inferred expression collation; empty means database default
-	ParameterIndex    int       `json:"-"`                   // internal static inference provenance; never persisted
-	SemanticType      TypeID    `json:"-"`                   // inferred logical type; durable declarations retain existing catalog fields
+	DefaultDialect    DefinitionDialect `json:"default_dialect,omitempty"`
+	CheckDialect      DefinitionDialect `json:"check_dialect,omitempty"`
+	OriginalName      string            `json:"original_name,omitempty"`
+	Collation         Collation         `json:"collation,omitempty"` // explicit stored comparison policy
+	SemanticCollation Collation         `json:"-"`                   // inferred expression collation; empty means database default
+	ParameterIndex    int               `json:"-"`                   // internal static inference provenance; never persisted
+	SemanticType      TypeID            `json:"-"`                   // inferred logical type; durable declarations retain existing catalog fields
 	// DisplayName preserves a duplicate SQL output label; Name is the unique row-map key.
 	DisplayName          string            `json:"-"`
 	TypeModifiers        bool              `json:"type_modifiers,omitempty"`
@@ -150,22 +152,24 @@ func (col ColumnDef) DeclaredType() string {
 }
 
 type CreateTableStmt struct {
-	DefaultCollation Collation
-	Engine           string
-	Charset          string
-	Temporary        bool
-	OnCommit         TemporaryCommitAction
-	Like             string // source table for CREATE TABLE ... LIKE
-	Constraints      []ConstraintDef
-	Table            string
-	Columns          []ColumnDef
-	TableCheck       []Expression `json:"-"`
-	TableCheckSQL    []string     `json:"table_check_sql,omitempty"`
-	TableUnique      [][]string
-	ForeignKeys      []ForeignKeyDef
-	PKColumns        []string
-	IfNotExists      bool
-	Indexes          []IndexDef
+	definitionOriginsCopied bool
+	TableCheckDialects      []DefinitionDialect
+	DefaultCollation        Collation
+	Engine                  string
+	Charset                 string
+	Temporary               bool
+	OnCommit                TemporaryCommitAction
+	Like                    string // source table for CREATE TABLE ... LIKE
+	Constraints             []ConstraintDef
+	Table                   string
+	Columns                 []ColumnDef
+	TableCheck              []Expression `json:"-"`
+	TableCheckSQL           []string     `json:"table_check_sql,omitempty"`
+	TableUnique             [][]string
+	ForeignKeys             []ForeignKeyDef
+	PKColumns               []string
+	IfNotExists             bool
+	Indexes                 []IndexDef
 }
 
 type IndexDef struct {
@@ -397,22 +401,23 @@ type DropIndexStmt struct {
 }
 
 type ConstraintDef struct {
-	FullTextConfig    *FullTextConfig `json:"fulltext_config,omitempty"`
-	OnDelete          string          `json:"on_delete,omitempty"`
-	OnUpdate          string          `json:"on_update,omitempty"`
-	Deferrable        bool            `json:"deferrable,omitempty"`
-	InitiallyDeferred bool            `json:"initially_deferred,omitempty"`
-	PrefixLengths     []int64         `json:"prefix_lengths,omitempty"`
-	Name              string          `json:"name"`
-	Kind              string          `json:"kind"`
-	Columns           []string        `json:"columns,omitempty"`
-	Check             Expression      `json:"-"`
-	CheckSQL          string          `json:"check_sql,omitempty"`
-	RefTable          string          `json:"ref_table,omitempty"`
-	RefColumns        []string        `json:"ref_columns,omitempty"`
-	IndexID           uint64          `json:"index_id,omitempty"`
-	Inline            bool            `json:"inline,omitempty"`
-	Fulltext          bool            `json:"fulltext,omitempty"`
+	DefinitionDialect DefinitionDialect `json:"definition_dialect,omitempty"`
+	FullTextConfig    *FullTextConfig   `json:"fulltext_config,omitempty"`
+	OnDelete          string            `json:"on_delete,omitempty"`
+	OnUpdate          string            `json:"on_update,omitempty"`
+	Deferrable        bool              `json:"deferrable,omitempty"`
+	InitiallyDeferred bool              `json:"initially_deferred,omitempty"`
+	PrefixLengths     []int64           `json:"prefix_lengths,omitempty"`
+	Name              string            `json:"name"`
+	Kind              string            `json:"kind"`
+	Columns           []string          `json:"columns,omitempty"`
+	Check             Expression        `json:"-"`
+	CheckSQL          string            `json:"check_sql,omitempty"`
+	RefTable          string            `json:"ref_table,omitempty"`
+	RefColumns        []string          `json:"ref_columns,omitempty"`
+	IndexID           uint64            `json:"index_id,omitempty"`
+	Inline            bool              `json:"inline,omitempty"`
+	Fulltext          bool              `json:"fulltext,omitempty"`
 }
 
 type AlterTableStmt struct {

@@ -9,7 +9,7 @@ import (
 )
 
 func sameConstraint(a, b ConstraintDef) bool {
-	return a.Kind == b.Kind && (a.Kind == "PRIMARY" || a.Inline == b.Inline) && slices.Equal(a.Columns, b.Columns) && slices.Equal(a.PrefixLengths, b.PrefixLengths) && a.CheckSQL == b.CheckSQL && a.RefTable == b.RefTable && slices.Equal(a.RefColumns, b.RefColumns) && a.OnDelete == b.OnDelete && a.OnUpdate == b.OnUpdate && a.Deferrable == b.Deferrable && a.InitiallyDeferred == b.InitiallyDeferred
+	return a.Kind == b.Kind && (a.Kind == "PRIMARY" || a.Inline == b.Inline) && slices.Equal(a.Columns, b.Columns) && slices.Equal(a.PrefixLengths, b.PrefixLengths) && a.CheckSQL == b.CheckSQL && a.DefinitionDialect == b.DefinitionDialect && a.RefTable == b.RefTable && slices.Equal(a.RefColumns, b.RefColumns) && a.OnDelete == b.OnDelete && a.OnUpdate == b.OnUpdate && a.Deferrable == b.Deferrable && a.InitiallyDeferred == b.InitiallyDeferred
 }
 func (s *Schema) initializeConstraintNames(info *TableInfo, createIndexes ...bool) error {
 	build := len(createIndexes) == 0 || createIndexes[0]
@@ -52,7 +52,7 @@ func (s *Schema) initializeConstraintNames(info *TableInfo, createIndexes ...boo
 			ensure(ConstraintDef{Kind: "UNIQUE", Columns: []string{col.Name}, Inline: true})
 		}
 		if col.Check != nil {
-			ensure(ConstraintDef{Kind: "CHECK", Columns: []string{col.Name}, Check: col.Check, CheckSQL: col.CheckSQL, Inline: true})
+			ensure(ConstraintDef{Kind: "CHECK", DefinitionDialect: col.CheckDialect, Columns: []string{col.Name}, Check: col.Check, CheckSQL: col.CheckSQL, Inline: true})
 		}
 		if col.RefTable != "" {
 			ensure(ConstraintDef{Kind: "FOREIGN", Columns: []string{col.Name}, RefTable: col.RefTable, RefColumns: slices.Clone(col.RefColumns), OnDelete: col.RefOnDelete, OnUpdate: col.RefOnUpdate, Deferrable: col.RefDeferrable, InitiallyDeferred: col.RefInitiallyDeferred, Inline: true})
@@ -62,7 +62,7 @@ func (s *Schema) initializeConstraintNames(info *TableInfo, createIndexes ...boo
 		ensure(ConstraintDef{Kind: "UNIQUE", Columns: slices.Clone(cols)})
 	}
 	for i, sql := range info.TableCheckSQL {
-		ensure(ConstraintDef{Kind: "CHECK", Check: info.TableCheck[i], CheckSQL: sql})
+		ensure(ConstraintDef{Kind: "CHECK", DefinitionDialect: info.tableCheckDialect(i), Check: info.TableCheck[i], CheckSQL: sql})
 	}
 	for _, fk := range info.ForeignKeys {
 		ensure(ConstraintDef{Kind: "FOREIGN", Columns: slices.Clone(fk.Columns), RefTable: fk.RefTable, RefColumns: slices.Clone(fk.RefColumns), OnDelete: fk.OnDelete, OnUpdate: fk.OnUpdate, Deferrable: fk.Deferrable, InitiallyDeferred: fk.InitiallyDeferred})
@@ -130,6 +130,11 @@ func (s *Schema) addTableConstraint(info *TableInfo, c ConstraintDef) error {
 			return err
 		}
 	case "CHECK":
+		if c.DefinitionDialect == 0 {
+			c.DefinitionDialect = definitionDialect(s.ExpressionDialect())
+		}
+		info.padTableCheckDialects()
+		info.TableCheckDialects = append(info.TableCheckDialects, c.DefinitionDialect)
 		info.TableCheck = append(info.TableCheck, c.Check)
 		info.TableCheckSQL = append(info.TableCheckSQL, c.CheckSQL)
 	case "FOREIGN":
@@ -197,11 +202,15 @@ func (s *Schema) dropTableConstraint(info *TableInfo, name string, ifExists, cas
 				if info.Columns[i].Name == c.Columns[0] {
 					info.Columns[i].Check = nil
 					info.Columns[i].CheckSQL = ""
+					info.Columns[i].CheckDialect = 0
 				}
 			}
 		} else {
 			for i, e := range info.TableCheckSQL {
-				if e == c.CheckSQL {
+				if e == c.CheckSQL && info.tableCheckDialect(i) == c.DefinitionDialect {
+					if len(info.TableCheckDialects) > i {
+						info.TableCheckDialects = append(info.TableCheckDialects[:i], info.TableCheckDialects[i+1:]...)
+					}
 					info.TableCheck = append(info.TableCheck[:i], info.TableCheck[i+1:]...)
 					info.TableCheckSQL = append(info.TableCheckSQL[:i], info.TableCheckSQL[i+1:]...)
 					break
