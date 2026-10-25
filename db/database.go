@@ -18,6 +18,8 @@ import (
 )
 
 type Database struct {
+	activityRecords    sync.Map // *sql.Schema -> *activityRecord
+	activityIDs        atomic.Uint64
 	changeIdentity     atomic.Pointer[changefeedIdentity]
 	currentStorage     atomic.Pointer[storage.LSMTree]
 	replication        atomic.Pointer[ReplicationGuard]
@@ -123,6 +125,7 @@ func (db *Database) Close() error {
 	db.closed.Store(true)
 	_ = db.schema.Rollback()
 	db.schema.DiscardTemporaryTables()
+	db.activityRecords.Delete(db.schema)
 	db.locks.release(db.schema)
 	for session := range db.sessions {
 		session.closeLocked()

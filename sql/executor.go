@@ -70,6 +70,7 @@ type ViewInfo struct {
 }
 
 type Schema struct {
+	activitySnapshot         ActivitySnapshotProvider
 	expressionDialect        DefinitionDialect
 	catalogView              *CatalogSnapshot
 	describeTypes            *preparedTypeInference
