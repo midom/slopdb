@@ -65,6 +65,7 @@ type ViewInfo struct {
 
 type Schema struct {
 	catalogView              *CatalogSnapshot
+	describeTypes            *preparedTypeInference
 	foreignChanges           []foreignChange
 	foreignConstraintModes   map[string]bool
 	checkingDeferred         bool

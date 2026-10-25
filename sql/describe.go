@@ -129,6 +129,7 @@ func (s *Schema) describeStatement(stmt Statement, outer map[string][]ColumnDef,
 	}
 	switch st := stmt.(type) {
 	case *SelectStmt:
+		s.describeLimitParameters(st.LimitParam, st.OffsetParam)
 		if st.Compound != nil {
 			return s.describeStatement(st.Compound, scope, depth+1)
 		}
@@ -206,6 +207,7 @@ func (s *Schema) describeStatement(stmt Statement, outer map[string][]ColumnDef,
 		}
 		return result, nil
 	case *UnionStmt:
+		s.describeLimitParameters(st.LimitParam, st.OffsetParam)
 		a, err := s.describeStatement(st.Left, scope, depth+1)
 		if err != nil {
 			return nil, err
@@ -233,6 +235,26 @@ func (s *Schema) describeStatement(stmt Statement, outer map[string][]ColumnDef,
 				return nil, fmt.Errorf("no such column %s", name)
 			}
 		}
+		names := st.ColumnNames
+		if len(names) == 0 {
+			for _, c := range cols {
+				names = append(names, c.Name)
+			}
+		}
+		groups := st.ValueGroups
+		if len(groups) == 0 {
+			groups = [][]Expression{st.Values}
+		}
+		for _, row := range groups {
+			for i, e := range row {
+				if i < len(names) {
+					s.constrainDescription(e, env[names[i]], env)
+				}
+				if _, err = s.describeExpression(e, env, scope, depth+1); err != nil {
+					return nil, err
+				}
+			}
+		}
 		if st.Select != nil {
 			if _, err = s.describeStatement(st.Select, scope, depth+1); err != nil {
 				return nil, err
@@ -240,6 +262,7 @@ func (s *Schema) describeStatement(stmt Statement, outer map[string][]ColumnDef,
 		}
 		return s.describeProjection(st.Returning, cols, env, scope, depth, true)
 	case *UpdateStmt:
+		s.describeLimitParameters(st.LimitParam, st.OffsetParam)
 		cols, err := s.describeTable(st.Table, scope, depth+1)
 		if err != nil {
 			return nil, err
@@ -257,18 +280,26 @@ func (s *Schema) describeStatement(stmt Statement, outer map[string][]ColumnDef,
 			if _, ok := env[set.Column]; !ok {
 				return nil, fmt.Errorf("no such column %s", set.Column)
 			}
+			s.constrainDescription(set.Value, env[set.Column], env)
 			if _, err = s.describeExpression(set.Value, env, scope, depth+1); err != nil {
 				return nil, err
 			}
 		}
+		if _, err = s.describeExpression(st.Where, env, scope, depth+1); err != nil {
+			return nil, err
+		}
 		return s.describeProjection(st.Returning, cols, env, scope, depth, true)
 	case *DeleteStmt:
+		s.describeLimitParameters(st.LimitParam, st.OffsetParam)
 		cols, err := s.describeTable(st.From, scope, depth+1)
 		if err != nil {
 			return nil, err
 		}
 		env := make(map[string]ColumnDef)
 		describeEnv(cols, st.From, st.Alias, env)
+		if _, err = s.describeExpression(st.Where, env, scope, depth+1); err != nil {
+			return nil, err
+		}
 		return s.describeProjection(st.Returning, cols, env, scope, depth, true)
 	case *ExplainStmt:
 		if _, err := s.describeStatement(st.Stmt, scope, depth+1); err != nil {
@@ -313,6 +344,13 @@ func describeColumns(names ...string) []ColumnDef {
 	return out
 }
 func describeCommon(a, b ColumnDef) ColumnDef {
+	if a.ColType == ColUnknown {
+		b.Name = a.Name
+		return b
+	}
+	if b.ColType == ColUnknown {
+		return a
+	}
 	if a.ColType != b.ColType {
 		numeric := func(t ColumnType) bool { return t == ColInteger || t == ColUnsigned || t == ColDecimal || t == ColReal }
 		if a.ColType == ColReal || b.ColType == ColReal {
@@ -378,7 +416,13 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 	case nil:
 		return text, nil
 	case *LiteralExpr:
-		if e.BoundParameter || e.Value.Null {
+		if e.BoundParameter {
+			return s.describeParameter(int(e.Value.Int) - 1), nil
+		}
+		if e.Value.Null {
+			if s.describeTypes != nil {
+				return ColumnDef{ColType: ColUnknown}, nil
+			}
 			return text, nil
 		}
 		if (s.MySQLMode() || s.PostgresMode()) && (e.Value.NumericText != "" && !strings.ContainsAny(e.Value.NumericText, "eE") || e.Value.Type == ColDecimal) {
@@ -406,7 +450,7 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 		}
 		return col, nil
 	case *ParameterExpr:
-		return text, nil
+		return s.describeParameter(e.Index), nil
 	case *ColumnRefExpr:
 		if e.Name == "*" {
 			return integer, nil
@@ -439,7 +483,33 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 		return cols[0], nil
 	case *ExistsExpr:
 		return s.booleanColumn(), nil
-	case *InListExpr, *BetweenExpr:
+	case *InListExpr:
+		c, err := s.describeExpression(e.Expr, env, scope, depth+1)
+		if err != nil {
+			return text, err
+		}
+		for _, v := range e.List {
+			other, err := s.describeExpression(v, env, scope, depth+1)
+			if err != nil {
+				return text, err
+			}
+			s.constrainDescription(v, c, env)
+			s.constrainDescription(e.Expr, other, env)
+		}
+		return s.booleanColumn(), nil
+	case *BetweenExpr:
+		c, err := s.describeExpression(e.Expr, env, scope, depth+1)
+		if err != nil {
+			return text, err
+		}
+		for _, v := range []Expression{e.Low, e.High} {
+			other, err := s.describeExpression(v, env, scope, depth+1)
+			if err != nil {
+				return text, err
+			}
+			s.constrainDescription(v, c, env)
+			s.constrainDescription(e.Expr, other, env)
+		}
 		return s.booleanColumn(), nil
 	case *UnaryExpr:
 		c, err := s.describeExpression(e.Right, env, scope, depth+1)
@@ -455,6 +525,16 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 		b, err := s.describeExpression(e.Right, env, scope, depth+1)
 		if err != nil {
 			return text, err
+		}
+		s.constrainDescription(e.Left, b, env)
+		s.constrainDescription(e.Right, a, env)
+		if s.describeTypes != nil {
+			if p, ok := e.Left.(*ParameterExpr); ok {
+				a = s.describeParameter(p.Index)
+			}
+			if p, ok := e.Right.(*ParameterExpr); ok {
+				b = s.describeParameter(p.Index)
+			}
 		}
 		if s.MySQLMode() {
 			if mysqlNumericHexExpression(e.Left) {
@@ -513,23 +593,19 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 		return result, nil
 	case *FuncCallExpr:
 
-		if err := validateResolvedFunction(s.Dialect(), e); err != nil && !isAggregate(e) && e.Window == nil {
-			return text, err
-		}
 		name := strings.ToUpper(e.Name)
 		if name == "CAST" && len(e.Args) == 2 {
 			if target, ok := e.Args[1].(*LiteralExpr); ok {
+				if _, err := s.describeExpression(e.Args[0], env, scope, depth+1); err != nil {
+					return text, err
+				}
 				name := strings.ToUpper(mysqlCastTarget(target.Value.Text))
-				if !s.MySQLMode() && (name == "DECIMAL" || name == "NUMERIC") {
-					return ColumnDef{ColType: ColDecimal, Declared: name}, nil
-				}
 				c := describeType(name)
-				if s.PostgresMode() {
-					c = postgresDescribeType(name)
-				}
-				return c, nil
-			}
+				if err := validateResolvedFunction(s.Dialect(), e); err != nil && !isAggregate(e) && e.Window == nil {
+
+			return text, err
 		}
+
 		var args []ColumnDef
 		for _, a := range e.Args {
 			c, err := s.describeExpression(a, env, scope, depth+1)

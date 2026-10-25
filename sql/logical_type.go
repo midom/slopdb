@@ -42,6 +42,7 @@ const (
 	TypeSchemaID
 	TypeIdentifier
 	TypeEnum
+	TypeVarchar
 )
 
 // ColUnknown is used only by static description of untyped parameters/NULLs.
@@ -94,6 +95,8 @@ func (t LogicalType) Declaration() string {
 		return "NUMERIC"
 	case TypeText:
 		return "TEXT"
+	case TypeVarchar:
+		return "VARCHAR"
 	case TypeBinary:
 		return "BYTEA"
 	case TypeJSON:
@@ -190,7 +193,9 @@ func LogicalTypeFromDeclaration(name string) LogicalType {
 		id = TypeFloat64
 	case "NUMERIC", "DECIMAL":
 		id = TypeDecimal
-	case "TEXT", "VARCHAR", "CHARACTER VARYING", "CHAR", "CHARACTER":
+	case "VARCHAR", "CHARACTER VARYING":
+		id = TypeVarchar
+	case "TEXT", "CHAR", "CHARACTER":
 		id = TypeText
 	case "BLOB", "BYTEA", "BINARY", "VARBINARY":
 		id = TypeBinary
@@ -231,7 +236,7 @@ func LogicalTypeFromDeclaration(name string) LogicalType {
 		first, e := strconv.Atoi(strings.TrimSpace(parts[0]))
 		if e == nil {
 			switch id {
-			case TypeText, TypeBinary:
+			case TypeText, TypeVarchar, TypeBinary:
 				t.Length = int64(first)
 			case TypeDecimal:
 				t.Precision = first
@@ -258,6 +263,9 @@ func LogicalTypeFromColumn(c ColumnDef) LogicalType {
 		switch c.ColType {
 		case ColInteger:
 			bits := c.IntegerBits
+			if !c.MySQL {
+				bits = 64
+			}
 			if bits == 0 {
 				bits = 64
 			}
@@ -307,6 +315,9 @@ func LogicalTypeFromColumn(c ColumnDef) LogicalType {
 	if c.Unsigned && t.Kind >= TypeInt8 && t.Kind <= TypeInt64 {
 		t.Kind += TypeUint8 - TypeInt8
 		t.Unsigned = true
+	}
+	if c.ColType == ColText && c.Length > 0 && t.Kind == TypeText {
+		t.Kind = TypeVarchar
 	}
 	t.Precision, t.Scale, t.Length = c.Precision, c.Scale, c.Length
 	if c.TypeModifiers || c.TemporalPrecision > 0 {

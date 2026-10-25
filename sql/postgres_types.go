@@ -446,6 +446,8 @@ func PostgresOID(t LogicalType) uint32 {
 		return 701
 	case TypeText, TypeEnum:
 		return 25
+	case TypeVarchar:
+		return 1043
 	case TypeIdentifier:
 		return 19
 	case TypeJSON:

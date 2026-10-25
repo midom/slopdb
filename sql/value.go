@@ -55,7 +55,8 @@ type ForeignKeyDef struct {
 }
 
 type ColumnDef struct {
-	SemanticType TypeID `json:"-"` // inferred logical type; durable declarations retain existing catalog fields
+	ParameterIndex int    `json:"-"` // internal static inference provenance; never persisted
+	SemanticType   TypeID `json:"-"` // inferred logical type; durable declarations retain existing catalog fields
 	// DisplayName preserves a duplicate SQL output label; Name is the unique row-map key.
 	DisplayName          string            `json:"-"`
 	TypeModifiers        bool              `json:"type_modifiers,omitempty"`

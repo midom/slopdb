@@ -150,25 +150,21 @@ func (c *client) prepare(ctx context.Context, query string, oids []uint32) (*pre
 		p.empty = true
 		return p, nil
 	}
-	parsed, err := sql.Prepare(native)
+	p.stmt, err = c.session.PrepareContext(ctx, native)
 	if err != nil {
 		return nil, err
 	}
-	markers := make([]sql.Value, len(positions))
-	for i := range markers {
-		markers[i] = sql.NewIntValue(int64(i + 1))
-	}
-	bound, err := parsed.Bind(markers)
-	if err != nil {
-		return nil, err
-	}
-	defer bound.Release()
-	if parsed.NumInput() != len(positions) {
+	successful := false
+	defer func() {
+		if !successful {
+			p.stmt.Close()
+		}
+	}()
+	if p.stmt.NumInput() != len(positions) {
 		return nil, errMalformed
 	}
-	p.kind = kindOf(bound.Statements()[0], p.kind)
 	metadata := &metadata{client: c, ctx: ctx, prepared: p, tables: make(map[string][]field)}
-	fields, err := metadata.statement(bound.Statements()[0], nil, 0)
+	fields, err := metadata.statement(nil, nil, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -181,10 +177,7 @@ func (c *client) prepare(ctx context.Context, query string, oids []uint32) (*pre
 			return nil, &protocolError{"0A000", fmt.Sprintf("unsupported parameter type OID %d", p.params[i])}
 		}
 	}
-	p.stmt, err = c.session.PrepareContext(ctx, native)
-	if err != nil {
-		return nil, err
-	}
+	successful = true
 	return p, nil
 }
 func supportedOID(oid uint32) bool {

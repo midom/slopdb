@@ -89,6 +89,7 @@ type limitBinding struct {
 // BoundQuery belongs to one execution until Release. Its AST must not be
 // retained or modified by the caller after release.
 type BoundQuery struct {
+	metadata   bool
 	query      *PreparedQuery
 	statements []Statement
 	literals   []*LiteralExpr
@@ -185,6 +186,10 @@ func (b *BoundQuery) clone(v reflect.Value) reflect.Value {
 			return v
 		}
 		if parameter, ok := v.Interface().(*ParameterExpr); ok {
+			if b.metadata {
+				copy := *parameter
+				return reflect.ValueOf(&copy)
+			}
 			literal := b.literals[parameter.Index]
 			if literal == nil {
 				literal = &LiteralExpr{BoundParameter: true}
@@ -223,4 +228,11 @@ func (b *BoundQuery) clone(v reflect.Value) reflect.Value {
 		return out
 	}
 	return v
+}
+
+// MetadataStatement returns an owned AST with unknown parameter nodes intact.
+// It never borrows a mutable execution tree or populates the hot execution pool.
+func (q *PreparedQuery) MetadataStatement() Statement {
+	b := &BoundQuery{query: q, metadata: true}
+	return b.clone(reflect.ValueOf(q.template)).Interface().(Statement)
 }
