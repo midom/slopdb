@@ -128,7 +128,9 @@ reverse seeks. `VACUUM` flushes writes and compacts SSTables.
 
 - [x] MySQL 4.1 protocol over TCP and Unix sockets, password authentication, independent sessions, text queries and binary prepared execution; see [MySQL server](docs/mysql-server.md) for compatibility limits
 - [x] MySQL TLS 1.2/1.3 with required transport and CA-verified client certificate authentication on both TCP and Unix sockets
-- [ ] MySQL account/grant management and prepared result metadata before execution
+- [x] Persistent MySQL accounts/password hashes, global/database grants and isolated standalone databases
+- [x] MediaWiki core schema and workflows: MySQL types/coercions, session settings, named locks, fulltext searches, schema copies, temporary tables and joined mutations; see [MediaWiki compatibility](docs/mediawiki.md)
+- [ ] Prepared result metadata before execution
 - [x] PostgreSQL 3.0 emulation over TCP/Unix sockets with SCRAM-SHA-256, TLS/client CA authentication, simple/extended queries, prepared metadata, typed bindings, portals, cancellation and transaction recovery; see [PostgreSQL emulation](docs/postgres-server.md)
 - [ ] PostgreSQL system catalogs/schemas, COPY, newer wire versions and broader PostgreSQL-specific SQL/types
 

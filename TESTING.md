@@ -201,3 +201,24 @@ for measured waits, syscall evidence and isolated diagnostic controls.
 replication through SIGKILL/restart and SIGTERM, plus durability flag validation.
 `internal/wire/listen_test.go` checks stale Unix socket recovery and preservation
 of live sockets and regular files. All artifacts use `t.TempDir()`.
+
+## MediaWiki and MySQL compatibility
+
+`tests/regression/mediawiki_test.go` loads all 64 tables from the factual
+MediaWiki 1.46.2 schema fixture, then checks binary predicates, GROUP_CONCAT,
+fulltext joins, revision deletion/restoration, reopen and integrity. It needs no
+PHP, MySQL installation or external scripts. Additional tests cover temporary
+isolation, LIKE schema copies, joined mutations, Unicode charset changes and
+ALTER index prefixes. `db/mysql_types_test.go` and `db/mysql_fulltext_test.go`
+cover persistent types, assignment modes, prepared bindings and search budgets.
+`mysqlserver/*test.go` exercises declared wire types, warnings, named locks,
+account/grant persistence and real database isolation over client connections.
+
+```sh
+go test ./db ./sql ./mysqlserver ./tests/regression -run 'Test(MySQL|MediaWiki|Temporary)' -count=1
+```
+
+For the separately installed application, `scripts/mediawiki_acceptance.py`
+checks HTTP/API results and redacts credential fields. See
+[MediaWiki compatibility](docs/mediawiki.md) for invocation and limits. Keep its
+reports, application files and test databases outside the repository.
