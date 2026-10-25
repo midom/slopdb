@@ -2,6 +2,8 @@ package sql
 
 import (
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 )
 
@@ -124,4 +126,36 @@ func mysqlFunctionNumber(v Value) Value {
 	return value
 }
 
-func mysqlFunctionInt(v Value) int64 { return integerValue(mysqlFunctionNumber(v)) }
+func mysqlFunctionInt(v Value) int64 {
+	switch v.Type {
+	case ColInteger, ColUnsigned:
+		return integerValue(v)
+	case ColReal:
+		return integerValue(NewRealValue(math.RoundToEven(v.Real)))
+	case ColDecimal:
+		n, scale, err := valueDecimal(v)
+		if err != nil {
+			return 0
+		}
+		n = roundDecimal(n, scale, 0)
+		return integerValue(Value{Type: ColDecimal, Text: n.String()})
+	default:
+		text := strings.TrimSpace(mysqlStringValue(v))
+		i := 0
+		if i < len(text) && (text[i] == '+' || text[i] == '-') {
+			i++
+		}
+		start := i
+		for i < len(text) && text[i] >= '0' && text[i] <= '9' {
+			i++
+		}
+		if i == start {
+			return 0
+		}
+		n, err := strconv.ParseInt(text[:i], 10, 64)
+		if err != nil && !strings.Contains(err.Error(), "value out of range") {
+			return 0
+		}
+		return n
+	}
+}
