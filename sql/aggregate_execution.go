@@ -69,8 +69,10 @@ func addAggregateValue(a *aggregateState, f *FuncCallExpr, v Value) error {
 		a.seen[key] = true
 	}
 	if a.count == 0 {
-		a.best = v
 		a.allInt = true
+		if name == "MIN" || name == "MAX" {
+			a.best = ownAggregateBest(v, a.best.Blob)
+		}
 	}
 	a.count++
 	switch name {
@@ -81,7 +83,7 @@ func addAggregateValue(a *aggregateState, f *FuncCallExpr, v Value) error {
 			cmp = a.owner.valueCompare(v, a.best)
 		}
 		if name == "MIN" && cmp < 0 || name == "MAX" && cmp > 0 {
-			a.best = v
+			a.best = ownAggregateBest(v, a.best.Blob)
 		}
 	case "GROUP_CONCAT":
 		part := v.String()
@@ -741,4 +743,18 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 		}
 	}
 	return result, true, nil
+}
+
+// Input decoders may reuse their BLOB buffers after this transition. MIN/MAX
+// must own a retained winner, unlike COUNT/SUM/AVG/TOTAL which retain no input.
+// Reuse applies only within a group: resetOrderedAggregate drops the state
+// after emission, so later groups cannot overwrite emitted BLOB results.
+func ownAggregateBest(value Value, buffer []byte) Value {
+	if value.Type == ColBlob && !value.Null {
+		if buffer == nil {
+			buffer = []byte{}
+		}
+		value.Blob = append(buffer[:0], value.Blob...)
+	}
+	return value
 }
