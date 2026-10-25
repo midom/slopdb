@@ -92,7 +92,7 @@ func decodePostgresTypedValue(data []byte, oid uint32, binaryFormat bool) (any, 
 		}
 		us := int64(binary.BigEndian.Uint64(data))
 		west := int32(binary.BigEndian.Uint32(data[8:]))
-		if us < 0 || us > 86400e6 || west < -15*3600-59*60 || west > 15*3600+59*60 {
+		if us < 0 || us > 86400e6 || west < -15*3600-59*60-59 || west > 15*3600+59*60+59 {
 			return nil, &protocolError{"22008", "TIMETZ out of range"}
 		}
 		sec := us / 1e6
@@ -108,6 +108,9 @@ func decodePostgresTypedValue(data []byte, oid uint32, binaryFormat bool) (any, 
 			east = -east
 		}
 		text += fmt.Sprintf("%s%02d:%02d", sign, east/3600, east/60%60)
+		if east%60 != 0 {
+			text += fmt.Sprintf(":%02d", east%60)
+		}
 		return sql.Value{Type: sql.ColText, Text: text, PGType: "TIMETZ"}, nil
 	}
 	codec, target := postgresCodec(oid)
@@ -132,12 +135,23 @@ func encodeTimetz(text string, binaryFormat bool) ([]byte, error) {
 	if !binaryFormat {
 		return []byte(text), nil
 	}
-	t, e := time.Parse("15:04:05.999999-07:00", text)
+	is24 := strings.HasPrefix(text, "24:00:00")
+	parsedText := text
+	if is24 {
+		parsedText = "00" + text[2:]
+	}
+	t, e := time.Parse("15:04:05.999999-07:00:00", parsedText)
+	if e != nil {
+		t, e = time.Parse("15:04:05.999999-07:00", parsedText)
+	}
 	if e != nil {
 		return nil, e
 	}
 	_, offset := t.Zone()
 	us := int64(t.Hour()*3600+t.Minute()*60+t.Second())*1e6 + int64(t.Nanosecond()/1000)
+	if is24 {
+		us += 86400e6
+	}
 	result := binary.BigEndian.AppendUint64(nil, uint64(us))
 	return binary.BigEndian.AppendUint32(result, uint32(-offset)), nil
 }

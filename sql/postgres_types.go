@@ -328,6 +328,10 @@ func CastPostgresValue(v Value, target string) (Value, error) {
 
 func postgresTemporalValue(v Value, name string, oid uint32) (Value, error) {
 	text := strings.TrimSpace(v.String())
+	is24tz := oid == 1266 && strings.HasPrefix(text, "24:00:00")
+	if is24tz {
+		text = "00" + text[2:]
+	}
 	if (oid == 1082 || oid == 1114 || oid == 1184) && (text == "infinity" || text == "-infinity") {
 		return NewTextValue(text), nil
 	}
@@ -341,7 +345,7 @@ func postgresTemporalValue(v Value, name string, oid uint32) (Value, error) {
 		}
 		layouts = []string{"15:04:05.999999999", "15:04"}
 	case 1266:
-		layouts = []string{"15:04:05.999999999Z07:00", "15:04:05.999999999Z07", "15:04Z07:00"}
+		layouts = []string{"15:04:05.999999999Z07:00:00", "15:04Z07:00:00", "15:04:05.999999999Z07:00", "15:04:05.999999999Z07", "15:04Z07:00"}
 	default:
 		layouts = []string{time.RFC3339Nano, "2006-01-02 15:04:05.999999999Z07:00", "2006-01-02 15:04:05.999999999Z07", "2006-01-02 15:04:05.999999999-07:00:00", "2006-01-02 15:04:05.999999999", "2006-01-02 15:04", "2006-01-02"}
 	}
@@ -363,7 +367,21 @@ func postgresTemporalValue(v Value, name string, oid uint32) (Value, error) {
 		case 1083:
 			return NewTextValue(t.Format("15:04:05.999999")), nil
 		case 1266:
-			return NewTextValue(t.Format("15:04:05.999999-07:00")), nil
+			_, offset := t.Zone()
+			if offset < -57599 || offset > 57599 {
+				return NewNullValue(), fmt.Errorf("TIMETZ out of range")
+			}
+			output := t.Format("15:04:05.999999-07:00")
+			if offset%60 != 0 {
+				output = t.Format("15:04:05.999999-07:00:00")
+			}
+			if is24tz {
+				if t.Hour() != 0 || t.Minute() != 0 || t.Second() != 0 || t.Nanosecond() != 0 {
+					return NewNullValue(), fmt.Errorf("invalid TIMETZ time")
+				}
+				output = "24" + output[2:]
+			}
+			return NewTextValue(output), nil
 		case 1114:
 			return NewTextValue(t.Format("2006-01-02 15:04:05.999999")), nil
 		case 1184:

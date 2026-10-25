@@ -207,3 +207,27 @@ func TestPostgresBridgePreservesNativeWideNumericTypes(t *testing.T) {
 		t.Fatal(real, e)
 	}
 }
+
+func TestPostgresTimetzSecondOffsetsAndEndOfDay(t *testing.T) {
+	for text, fixture := range map[string]string{"12:34:56.123456+02:03:04": "0000000a8bdbfe40ffffe328", "24:00:00-15:59:59": "000000141dd760000000e0ff"} {
+		v, e := sql.CastPostgresValue(sql.NewTextValue(text), "TIMETZ")
+		if e != nil {
+			t.Fatal(e)
+		}
+		packet, e := wireValue(v, oidTimetz, true)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if hex.EncodeToString(packet) != fixture {
+			t.Fatalf("got %x want %s", packet, fixture)
+		}
+		decoded, e := decodeValue(packet, oidTimetz, true)
+		if e != nil {
+			t.Fatal(e)
+		}
+		again, e := wireValue(decoded.(sql.Value), oidTimetz, true)
+		if e != nil || !bytes.Equal(packet, again) {
+			t.Fatal(text, packet, again, e)
+		}
+	}
+}
