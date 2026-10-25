@@ -315,7 +315,7 @@ func TestBinlogValuesIndependentFixtures(t *testing.T) {
 	if err != nil || !bytes.Contains(exact, bytes.Repeat([]byte{0xff}, 8)) {
 		t.Fatal(exact, err)
 	}
-	if _, err = binlogRow(db.CDCTable{Columns: []sql.ColumnDef{{ColType: sql.ColJSON}}}, []sql.Value{{Type: sql.ColJSON, Text: `{"x":1}`}}); err != nil {
+	if _, err = binlogRow(db.ChangeTable{Columns: []sql.ColumnDef{{ColType: sql.ColJSON}}}, []sql.Value{{Type: sql.ColJSON, Text: `{"x":1}`}}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -438,7 +438,7 @@ func TestBinlogRejectsAtomicMultipleDDL(t *testing.T) {
 	if len(packet) < 3 || packet[0] != 0xff || binary.LittleEndian.Uint16(packet[1:]) != 1236 || !bytes.Contains(packet, []byte("atomic DDL")) {
 		t.Fatalf("expected explicit replication shape error: %x", packet)
 	}
-	reader, err := s.database.NewCDCReader(context.Background(), 0)
+	reader, err := s.database.NewChangeReader(context.Background(), 0)
 	if err != nil {
 		t.Fatal(err)
 	}

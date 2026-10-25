@@ -7,49 +7,20 @@ import (
 	"fmt"
 	"maps"
 	"sort"
-	"strings"
 	"sync"
 
+	"slopdb/changefeed"
 	"slopdb/sql"
 	"slopdb/storage"
 )
 
-type CDCTable struct {
-	ID         uint64
-	Schema     string
-	Name       string
-	Columns    []sql.ColumnDef
-	Definition *sql.TableInfo
-	Indexes    []*sql.IndexInfo
-	CreateSQL  string // MySQL definition, without a schema qualifier on this table
-}
-type CDCRow struct {
-	TableID uint64
-	Kind    string // insert, update, delete
-	Before  []sql.Value
-	After   []sql.Value
-}
-type CDCSchemaChange struct {
-	Before *CDCTable
-	After  *CDCTable
-}
-type CDCTransaction struct {
-	Sequence          uint64
-	Time              int64 // UTC Unix nanoseconds, assigned before replication
-	Tables            []CDCTable
-	Changes           []CDCRow
-	SchemaChanges     []CDCSchemaChange
-	Namespaces        []string // non-nil when the namespace registry changes
-	CreatedNamespaces []string
-	DroppedNamespaces []string
-}
-type CDCMetadata struct {
-	SourceID      string
-	StartSequence uint64
-	Tables        []CDCTable
-}
+type ChangeTable = changefeed.Relation
+type RowChange = changefeed.Row
+type SchemaChange = changefeed.SchemaChange
+type ChangeTransaction = changefeed.Transaction
+type ChangeMetadata = changefeed.Metadata
 
-func (d *Database) CDCPosition(ctx context.Context) (uint64, error) {
+func (d *Database) ChangefeedPosition(ctx context.Context) (uint64, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -63,7 +34,7 @@ func (d *Database) CDCPosition(ctx context.Context) (uint64, error) {
 	return d.currentStorage.Load().ChangeLogPosition()
 }
 
-func (d *Database) EnableCDC(ctx context.Context) (*CDCMetadata, error) {
+func (d *Database) EnableChangefeed(ctx context.Context) (*ChangeMetadata, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -84,7 +55,7 @@ func (d *Database) EnableCDC(ctx context.Context) (*CDCMetadata, error) {
 	return cdcMetadata(header)
 }
 
-func (d *Database) CDCMetadata(ctx context.Context) (*CDCMetadata, error) {
+func (d *Database) ChangeMetadata(ctx context.Context) (*ChangeMetadata, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -105,12 +76,12 @@ func (d *Database) CDCMetadata(ctx context.Context) (*CDCMetadata, error) {
 	return cdcMetadata(header)
 }
 
-func cdcMetadata(header *storage.ChangeLogHeader) (*CDCMetadata, error) {
+func cdcMetadata(header *storage.ChangeLogHeader) (*ChangeMetadata, error) {
 	tables, err := cdcCatalog(header.Catalog)
 	if err != nil {
 		return nil, err
 	}
-	result := &CDCMetadata{SourceID: header.SourceID, StartSequence: header.StartSequence}
+	result := &ChangeMetadata{SourceID: header.SourceID, StartSequence: header.StartSequence}
 	for _, table := range tables {
 		result.Tables = append(result.Tables, table)
 	}
@@ -118,60 +89,53 @@ func cdcMetadata(header *storage.ChangeLogHeader) (*CDCMetadata, error) {
 	return result, nil
 }
 
-func cdcCatalog(catalog map[string][]byte) (map[uint64]CDCTable, error) {
-	var info map[string]*sql.TableInfo
-	if data := catalog["\x00__schema__"]; len(data) > 0 {
-		if err := json.Unmarshal(data, &info); err != nil {
-			return nil, fmt.Errorf("CDC catalog: %w", err)
+func cdcCatalog(catalog map[string][]byte) (map[uint64]ChangeTable, error) {
+	snapshot, err := sql.DecodeCatalogSnapshot(catalog)
+	if err != nil {
+		return nil, err
+	}
+	relations := snapshot.Relations()
+	tables := make(map[uint64]ChangeTable, len(relations))
+	byName := make(map[string]*sql.TableInfo, len(relations))
+	for _, r := range relations {
+		if r.Definition != nil {
+			name := r.Name
+			if r.Schema != "main" {
+				name = r.Schema + "." + name
+			}
+			byName[name] = r.Definition
 		}
 	}
-	var indexes map[string]*sql.IndexInfo
-	if data := catalog["\x00__schema_indexes__"]; len(data) > 0 {
-		if err := json.Unmarshal(data, &indexes); err != nil {
-			return nil, err
+	for _, r := range relations {
+		if r.Kind != "table" {
+			continue
 		}
-	}
-	tables := make(map[uint64]CDCTable, len(info))
-	for name, table := range info {
-		schema, base, qualified := strings.Cut(name, ".")
-		if !qualified {
-			schema, base = "main", name
-		}
-		columns := append([]sql.ColumnDef(nil), table.Columns...)
-		for i := range table.Constraints {
-			constraint := &table.Constraints[i]
-			if constraint.Kind == "FOREIGN" && len(constraint.RefColumns) == 0 {
-				if parent := info[constraint.RefTable]; parent != nil {
-					constraint.RefColumns = append([]string(nil), parent.PKColumns...)
+		for i := range r.Definition.Constraints {
+			c := &r.Definition.Constraints[i]
+			if c.Kind == "FOREIGN" && len(c.RefColumns) == 0 {
+				if parent := byName[c.RefTable]; parent != nil {
+					c.RefColumns = append([]string(nil), parent.PKColumns...)
 				}
 			}
 		}
-		definition := CDCTable{ID: table.ID, Schema: schema, Name: base, Columns: columns, Definition: table}
-		for _, index := range indexes {
-			if index.Table == name {
-				definition.Indexes = append(definition.Indexes, index)
-			}
-		}
-		sort.Slice(definition.Indexes, func(i, j int) bool { return definition.Indexes[i].SQLName() < definition.Indexes[j].SQLName() })
-		definition.CreateSQL = CDCMySQLCreate(definition, "")
-		tables[table.ID] = definition
+		tables[r.ID] = r
 	}
 	return tables, nil
 }
 
-// CDCReader owns only decoding state; it does not pin an MVCC snapshot or hold
+// ChangeReader owns only decoding state; it does not pin an MVCC snapshot or hold
 // an execution lock between calls. The durable journal is the resume source.
-type CDCReader struct {
+type ChangeReader struct {
 	mu         sync.Mutex
 	database   *Database
 	sequence   uint64
 	generation uint64
 	catalog    map[string][]byte
-	tables     map[uint64]CDCTable
-	metadata   CDCMetadata
+	tables     map[uint64]ChangeTable
+	metadata   ChangeMetadata
 }
 
-func (d *Database) NewCDCReader(ctx context.Context, after uint64) (*CDCReader, error) {
+func (d *Database) NewChangeReader(ctx context.Context, after uint64) (*ChangeReader, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -209,10 +173,10 @@ func (d *Database) NewCDCReader(ctx context.Context, after uint64) (*CDCReader, 
 	if err != nil {
 		return nil, err
 	}
-	return &CDCReader{database: d, sequence: after, generation: d.generation.Load(), catalog: catalog, tables: tables, metadata: *metadata}, nil
+	return &ChangeReader{database: d, sequence: after, generation: d.generation.Load(), catalog: catalog, tables: tables, metadata: *metadata}, nil
 }
 
-func cloneCDCTable(table CDCTable) CDCTable {
+func cloneChangeTable(table ChangeTable) ChangeTable {
 	// Definitions originate from persisted JSON, so reparsing a copy also gives
 	// callers independent constraint/index slices without sharing expression ASTs.
 	if table.Definition != nil {
@@ -236,17 +200,17 @@ func cloneCDCTable(table CDCTable) CDCTable {
 	}
 	return table
 }
-func (r *CDCReader) Metadata() CDCMetadata {
+func (r *ChangeReader) Metadata() ChangeMetadata {
 	metadata := r.metadata
-	metadata.Tables = append([]CDCTable(nil), metadata.Tables...)
+	metadata.Tables = append([]ChangeTable(nil), metadata.Tables...)
 	for i := range metadata.Tables {
-		metadata.Tables[i] = cloneCDCTable(metadata.Tables[i])
+		metadata.Tables[i] = cloneChangeTable(metadata.Tables[i])
 	}
 	return metadata
 }
-func (r *CDCReader) Position() uint64 { r.mu.Lock(); defer r.mu.Unlock(); return r.sequence }
+func (r *ChangeReader) Position() uint64 { r.mu.Lock(); defer r.mu.Unlock(); return r.sequence }
 
-func (r *CDCReader) Read(ctx context.Context, limit int) ([]CDCTransaction, error) {
+func (r *ChangeReader) Read(ctx context.Context, limit int) ([]ChangeTransaction, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -283,8 +247,8 @@ func (r *CDCReader) Read(ctx context.Context, limit int) ([]CDCTransaction, erro
 	if err != nil {
 		return nil, err
 	}
-	result := make([]CDCTransaction, 0, len(records))
-	decoder := &CDCReader{catalog: maps.Clone(r.catalog), tables: r.tables}
+	result := make([]ChangeTransaction, 0, len(records))
+	decoder := &ChangeReader{catalog: maps.Clone(r.catalog), tables: r.tables}
 	for _, record := range records {
 		transaction, err := decoder.decode(record)
 		if err != nil {
@@ -302,7 +266,7 @@ func (r *CDCReader) Read(ctx context.Context, limit int) ([]CDCTransaction, erro
 
 var cdcClosedChanges = func() <-chan struct{} { ch := make(chan struct{}); close(ch); return ch }()
 
-func (r *CDCReader) Changes() <-chan struct{} {
+func (r *ChangeReader) Changes() <-chan struct{} {
 	d := r.database
 	// Pair storage selection/channel acquisition with the replacement writer.
 	// Otherwise a handoff between those two steps can miss its notification.
@@ -316,8 +280,8 @@ func (r *CDCReader) Changes() <-chan struct{} {
 	return d.currentStorage.Load().ChangeNotification()
 }
 
-func (r *CDCReader) decode(record storage.ChangeRecord) (CDCTransaction, error) {
-	transaction := CDCTransaction{Sequence: record.Sequence, Time: record.Time}
+func (r *ChangeReader) decode(record storage.ChangeRecord) (ChangeTransaction, error) {
+	transaction := ChangeTransaction{Sequence: record.Sequence, Time: record.Time}
 	before := r.tables
 	catalogChanged := false
 	for _, mutation := range record.Mutations {
@@ -369,21 +333,21 @@ func (r *CDCReader) decode(record storage.ChangeRecord) (CDCTransaction, error) 
 		for id, table := range tables {
 			old, found := before[id]
 			if !found {
-				copy := cloneCDCTable(table)
-				transaction.SchemaChanges = append(transaction.SchemaChanges, CDCSchemaChange{After: &copy})
+				copy := cloneChangeTable(table)
+				transaction.SchemaChanges = append(transaction.SchemaChanges, SchemaChange{After: &copy})
 			} else {
 				previous, _ := json.Marshal(old)
 				next, _ := json.Marshal(table)
 				if string(previous) != string(next) {
-					a, b := cloneCDCTable(old), cloneCDCTable(table)
-					transaction.SchemaChanges = append(transaction.SchemaChanges, CDCSchemaChange{Before: &a, After: &b})
+					a, b := cloneChangeTable(old), cloneChangeTable(table)
+					transaction.SchemaChanges = append(transaction.SchemaChanges, SchemaChange{Before: &a, After: &b})
 				}
 			}
 		}
 		for id, table := range before {
 			if _, found := tables[id]; !found {
-				copy := cloneCDCTable(table)
-				transaction.SchemaChanges = append(transaction.SchemaChanges, CDCSchemaChange{Before: &copy})
+				copy := cloneChangeTable(table)
+				transaction.SchemaChanges = append(transaction.SchemaChanges, SchemaChange{Before: &copy})
 			}
 		}
 		r.tables = tables
@@ -401,7 +365,7 @@ func (r *CDCReader) decode(record storage.ChangeRecord) (CDCTransaction, error) 
 		if !found {
 			return transaction, fmt.Errorf("CDC row references unknown table %d", id)
 		}
-		row := CDCRow{TableID: id, Kind: "insert"}
+		row := RowChange{TableID: id, Kind: "insert"}
 		if mutation.BeforeExists {
 			old := table
 			if previous, found := before[id]; found {
@@ -426,11 +390,11 @@ func (r *CDCReader) decode(record storage.ChangeRecord) (CDCTransaction, error) 
 		transaction.Changes = append(transaction.Changes, row)
 		if !touched[id] {
 			touched[id] = true
-			transaction.Tables = append(transaction.Tables, cloneCDCTable(table))
+			transaction.Tables = append(transaction.Tables, cloneChangeTable(table))
 		}
 	}
 	sort.Slice(transaction.SchemaChanges, func(i, j int) bool {
-		id := func(c CDCSchemaChange) uint64 {
+		id := func(c SchemaChange) uint64 {
 			if c.After != nil {
 				return c.After.ID
 			}

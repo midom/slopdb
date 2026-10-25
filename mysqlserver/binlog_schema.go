@@ -1,12 +1,15 @@
 package mysqlserver
 
-import "slopdb/db"
+import (
+	"slopdb/db"
+	"slopdb/internal/mysqlschema"
+)
 
 // Canonical main is deliberately independent of a configurable login alias:
 // changing that alias after restart must not shift durable binary-log offsets.
-func binlogCreateTable(table db.CDCTable) (string, error) {
-	return db.CDCMySQLCreate(table, "main"), nil
+func binlogCreateTable(table db.ChangeTable) (string, error) {
+	return mysqlschema.Create(table, "main"), nil
 }
-func binlogAlterTable(before, after db.CDCTable) ([]string, error) {
-	return db.CDCMySQLAlter(before, after, "main")
+func binlogAlterTable(before, after db.ChangeTable) ([]string, error) {
+	return mysqlschema.Alter(before, after, "main")
 }

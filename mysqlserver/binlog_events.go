@@ -97,7 +97,7 @@ func binlogQueryEvent(schema, query string, timestamp uint32) binlogEvent {
 	return binlogEvent{kind: binlogQuery, time: timestamp, data: p}
 }
 func binlogIdentifier(name string) string { return "`" + strings.ReplaceAll(name, "`", "``") + "`" }
-func binlogTableName(table db.CDCTable) string {
+func binlogTableName(table db.ChangeTable) string {
 	return binlogIdentifier(table.Schema) + "." + binlogIdentifier(table.Name)
 }
 func binlogColumnType(column sql.ColumnDef) byte {
@@ -144,7 +144,7 @@ func binlogColumnType(column sql.ColumnDef) byte {
 		return typeBlob
 	}
 }
-func binlogTableEvent(table db.CDCTable, timestamp uint32) (binlogEvent, error) {
+func binlogTableEvent(table db.ChangeTable, timestamp uint32) (binlogEvent, error) {
 	if table.ID >= 1<<48 || len(table.Schema) > 255 || len(table.Name) > 255 {
 		return binlogEvent{}, fmt.Errorf("table identity exceeds MySQL binlog limits")
 	}
@@ -217,7 +217,7 @@ func binlogTableEvent(table db.CDCTable, timestamp uint32) (binlogEvent, error) 
 	}
 	return binlogEvent{kind: binlogTableMap, time: timestamp, data: p}, nil
 }
-func binlogRow(table db.CDCTable, row []sql.Value) ([]byte, error) {
+func binlogRow(table db.ChangeTable, row []sql.Value) ([]byte, error) {
 	if len(row) != len(table.Columns) {
 		return nil, fmt.Errorf("CDC row width mismatch for %s", binlogTableName(table))
 	}
@@ -305,7 +305,7 @@ func binlogRow(table db.CDCTable, row []sql.Value) ([]byte, error) {
 	}
 	return p, nil
 }
-func binlogRowsEvent(table db.CDCTable, change db.CDCRow, timestamp uint32) (binlogEvent, error) {
+func binlogRowsEvent(table db.ChangeTable, change db.RowChange, timestamp uint32) (binlogEvent, error) {
 	kind := binlogWriteRows
 	if change.Kind == "update" {
 		kind = binlogUpdateRows
@@ -345,7 +345,7 @@ func binlogRowsEvent(table db.CDCTable, change db.CDCRow, timestamp uint32) (bin
 	}
 	return binlogEvent{kind: kind, time: timestamp, data: p}, nil
 }
-func binlogTransaction(source string, transaction db.CDCTransaction) ([]binlogEvent, error) {
+func binlogTransaction(source string, transaction db.ChangeTransaction) ([]binlogEvent, error) {
 	timestamp := uint32(time.Unix(0, transaction.Time).Unix())
 	sid, err := hex.DecodeString(source)
 	if err != nil || len(sid) != 16 {
@@ -368,7 +368,7 @@ func binlogTransaction(source string, transaction db.CDCTransaction) ([]binlogEv
 			droppedTables[change.Before.ID] = true
 		}
 	}
-	changes := make([]db.CDCRow, 0, len(transaction.Changes))
+	changes := make([]db.RowChange, 0, len(transaction.Changes))
 	for _, change := range transaction.Changes {
 		if !droppedTables[change.TableID] {
 			changes = append(changes, change)
@@ -426,7 +426,7 @@ func binlogTransaction(source string, transaction db.CDCTransaction) ([]binlogEv
 	if len(ddl) == 0 {
 		events[0].data[0] = 0
 	} // FLAG_MAY_HAVE_SBR is clear for pure row transactions.
-	tables := make(map[uint64]db.CDCTable, len(transaction.Tables))
+	tables := make(map[uint64]db.ChangeTable, len(transaction.Tables))
 	for _, table := range transaction.Tables {
 		tables[table.ID] = table
 	}

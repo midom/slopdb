@@ -34,7 +34,7 @@ type binlogSnapshot struct {
 }
 type binlogState struct {
 	mu           sync.Mutex
-	reader       *db.CDCReader
+	reader       *db.ChangeReader
 	source       string
 	serverID     uint32
 	entries      []binlogEntry
@@ -46,12 +46,12 @@ type binlogState struct {
 func (s *Server) binlogSnapshot(ctx context.Context) (*binlogSnapshot, error) {
 	s.binlogMu.Lock()
 	if s.binlog == nil {
-		metadata, err := s.database.EnableCDC(ctx)
+		metadata, err := s.database.EnableChangefeed(ctx)
 		if err != nil {
 			s.binlogMu.Unlock()
 			return nil, err
 		}
-		reader, err := s.database.NewCDCReader(ctx, metadata.StartSequence)
+		reader, err := s.database.NewChangeReader(ctx, metadata.StartSequence)
 		if err != nil {
 			s.binlogMu.Unlock()
 			return nil, err
@@ -70,7 +70,7 @@ func (s *Server) binlogSnapshot(ctx context.Context) (*binlogSnapshot, error) {
 	if state.err != nil {
 		return nil, state.err
 	}
-	target, err := s.database.CDCPosition(ctx)
+	target, err := s.database.ChangefeedPosition(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -242,11 +242,11 @@ func (c *client) dumpBinlog(packet []byte) error {
 			return err
 		}
 	}
-	notifier, notifyErr := c.server.database.NewCDCReader(c.ctx, 0)
+	notifier, notifyErr := c.server.database.NewChangeReader(c.ctx, 0)
 	if notifyErr != nil {
 		return c.writeError(binlogFailure(notifyErr))
 	}
-	var streamReader *db.CDCReader
+	var streamReader *db.ChangeReader
 	var changed <-chan struct{}
 	refresh := true
 	for {
@@ -287,7 +287,7 @@ func (c *client) dumpBinlog(packet []byte) error {
 				continue
 			}
 			if streamReader == nil || streamReader.Position() != entry.sequence-1 {
-				streamReader, err = c.server.database.NewCDCReader(c.ctx, entry.sequence-1)
+				streamReader, err = c.server.database.NewChangeReader(c.ctx, entry.sequence-1)
 				if err != nil {
 					return c.writeError(binlogFailure(err))
 				}
