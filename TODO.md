@@ -146,7 +146,8 @@ reverse seeks. `VACUUM` flushes writes and compacts SSTables.
 - [x] Durable typed CDC and MySQL row-binlog replication source with GTID/file-position resume; see [CDC boundaries](docs/mysql-cdc.md)
 - [ ] MySQL replication receiver, journal retention/purge and automatic initial snapshots
 - [x] PostgreSQL 3.0 emulation over TCP/Unix sockets with SCRAM-SHA-256, TLS/client CA authentication, simple/extended queries, prepared metadata, typed bindings, portals, cancellation and transaction recovery; see [PostgreSQL emulation](docs/postgres-server.md)
-- [ ] Broader PostgreSQL system catalogs, COPY, newer wire versions and additional PostgreSQL-specific SQL/types
+- [x] PostgreSQL text/CSV/binary COPY FROM STDIN / TO STDOUT, pgx.CopyFrom/libpq CopyIn, native declared types and codecs, cast/literal syntax, scalar function families and native system-catalog projections; see [compatibility](docs/postgres-compatibility.md)
+- [ ] Remaining PostgreSQL compatibility: full catalogs/psql introspection, arrays/table-valued functions, standalone sequences/identity, native snapshot/SERIALIZABLE isolation, PostgreSQL replication, notifications, extensions and newer wire versions
 
 ## Miscellaneous
 

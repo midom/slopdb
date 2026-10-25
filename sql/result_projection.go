@@ -18,6 +18,9 @@ func (c ColumnDef) ResultName() string {
 // Private keys cannot accidentally overwrite an ordinary source column needed
 // by WHERE, ORDER BY, grouping or a later projection expression.
 func uniqueResultColumns(columns []ColumnDef, expressions []selectExprCol) bool {
+	if len(columns) < 2 {
+		return false
+	}
 	reserved := make(map[string]bool, len(columns))
 	for _, c := range columns {
 		reserved[c.Name] = true

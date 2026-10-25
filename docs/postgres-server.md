@@ -108,27 +108,31 @@ usable. Portals expire at transaction end/Sync outside an explicit transaction.
 ROLLBACK TO also closes all portals; cursor survival across savepoint rollback
 is not emulated.
 
-Use SlopDB SQL declarations: INTEGER/BIGINT, REAL/DOUBLE, TEXT/VARCHAR and
-BLOB/VARBINARY, DECIMAL/NUMERIC and JSON/JSONB. Signed integers are int64 and REALs
-are float64. Unsigned values cover uint64. Result columns
-use the corresponding PostgreSQL int8, float8, text and bytea wire types;
-unsigned values and DECIMAL use exact PostgreSQL numeric encoding and JSON uses
-the JSON wire type. JSONB input accepts its version-1 wire wrapper, storing the
-same validated JSON value as JSON.
-Boolean, int2, int4, int8, float4, float8, text/varchar and bytea parameter OIDs
-are accepted. Binary bytea preserves arbitrary bytes, including empty values;
-text bytea uses `\x` hex encoding. Legacy octal bytea escapes are unsupported. Mixed/uncertain expression
-types use text output to preserve exact values rather than round large integers.
-SlopDB predicates normally produce integers, not PostgreSQL boolean columns.
+PostgreSQL sessions preserve declared BOOLEAN, SMALLINT/INTEGER/BIGINT,
+REAL/DOUBLE PRECISION, BYTEA, UUID, DATE, TIME, TIMESTAMP, TIMESTAMPTZ, INTERVAL,
+NUMERIC/DECIMAL, JSON/JSONB and TEXT/VARCHAR types. INTEGER enforces signed 32-bit
+bounds and SMALLINT signed 16-bit bounds; the native API and MySQL retain their
+own integer rules. PostgreSQL OIDs and text/binary formats are used for prepared
+parameters, results and COPY, including exact NUMERIC and the JSONB version-1
+wrapper. Stored values use native LSM row encodings; declared type metadata
+restores booleans and temporal types on read and reopen. UUID uses a 16-byte
+value. BYTEA hex and legacy octal escapes are accepted. Arrays and arbitrary
+user-defined types remain unsupported. A SERIAL/BIGSERIAL/SMALLSERIAL primary key uses native automatic IDs;
+it does not create a standalone PostgreSQL sequence.
 
-Common casts on parameters, such as `$1::bigint`, `$1::text`, `$1::bytea` and
-`$1::float8`, `$1::numeric` and `$1::json`, translate to native CAST expressions.
-`CREATE SCHEMA`, qualified names, `SET search_path` and `current_schema()` resolve
-virtual schemas inside the same physical database. Other PostgreSQL cast syntax,
-dollar-quoted SQL, E-string literals and PostgreSQL-specific data types
-are not generally implemented. Casts apply SlopDB type/range semantics.
-Parameters are never substituted into SQL strings. Use explicit casts for
-ambiguous parameters; unspecified types with no useful context default to text.
+General and chained `expression::type` casts, `E'escaped strings'`, dollar-quoted
+literals, `ILIKE`, and `IS [NOT] DISTINCT FROM` are supported. `CREATE SCHEMA`,
+qualified names, `SET search_path` and `current_schema()` resolve virtual schemas
+inside the same physical database. Parameters are never substituted into SQL
+strings. Use explicit casts for ambiguous parameters; unspecified types with no
+useful context default to text.
+
+PostgreSQL functions have a separate dialect registry: CONCAT ignores NULL,
+LENGTH counts characters, quoting/FORMAT follow PostgreSQL conventions, and JSON
+builders preserve booleans and exact numbers. Additional string/byte, JSON/JSONB,
+exact numeric, math, regex, timestamp and date functions are described in
+[PostgreSQL compatibility](postgres-compatibility.md). Function metadata is
+available at Describe without executing the function.
 
 Prepared metadata covers ordinary tables, views, joins, derived tables,
 nonrecursive CTEs, compound queries and DML RETURNING. Unsupported metadata
@@ -185,11 +189,23 @@ portals and the application name outside a transaction. Unsupported settings fai
 Startup accepts the corresponding fixed encoding/date/precision options and an
 application name; unsupported startup options fail instead of being ignored.
 
-The server advertises a compatibility server version of 15.0. It does not emulate
-PostgreSQL catalogs, `information_schema`, roles, sequences/SERIAL,
-COPY, PostgreSQL replication, notifications, stored procedures, arrays or UUID types.
-Tools that require those features, including psql catalog meta-commands, may fail.
-The implemented wire version is 3.0; newer wire versions are rejected.
+Read-only `pg_catalog` and `information_schema` relations expose real native
+schemas, tables, columns, indexes, primary/foreign/check/unique constraints,
+defaults and views. Their supported columns and limitations are listed in
+[PostgreSQL compatibility](postgres-compatibility.md). They are a catalog subset;
+clients that require additional catalogs or PostgreSQL-specific query syntax
+can still fail. Permissions remain unenforced.
+
+COPY supports FROM STDIN and TO STDOUT in text, CSV and binary formats, through
+simple and extended protocol messages. Actual pgx.CopyFrom and lib/pq.CopyIn
+are covered by permanent tests. FROM is atomic and TO streams a pinned native
+snapshot. Server filenames/PROGRAM, COPY FREEZE, non-UTF8 encodings and several
+advanced options are rejected. See the compatibility guide for exact boundaries.
+
+The server advertises a compatibility server version of 15.0. Native PostgreSQL
+replication, LISTEN/NOTIFY, standalone sequences, arrays, extensions, stored
+procedures and full PostgreSQL catalog/SQL coverage remain unsupported. The
+implemented wire version is 3.0; newer wire versions are rejected.
 
 ## Embedding
 

@@ -269,3 +269,31 @@ For the separately installed application, `scripts/mediawiki_acceptance.py`
 checks HTTP/API results and redacts credential fields. See
 [MediaWiki compatibility](docs/mediawiki.md) for invocation and limits. Keep its
 reports, application files and test databases outside the repository.
+
+### PostgreSQL compatibility
+
+`db/postgres_functions_test.go` uses checked-in independent PostgreSQL 16.15
+answers in `db/testdata/postgres_functions.json` (222 cases checked through both
+direct and prepared execution, 444 scalar checks); the adjacent regeneration
+script requires a separate PostgreSQL installation and never derives answers
+from SlopDB. Ordinary tests need no external server. `db/postgres_catalog_test.go`
+checks virtual catalogs, index/constraint metadata, namespace resolution,
+transactional DDL, rollback and reopen. `postgresserver/catalog_test.go` and
+`functions_test.go` verify pgx Describe types and simple/extended execution.
+
+`sql/postgres_types_test.go` and `postgresserver/postgres_types_test.go` cover
+casts, declarations, independent PostgreSQL binary fixtures and client codecs.
+`db/result_projection_test.go` checks independent duplicate output values across
+prepared/materialized/streaming SELECT, RETURNING, UNION, joins, aggregates and
+windows. PostgreSQL/MySQL protocol and CLI output tests preserve duplicate
+labels while retaining each result slot.
+
+`postgresserver/copy_test.go` exercises pgx.CopyFrom, lib/pq.CopyIn, text/CSV/binary
+streams, typed values, protocol fragmentation, cancellation, failure recovery
+and transaction atomicity. All databases and protocol test artifacts use
+`t.TempDir()`.
+
+```sh
+go test ./sql ./db ./postgresserver -run 'TestPostgres|TestCopy' -count=1
+go test -race ./db ./postgresserver -run 'TestPostgres|TestCopy' -count=1
+```
