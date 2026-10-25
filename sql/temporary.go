@@ -141,6 +141,16 @@ func (s *Schema) renameTemporaryTable(table, name string) error {
 	if s.isTemporaryTable(name) {
 		return fmt.Errorf("temporary table %q already exists", name)
 	}
+	for _, info := range s.tables {
+		if s.isTemporaryTable(info.Name) {
+			continue
+		}
+		for _, fk := range tableForeignKeys(info) {
+			if fk.RefTable == name {
+				return fmt.Errorf("temporary table cannot shadow foreign-key parent %s", name)
+			}
+		}
+	}
 	persistent := s.captureState()
 	t := s.temporary
 	info := *s.tables[table]

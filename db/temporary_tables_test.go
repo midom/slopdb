@@ -191,6 +191,9 @@ func TestMySQLTemporaryForeignKeysRejectedAndDDLFailureAtomic(t *testing.T) {
 		t.Fatal("temporary table shadowed FK parent")
 	}
 	mysqlTypeExec(t, a, "CREATE TEMPORARY TABLE scratch(id INTEGER PRIMARY KEY,v INTEGER)")
+	if _, err = a.Exec("ALTER TABLE scratch RENAME TO parent"); err == nil {
+		t.Fatal("temporary rename shadowed FK parent")
+	}
 	if _, err = a.Exec("CREATE TABLE bad_child(id INTEGER PRIMARY KEY,parent_id INTEGER REFERENCES scratch(id))"); err == nil {
 		t.Fatal("persistent FK referenced temporary table")
 	}
