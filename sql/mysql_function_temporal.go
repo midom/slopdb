@@ -220,7 +220,14 @@ func mysqlTemporalFunctions() map[string]mysqlFunctionSpec {
 			if n < 0 {
 				return NewNullValue(), nil
 			}
-			return NewIntValue(n/12*100 + n%12 + 1), nil
+			if n/12 > math.MaxInt64/100 {
+				return NewNullValue(), nil
+			}
+			result := n / 12 * 100
+			if result > math.MaxInt64-(n%12+1) {
+				return NewNullValue(), nil
+			}
+			return NewIntValue(result + n%12 + 1), nil
 		})
 	}
 	for _, name := range strings.Fields("CURDATE CURRENT_DATE UTC_DATE CURTIME CURRENT_TIME UTC_TIME UTC_TIMESTAMP LOCALTIME LOCALTIMESTAMP") {
@@ -464,7 +471,7 @@ func mysqlDatePart(name string, v Value) Value {
 	case "DAYOFWEEK":
 		return NewIntValue(int64(d.t.Weekday()) + 1)
 	case "DAYOFYEAR":
-		return NewIntValue(int64(d.t.YearDay()))
+		return NewIntValue(mysqlDayNumber(d.t) - mysqlDayNumber(time.Date(d.year, 1, 1, 0, 0, 0, 0, time.UTC)) + 1)
 	case "WEEKDAY":
 		return NewIntValue(int64((int(d.t.Weekday()) + 6) % 7))
 	case "QUARTER":
@@ -1060,19 +1067,5 @@ func mysqlClampTime(n int64) int64 {
 	return n
 }
 func mysqlTemporalInteger(v Value) int64 {
-	if !isNumeric(v) {
-		return mysqlFunctionInt(v)
-	}
-	n, scale, err := valueDecimal(v)
-	if err != nil {
-		return 0
-	}
-	n = roundDecimal(n, scale, 0)
-	if !n.IsInt64() {
-		if n.Sign() < 0 {
-			return math.MinInt64
-		}
-		return math.MaxInt64
-	}
-	return n.Int64()
+	return mysqlFunctionInt(v)
 }
