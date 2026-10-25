@@ -20,6 +20,9 @@ import (
 const maxLevels = 7
 
 type LSMTree struct {
+	changeLogEnabled      atomic.Bool
+	changeMu              sync.Mutex
+	changeChanged         chan struct{}
 	replication           atomic.Pointer[ReplicationHooks]
 	mu                    sync.RWMutex
 	writerMu              sync.Mutex
@@ -281,6 +284,9 @@ func NewLSMTree(dir string, opt *Options) (*LSMTree, error) {
 	if err != nil {
 		return fail(err)
 	}
+	if err := lsm.initChangeLog(); err != nil {
+		return fail(err)
+	}
 	return lsm, nil
 }
 
@@ -362,7 +368,17 @@ func (l *LSMTree) writeMutations(batch []Mutation, syncWAL, rangeDelete bool) er
 
 // The optional installer lets queued callers populate the same skip list in
 // parallel. writerMu still orders WAL, rotation, and whole-group publication.
-func (l *LSMTree) writeMutationsWithInstaller(batch []Mutation, syncWAL, rangeDelete bool, install func(*MemTable, uint64)) error {
+func (l *LSMTree) writeMutationsWithInstaller(batch []Mutation, syncWAL, rangeDelete bool, install func(*MemTable, uint64), boundaries ...int) error {
+	if rangeDelete {
+		batch = append([]Mutation(nil), batch...)
+		for i := range batch {
+			batch[i].RangeDelete = true
+		}
+		rangeDelete = false
+	}
+	if len(boundaries) == 0 {
+		batch = l.stampChangeBatch(batch)
+	}
 	if h := l.replication.Load(); h != nil {
 		if rangeDelete {
 			batch = append([]Mutation(nil), batch...)
@@ -372,9 +388,9 @@ func (l *LSMTree) writeMutationsWithInstaller(batch []Mutation, syncWAL, rangeDe
 		}
 		return l.writeWithLocalMutations(h, batch, nil)
 	}
-	return l.writeMutationsLocal(batch, syncWAL, rangeDelete, install)
+	return l.writeMutationsLocal(batch, syncWAL, rangeDelete, install, boundaries...)
 }
-func (l *LSMTree) writeMutationsLocal(batch []Mutation, syncWAL, rangeDelete bool, install func(*MemTable, uint64)) error {
+func (l *LSMTree) writeMutationsLocal(batch []Mutation, syncWAL, rangeDelete bool, install func(*MemTable, uint64), boundaries ...int) error {
 	hasRanges, durable := rangeDelete, false
 	for _, w := range batch {
 		hasRanges = hasRanges || w.RangeDelete
@@ -404,6 +420,13 @@ func (l *LSMTree) writeMutationsLocal(batch []Mutation, syncWAL, rangeDelete boo
 	}
 	base, mem, wal := l.seqNum, l.mem, l.wal
 	l.mu.Unlock()
+	batch, changePublished, err := l.appendChangeLog(batch, base, boundaries, rangeDelete)
+	if err != nil {
+		return err
+	}
+	if changePublished {
+		install = nil
+	}
 	typ := func(w Mutation) uint8 {
 		if rangeDelete || w.RangeDelete {
 			return kTypeRangeDelete
@@ -493,6 +516,10 @@ func (l *LSMTree) writeMutationsLocal(batch []Mutation, syncWAL, rangeDelete boo
 	l.seqNum = base + uint64(len(batch))
 	l.published.Store(l.seqNum)
 	l.mu.Unlock()
+	if changePublished {
+		l.changeLogEnabled.Store(true)
+		l.notifyChanges()
+	}
 	return nil
 }
 

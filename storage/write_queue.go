@@ -97,6 +97,7 @@ func (l *LSMTree) WriteBatch(batch []Mutation) error { return l.WriteBatchWithEn
 // queued must return promptly and must not issue another storage write.
 // The batch buffers remain owned by this call until it returns.
 func (l *LSMTree) WriteBatchWithEnqueue(batch []Mutation, queued func()) error {
+	batch = l.stampChangeBatch(batch)
 	if h := l.replication.Load(); h != nil {
 		return l.writeWithLocalMutations(h, batch, queued)
 	}
@@ -180,7 +181,16 @@ func (l *LSMTree) WriteBatchWithEnqueue(batch []Mutation, queued func()) error {
 			work.remaining.Wait()
 		}
 	}
-	err := l.writeMutationsWithInstaller(mutations, true, false, install)
+	var boundaries []int
+	if n > 1 {
+		boundaries = make([]int, n)
+		end := 0
+		for i, next := range group[:n] {
+			end += len(next.mutations)
+			boundaries[i] = end
+		}
+	}
+	err := l.writeMutationsWithInstaller(mutations, true, false, install, boundaries...)
 	if err == nil {
 		l.writeGroups.Add(1)
 		l.writeBatches.Add(int64(n))
