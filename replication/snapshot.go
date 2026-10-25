@@ -97,6 +97,10 @@ func (s *stateSnapshot) write(dst io.Writer) error {
 		if err = s.node.ctx.Err(); err != nil {
 			return err
 		}
+		if key := s.iterator.Key().UserKey; len(key) > 0 && key[0] == 3 {
+			s.iterator.Next()
+			continue // session-local WAL-less data never enters replica snapshots
+		}
 		if err = writeFrame(w, s.iterator.Key().UserKey, s.iterator.Value()); err != nil {
 			return err
 		}
@@ -223,7 +227,7 @@ func (n *Node) decodeSnapshot(src io.Reader) (directory string, h snapshotHeader
 		if len(batch) == 0 {
 			return nil
 		}
-		e := tree.ApplyReplicated(batch)
+		e := tree.RestoreSnapshotBatch(batch)
 		batch = nil
 		size = 0
 		return e
@@ -254,6 +258,9 @@ func (n *Node) decodeSnapshot(src io.Reader) (directory string, h snapshotHeader
 		if bytes.Equal(k, appliedKey) {
 			marker = bytes.Clone(v)
 		}
+		if k[0] == 3 {
+			continue
+		} // also exclude local ranges from older snapshot streams
 		if n.config.LogsOnly && !replicationMetadata(k) {
 			continue
 		}

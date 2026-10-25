@@ -54,6 +54,12 @@ func changeCatalogKey(key []byte) bool {
 
 func changeRowKey(key []byte) bool { return len(key) >= 10 && key[0] == 1 && key[1] == 0xff }
 
+// Durable SQL catalogs live below 0x01 and rows below 0x02. A range can
+// intersect them without starting at a complete catalog or row key.
+func changeRangeMayContainData(start, end []byte) bool {
+	return bytes.Compare(start, []byte{2}) < 0 && (len(end) == 0 || bytes.Compare(end, []byte{0}) > 0)
+}
+
 func (l *LSMTree) ChangeLogHeader() (*ChangeLogHeader, error) {
 	data, found, err := l.Get(changeLogHeaderKey)
 	if err != nil || !found {
@@ -206,7 +212,7 @@ func (l *LSMTree) appendChangeLog(batch []Mutation, base uint64, boundaries []in
 				continue
 			}
 			if rangeDelete || w.RangeDelete {
-				if len(w.Key) == 0 || w.Key[0] > 1 || len(w.Value) > 0 && w.Value[0] < 1 {
+				if !changeRangeMayContainData(w.Key, w.Value) {
 					continue
 				}
 				keys := make(map[string]bool)
@@ -224,7 +230,7 @@ func (l *LSMTree) appendChangeLog(batch []Mutation, base uint64, boundaries []in
 				}
 				for key := range staged {
 					data := []byte(key)
-					if bytes.Compare(data, w.Key) >= 0 && bytes.Compare(data, w.Value) < 0 && (changeRowKey(data) || changeCatalogKey(data)) {
+					if bytes.Compare(data, w.Key) >= 0 && (len(w.Value) == 0 || bytes.Compare(data, w.Value) < 0) && (changeRowKey(data) || changeCatalogKey(data)) {
 						keys[key] = true
 					}
 				}
@@ -522,7 +528,7 @@ func (l *LSMTree) stampChangeBatch(batch []Mutation) []Mutation {
 		if bytes.Equal(w.Key, changeLogClockKey) {
 			return batch
 		}
-		eligible = eligible || !w.NoWAL && (changeRowKey(w.Key) || changeCatalogKey(w.Key))
+		eligible = eligible || !w.NoWAL && (changeRowKey(w.Key) || changeCatalogKey(w.Key) || w.RangeDelete && changeRangeMayContainData(w.Key, w.Value))
 	}
 	if !eligible {
 		return batch

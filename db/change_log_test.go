@@ -130,3 +130,54 @@ func TestCDCCatalogCheckpointAfterSchemaChanges(t *testing.T) {
 		t.Fatal(rows)
 	}
 }
+
+func TestCDCMetadataAndTransactionIndexesAreCallerOwned(t *testing.T) {
+	d, err := Open(t.TempDir(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	objectExec(t, d, "CREATE TABLE docs(id INTEGER PRIMARY KEY,body TEXT,KEY prefix_body(body(3)),FULLTEXT KEY ft(body))")
+	if _, err = d.EnableCDC(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	reader, err := d.NewCDCReader(context.Background(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata := reader.Metadata()
+	if len(metadata.Tables) != 1 || len(metadata.Tables[0].Indexes) < 2 {
+		t.Fatal(metadata)
+	}
+	index := func(table CDCTable) *sql.IndexInfo {
+		for _, idx := range table.Indexes {
+			if idx.SQLName() == "prefix_body" {
+				return idx
+			}
+		}
+		t.Fatal("missing prefix index")
+		return nil
+	}
+	index(metadata.Tables[0]).Column = "corrupted"
+	index(metadata.Tables[0]).PrefixLengths[0] = 999
+	if again := reader.Metadata(); index(again.Tables[0]).Column != "body" || index(again.Tables[0]).PrefixLengths[0] != 3 {
+		t.Fatal("metadata aliases reader", again)
+	}
+	objectExec(t, d, "INSERT INTO docs VALUES(1,'quasar nebula')")
+	rows, err := reader.Read(context.Background(), 10)
+	if err != nil || len(rows) != 1 {
+		t.Fatal(rows, err)
+	}
+	index(rows[0].Tables[0]).Column = "corrupted"
+	objectExec(t, d, "INSERT INTO docs VALUES(2,'galactic');ALTER TABLE docs ADD COLUMN extra INTEGER")
+	rows, err = reader.Read(context.Background(), 10)
+	if err != nil || len(rows) != 2 {
+		t.Fatal(rows, err)
+	}
+	if index(rows[0].Tables[0]).Column != "body" {
+		t.Fatal("transaction index aliases reader", rows)
+	}
+	if len(rows[1].SchemaChanges) != 1 || index(*rows[1].SchemaChanges[0].Before).Column != "body" {
+		t.Fatal("schema before-image corrupted", rows)
+	}
+}

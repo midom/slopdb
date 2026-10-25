@@ -19,6 +19,14 @@ func (l *LSMTree) ApplyReplicated(batch []Mutation) error {
 	return l.writeMutationsLocal(batch, true, false, nil)
 }
 
+// RestoreSnapshotBatch installs already materialized physical state without
+// synthesizing changes from its rows/catalog or rewriting its CDC baseline.
+// Use only while constructing a fresh, unexposed snapshot generation. Close
+// and reopen it before admission so persisted control state is initialized.
+func (l *LSMTree) RestoreSnapshotBatch(batch []Mutation) error {
+	return l.writeMutationsLocalMode(batch, true, false, nil, false)
+}
+
 func (l *LSMTree) ReplicaMode() bool { return l.opt.Replica }
 
 // ApplyReplicatedDeferred records an atomic batch without a per-call WAL fsync.

@@ -187,3 +187,142 @@ func TestChangeLogCrashRecovery(t *testing.T) {
 		t.Fatal(found, e)
 	}
 }
+
+func TestChangeLogReplicatedBroadAndCatalogRangesShareClock(t *testing.T) {
+	leader, follower := openReaderViewTest(t), openReaderViewTest(t)
+	ctx := context.Background()
+	leader.SetReplicationHooks(&ReplicationHooks{Write: func(batch []Mutation, queued func()) error {
+		if queued != nil {
+			queued()
+		}
+		for _, w := range batch {
+			if w.RangeDelete && changeRangeMayContainData(w.Key, w.Value) {
+				stamped := false
+				for _, clock := range batch {
+					stamped = stamped || bytes.Equal(clock.Key, changeLogClockKey)
+				}
+				if !stamped {
+					t.Fatal("replicated range has no deterministic clock")
+				}
+			}
+		}
+		if err := leader.ApplyReplicated(batch); err != nil {
+			return err
+		}
+		return follower.ApplyReplicated(batch)
+	}})
+	if err := leader.Put([]byte("\x00__schema__"), []byte(`{"baseline":1}`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := leader.EnableChangeLog(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := leader.Put(changeRow(3), []byte("row")); err != nil {
+		t.Fatal(err)
+	}
+	if err := leader.DeleteRange([]byte{1}, []byte{2}); err != nil {
+		t.Fatal(err)
+	}
+	if err := leader.DeleteRange([]byte("\x00__schema"), []byte("\x00__schemb")); err != nil {
+		t.Fatal(err)
+	}
+	a, err := leader.ReadChanges(ctx, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := follower.ReadChanges(ctx, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(a) != 3 || len(b) != 3 {
+		t.Fatalf("range changes missing: %+v %+v", a, b)
+	}
+	for i := range a {
+		if !bytes.Equal(encodeChangeRecord(a[i]), encodeChangeRecord(b[i])) {
+			t.Fatal("replica journal differs", a[i], b[i])
+		}
+	}
+	if !a[1].Mutations[0].Delete || !a[2].Mutations[0].Delete {
+		t.Fatal(a)
+	}
+	catalog, err := leader.ChangeCatalogAt(ctx, a[2].Sequence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := catalog["\x00__schema__"]; ok {
+		t.Fatal("range-deleted catalog remains in checkpoint")
+	}
+}
+
+func TestChangeLogPhysicalSnapshotRestorePreservesHistory(t *testing.T) {
+	source := openReaderViewTest(t)
+	ctx := context.Background()
+	if err := source.Put([]byte("\x00__schema__"), []byte(`{"baseline":1}`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := source.EnableChangeLog(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := source.Put(changeRow(4), []byte("before")); err != nil {
+		t.Fatal(err)
+	}
+	if err := source.Put([]byte("\x00__schema__"), []byte(`{"current":2}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := source.Put(changeRow(4), []byte("after")); err != nil {
+		t.Fatal(err)
+	}
+	path := t.TempDir()
+	target, err := NewLSMTree(path, DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer target.Close()
+	expected := map[string][]byte{}
+	it := source.NewIterator()
+	for ; it.Valid(); it.Next() {
+		key, value := bytes.Clone(it.Key().UserKey), bytes.Clone(it.Value())
+		expected[string(key)] = value
+		if err = target.RestoreSnapshotBatch([]Mutation{{Key: key, Value: value}}); err != nil {
+			it.Close()
+			t.Fatal(err)
+		}
+	}
+	if err = IteratorError(it); err != nil {
+		it.Close()
+		t.Fatal(err)
+	}
+	it.Close()
+	if err = target.Close(); err != nil {
+		t.Fatal(err)
+	}
+	target, err = NewLSMTree(path, DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	it = target.NewIterator()
+	for ; it.Valid(); it.Next() {
+		key := string(it.Key().UserKey)
+		value, ok := expected[key]
+		if !ok || !bytes.Equal(value, it.Value()) {
+			it.Close()
+			t.Fatalf("restored state differs at %q", key)
+		}
+		delete(expected, key)
+	}
+	if err = IteratorError(it); err != nil {
+		it.Close()
+		t.Fatal(err)
+	}
+	it.Close()
+	if len(expected) != 0 {
+		t.Fatal("missing snapshot keys", expected)
+	}
+	if err = target.Put(changeRow(4), []byte("post-restore")); err != nil {
+		t.Fatal(err)
+	}
+	records, err := target.ReadChanges(ctx, 3, 10)
+	if err != nil || len(records) != 1 || string(records[0].Mutations[0].Before) != "after" {
+		t.Fatal(records, err)
+	}
+}

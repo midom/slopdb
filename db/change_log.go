@@ -222,7 +222,9 @@ func cloneCDCTable(table CDCTable) CDCTable {
 	}
 	if table.Indexes != nil {
 		data, _ := json.Marshal(table.Indexes)
-		_ = json.Unmarshal(data, &table.Indexes)
+		var indexes []*sql.IndexInfo
+		_ = json.Unmarshal(data, &indexes)
+		table.Indexes = indexes
 	}
 	table.Columns = append([]sql.ColumnDef(nil), table.Columns...)
 	for i := range table.Columns {

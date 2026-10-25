@@ -391,6 +391,10 @@ func (l *LSMTree) writeMutationsWithInstaller(batch []Mutation, syncWAL, rangeDe
 	return l.writeMutationsLocal(batch, syncWAL, rangeDelete, install, boundaries...)
 }
 func (l *LSMTree) writeMutationsLocal(batch []Mutation, syncWAL, rangeDelete bool, install func(*MemTable, uint64), boundaries ...int) error {
+	return l.writeMutationsLocalMode(batch, syncWAL, rangeDelete, install, true, boundaries...)
+}
+
+func (l *LSMTree) writeMutationsLocalMode(batch []Mutation, syncWAL, rangeDelete bool, install func(*MemTable, uint64), captureChanges bool, boundaries ...int) error {
 	hasRanges, durable := rangeDelete, false
 	for _, w := range batch {
 		hasRanges = hasRanges || w.RangeDelete
@@ -420,9 +424,13 @@ func (l *LSMTree) writeMutationsLocal(batch []Mutation, syncWAL, rangeDelete boo
 	}
 	base, mem, wal := l.seqNum, l.mem, l.wal
 	l.mu.Unlock()
-	batch, changePublished, err := l.appendChangeLog(batch, base, boundaries, rangeDelete)
-	if err != nil {
-		return err
+	changePublished := false
+	if captureChanges {
+		var err error
+		batch, changePublished, err = l.appendChangeLog(batch, base, boundaries, rangeDelete)
+		if err != nil {
+			return err
+		}
 	}
 	if changePublished {
 		install = nil
