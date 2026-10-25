@@ -5,7 +5,9 @@ import (
 	stdsql "database/sql"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
+	"slices"
 	"sync"
 	"time"
 
@@ -243,19 +245,23 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 		}
 		if handled {
 			rows.columns = rows.cursor.Columns()
-			// Resolve declaration metadata in this same execution view; protocol
-			// adapters must not describe again after concurrent catalog changes.
-			columns, e := s.schema.Describe(statements[0])
-			if e != nil {
-				release()
-				return nil, e
-			}
-			if len(columns) == len(rows.columns) {
-				for i := range columns {
-					columns[i].Name = rows.columns[i].Name
-					columns[i].DisplayName = rows.columns[i].DisplayName
+			// Typed catalog projections already carry complete declaration
+			// metadata from this execution view. Describe only shapes that still
+			// require expression inference/validation; never describe after the
+			// view is released or after concurrent catalog changes.
+			if !rows.cursor.ColumnsComplete() {
+				columns, e := s.schema.Describe(statements[0])
+				if e != nil {
+					release()
+					return nil, e
 				}
-				rows.columns = columns
+				if len(columns) == len(rows.columns) {
+					for i := range columns {
+						columns[i].Name = rows.columns[i].Name
+						columns[i].DisplayName = rows.columns[i].DisplayName
+					}
+					rows.columns = columns
+				}
 			}
 		}
 	}
@@ -293,6 +299,8 @@ func (r *Rows) Columns() []sql.ColumnDef {
 		columns[i].Default = nil
 		columns[i].Check = nil
 		columns[i].RefColumns = append([]string(nil), columns[i].RefColumns...)
+		columns[i].EnumValues = slices.Clone(columns[i].EnumValues)
+		columns[i].ConstraintNames = maps.Clone(columns[i].ConstraintNames)
 	}
 	return columns
 }
@@ -352,16 +360,41 @@ func (r *Rows) closeLocked() {
 
 // Values returns caller-owned values in projection order. BLOBs are copied.
 func (r *Rows) Values() ([]sql.Value, error) {
+	return r.ValuesInto(nil)
+}
+
+// ValuesInto returns caller-owned values in projection order, reusing dst and
+// each destination BLOB's capacity when possible. Like Values, results never
+// alias the cursor's rows or storage pages, and empty BLOBs remain non-NULL.
+// The caller gives up all prior contents of dst, including aliases to its
+// values and BLOB buffers. Keep dst and its individual buffers exclusively
+// owned by this call; use Values for independent values retained across calls.
+func (r *Rows) ValuesInto(dst []sql.Value) ([]sql.Value, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.current == nil || r.closed {
 		return nil, errors.New("Rows.Values requires a successful Next")
 	}
-	values := make([]sql.Value, len(r.columns))
-	for i, col := range r.columns {
-		values[i] = ownedValue(r.current[col.Name])
+	if len(dst) > len(r.columns) {
+		clear(dst[len(r.columns):])
 	}
-	return values, nil
+	if cap(dst) < len(r.columns) {
+		dst = make([]sql.Value, len(r.columns))
+	} else {
+		dst = dst[:len(r.columns)]
+	}
+	for i, col := range r.columns {
+		value := r.current[col.Name]
+		if value.Type == sql.ColBlob && !value.Null {
+			buffer := dst[i].Blob
+			if buffer == nil {
+				buffer = []byte{}
+			}
+			value.Blob = append(buffer[:0], value.Blob...)
+		}
+		dst[i] = value
+	}
+	return dst, nil
 }
 func ownedValue(v sql.Value) sql.Value {
 	if v.Type == sql.ColBlob && !v.Null {

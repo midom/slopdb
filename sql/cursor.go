@@ -2,6 +2,8 @@ package sql
 
 import (
 	"bytes"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 
@@ -12,6 +14,7 @@ import (
 // snapshot. The caller must keep the statement alive until Close. It is not
 // safe for concurrent calls.
 type RowCursor struct {
+	columnsComplete  bool
 	fulltext         bool
 	fulltextOpened   bool
 	schema           *Schema
@@ -76,6 +79,7 @@ func (s *Schema) OpenRowCursor(stmt *SelectStmt) (*RowCursor, bool, error) {
 	}
 	c := &RowCursor{schema: s, stmt: stmt, info: info, reverse: reverse}
 	c.columns, c.expressions, _ = s.selectProjection(stmt, info)
+	c.columnsComplete = cursorCatalogProjection(stmt, info, c.columns)
 	if hasFulltextCondition(stmt.Where) {
 		c.fulltext = true
 		return c, true, nil
@@ -183,9 +187,75 @@ func (c *RowCursor) Columns() []ColumnDef {
 		columns[i].Default = nil
 		columns[i].Check = nil
 		columns[i].RefColumns = append([]string(nil), columns[i].RefColumns...)
+		columns[i].EnumValues = slices.Clone(columns[i].EnumValues)
+		columns[i].ConstraintNames = maps.Clone(columns[i].ConstraintNames)
 	}
 	return columns
 }
+
+// ColumnsComplete reports that Columns already contains complete catalog
+// declaration metadata, with no remaining expression metadata validation. A
+// caller can avoid a second Describe traversal in the same execution view.
+// More complex expressions retain Describe's full validation and inference.
+func (c *RowCursor) ColumnsComplete() bool { return c.columnsComplete }
+
+func cursorCatalogProjection(stmt *SelectStmt, info *TableInfo, columns []ColumnDef) bool {
+	for _, column := range stmt.Columns {
+		if !column.Star {
+			if _, ok := column.Expr.(*ColumnRefExpr); !ok {
+				return false
+			}
+		}
+	}
+	for _, column := range columns {
+		if column.SemanticType == TypeUnknown {
+			return false
+		}
+	}
+	return cursorCatalogPredicate(stmt.Where, info, 0)
+}
+
+// Only expression shapes whose metadata cannot add errors or parameter
+// inference after validateQuery are eligible. Functions, casts, qualified/outer
+// references and decimal literal inference keep the full Describe path.
+func cursorCatalogPredicate(expression Expression, info *TableInfo, depth int) bool {
+	if depth > 64 {
+		return false
+	}
+	switch e := expression.(type) {
+	case nil:
+		return true
+	case *ColumnRefExpr:
+		for _, column := range info.Columns {
+			if e.Name == column.Name {
+				return true
+			}
+		}
+	case *LiteralExpr:
+		return e.Value.Type != ColDecimal && e.Value.NumericText == ""
+	case *BinaryExpr:
+		switch strings.ToUpper(e.Op) {
+		case "AND", "OR", "=", "==", "!=", "<>", "<", "<=", ">", ">=", "IS", "IS NOT":
+			return cursorCatalogPredicate(e.Left, info, depth+1) && cursorCatalogPredicate(e.Right, info, depth+1)
+		}
+	case *UnaryExpr:
+		return strings.EqualFold(e.Op, "NOT") && cursorCatalogPredicate(e.Right, info, depth+1)
+	case *InListExpr:
+		if !cursorCatalogPredicate(e.Expr, info, depth+1) {
+			return false
+		}
+		for _, item := range e.List {
+			if !cursorCatalogPredicate(item, info, depth+1) {
+				return false
+			}
+		}
+		return true
+	case *BetweenExpr:
+		return cursorCatalogPredicate(e.Expr, info, depth+1) && cursorCatalogPredicate(e.Low, info, depth+1) && cursorCatalogPredicate(e.High, info, depth+1)
+	}
+	return false
+}
+
 func (c *RowCursor) Next() (map[string]Value, bool, error) {
 	if c.closed {
 		return nil, false, nil

@@ -50,6 +50,13 @@ range of float64. Scanned BLOB buffers remain valid after Next and Close; changi
 them cannot mutate the database. Prepared query bindings remain private until
 their result closes, so concurrent executions do not reuse a live cursor's AST.
 
+`Rows.ValuesInto(dst)` provides the same owned values while reusing the slice
+and each BLOB buffer's capacity. Pass its returned slice into the next call to
+reduce copying allocations. Each call gives up the old contents and all aliases
+to those destination buffers; use `Values()` when retaining independent rows.
+NULL clears the destination value, while an empty non-NULL BLOB remains an empty
+byte slice. The returned values remain valid after closing the result.
+
 ## Atomic bulk insertion
 
 `Database.BulkInsert(ctx, table, columns, source)` consumes a `db.BulkSource`
