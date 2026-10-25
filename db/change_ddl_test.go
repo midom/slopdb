@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"slopdb/sql"
 )
 
 func TestCDCMySQLDefinitionsAndRowPreservingAlter(t *testing.T) {
@@ -53,5 +55,22 @@ func TestCDCMySQLDefinitionsAndRowPreservingAlter(t *testing.T) {
 	rows, e = reader.Read(ctx, 100)
 	if e != nil || len(rows) != 1 || len(rows[0].DroppedNamespaces) != 1 || rows[0].DroppedNamespaces[0] != "tenant" {
 		t.Fatal(rows, e)
+	}
+}
+
+func TestCDCMySQLUnboundedTypesAndAmbiguousAlter(t *testing.T) {
+	before := CDCTable{ID: 1, Schema: "main", Name: "values", Columns: []sql.ColumnDef{
+		{Name: "a", ColType: sql.ColText}, {Name: "b", ColType: sql.ColBlob},
+	}}
+	definition := CDCMySQLCreate(before, "source")
+	for _, expected := range []string{"`source`.`values`", "`a` LONGTEXT", "`b` LONGBLOB", "COLLATE utf8mb4_bin"} {
+		if !strings.Contains(definition, expected) {
+			t.Fatalf("missing %q: %s", expected, definition)
+		}
+	}
+	after := before
+	after.Columns = []sql.ColumnDef{{Name: "new_a", ColType: sql.ColInteger}, before.Columns[1]}
+	if statements, err := CDCMySQLAlter(before, after, "source"); err == nil {
+		t.Fatalf("ambiguous rename/type change emitted potentially destructive SQL: %v", statements)
 	}
 }

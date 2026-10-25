@@ -75,6 +75,16 @@ func cdcColumn(column sql.ColumnDef) string {
 	if typeName == "REAL" {
 		typeName = "DOUBLE"
 	}
+	// Native TEXT/BLOB have no 64 KiB limit. Their binlog representation uses
+	// a four-byte length, matching MySQL's LONGTEXT/LONGBLOB families.
+	if column.Length == 0 && column.Declared == "" {
+		if column.ColType == sql.ColText {
+			typeName = "LONGTEXT"
+		}
+		if column.ColType == sql.ColBlob {
+			typeName = "LONGBLOB"
+		}
+	}
 	result := cdcQuote(column.Name) + " " + typeName
 	if column.Binary && column.ColType == sql.ColText {
 		result += " COLLATE utf8mb4_bin"
@@ -83,7 +93,11 @@ func cdcColumn(column sql.ColumnDef) string {
 		result += " NOT NULL"
 	}
 	if column.DefaultSQL != "" {
-		result += " DEFAULT " + cdcExpression(column.DefaultSQL)
+		expression := cdcExpression(column.DefaultSQL)
+		if strings.HasSuffix(typeName, "TEXT") || strings.HasSuffix(typeName, "BLOB") || typeName == "JSON" {
+			expression = "(" + expression + ")"
+		}
+		result += " DEFAULT " + expression
 	}
 	if column.AutoIncrement {
 		result += " AUTO_INCREMENT"
@@ -185,7 +199,7 @@ func CDCMySQLCreate(table CDCTable, root string) string {
 	for _, name := range names {
 		parts = append(parts, keys[name])
 	}
-	return "CREATE TABLE " + cdcTableName(table, root) + " (" + strings.Join(parts, ", ") + ") DEFAULT CHARACTER SET utf8mb4"
+	return "CREATE TABLE " + cdcTableName(table, root) + " (" + strings.Join(parts, ", ") + ") DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin"
 }
 func cdcSameColumn(a, b sql.ColumnDef) bool {
 	a.Name, b.Name = "", ""
