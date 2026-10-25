@@ -32,7 +32,7 @@ func TestPostgresNativeCatalogs(t *testing.T) {
 			return r
 		}
 		if !reopened {
-			for _, q := range []string{"CREATE SCHEMA tenant", "CREATE TABLE tenant.parent (id BIGINT PRIMARY KEY, label VARCHAR(20) NOT NULL DEFAULT 'x', price DECIMAL(9,2))", "CREATE UNIQUE INDEX parent_label ON tenant.parent(label)", "CREATE TABLE tenant.child (id BIGINT PRIMARY KEY, parent_id BIGINT, CONSTRAINT child_parent FOREIGN KEY(parent_id) REFERENCES tenant.parent(id) ON DELETE CASCADE)"} {
+			for _, q := range []string{"CREATE SCHEMA tenant", "CREATE TABLE tenant.parent (id BIGINT PRIMARY KEY, label VARCHAR(20) NOT NULL DEFAULT 'x', price DECIMAL(9,2))", "CREATE UNIQUE INDEX parent_label ON tenant.parent(label)", "CREATE TABLE tenant.child (id BIGINT PRIMARY KEY, parent_id BIGINT, CONSTRAINT child_parent FOREIGN KEY(parent_id) REFERENCES tenant.parent(id) ON DELETE CASCADE)", "CREATE VIEW tenant.summary AS SELECT id, label FROM tenant.parent"} {
 				exec(q)
 			}
 		}
@@ -41,6 +41,41 @@ func TestPostgresNativeCatalogs(t *testing.T) {
 			t.Fatalf("class: %+v", r.Rows)
 		}
 		oid := r.Rows[0]["oid"].Int
+		r = exec("SELECT relnatts FROM pg_class WHERE relname='summary'")
+		if len(r.Rows) != 1 || r.Rows[0]["relnatts"].Int != 2 {
+			t.Fatalf("view columns: %+v", r.Rows)
+		}
+		r = exec("SELECT count(*) AS n FROM information_schema.columns WHERE table_schema='tenant' AND table_name='summary'")
+		if r.Rows[0]["n"].Int != 2 {
+			t.Fatalf("view info columns: %+v", r.Rows)
+		}
+		r = exec("SELECT count(*) AS n FROM pg_attribute a JOIN pg_class c ON a.attrelid=c.oid WHERE c.relname='summary'")
+		if r.Rows[0]["n"].Int != 2 {
+			t.Fatalf("view attributes: %+v", r.Rows)
+		}
+		r = exec("SELECT i.indexrelid AS id, ic.relname AS name, con.conindid AS constraint_index FROM pg_index i JOIN pg_class tc ON tc.oid=i.indrelid JOIN pg_class ic ON ic.oid=i.indexrelid JOIN pg_constraint con ON con.conrelid=tc.oid AND con.contype='p' WHERE tc.relname='parent' AND i.indisprimary")
+		if len(r.Rows) != 1 || r.Rows[0]["id"].Int != r.Rows[0]["constraint_index"].Int {
+			t.Fatalf("primary index link: %+v", r.Rows)
+		}
+		primaryOID := r.Rows[0]["id"].Int
+		primaryName := r.Rows[0]["name"].Text
+		p, e := s.Prepare("SELECT to_regclass(?) AS id")
+		if e != nil {
+			t.Fatal(e)
+		}
+		found, e := p.Exec("tenant." + primaryName)
+		p.Close()
+		if e != nil || found.Rows[0]["id"].Int != primaryOID {
+			t.Fatalf("primary resolve %+v %v", found, e)
+		}
+		if e = s.RegisterRootSchemaAlias(ctx, "application"); e != nil {
+			t.Fatal(e)
+		}
+		r = exec("SELECT to_regnamespace('application') AS id")
+		if r.Rows[0]["id"].Int != 2200 {
+			t.Fatalf("root namespace alias %+v", r.Rows)
+		}
+
 		r = exec("SELECT column_name, data_type, is_nullable, character_maximum_length, numeric_precision, numeric_scale, udt_name FROM information_schema.columns WHERE table_schema='tenant' AND table_name='parent' ORDER BY ordinal_position")
 		if len(r.Rows) != 3 || r.Rows[0]["udt_name"].Text != "int8" || r.Rows[1]["character_maximum_length"].Int != 20 || r.Rows[2]["numeric_precision"].Int != 9 || r.Rows[2]["numeric_scale"].Int != 2 {
 			t.Fatalf("columns: %+v", r.Rows)
