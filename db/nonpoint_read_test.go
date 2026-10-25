@@ -183,6 +183,12 @@ func TestNonpointINAndRangeAnswersAcrossAPIsAndDialects(t *testing.T) {
 				{"in_offset", "WHERE id IN(17,2,9,3,9) ORDER BY id LIMIT 2 OFFSET 1", []int64{3, 9}},
 				{"in_limit_zero", "WHERE id IN(1,2,3) ORDER BY id LIMIT 0", nil},
 				{"not_in_null", "WHERE id NOT IN(2,NULL) ORDER BY id LIMIT 3", nil},
+				{"not_in_integer_set", "WHERE id NOT IN(2,9,17) ORDER BY id LIMIT 3", []int64{1, 3, 4}},
+				{"between_keeps_residual", "WHERE id BETWEEN 2 AND 8 AND id>=4 ORDER BY id LIMIT 10", []int64{4, 5, 6, 7, 8}},
+				{"between_upper_intersection", "WHERE id BETWEEN 2 AND 8 AND id<=5 ORDER BY id DESC LIMIT 10", []int64{5, 4, 3, 2}},
+				{"between_reversed_bounds", "WHERE id BETWEEN 8 AND 2 ORDER BY id LIMIT 10", nil},
+				{"ordered_table_prefix", "ORDER BY id LIMIT 5", []int64{1, 2, 3, 4, 5}},
+				{"ordered_table_suffix", "ORDER BY id DESC LIMIT 3", []int64{30, 29, 28}},
 				{"range_ten", "WHERE id>=7 ORDER BY id LIMIT 10", []int64{7, 8, 9, 10, 11, 12, 13, 14, 15, 16}},
 				{"range_reverse", "WHERE id>=7 AND id<17 ORDER BY id DESC LIMIT 10", []int64{16, 15, 14, 13, 12, 11, 10, 9, 8, 7}},
 				{"range_offset", "WHERE id>=7 ORDER BY id LIMIT 4 OFFSET 3", []int64{10, 11, 12, 13}},
@@ -548,11 +554,174 @@ func TestNonpointExactInt64KeysAndMixedNumericFallback(t *testing.T) {
 						{"WHERE id IN(9007199254740992.0,9007199254740992.0,NULL) ORDER BY id", []int64{exactFloat}, []int64{2}},
 						{"WHERE id>=9007199254740992 ORDER BY id LIMIT 2", []int64{exactFloat, nextInteger}, []int64{2, 3}},
 						{"WHERE id<=-9223372036854775808 ORDER BY id DESC LIMIT 10", []int64{low}, []int64{-1}},
+						{"WHERE id<-9223372036854775808 ORDER BY id LIMIT 10", nil, nil},
+						{"WHERE id>=9223372036854775807 ORDER BY id LIMIT 10", []int64{high}, []int64{4}},
+						{"WHERE id>9223372036854775807 ORDER BY id LIMIT 10", nil, nil},
+						{"WHERE id<=9223372036854775807 ORDER BY id DESC LIMIT 2", []int64{high, nextInteger}, []int64{4, 3}},
 					} {
 						columns, got := nonpointRead(t, s, api, &dst, "SELECT id,v FROM nonpoint_exact "+tc.suffix)
 						nonpointIDsAndValues(t, columns, got, tc.ids, tc.v)
 					}
 				})
+			}
+		})
+	}
+}
+
+func TestNonpointDialectDivisionUsesSessionSemantics(t *testing.T) {
+	// Native/PostgreSQL integer division truncates; MySQL '/' returns a decimal.
+	// Pure native folding must not replace the session's IN/range expressions.
+	for _, dialect := range []sql.Dialect{sql.DialectNative, sql.DialectMySQL, sql.DialectPostgreSQL} {
+		t.Run(dialect.String(), func(t *testing.T) {
+			d := namespaceTestDatabase(t)
+			s := isolationSession(t, d)
+			if err := s.SetDialect(dialect); err != nil {
+				t.Fatal(err)
+			}
+			isolationExec(t, s, "CREATE TABLE nonpoint_division(id BIGINT PRIMARY KEY,v BIGINT);INSERT INTO nonpoint_division VALUES(1,10),(2,20),(3,30),(4,40)")
+			for _, api := range nonpointAPIs {
+				t.Run(api, func(t *testing.T) {
+					var dst ExecResult
+					for _, tc := range []struct {
+						suffix       string
+						ordinary, my []int64
+					}{
+						{"WHERE id IN(5/2) ORDER BY id", []int64{2}, nil},
+						{"WHERE id IN(5/2,7/2) ORDER BY id", []int64{2, 3}, nil},
+						{"WHERE id IN(6/2,5/2) ORDER BY id", []int64{2, 3}, []int64{3}},
+						{"WHERE id>=5/2 ORDER BY id LIMIT 2", []int64{2, 3}, []int64{3, 4}},
+					} {
+						ids := tc.ordinary
+						if dialect == sql.DialectMySQL {
+							ids = tc.my
+						}
+						expected := make([]int64, len(ids))
+						for i, id := range ids {
+							expected[i] = id * 10
+						}
+						columns, got := nonpointRead(t, s, api, &dst, "SELECT id,v FROM nonpoint_division "+tc.suffix)
+						nonpointIDsAndValues(t, columns, got, ids, expected)
+					}
+				})
+			}
+		})
+	}
+}
+
+func nonpointCopyResult(source ExecResult) ExecResult {
+	copy := source
+	copy.Columns = append([]sql.ColumnDef(nil), source.Columns...)
+	copy.Rows = make([]map[string]sql.Value, len(source.Rows))
+	for i, row := range source.Rows {
+		copy.Rows[i] = make(map[string]sql.Value, len(row))
+		for name, value := range row {
+			if value.Type == sql.ColBlob && !value.Null {
+				value.Blob = append([]byte{}, value.Blob...)
+			}
+			copy.Rows[i][name] = value
+		}
+	}
+	return copy
+}
+
+func TestNonpointOversizedAndRowCountFallbackPreservesAnswers(t *testing.T) {
+	d := namespaceTestDatabase(t)
+	s := isolationSession(t, d)
+	isolationExec(t, s, "CREATE TABLE nonpoint_large(id BIGINT PRIMARY KEY,v BIGINT,b BLOB)")
+	insert, err := s.Prepare("INSERT INTO nonpoint_large VALUES(?,?,?)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer insert.Close()
+	blobs := make(map[int64][]byte)
+	for id := int64(1); id <= 75; id++ {
+		var blob []byte
+		switch id {
+		case 1:
+			blob = bytes.Repeat([]byte{0x11}, 70<<10)
+		case 2:
+			blob = bytes.Repeat([]byte{0x22}, 40<<10)
+		case 3:
+			blob = bytes.Repeat([]byte{0x33}, 40<<10)
+		case 4:
+			blob = []byte{}
+		case 5:
+			blob = nil
+		default:
+			blob = []byte{byte(id), 0, byte(id)}
+		}
+		blobs[id] = blob
+		if _, err := insert.Exec(id, id*10, blob); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Exercise SSTable-backed values, including mmap/compressed block ownership
+	// after an iterator or a multi-get view has been released before decoding.
+	if err := d.lsm.CompactRange(); err != nil {
+		t.Fatal(err)
+	}
+	ids := func(low, high int64) []int64 {
+		var result []int64
+		for id := low; id <= high; id++ {
+			result = append(result, id)
+		}
+		return result
+	}
+	var list strings.Builder
+	for id := 1; id <= 65; id++ {
+		if id > 1 {
+			list.WriteByte(',')
+		}
+		fmt.Fprint(&list, id)
+	}
+	for _, api := range nonpointAPIs {
+		t.Run(api, func(t *testing.T) {
+			var dst ExecResult
+			// Prime caller storage with a smaller result; oversized streaming
+			// fallback must not partially replace or mutate that destination.
+			prime := "SELECT id,v,b FROM nonpoint_large WHERE id=6"
+			output := nonpointOpen(t, s, "parsed", &dst, prime)
+			_, _ = output.collect(t)
+			output.close(t)
+			before := nonpointCopyResult(dst)
+			for _, tc := range []struct {
+				suffix string
+				ids    []int64
+			}{
+				{"WHERE id IN(1,2,3,4,5) ORDER BY id", []int64{1, 2, 3, 4, 5}},
+				{"WHERE id>=1 ORDER BY id LIMIT 5", []int64{1, 2, 3, 4, 5}},
+				{"WHERE id IN(2,3) ORDER BY id", []int64{2, 3}},
+				{"WHERE id>=2 ORDER BY id LIMIT 2", []int64{2, 3}},
+				{"WHERE id IN(1,4) ORDER BY id LIMIT 1 OFFSET 1", []int64{4}},
+				{"WHERE id>=1 ORDER BY id LIMIT 1 OFFSET 3", []int64{4}},
+				{"WHERE id>=6 ORDER BY id DESC LIMIT 3", []int64{75, 74, 73}},
+				{"WHERE id>=6 ORDER BY id LIMIT 64 OFFSET 1", ids(7, 70)},
+				{"WHERE id>=1 ORDER BY id LIMIT 65", ids(1, 65)},
+				{"WHERE id IN(" + list.String() + ") ORDER BY id", ids(1, 65)},
+			} {
+				query := "SELECT id,v,b FROM nonpoint_large " + tc.suffix
+				read := nonpointOpen(t, s, api, &dst, query)
+				if api == "parsed" && read.rows != nil && !reflect.DeepEqual(before, dst) {
+					read.close(t)
+					t.Fatalf("streaming fallback mutated destination before iteration: %s", tc.suffix)
+				}
+				columns, values := read.collect(t)
+				read.close(t)
+				if len(columns) != 3 || len(values) != len(tc.ids) {
+					t.Fatalf("%s returned %d rows, want%d", tc.suffix, len(values), len(tc.ids))
+				}
+				for i, id := range tc.ids {
+					row := values[i]
+					if row[0].Int != id || row[1].Null || row[1].Int != id*10 || row[2].Null != (id == 5) || !bytes.Equal(row[2].Blob, blobs[id]) {
+						t.Fatalf("%s row%d returned wrong key/value/BLOB for id%d", tc.suffix, i, id)
+					}
+					if id == 4 && row[2].Blob == nil {
+						t.Fatal("empty BLOB changed to NULL")
+					}
+				}
+				// The contract allows an owned result too; it becomes the prior
+				// destination against which the next streaming fallback is checked.
+				before = nonpointCopyResult(dst)
 			}
 		})
 	}
