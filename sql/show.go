@@ -267,7 +267,7 @@ func (s *Schema) showIndexes(name string) (*ResultSet, error) {
 				nonUnique = 0
 			}
 			subPart := NewNullValue()
-			if idx := s.indexes[key.name]; idx != nil && i < len(idx.PrefixLengths) && idx.PrefixLengths[i] > 0 {
+			if idx := s.findTableIndex(info.Name, key.name); idx != nil && i < len(idx.PrefixLengths) && idx.PrefixLengths[i] > 0 {
 				subPart = NewIntValue(idx.PrefixLengths[i])
 			}
 			rs.Rows = append(rs.Rows, map[string]Value{

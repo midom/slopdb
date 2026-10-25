@@ -326,16 +326,17 @@ type DropIndexStmt struct {
 }
 
 type ConstraintDef struct {
-	Name       string     `json:"name"`
-	Kind       string     `json:"kind"`
-	Columns    []string   `json:"columns,omitempty"`
-	Check      Expression `json:"-"`
-	CheckSQL   string     `json:"check_sql,omitempty"`
-	RefTable   string     `json:"ref_table,omitempty"`
-	RefColumns []string   `json:"ref_columns,omitempty"`
-	IndexID    uint64     `json:"index_id,omitempty"`
-	Inline     bool       `json:"inline,omitempty"`
-	Fulltext   bool       `json:"fulltext,omitempty"`
+	PrefixLengths []int64    `json:"prefix_lengths,omitempty"`
+	Name          string     `json:"name"`
+	Kind          string     `json:"kind"`
+	Columns       []string   `json:"columns,omitempty"`
+	Check         Expression `json:"-"`
+	CheckSQL      string     `json:"check_sql,omitempty"`
+	RefTable      string     `json:"ref_table,omitempty"`
+	RefColumns    []string   `json:"ref_columns,omitempty"`
+	IndexID       uint64     `json:"index_id,omitempty"`
+	Inline        bool       `json:"inline,omitempty"`
+	Fulltext      bool       `json:"fulltext,omitempty"`
 }
 
 type AlterTableStmt struct {

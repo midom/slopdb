@@ -84,6 +84,14 @@ func (p *schemaChangePlanner) createIndex(st *CreateIndexStmt, online bool) erro
 	if err := validateIndexColumns(info.Columns, columns); err != nil {
 		return err
 	}
+	idx := newIndexInfo(name, table, columns, st.Unique)
+	idx.PrefixLengths, idx.Fulltext = st.PrefixLengths, st.Fulltext
+	if err := validateIndexPrefixes(info.Columns, idx); err != nil {
+		return err
+	}
+	if err := validateFulltextIndex(info, idx); err != nil {
+		return err
+	}
 	work, locking, detail := "index build", schemaExclusiveLock, "Scans existing rows and builds index entries while holding the catalog lock."
 	if online {
 		work = "online index build"
@@ -95,7 +103,7 @@ func (p *schemaChangePlanner) createIndex(st *CreateIndexStmt, online bool) erro
 	}
 	locking, detail = publicationPolicyDescription(locking, detail, st.PublicationAbortAfter)
 	p.add("CREATE INDEX", name, work, locking, detail, true, false, true)
-	p.indexes[name] = newIndexInfo(name, table, columns, st.Unique)
+	p.indexes[name] = idx
 	return nil
 }
 
@@ -225,6 +233,10 @@ func (p *schemaChangePlanner) alter(st *AlterTableStmt, online bool) error {
 	work, detail := "table rewrite", "Scans and rewrites table rows and maintained indexes; cost grows with table size."
 	scan, rewrite, indexes := true, true, true
 	switch st.Operation {
+	case "CONVERT_CHARSET":
+		work, detail = "character repertoire validation", "Scans Unicode text for target charset compatibility, preserving binary columns and existing row/index bytes."
+		scan, rewrite, indexes = true, false, false
+		info.Charset = st.NewName
 	case "IGNORE_ENGINE":
 		p.add(st.Operation, st.Table, "no-op", schemaExclusiveLock, "ENGINE options are ignored; tables use the LSM engine.", false, false, false)
 		return nil
@@ -233,7 +245,7 @@ func (p *schemaChangePlanner) alter(st *AlterTableStmt, online bool) error {
 		if name == "" {
 			name = info.Name + "_" + strings.Join(st.Constraint.Columns, "_") + "_idx"
 		}
-		return p.createIndex(&CreateIndexStmt{Table: st.Table, Index: name, Columns: st.Constraint.Columns, Unique: st.Constraint.Kind == "UNIQUE_INDEX", PublicationAbortAfter: st.PublicationAbortAfter}, online)
+		return p.createIndex(&CreateIndexStmt{Table: st.Table, Index: name, Columns: st.Constraint.Columns, PrefixLengths: st.Constraint.PrefixLengths, Fulltext: st.Constraint.Fulltext, Unique: st.Constraint.Kind == "UNIQUE_INDEX", PublicationAbortAfter: st.PublicationAbortAfter}, online)
 	case "DROP_INDEX":
 		if p.indexes[st.NewName] == nil && st.IfExists {
 			p.add(st.Operation, st.NewName, "no-op", schemaExclusiveLock, "The index does not exist.", false, false, false)

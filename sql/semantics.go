@@ -83,6 +83,11 @@ func validateRowTypes(info *TableInfo, row map[string]Value) error {
 
 func validateRowTypesPreserving(info *TableInfo, row, original map[string]Value, assigned map[string]bool) error {
 	for _, col := range info.Columns {
+		if value := row[col.Name]; col.ColType == ColText && value.Type == ColText && !value.Null {
+			if err := validateMySQLCharsetText(info.Charset, info.Name, col.Name, value.Text); err != nil {
+				return err
+			}
+		}
 		if col.AllowExistingLength && original != nil && !assigned[col.Name] &&
 			bytes.Equal(encodeValue(row[col.Name]), encodeValue(original[col.Name])) {
 			// The stored value predates an ALLOW EXISTING shrink. Every newly

@@ -132,6 +132,20 @@ func (p *Parser) parseAlterAction(table string) (*AlterTableStmt, error) {
 	p.advance()
 	var err error
 	switch kw {
+	case "CONVERT":
+		if err := p.alterWords("TO", "CHARACTER", "SET"); err != nil {
+			return nil, err
+		}
+		charset, err := p.alterName()
+		if err != nil {
+			return nil, err
+		}
+		switch charset {
+		case "utf8", "utf8mb3", "utf8mb4":
+		default:
+			return nil, fmt.Errorf("unsupported conversion character set: %s", charset)
+		}
+		a.Operation, a.NewName = "CONVERT_CHARSET", charset
 	case "ENGINE":
 		if p.cur.Type == TokEq {
 			p.advance()
@@ -151,7 +165,7 @@ func (p *Parser) parseAlterAction(table string) (*AlterTableStmt, error) {
 				return nil, err
 			}
 			a.Operation = "ADD_INDEX"
-			a.Constraint = &ConstraintDef{Name: def.Name, Kind: "INDEX", Columns: def.Columns, Fulltext: true}
+			a.Constraint = &ConstraintDef{Name: def.Name, Kind: "INDEX", Columns: def.Columns, Fulltext: true, PrefixLengths: def.PrefixLengths}
 			return a, nil
 		}
 		if p.showWord("UNIQUE") && (strings.EqualFold(p.tok.Peek().Value, "INDEX") || strings.EqualFold(p.tok.Peek().Value, "KEY")) {
@@ -161,7 +175,7 @@ func (p *Parser) parseAlterAction(table string) (*AlterTableStmt, error) {
 				return nil, e
 			}
 			a.Operation = "ADD_INDEX"
-			a.Constraint = &ConstraintDef{Name: def.Name, Kind: "UNIQUE_INDEX", Columns: def.Columns}
+			a.Constraint = &ConstraintDef{Name: def.Name, Kind: "UNIQUE_INDEX", Columns: def.Columns, PrefixLengths: def.PrefixLengths}
 			return a, nil
 		}
 		if p.showWord("CONSTRAINT") || p.showWord("PRIMARY") || p.showWord("UNIQUE") || p.showWord("CHECK") || p.showWord("FOREIGN") {
@@ -176,7 +190,7 @@ func (p *Parser) parseAlterAction(table string) (*AlterTableStmt, error) {
 				return nil, err
 			}
 			a.Operation = "ADD_INDEX"
-			a.Constraint = &ConstraintDef{Name: def.Name, Kind: "INDEX", Columns: def.Columns}
+			a.Constraint = &ConstraintDef{Name: def.Name, Kind: "INDEX", Columns: def.Columns, PrefixLengths: def.PrefixLengths}
 			return a, nil
 		}
 		p.optionalAlterWord("COLUMN")
@@ -380,6 +394,7 @@ func (p *Parser) parseAlterConstraint() (*ConstraintDef, error) {
 			c.Columns = tmp.TableUnique[0]
 		} else if len(tmp.Indexes) > 0 {
 			c.Columns = tmp.Indexes[0].Columns
+			c.PrefixLengths = tmp.Indexes[0].PrefixLengths
 			if c.Name == "" {
 				c.Name = tmp.Indexes[0].Name
 			}

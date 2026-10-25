@@ -59,6 +59,9 @@ func (s *Schema) AlterTable(a *AlterTableStmt) error {
 	if a.Operation == "IGNORE_ENGINE" {
 		return nil
 	}
+	if a.Operation == "CONVERT_CHARSET" {
+		return s.convertMySQLCharset(info, a.NewName)
+	}
 	if a.Operation == "ADD_COLUMN" && a.IfNotExists && slices.ContainsFunc(info.Columns, func(c ColumnDef) bool { return c.Name == a.Column.Name }) {
 		return nil
 	}
@@ -148,7 +151,7 @@ func (s *Schema) AlterTable(a *AlterTableStmt) error {
 		if name == "" {
 			name = info.Name + "_" + strings.Join(c.Columns, "_") + "_idx"
 		}
-		return s.CreateIndex(&CreateIndexStmt{Table: info.Name, Index: name, Columns: c.Columns, Unique: c.Kind == "UNIQUE_INDEX", Fulltext: c.Fulltext})
+		return s.CreateIndex(&CreateIndexStmt{Table: info.Name, Index: name, Columns: c.Columns, PrefixLengths: c.PrefixLengths, Unique: c.Kind == "UNIQUE_INDEX", Fulltext: c.Fulltext})
 	case "DROP_INDEX":
 		idx := s.findTableIndex(info.Name, a.NewName)
 		if idx == nil {
@@ -707,6 +710,9 @@ func (s *Schema) alterView(a *AlterTableStmt) error {
 }
 
 func (s *Schema) addConstraintIndex(info *TableInfo, c *ConstraintDef) error {
+	if err := validateIndexPrefixes(info.Columns, &IndexInfo{Columns: c.Columns, PrefixLengths: c.PrefixLengths, IsUnique: true}); err != nil {
+		return err
+	}
 	id, err := s.allocateObjectID()
 	if err != nil {
 		return err

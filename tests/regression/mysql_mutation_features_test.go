@@ -165,3 +165,120 @@ func TestMySQLCreateTableLikePreservesDefinitionAndReopens(t *testing.T) {
 	}
 	exec("CREATE TABLE IF NOT EXISTS copied LIKE missing")
 }
+
+func TestMySQLAlterUnicodeCharset(t *testing.T) {
+	e := newRegressionEnv(t)
+	d, err := e.openDatabase(e.path("charset"), storage.DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	exec := func(text string) *db.ExecResult {
+		t.Helper()
+		r, err := d.Exec(text)
+		if err != nil {
+			t.Fatalf("%s: %v", text, err)
+		}
+		return r
+	}
+	exec("CREATE TABLE docs(id INTEGER PRIMARY KEY,title TEXT,data BLOB); CREATE INDEX title_idx ON docs(title)")
+	exec("INSERT INTO docs VALUES(1,'café',X'ff'),(2,'😀',X'ff')")
+	exec("ALTER TABLE docs CONVERT TO CHARACTER SET utf8mb4")
+	if _, err := d.Exec("ALTER TABLE docs CONVERT TO CHARACTER SET utf8mb3"); err == nil {
+		t.Fatal("accepted supplementary character in utf8mb3")
+	}
+	if _, err := d.Exec("ALTER TABLE docs CONVERT TO CHARACTER SET utf8mb3, MODIFY COLUMN title VARCHAR(1)"); err == nil {
+		t.Fatal("accepted failing multi-action conversion")
+	}
+	create := exec("SHOW CREATE TABLE docs").Rows[0]["Create table"].Text
+	if !strings.Contains(create, "CHARSET=utf8mb4") {
+		t.Fatal(create)
+	}
+	if got := exec("SELECT title,HEX(data) AS data FROM docs WHERE title='café'").Rows; len(got) != 1 || got[0]["data"].Text != "FF" {
+		t.Fatal(got)
+	}
+	exec("DELETE FROM docs WHERE id=2")
+	exec("ALTER TABLE docs CONVERT TO CHARACTER SET utf8mb3")
+	if _, err := d.Exec("INSERT INTO docs VALUES(3,'😀',X'ff')"); err == nil {
+		t.Fatal("new insert ignored converted repertoire")
+	}
+	if err := d.Close(); err != nil {
+		t.Fatal(err)
+	}
+	d, err = e.openDatabase(e.path("charset"), storage.DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	create = exec("SHOW CREATE TABLE docs").Rows[0]["Create table"].Text
+	if !strings.Contains(create, "CHARSET=utf8mb3") {
+		t.Fatal(create)
+	}
+	if got := len(exec("SELECT id FROM docs WHERE title='café'").Rows); got != 1 {
+		t.Fatal(got)
+	}
+	for _, text := range []string{"ALTER TABLE docs CONVERT CHARACTER SET utf8mb4", "ALTER TABLE docs CONVERT TO CHARACTER SET missing"} {
+		if _, err := d.Exec(text); err == nil {
+			t.Errorf("accepted %s", text)
+		}
+	}
+}
+
+func TestMySQLAlterPrefixIndexes(t *testing.T) {
+	e := newRegressionEnv(t)
+	d, err := e.openDatabase(e.path("prefix-alter"), storage.DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	exec := func(text string) *db.ExecResult {
+		t.Helper()
+		r, err := d.Exec(text)
+		if err != nil {
+			t.Fatalf("%s: %v", text, err)
+		}
+		return r
+	}
+	exec("CREATE TABLE prefixes(id INTEGER PRIMARY KEY,a VARCHAR(20),b VARBINARY(20)); INSERT INTO prefixes VALUES(1,'same prefix one',X'616263'),(2,'same prefix two',X'616264')")
+	exec("ALTER TABLE prefixes ADD INDEX online_prefix(a(5),b(2))")
+	exec("BEGIN; ALTER TABLE prefixes ADD KEY transactional_prefix(b(3)); COMMIT")
+	check := func() {
+		r := exec("SHOW INDEX FROM prefixes")
+		got := make(map[string]int64)
+		for _, row := range r.Rows {
+			if !row["Sub_part"].Null {
+				got[row["Key_name"].Text+":"+row["Column_name"].Text] = row["Sub_part"].Int
+			}
+		}
+		for key, want := range map[string]int64{"online_prefix:a": 5, "online_prefix:b": 2, "transactional_prefix:b": 3} {
+			if got[key] != want {
+				t.Fatalf("%s: %v", key, got)
+			}
+		}
+		if n := len(exec("SELECT id FROM prefixes WHERE a='same prefix two' AND b=X'616264'").Rows); n != 1 {
+			t.Fatal(n)
+		}
+		create := exec("SHOW CREATE TABLE prefixes").Rows[0]["Create table"].Text
+		if !strings.Contains(create, `"a"(5)`) || !strings.Contains(create, `"b"(2)`) {
+			t.Fatal(create)
+		}
+	}
+	check()
+	for _, text := range []string{"ALTER TABLE prefixes ADD UNIQUE INDEX invalid_unique(a(5))", "ALTER TABLE prefixes ADD CONSTRAINT invalid_constraint UNIQUE KEY (a(5))", "ALTER TABLE prefixes ADD INDEX invalid_number(id(2))", "ALTER TABLE prefixes ADD INDEX invalid_length(a(21))", "EXPLAIN ALTER TABLE prefixes ADD UNIQUE KEY invalid_explain(a(2))"} {
+		if _, err := d.Exec(text); err == nil {
+			t.Errorf("accepted %s", text)
+		}
+	}
+	exec("BEGIN")
+	if _, err := d.Exec("ALTER TABLE prefixes ADD UNIQUE KEY invalid_tx(a(2))"); err == nil {
+		t.Fatal("accepted unique prefix in transaction")
+	}
+	exec("ROLLBACK")
+	if err := d.Close(); err != nil {
+		t.Fatal(err)
+	}
+	d, err = e.openDatabase(e.path("prefix-alter"), storage.DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	check()
+}
