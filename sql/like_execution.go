@@ -1,18 +1,23 @@
 package sql
 
-import "unicode/utf8"
+import (
+	"strings"
+	"unicode/utf8"
+)
 
 type likeToken struct {
 	r    rune
 	wild bool
 }
 type likePatternKey struct {
-	pattern string
-	escape  byte
+	pattern   string
+	escape    byte
+	sensitive bool
 }
 type likePattern struct {
-	tokens []likeToken
-	valid  bool
+	tokens    []likeToken
+	valid     bool
+	sensitive bool
 }
 
 func foldLikeRune(r rune) rune {
@@ -23,7 +28,11 @@ func foldLikeRune(r rune) rune {
 }
 
 func compileLike(pattern string, escape byte) likePattern {
-	p := likePattern{valid: true}
+	return compileLikeMode(pattern, escape, false)
+}
+
+func compileLikeMode(pattern string, escape byte, sensitive bool) likePattern {
+	p := likePattern{valid: true, sensitive: sensitive}
 	for pos := 0; pos < len(pattern); {
 		r, n := utf8.DecodeRuneInString(pattern[pos:])
 		pos += n
@@ -34,9 +43,9 @@ func compileLike(pattern string, escape byte) likePattern {
 			}
 			r, n = utf8.DecodeRuneInString(pattern[pos:])
 			pos += n
-			p.tokens = append(p.tokens, likeToken{r: foldLikeRune(r)})
+			p.tokens = append(p.tokens, likeToken{r: p.fold(r)})
 		} else {
-			p.tokens = append(p.tokens, likeToken{r: foldLikeRune(r), wild: r == '%' || r == '_'})
+			p.tokens = append(p.tokens, likeToken{r: p.fold(r), wild: r == '%' || r == '_'})
 		}
 	}
 	return p
@@ -45,6 +54,13 @@ func compileLike(pattern string, escape byte) likePattern {
 // Greedy wildcard matching uses byte positions at rune boundaries. It retains
 // ASCII-only case folding, Unicode '_', escapes, and matching across newlines,
 // without allocating a dynamic-programming matrix for every input string.
+func (p likePattern) fold(r rune) rune {
+	if p.sensitive {
+		return r
+	}
+	return foldLikeRune(r)
+}
+
 func (p likePattern) match(input string) bool {
 	if !p.valid {
 		return false
@@ -59,7 +75,7 @@ func (p likePattern) match(input string) bool {
 			continue
 		}
 		r, n := utf8.DecodeRuneInString(input[si:])
-		if ti < len(p.tokens) && (p.tokens[ti].wild && p.tokens[ti].r == '_' || !p.tokens[ti].wild && p.tokens[ti].r == foldLikeRune(r)) {
+		if ti < len(p.tokens) && (p.tokens[ti].wild && p.tokens[ti].r == '_' || !p.tokens[ti].wild && p.tokens[ti].r == p.fold(r)) {
 			si += n
 			ti++
 			continue
@@ -79,13 +95,17 @@ func (p likePattern) match(input string) bool {
 }
 
 func (s *Schema) matchLike(input, pattern string, escape byte) bool {
+	return s.matchLikeMode(input, pattern, escape, false)
+}
+
+func (s *Schema) matchLikeMode(input, pattern string, escape byte, sensitive bool) bool {
 	if s.selectDepth == 0 {
-		return compileLike(pattern, escape).match(input)
+		return compileLikeMode(pattern, escape, sensitive).match(input)
 	}
-	key := likePatternKey{pattern, escape}
+	key := likePatternKey{pattern, escape, sensitive}
 	p, ok := s.likePatterns[key]
 	if !ok {
-		p = compileLike(pattern, escape)
+		p = compileLikeMode(pattern, escape, sensitive)
 		if len(s.likePatterns) < 4096 {
 			if s.likePatterns == nil {
 				s.likePatterns = make(map[likePatternKey]likePattern)
@@ -98,9 +118,22 @@ func (s *Schema) matchLike(input, pattern string, escape byte) bool {
 
 func (s *Schema) matchLikeValues(input, pattern Value, escape byte) bool {
 	left, right := input.String(), pattern.String()
-	if !input.Binary && !pattern.Binary {
-		left = s.collation.Key(left)
-		right = s.collation.Key(right)
+	collation := explicitValueCollation(input, pattern)
+	if collation == "" && !input.Binary && !pattern.Binary {
+		collation = s.collation
 	}
-	return s.matchLike(left, right, escape)
+	sensitive := false
+	if _, ok := mysqlCollation(string(collation)); ok {
+		sensitive = strings.HasSuffix(string(collation), "_BIN")
+		if !sensitive {
+			left = mysqlGeneralCIKey(left)
+			right = mysqlGeneralCIKey(right)
+		}
+	} else if collation != "" {
+		left = collation.Key(left)
+		right = collation.Key(right)
+	} else if _, ok := MySQLSession(s.ctx); ok && (input.Binary || pattern.Binary) {
+		sensitive = true
+	}
+	return s.matchLikeMode(left, right, escape, sensitive)
 }

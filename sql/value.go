@@ -135,6 +135,7 @@ type InsertStmt struct {
 }
 
 type SelectStmt struct {
+	JoinGroup    bool // internal parenthesized joined table, preserves its qualified namespace
 	Windows      []WindowDefinition
 	prepared     *preparedExecutionPlan
 	With         *WithClause
@@ -419,11 +420,14 @@ type UnaryExpr struct {
 }
 
 type FuncCallExpr struct {
-	windowKey string // resolved privately per SELECT, immutable during evaluation
-	Window    *WindowSpec
-	Distinct  bool
-	Name      string
-	Args      []Expression
+	MySQLGroupConcat     bool
+	GroupConcatOrder     []OrderByClause
+	GroupConcatSeparator Expression
+	windowKey            string // resolved privately per SELECT, immutable during evaluation
+	Window               *WindowSpec
+	Distinct             bool
+	Name                 string
+	Args                 []Expression
 }
 
 type InListExpr struct {
@@ -471,6 +475,7 @@ func (*SubqueryExpr) expr()  {}
 func (*ExistsExpr) expr()    {}
 
 type Value struct {
+	Collation   Collation `json:"-"`
 	Type        ColumnType
 	EnumValue   bool  `json:"-"`
 	EnumOrdinal int64 `json:"-"`

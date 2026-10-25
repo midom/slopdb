@@ -17,8 +17,8 @@ func appendEqualityKey(dst []byte, value Value) []byte {
 }
 
 func (s *Schema) appendEqualityKey(dst []byte, value Value) []byte {
-	if !value.Null && value.Type == ColText && !value.Binary {
-		value.Text = s.collation.Key(value.Text)
+	if !value.Null && value.Type == ColText && (!value.Binary || value.Collation != "") {
+		value.Text = valueTextKey(value, s.collation)
 	}
 	if s.mysqlMode && value.Type == ColText && !value.Null {
 		value = NewBlobValue([]byte(value.Text))
@@ -43,7 +43,7 @@ func andTerms(expr Expression) []Expression {
 
 func deterministicFunction(name string) bool {
 	switch strings.ToUpper(name) {
-	case "COUNT", "SUM", "AVG", "MIN", "MAX", "TOTAL", "GROUP_CONCAT", "COALESCE", "IFNULL", "NULLIF", "LENGTH", "UPPER", "LOWER", "ABS", "ROUND", "IIF", "SUBSTR", "SUBSTRING", "REPLACE", "TRIM", "LTRIM", "RTRIM", "TYPEOF", "HEX", "UNICODE", "CHAR", "INSTR":
+	case "COUNT", "SUM", "AVG", "MIN", "MAX", "TOTAL", "GROUP_CONCAT", "COALESCE", "IFNULL", "NULLIF", "LENGTH", "UPPER", "LOWER", "ABS", "ROUND", "IIF", "IF", "GREATEST", "LEAST", "CONCAT", "__MYSQL_CONVERT", "CAST", "SUBSTR", "SUBSTRING", "REPLACE", "TRIM", "LTRIM", "RTRIM", "TYPEOF", "HEX", "UNICODE", "CHAR", "INSTR":
 		return true
 	}
 	return false
@@ -405,6 +405,11 @@ func (s *Schema) executeJoins(stmt *SelectStmt, baseRows []map[string]Value, bas
 				null := make(map[string]Value)
 				for _, c := range columns {
 					null[c.Name] = NewNullValue()
+					if jc.Subquery != nil && jc.Subquery.JoinGroup {
+						if _, name, ok := strings.Cut(c.Name, "."); ok {
+							null[name] = NewNullValue()
+						}
+					}
 				}
 				next = append(next, s.combineRowsWithAlias(left, null, alias))
 				if trackKeys {

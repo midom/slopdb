@@ -7,6 +7,7 @@ import (
 	"maps"
 	"reflect"
 	"strings"
+	"time"
 
 	"slopdb/storage"
 )
@@ -65,6 +66,7 @@ func (s *Schema) RefreshReadCommitted() error {
 // A new snapshot for each statement gives READ COMMITTED, including in a tx.
 func (s *Schema) StartStatement() error {
 	s.EndStatement()
+	s.statementTime = time.Now().UTC()
 	if s.replicaReadOnly {
 		s.replicaReadOnly = false
 		s.readStateVersion = ^uint64(0)
@@ -88,6 +90,7 @@ func (s *Schema) StartStatement() error {
 	return nil
 }
 func (s *Schema) EndStatement() {
+	s.statementTime = time.Time{}
 	if s.statementActive {
 		s.lsm.ReleaseSnapshotForReader(s.snapshotReader, s.statementSnapshot)
 		s.statementActive = false

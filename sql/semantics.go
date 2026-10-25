@@ -158,13 +158,19 @@ func validateScalarFunction(f *FuncCallExpr) error {
 	}
 	name := strings.ToUpper(f.Name)
 	n := len(f.Args)
+	if valid, known := validMySQLFunction(name, n); known {
+		if !valid {
+			return fmt.Errorf("wrong number of arguments to %s", name)
+		}
+		return nil
+	}
 	if exact, ok := scalarExactArguments[name]; ok {
 		if n != exact {
 			return fmt.Errorf("wrong number of arguments to %s", name)
 		}
 		if name == "CAST" {
 			if literal, ok := f.Args[1].(*LiteralExpr); ok {
-				switch strings.ToUpper(literal.Value.Text) {
+				switch strings.ToUpper(mysqlCastTarget(literal.Value.Text)) {
 				case "INT", "INTEGER", "BIGINT", "REAL", "FLOAT", "DOUBLE", "DOUBLE PRECISION", "TEXT", "BLOB":
 				default:
 					if _, _, ok := varyingCastType(literal.Value.Text); !ok {
@@ -218,6 +224,10 @@ func castSQLValue(value Value, target string) (Value, error) {
 		return NewNullValue(), nil
 	}
 	name := strings.ToUpper(target)
+	if v, handled, err := mysqlBinaryCast(value, name); handled {
+		return v, err
+	}
+	name = mysqlCastTarget(name)
 	if columnType, length, ok := varyingCastType(name); ok {
 		underlying := "TEXT"
 		if columnType == ColBlob {

@@ -14,6 +14,7 @@ type Parser struct {
 	parameters       bool
 	parameterCount   int
 	showStatusFilter bool
+	tableRefError    error
 }
 
 func Parse(sql string) ([]Statement, error) {
@@ -77,6 +78,9 @@ func (p *Parser) parse() ([]Statement, error) {
 			continue
 		}
 		stmt, err := p.parseStatement()
+		if p.tableRefError != nil {
+			err = p.tableRefError
+		}
 		if err != nil {
 			return nil, p.parseError(err)
 		}
@@ -1184,9 +1188,15 @@ func (p *Parser) parseSelect() (Statement, error) {
 			}
 			stmt.Joins = append(stmt.Joins, jc)
 		}
-		for p.cur.Type == TokKeyword {
+		for p.cur.Type == TokKeyword || strings.EqualFold(p.cur.Value, "STRAIGHT_JOIN") {
 			kw := strings.ToUpper(p.cur.Value)
-			if kw == "INNER" || kw == "LEFT" || kw == "RIGHT" || kw == "CROSS" || kw == "NATURAL" {
+			if kw == "STRAIGHT_JOIN" {
+				jc, err := p.parseJoinClause(kw)
+				if err != nil {
+					return nil, err
+				}
+				stmt.Joins = append(stmt.Joins, jc)
+			} else if kw == "INNER" || kw == "LEFT" || kw == "RIGHT" || kw == "CROSS" || kw == "NATURAL" {
 				jc, err := p.parseJoinClause(kw)
 				if err != nil {
 					return nil, err
@@ -1981,11 +1991,21 @@ func (p *Parser) parseUnary() (Expression, error) {
 	}
 	for p.cur.Type == TokKeyword && strings.EqualFold(p.cur.Value, "COLLATE") {
 		p.advance()
-		if !strings.EqualFold(p.cur.Value, "BINARY") || p.cur.Type != TokIdent && p.cur.Type != TokKeyword {
-			return nil, fmt.Errorf("unsupported collation: %s", p.cur.Value)
+		if p.cur.Type != TokIdent && p.cur.Type != TokKeyword {
+			return nil, fmt.Errorf("expected collation name")
+		}
+		name := strings.ToUpper(p.cur.Value)
+		if name != "BINARY" {
+			if _, ok := mysqlCollation(name); !ok {
+				return nil, fmt.Errorf("unsupported collation: %s", p.cur.Value)
+			}
 		}
 		p.advance()
-		expr = &UnaryExpr{Op: "BINARY", Right: expr}
+		if name == "BINARY" {
+			expr = &UnaryExpr{Op: "BINARY", Right: expr}
+		} else {
+			expr = &UnaryExpr{Op: "COLLATE:" + name, Right: expr}
+		}
 	}
 	return expr, nil
 }
@@ -1993,6 +2013,9 @@ func (p *Parser) parseUnary() (Expression, error) {
 func (p *Parser) parsePrimary() (Expression, error) {
 	if p.showWord("MATCH") && p.tok.Peek().Type == TokLParen {
 		return p.parseFulltextMatch()
+	}
+	if expr, handled, err := p.parseMySQLPrimary(); handled {
+		return expr, err
 	}
 	// ROWS is also a window-frame keyword; in table-status predicates it
 	// names the output column without requiring identifier quoting.
@@ -2098,6 +2121,13 @@ func (p *Parser) parsePrimary() (Expression, error) {
 		if typeName == "DOUBLE" && strings.EqualFold(p.cur.Value, "PRECISION") {
 			typeName = "DOUBLE PRECISION"
 			p.advance()
+		} else if typeName == "BINARY" && p.cur.Type == TokLParen {
+			typeName, err = p.parseBinaryCastLength()
+			if err != nil {
+				return nil, err
+			}
+		} else if typeName == "SIGNED" && strings.EqualFold(p.cur.Value, "INTEGER") {
+			p.advance()
 		} else if typeName == "VARCHAR" || typeName == "VARBINARY" {
 			length, err := p.parseStringLength()
 			if err != nil {
@@ -2131,30 +2161,7 @@ func (p *Parser) parsePrimary() (Expression, error) {
 		p.advance()
 
 		if p.cur.Type == TokLParen {
-			p.advance()
-			fc := &FuncCallExpr{Name: strings.ToUpper(name)}
-			if strings.EqualFold(p.cur.Value, "DISTINCT") {
-				fc.Distinct = true
-				p.advance()
-			} else if strings.EqualFold(p.cur.Value, "ALL") {
-				p.advance()
-			}
-			for p.cur.Type != TokRParen && p.cur.Type != TokEOF {
-				arg, err := p.parseExpression()
-				if err != nil {
-					return nil, err
-				}
-				fc.Args = append(fc.Args, arg)
-				if p.cur.Type == TokComma {
-					p.advance()
-				} else {
-					break
-				}
-			}
-			if err := p.expect(TokRParen); err != nil {
-				return nil, err
-			}
-			return p.parseWindowCall(fc)
+			return p.parseFunctionCall(name)
 		}
 
 		if p.cur.Type == TokDot {
@@ -2171,30 +2178,7 @@ func (p *Parser) parsePrimary() (Expression, error) {
 		name := p.cur.Value
 		if p.tok.Peek().Type == TokLParen {
 			p.advance()
-			p.advance()
-			fc := &FuncCallExpr{Name: strings.ToUpper(name)}
-			if strings.EqualFold(p.cur.Value, "DISTINCT") {
-				fc.Distinct = true
-				p.advance()
-			} else if strings.EqualFold(p.cur.Value, "ALL") {
-				p.advance()
-			}
-			for p.cur.Type != TokRParen && p.cur.Type != TokEOF {
-				arg, err := p.parseExpression()
-				if err != nil {
-					return nil, err
-				}
-				fc.Args = append(fc.Args, arg)
-				if p.cur.Type == TokComma {
-					p.advance()
-				} else {
-					break
-				}
-			}
-			if err := p.expect(TokRParen); err != nil {
-				return nil, err
-			}
-			return p.parseWindowCall(fc)
+			return p.parseFunctionCall(name)
 		}
 	}
 
@@ -2259,46 +2243,11 @@ func (p *Parser) parseCase() (Expression, error) {
 }
 
 func (p *Parser) parseTableRef() (string, string, Expression) {
-	if p.cur.Type == TokLParen {
-		subquery, err := p.parseSubqueryParens()
-		if err != nil {
-			return "", "", nil
-		}
-		alias := ""
-		if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "AS" {
-			p.advance()
-			if p.cur.Type == TokIdent || p.cur.Type == TokKeyword {
-				alias = p.cur.Value
-				p.advance()
-			}
-		} else if p.cur.Type == TokIdent || p.cur.Type == TokKeyword {
-			if !isReservedWord(p.cur.Value) {
-				alias = p.cur.Value
-				p.advance()
-			}
-		}
-		return "", alias, &SubqueryExpr{Stmt: subquery}
+	t, a, e, err := p.parseMySQLTableRef()
+	if err != nil && p.tableRefError == nil {
+		p.tableRefError = err
 	}
-	name := strings.ToLower(p.cur.Value)
-	alias := ""
-	if p.cur.Type == TokIdent || p.cur.Type == TokKeyword {
-		p.advance()
-		if (p.cur.Type == TokIdent || p.cur.Type == TokKeyword) && !isReservedWord(p.cur.Value) {
-			alias = strings.ToLower(p.cur.Value)
-			p.advance()
-		}
-		if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "AS" {
-			p.advance()
-			if p.cur.Type == TokIdent || p.cur.Type == TokKeyword {
-				alias = strings.ToLower(p.cur.Value)
-				p.advance()
-			}
-		}
-	}
-	if alias == "" {
-		alias = name
-	}
-	return name, alias, nil
+	return t, a, e
 }
 
 var reservedWords = map[string]bool{
@@ -2308,6 +2257,7 @@ var reservedWords = map[string]bool{
 	"UNION": true, "EXCEPT": true, "INTERSECT": true, "SET": true, "VALUES": true,
 	"INTO": true, "FROM": true, "END": true, "ELSE": true, "THEN": true, "WHEN": true,
 	"RETURNING": true, "USING": true, "AS": true,
+	"STRAIGHT_JOIN": true, "FORCE": true, "IGNORE": true, "USE": true,
 	"FOR": true, "LOCK": true, "NOWAIT": true, "SKIP": true, "LOCKED": true,
 }
 
@@ -2327,14 +2277,19 @@ func (p *Parser) parseJoinClause(kw string) (JoinClause, error) {
 			p.advance()
 		}
 	}
-	if p.cur.Value != "JOIN" {
+	if strings.EqualFold(p.cur.Value, "STRAIGHT_JOIN") {
 		p.advance()
-		if p.cur.Value == "OUTER" {
+		kw = "INNER"
+	} else {
+		if p.cur.Value != "JOIN" {
 			p.advance()
+			if p.cur.Value == "OUTER" {
+				p.advance()
+			}
 		}
-	}
-	if err := p.expectKeyword("JOIN"); err != nil {
-		return jc, err
+		if err := p.expectKeyword("JOIN"); err != nil {
+			return jc, err
+		}
 	}
 	jc.Type = kw
 	if natural {
@@ -2553,6 +2508,11 @@ func formatRef(name string) string {
 	return strings.Join(parts, ".")
 }
 func formatSelectSQL(s *SelectStmt) string {
+	if s.JoinGroup {
+		copy := *s
+		copy.JoinGroup = false
+		return strings.TrimPrefix(formatSelectSQL(&copy), "SELECT * FROM ")
+	}
 	if s.With != nil {
 		cp := *s
 		cp.With = nil
@@ -2704,10 +2664,21 @@ func formatExpr(e Expression) string {
 		}
 		return "(" + formatExpr(x.Left) + " " + x.Op + " " + formatExpr(x.Right) + escape + ")"
 	case *UnaryExpr:
+		if strings.HasPrefix(x.Op, "COLLATE:") {
+			return "(" + formatExpr(x.Right) + " COLLATE " + strings.TrimPrefix(x.Op, "COLLATE:") + ")"
+		}
 		return "(" + x.Op + " " + formatExpr(x.Right) + ")"
 	case *FuncCallExpr:
 		if x.Name == fulltextFunction {
 			return formatFulltextMatch(x)
+		}
+		if x.MySQLGroupConcat {
+			return mysqlGroupConcatSQL(x)
+		}
+		if x.Name == "__MYSQL_CONVERT" && len(x.Args) == 2 {
+			if name, ok := x.Args[1].(*LiteralExpr); ok {
+				return "CONVERT(" + formatExpr(x.Args[0]) + " USING " + name.Value.Text + ")"
+			}
 		}
 		if strings.EqualFold(x.Name, "CAST") && len(x.Args) == 2 {
 			if typ, ok := x.Args[1].(*LiteralExpr); ok {

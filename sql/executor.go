@@ -60,6 +60,7 @@ type ViewInfo struct {
 }
 
 type Schema struct {
+	statementTime      time.Time
 	onlineIndexMu      catalogGate
 	onlineIndexBuilds  map[*OnlineIndexBuild]struct{}
 	queryMemoryBytes   int64
@@ -3883,7 +3884,13 @@ func (s *Schema) validateQueryUncached(stmt *SelectStmt, info *TableInfo) error 
 	aliases := make(map[string]bool)
 	add := func(defs []ColumnDef, alias string) {
 		for _, col := range defs {
-			columns[strings.ToLower(col.Name)]++
+			if strings.Contains(col.Name, ".") {
+				qualified[strings.ToLower(col.Name)] = true
+				_, name, _ := strings.Cut(col.Name, ".")
+				columns[strings.ToLower(name)]++
+			} else {
+				columns[strings.ToLower(col.Name)]++
+			}
 			if needQualified && alias != "" {
 				qualified[strings.ToLower(alias+"."+col.Name)] = true
 			}
@@ -3966,8 +3973,11 @@ func (s *Schema) validateQueryUncached(stmt *SelectStmt, info *TableInfo) error 
 		case *UnaryExpr:
 			return validate(e.Right, allowAlias)
 		case *FuncCallExpr:
-			if e.Name == fulltextFunction {
-				if _, _, err := s.resolveFulltextIndex(e, stmt); err != nil {
+			if err := validate(e.GroupConcatSeparator, allowAlias); err != nil {
+				return err
+			}
+			for _, order := range e.GroupConcatOrder {
+				if err := validate(order.Expr, allowAlias); err != nil {
 					return err
 				}
 			}
@@ -4059,6 +4069,10 @@ func (s *Schema) SelectInto(stmt *SelectStmt, dst *ResultSet) (*ResultSet, error
 }
 
 func (s *Schema) selectInto(stmt *SelectStmt, dst *ResultSet) (result *ResultSet, err error) {
+	if s.selectDepth == 0 && !s.statementActive {
+		s.statementTime = time.Now().UTC()
+		defer func() { s.statementTime = time.Time{} }()
+	}
 	if s.replicaReadOnly && !IsReplicaReadStatement(stmt) {
 		return nil, fmt.Errorf("locking reads require the Raft leader")
 	}
@@ -4106,6 +4120,9 @@ func (s *Schema) selectInto(stmt *SelectStmt, dst *ResultSet) (result *ResultSet
 	defer func() { s.selectDepth-- }()
 	if s.selectDepth > 100 {
 		return nil, fmt.Errorf("query nesting limit exceeded")
+	}
+	if stmt.JoinGroup {
+		return s.selectJoinGroup(stmt)
 	}
 	// Prepared physical-table point reads can reuse their validated projection
 	// without a heap-allocated statement copy and general scan/result scaffolding.
@@ -4885,6 +4902,9 @@ func (s *Schema) replaceAggregates(expr Expression, rows []map[string]Value) (Ex
 	})
 }
 func (s *Schema) evalAggregate(fc *FuncCallExpr, rows []map[string]Value) (Value, error) {
+	if fc.MySQLGroupConcat {
+		return s.evalMySQLGroupConcat(fc, rows)
+	}
 	count := len(fc.Args)
 	if count > 1 && (!strings.EqualFold(fc.Name, "GROUP_CONCAT") || count > 2) {
 		return NewNullValue(), fmt.Errorf("wrong number of arguments to %s", fc.Name)
@@ -5290,6 +5310,15 @@ func (s *Schema) addJoinColumns(rs *ResultSet, jc JoinClause, baseColumns []Colu
 }
 func (s *Schema) getJoinRows(jc JoinClause, locking bool, needed map[string]bool) ([]map[string]Value, []ColumnDef, [][]string, error) {
 	if jc.Subquery != nil {
+		if jc.Subquery.JoinGroup {
+			copy := *jc.Subquery
+			copy.trackRows = locking
+			rs, err := s.Select(&copy)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			return rs.Rows, rs.Columns, rs.rowKeys, nil
+		}
 		rs, err := s.Select(jc.Subquery)
 		if err != nil {
 			return nil, nil, nil, err
@@ -5879,6 +5908,11 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 		if err != nil {
 			return NewNullValue(), err
 		}
+		if strings.HasPrefix(e.Op, "COLLATE:") {
+			right.Collation = Collation(strings.TrimPrefix(e.Op, "COLLATE:"))
+			right.Binary = false
+			return right, nil
+		}
 		if e.Op == "BINARY" {
 			right.Binary = true
 			return right, nil
@@ -5958,6 +5992,9 @@ func (s *Schema) evalFunc(e *FuncCallExpr, row map[string]Value) (Value, error) 
 	name := strings.ToUpper(e.Name)
 	if err := validateScalarFunction(e); err != nil {
 		return NewNullValue(), err
+	}
+	if value, handled, err := s.evalMySQLFunc(e, row); handled || err != nil {
+		return value, err
 	}
 
 	switch strings.ToUpper(e.Name) {
@@ -6760,6 +6797,11 @@ func (s *Schema) valueCompare(a, b Value) int {
 		b = NewIntValue(b.EnumOrdinal)
 	}
 	if !a.Null && !b.Null && a.Type == ColText && b.Type == ColText {
+		if collation := explicitValueCollation(a, b); collation != "" {
+			return collation.Compare(a.Text, b.Text)
+		}
+	}
+	if !a.Null && !b.Null && a.Type == ColText && b.Type == ColText {
 		if a.Binary || b.Binary {
 			return strings.Compare(a.Text, b.Text)
 		}
@@ -6831,8 +6873,8 @@ func valueIdentity(v Value) []byte { return appendValueIdentity(nil, v) }
 func (s *Schema) valueIdentity(v Value) []byte { return s.appendValueIdentity(nil, v) }
 
 func (s *Schema) appendValueIdentity(buf []byte, v Value) []byte {
-	if !v.Null && v.Type == ColText && !v.Binary {
-		v.Text = s.collation.Key(v.Text)
+	if !v.Null && v.Type == ColText && (!v.Binary || v.Collation != "") {
+		v.Text = valueTextKey(v, s.collation)
 	}
 	return appendValueIdentity(buf, v)
 }

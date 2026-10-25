@@ -354,6 +354,10 @@ func (s *Schema) cteQueryColumnDefs(query Statement, outer map[string][]ColumnDe
 	case *UnionStmt:
 		return s.cteQueryColumnDefs(q.Left, names)
 	case *SelectStmt:
+		if q.JoinGroup {
+			cols, _ := s.joinGroupColumns(q)
+			return cols
+		}
 		if q.materialized != nil {
 			return q.materialized.Columns
 		}

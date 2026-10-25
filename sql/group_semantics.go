@@ -36,6 +36,17 @@ func mapExpression(expr Expression, visit func(Expression) (Expression, bool, er
 				return nil, err
 			}
 		}
+		c.GroupConcatSeparator, err = rewrite(e.GroupConcatSeparator)
+		if err != nil {
+			return nil, err
+		}
+		c.GroupConcatOrder = append([]OrderByClause(nil), e.GroupConcatOrder...)
+		for i, order := range c.GroupConcatOrder {
+			c.GroupConcatOrder[i].Expr, err = rewrite(order.Expr)
+			if err != nil {
+				return nil, err
+			}
+		}
 		c.Window, err = mapWindowSpec(e.Window, rewrite)
 		return &c, err
 	case *InListExpr:
@@ -101,15 +112,23 @@ func validateAggregateExpr(expr Expression, allow bool) error {
 					return true, err
 				}
 			}
-			if f.Distinct && (!isAggregate(f) || len(f.Args) != 1) {
+			if f.Distinct && (!isAggregate(f) || len(f.Args) != 1 && !f.MySQLGroupConcat) {
 				return true, fmt.Errorf("DISTINCT requires a single aggregate argument")
 			}
 			if isAggregate(f) {
 				if !allow {
 					return true, fmt.Errorf("aggregate %s is not allowed in this context", f.Name)
 				}
-				if len(f.Args) == 0 || len(f.Args) > 1 && (!strings.EqualFold(f.Name, "GROUP_CONCAT") || len(f.Args) > 2) {
+				if len(f.Args) == 0 || !f.MySQLGroupConcat && len(f.Args) > 1 && (!strings.EqualFold(f.Name, "GROUP_CONCAT") || len(f.Args) > 2) {
 					return true, fmt.Errorf("wrong number of arguments to %s", f.Name)
+				}
+				for _, order := range f.GroupConcatOrder {
+					if err := validateAggregateExpr(order.Expr, false); err != nil {
+						return true, err
+					}
+				}
+				if err := validateAggregateExpr(f.GroupConcatSeparator, false); err != nil {
+					return true, err
 				}
 				for _, arg := range f.Args {
 					if c, ok := arg.(*ColumnRefExpr); ok && c.Name == "*" {
@@ -294,6 +313,14 @@ func walkExpression(expr Expression, visit func(Expression) (bool, error)) error
 	case *FuncCallExpr:
 		for _, a := range e.Args {
 			if err := walk(a); err != nil {
+				return err
+			}
+		}
+		if err := walk(e.GroupConcatSeparator); err != nil {
+			return err
+		}
+		for _, order := range e.GroupConcatOrder {
+			if err := walk(order.Expr); err != nil {
 				return err
 			}
 		}

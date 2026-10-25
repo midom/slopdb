@@ -19,6 +19,9 @@ const BinaryCollation Collation = "BINARY"
 // _CI for Unicode case folding. The spelling is stable in persisted catalogs.
 func ParseCollation(name string) (Collation, error) {
 	mode := Collation(strings.ToUpper(strings.TrimSpace(name)))
+	if c, ok := mysqlCollation(string(mode)); ok {
+		return c, nil
+	}
 	switch mode {
 	case BinaryCollation, "NFC", "NFD", "NFKC", "NFKD",
 		"NFC_CI", "NFD_CI", "NFKC_CI", "NFKD_CI":
@@ -32,6 +35,9 @@ func ParseCollation(name string) (Collation, error) {
 // keys. Case folding precedes a second normalization pass because folding can
 // introduce decomposed code points.
 func (c Collation) Key(value string) string {
+	if key, ok := mysqlCollationKey(c, value); ok {
+		return key
+	}
 	if c == "" || c == BinaryCollation || !utf8.ValidString(value) {
 		return value
 	}

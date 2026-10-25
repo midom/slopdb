@@ -232,6 +232,9 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 			case *ColumnRefExpr:
 				needed[e.Name] = true
 			case *FuncCallExpr:
+				if e.MySQLGroupConcat {
+					safe = false
+				}
 				if !deterministicFunction(e.Name) {
 					safe = false
 				}
