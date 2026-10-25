@@ -86,7 +86,7 @@ func (s *Schema) mysqlCatalogTable(name string, options MySQLSessionOptions) (*R
 		if options.SchemaNames != nil {
 			schemas = options.SchemaNames()
 		}
-		if len(schemas) == 0 {
+		if len(schemas) == 0 && options.SchemaNames == nil {
 			schemas = []string{options.Database}
 		}
 		for _, schema := range schemas {

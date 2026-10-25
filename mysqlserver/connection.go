@@ -329,11 +329,6 @@ func (c *client) control(query string) (*db.ExecResult, bool, error) {
 	return nil, false, nil
 }
 
-// The optional interface keeps this protocol package buildable while the type
-// compatibility implementation is integrated in an independent worktree.
 func enableMySQLSession(session *db.Session) error {
-	if mode, ok := any(session).(interface{ SetMySQLMode(bool) error }); ok {
-		return mode.SetMySQLMode(true)
-	}
-	return nil
+	return session.SetMySQLMode(true)
 }

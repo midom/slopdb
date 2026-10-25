@@ -6,6 +6,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 
 	"slopdb/db"
 	"slopdb/sql"
@@ -114,23 +115,92 @@ func (c *client) writeError(err error) error {
 }
 
 const (
-	typeLongLong byte = 8
-	typeDouble   byte = 5
-	typeBlob     byte = 252
-	typeString   byte = 253
+	typeTiny        byte = 1
+	typeShort       byte = 2
+	typeLong        byte = 3
+	typeFloat       byte = 4
+	typeDouble      byte = 5
+	typeTimestamp   byte = 7
+	typeLongLong    byte = 8
+	typeDate        byte = 10
+	typeDatetime    byte = 12
+	typeBlob        byte = 252
+	typeString      byte = 253
+	typeFixedString byte = 254
 )
 
 func wireType(col sql.ColumnDef) byte {
 	switch col.ColType {
 	case sql.ColInteger:
+		// Legacy native INTEGER columns retain their full int64 domain.
+		if col.MySQL || col.Unsigned || (col.Declared != "" && col.Declared != "INTEGER") {
+			switch col.IntegerBits {
+			case 8:
+				return typeTiny
+			case 16:
+				return typeShort
+			case 24, 32:
+				return typeLong
+			}
+		}
 		return typeLongLong
 	case sql.ColReal:
+		if col.Declared == "FLOAT" {
+			return typeFloat
+		}
 		return typeDouble
 	case sql.ColBlob:
+		if col.FixedBinary {
+			return typeFixedString
+		}
 		return typeBlob
 	default:
+		switch col.Declared {
+		case "TIMESTAMP":
+			return typeTimestamp
+		case "DATETIME":
+			return typeDatetime
+		case "DATE":
+			return typeDate
+		case "ENUM":
+			return typeFixedString
+		case "TINYTEXT", "MEDIUMTEXT", "LONGTEXT":
+			return typeBlob
+		}
 		return typeString
 	}
+}
+
+// Temporal binary rows use MySQL's structured calendar encoding, while ordinary
+// text result rows continue to expose the stored canonical SQL string.
+func appendTemporal(p []byte, value string, kind byte) []byte {
+	if strings.HasPrefix(value, "0000-00-00") {
+		return append(p, 0)
+	}
+	layout := "2006-01-02 15:04:05"
+	if kind == typeDate {
+		layout = "2006-01-02"
+	}
+	date, err := time.Parse(layout, value)
+	if err != nil {
+		return append(p, 0)
+	} // Stored temporal values are validated by SQL.
+	size := byte(7)
+	if kind == typeDate {
+		size = 4
+	} else if date.Nanosecond() != 0 {
+		size = 11
+	}
+	p = append(p, size)
+	p = append16(p, uint16(date.Year()))
+	p = append(p, byte(date.Month()), byte(date.Day()))
+	if size > 4 {
+		p = append(p, byte(date.Hour()), byte(date.Minute()), byte(date.Second()))
+	}
+	if size == 11 {
+		p = append32(p, uint32(date.Nanosecond()/1000))
+	}
+	return p
 }
 func columnPacket(col sql.ColumnDef, database string) []byte {
 	p := appendString(nil, []byte("def"))
@@ -155,13 +225,33 @@ func columnPacket(col sql.ColumnDef, database string) []byte {
 	if col.Unique {
 		flags |= 4
 	}
-	if col.AutoIncrement {
+	if col.Unsigned {
+		flags |= 32
+	}
+	if col.ColType == sql.ColBlob {
+		flags |= 16
+	}
+	if col.Declared == "ENUM" {
+		flags |= 256
+	}
+	if col.AutoIncrement || col.MySQLAutoIncrement {
 		flags |= 512
 	}
 	p = append16(p, charset)
 	size := uint32(math.MaxUint32)
 	if col.ColType == sql.ColInteger {
 		size = 20
+		switch wireType(col) {
+		case typeTiny:
+			size = 4
+		case typeShort:
+			size = 6
+		case typeLong:
+			size = 11
+		}
+		if col.Unsigned && wireType(col) != typeLongLong {
+			size--
+		}
 	}
 	if col.ColType == sql.ColReal {
 		size = 22
@@ -246,6 +336,21 @@ func (c *client) result(result *db.ExecResult, binaryRows bool) error {
 			}
 			if binaryRows {
 				switch wireType(col) {
+				case typeTiny:
+					p = append(p, byte(v.Int))
+					continue
+				case typeShort:
+					p = append16(p, uint16(v.Int))
+					continue
+				case typeLong:
+					p = append32(p, uint32(v.Int))
+					continue
+				case typeFloat:
+					p = append32(p, math.Float32bits(float32(v.Real)))
+					continue
+				case typeTimestamp, typeDatetime, typeDate:
+					p = appendTemporal(p, v.Text, wireType(col))
+					continue
 				case typeLongLong:
 					p = append64(p, uint64(v.Int))
 					continue
