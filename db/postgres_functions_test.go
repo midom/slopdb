@@ -3,9 +3,12 @@ package db_test
 import (
 	"encoding/hex"
 	"encoding/json"
+	"math"
 	"os"
+	"reflect"
 	"slopdb/db"
 	"slopdb/sql"
+	"strconv"
 	"testing"
 )
 
@@ -20,6 +23,8 @@ func TestPostgresFunctionReference(t *testing.T) {
 			SQL   string
 			Value *string
 			Error bool
+			JSON  bool
+			Float bool
 		}
 	}
 	if err = json.Unmarshal(data, &fixture); err != nil {
@@ -58,6 +63,21 @@ func TestPostgresFunctionReference(t *testing.T) {
 			got := v.String()
 			if v.Type == sql.ColBlob {
 				got = "\\x" + hex.EncodeToString(v.Blob)
+			}
+			if tc.JSON && !v.Null {
+				var a, b any
+				if json.Unmarshal([]byte(got), &a) != nil || json.Unmarshal([]byte(*tc.Value), &b) != nil || !reflect.DeepEqual(a, b) {
+					t.Fatalf("JSON %s, want %s", got, *tc.Value)
+				}
+				return
+			}
+			if tc.Float && !v.Null {
+				a, e1 := strconv.ParseFloat(got, 64)
+				b, e2 := strconv.ParseFloat(*tc.Value, 64)
+				if e1 != nil || e2 != nil || math.Abs(a-b) > 1e-12*math.Max(1, math.Abs(b)) {
+					t.Fatalf("float %s, want %s", got, *tc.Value)
+				}
+				return
 			}
 			if v.Null || got != *tc.Value {
 				t.Fatalf("got %q (type %v), want %q from %s", got, v.Type, *tc.Value, fixture.Source)

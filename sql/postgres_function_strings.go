@@ -343,6 +343,12 @@ func postgresUTF8Encoding(text string) bool {
 	return strings.EqualFold(text, "UTF8") || strings.EqualFold(text, "UTF-8") || strings.EqualFold(text, "unicode")
 }
 func postgresText(v Value) string {
+	if strings.EqualFold(v.PGType, "BOOLEAN") {
+		if v.Int != 0 {
+			return "t"
+		}
+		return "f"
+	}
 	if v.Type == ColBlob {
 		return "\\x" + hex.EncodeToString(v.Blob)
 	}

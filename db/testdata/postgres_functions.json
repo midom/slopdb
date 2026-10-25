@@ -238,6 +238,262 @@
       "value": null
     },
     {
+      "sql": "json_typeof('null')",
+      "value": "null"
+    },
+    {
+      "sql": "jsonb_typeof('{\"a\":true}')",
+      "value": "object"
+    },
+    {
+      "sql": "json_array_length('[1,null,3]')",
+      "value": "3"
+    },
+    {
+      "sql": "json_extract_path_text('{\"a\":[1,null,3]}','a','1')",
+      "value": null
+    },
+    {
+      "sql": "json_extract_path_text('{\"a\":[1,null,3]}','a','-1')",
+      "value": "3"
+    },
+    {
+      "sql": "jsonb_extract_path_text('{\"a\":1}','missing')",
+      "value": null
+    },
+    {
+      "sql": "to_json(CAST(NULL AS TEXT))",
+      "value": null
+    },
+    {
+      "sql": "jsonb_typeof(NULL)",
+      "value": null
+    },
+    {
+      "sql": "abs(CAST('-12345678901234567890.1234' AS DECIMAL(30,4)))",
+      "value": "12345678901234567890.1234"
+    },
+    {
+      "sql": "ceil(CAST('-1.2' AS DECIMAL(4,1)))",
+      "value": "-1"
+    },
+    {
+      "sql": "floor(CAST('-1.2' AS DECIMAL(4,1)))",
+      "value": "-2"
+    },
+    {
+      "sql": "round(CAST('2.5' AS DECIMAL(3,1)))",
+      "value": "3"
+    },
+    {
+      "sql": "round(CAST('-123.456' AS DECIMAL(9,3)),-1)",
+      "value": "-120"
+    },
+    {
+      "sql": "trunc(CAST('-123.456' AS DECIMAL(9,3)),2)",
+      "value": "-123.45"
+    },
+    {
+      "sql": "scale(CAST('8.4100' AS DECIMAL(9,4)))",
+      "value": "4"
+    },
+    {
+      "sql": "min_scale(CAST('8.4100' AS DECIMAL(9,4)))",
+      "value": "2"
+    },
+    {
+      "sql": "trim_scale(CAST('8.4100' AS DECIMAL(9,4)))",
+      "value": "8.41"
+    },
+    {
+      "sql": "gcd(1071,462)",
+      "value": "21"
+    },
+    {
+      "sql": "lcm(1071,462)",
+      "value": "23562"
+    },
+    {
+      "sql": "gcd(CAST('1.2' AS DECIMAL(3,1)),CAST('0.9' AS DECIMAL(3,1)))",
+      "value": "0.3"
+    },
+    {
+      "sql": "mod(-7,3)",
+      "value": "-1"
+    },
+    {
+      "sql": "div(7,3)",
+      "value": "2"
+    },
+    {
+      "sql": "factorial(20)",
+      "value": "2432902008176640000"
+    },
+    {
+      "sql": "width_bucket(5,0,10,5)",
+      "value": "3"
+    },
+    {
+      "sql": "width_bucket(5,10,0,5)",
+      "value": "3"
+    },
+    {
+      "sql": "width_bucket(10,0,10,5)",
+      "value": "6"
+    },
+    {
+      "sql": "width_bucket(-1,0,10,5)",
+      "value": "0"
+    },
+    {
+      "sql": "sqrt(NULL)",
+      "value": null
+    },
+    {
+      "sql": "gcd(NULL,1)",
+      "value": null
+    },
+    {
+      "sql": "json_build_array()",
+      "value": "[]",
+      "json": true
+    },
+    {
+      "sql": "jsonb_build_array(1,'a',NULL,CAST('{\"x\":true}' AS JSON))",
+      "value": "[1, \"a\", null, {\"x\": true}]",
+      "json": true
+    },
+    {
+      "sql": "json_build_object('n',42,'text','é','null',NULL)",
+      "value": "{\"n\" : 42, \"text\" : \"é\", \"null\" : null}",
+      "json": true
+    },
+    {
+      "sql": "jsonb_build_object('a',1,'a',2)",
+      "value": "{\"a\": 2}",
+      "json": true
+    },
+    {
+      "sql": "to_json(CAST('é' AS TEXT))",
+      "value": "\"é\"",
+      "json": true
+    },
+    {
+      "sql": "to_jsonb(1234567890123456789)",
+      "value": "1234567890123456789",
+      "json": true
+    },
+    {
+      "sql": "json_extract_path(CAST('{\"a\":[1,2,3]}' AS JSON),'a','-1')",
+      "value": "3",
+      "json": true
+    },
+    {
+      "sql": "jsonb_extract_path(CAST('{\"a\":[1,2,3]}' AS JSONB),'a')",
+      "value": "[1, 2, 3]",
+      "json": true
+    },
+    {
+      "sql": "jsonb_set('{\"a\":[1,2,3]}','{a,-1}','9')",
+      "value": "{\"a\": [1, 2, 9]}",
+      "json": true
+    },
+    {
+      "sql": "jsonb_set('{\"a\":1}','{missing,x}','9')",
+      "value": "{\"a\": 1}",
+      "json": true
+    },
+    {
+      "sql": "jsonb_set('[1,2]','{-9}','0')",
+      "value": "[0, 1, 2]",
+      "json": true
+    },
+    {
+      "sql": "jsonb_set('[1,2]','{9}','0',false)",
+      "value": "[1, 2]",
+      "json": true
+    },
+    {
+      "sql": "jsonb_insert('[1,2]','{0}','3')",
+      "value": "[3, 1, 2]",
+      "json": true
+    },
+    {
+      "sql": "jsonb_insert('[1,2]','{0}','3',true)",
+      "value": "[1, 3, 2]",
+      "json": true
+    },
+    {
+      "sql": "jsonb_insert('{\"a\":1}','{b}','2')",
+      "value": "{\"a\": 1, \"b\": 2}",
+      "json": true
+    },
+    {
+      "sql": "jsonb_strip_nulls('{\"a\":null,\"b\":[null,{\"c\":null,\"d\":2}]}')",
+      "value": "{\"b\": [null, {\"d\": 2}]}",
+      "json": true
+    },
+    {
+      "sql": "sqrt(4)",
+      "value": "2",
+      "float": true
+    },
+    {
+      "sql": "cbrt(-27)",
+      "value": "-3.0000000000000004",
+      "float": true
+    },
+    {
+      "sql": "ln(1)",
+      "value": "0",
+      "float": true
+    },
+    {
+      "sql": "log(100)",
+      "value": "2",
+      "float": true
+    },
+    {
+      "sql": "log(2,8)",
+      "value": "3.0000000000000000",
+      "float": true
+    },
+    {
+      "sql": "sin(0)",
+      "value": "0",
+      "float": true
+    },
+    {
+      "sql": "sind(180)",
+      "value": "0",
+      "float": true
+    },
+    {
+      "sql": "cosd(90)",
+      "value": "0",
+      "float": true
+    },
+    {
+      "sql": "asind(1)",
+      "value": "90",
+      "float": true
+    },
+    {
+      "sql": "atan2d(1,0)",
+      "value": "90",
+      "float": true
+    },
+    {
+      "sql": "degrees(pi())",
+      "value": "180",
+      "float": true
+    },
+    {
+      "sql": "power(2,10)",
+      "value": "1024",
+      "float": true
+    },
+    {
       "sql": "concat()",
       "error": true
     },
@@ -283,6 +539,66 @@
     },
     {
       "sql": "convert_from(decode('ff','hex'),'UTF8')",
+      "error": true
+    },
+    {
+      "sql": "json_build_object('a')",
+      "error": true
+    },
+    {
+      "sql": "json_build_object(NULL,1)",
+      "error": true
+    },
+    {
+      "sql": "json_array_length('{}')",
+      "error": true
+    },
+    {
+      "sql": "jsonb_insert('{\"a\":1}','{a}','2')",
+      "error": true
+    },
+    {
+      "sql": "jsonb_set('1','{a}','2')",
+      "error": true
+    },
+    {
+      "sql": "jsonb_set('[1]','{x}','2')",
+      "error": true
+    },
+    {
+      "sql": "sqrt(-1)",
+      "error": true
+    },
+    {
+      "sql": "ln(0)",
+      "error": true
+    },
+    {
+      "sql": "acos(2)",
+      "error": true
+    },
+    {
+      "sql": "log(1,2)",
+      "error": true
+    },
+    {
+      "sql": "mod(1,0)",
+      "error": true
+    },
+    {
+      "sql": "div(1,0)",
+      "error": true
+    },
+    {
+      "sql": "factorial(-1)",
+      "error": true
+    },
+    {
+      "sql": "width_bucket(1,0,0,5)",
+      "error": true
+    },
+    {
+      "sql": "width_bucket(1,0,10,0)",
       "error": true
     }
   ]

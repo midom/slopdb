@@ -6292,7 +6292,7 @@ func (s *Schema) evalFuncResult(e *FuncCallExpr, row map[string]Value) (Value, e
 		return s.evalFulltext(e, row)
 	}
 	name := strings.ToUpper(e.Name)
-	if err := validateScalarFunction(e); err != nil {
+	if err := validateScalarFunctionDialect(e, s.postgresMode); err != nil {
 		return NewNullValue(), err
 	}
 	if value, handled, err := s.evalMySQLFunc(e, row); handled || err != nil {

@@ -15,8 +15,19 @@ cases = [
 "encode(decode('00ff615c','hex'),'escape')", "encode(decode('YWJj','base64'),'hex')", "get_byte(decode('ff00','hex'),0)", "get_bit(decode('01','hex'),0)", "encode(set_byte(decode('0000','hex'),1,256),'hex')", "encode(set_bit(decode('0000','hex'),9,1),'hex')", "convert_from(decode('c3a9','hex'),'UTF8')", "encode(convert_to('é','UTF8'),'hex')",
 "length(NULL)", "translate(NULL,'a','b')", "split_part(NULL,'.',1)", "format(NULL,'x')",
 ]
+json_cases=[
+"json_build_array()", "jsonb_build_array(1,'a',NULL,CAST('{\"x\":true}' AS JSON))", "json_build_object('n',42,'text','é','null',NULL)", "jsonb_build_object('a',1,'a',2)", "to_json(CAST('é' AS TEXT))", "to_jsonb(1234567890123456789::bigint)", "json_extract_path(CAST('{\"a\":[1,2,3]}' AS JSON),'a','-1')", "jsonb_extract_path(CAST('{\"a\":[1,2,3]}' AS JSONB),'a')",
+"jsonb_set('{\"a\":[1,2,3]}','{a,-1}','9')", "jsonb_set('{\"a\":1}','{missing,x}','9')", "jsonb_set('[1,2]','{-9}','0')", "jsonb_set('[1,2]','{9}','0',false)", "jsonb_insert('[1,2]','{0}','3')", "jsonb_insert('[1,2]','{0}','3',true)", "jsonb_insert('{\"a\":1}','{b}','2')", "jsonb_strip_nulls('{\"a\":null,\"b\":[null,{\"c\":null,\"d\":2}]}')",
+]
+# Cast syntax below also exercises PostgreSQL declared type names.
+json_cases=[x.replace('::text','').replace('::bigint','') for x in json_cases]
+float_cases=["sqrt(4)","cbrt(-27)","ln(1)","log(100)","log(2,8)","sin(0)","sind(180)","cosd(90)","asind(1)","atan2d(1,0)","degrees(pi())","power(2,10)"]
+cases += ["json_typeof('null')", "jsonb_typeof('{\"a\":true}')", "json_array_length('[1,null,3]')", "json_extract_path_text('{\"a\":[1,null,3]}','a','1')", "json_extract_path_text('{\"a\":[1,null,3]}','a','-1')", "jsonb_extract_path_text('{\"a\":1}','missing')", "to_json(CAST(NULL AS TEXT))", "jsonb_typeof(NULL)",
+"abs(CAST('-12345678901234567890.1234' AS DECIMAL(30,4)))", "ceil(CAST('-1.2' AS DECIMAL(4,1)))", "floor(CAST('-1.2' AS DECIMAL(4,1)))", "round(CAST('2.5' AS DECIMAL(3,1)))", "round(CAST('-123.456' AS DECIMAL(9,3)),-1)", "trunc(CAST('-123.456' AS DECIMAL(9,3)),2)", "scale(CAST('8.4100' AS DECIMAL(9,4)))", "min_scale(CAST('8.4100' AS DECIMAL(9,4)))", "trim_scale(CAST('8.4100' AS DECIMAL(9,4)))", "gcd(1071,462)", "lcm(1071,462)", "gcd(CAST('1.2' AS DECIMAL(3,1)),CAST('0.9' AS DECIMAL(3,1)))", "mod(-7,3)", "div(7,3)", "factorial(20)", "width_bucket(5,0,10,5)", "width_bucket(5,10,0,5)", "width_bucket(10,0,10,5)", "width_bucket(-1,0,10,5)", "sqrt(NULL)", "gcd(NULL,1)"]
+cases += json_cases + float_cases
 errors=["concat()", "concat_ws(',')", "chr(0)", "chr(55296)", "split_part('a','.',0)", "format('%I',NULL)", "format('%s')", "format('%q','x')", "decode('x','hex')", "get_byte(decode('00','hex'),1)", "set_bit(decode('00','hex'),0,2)", "convert_from(decode('ff','hex'),'UTF8')"]
 output=[]
+errors += ["json_build_object('a')", "json_build_object(NULL,1)", "json_array_length('{}')", "jsonb_insert('{\"a\":1}','{a}','2')", "jsonb_set('1','{a}','2')", "jsonb_set('[1]','{x}','2')", "sqrt(-1)", "ln(0)", "acos(2)", "log(1,2)", "mod(1,0)", "div(1,0)", "factorial(-1)", "width_bucket(1,0,0,5)", "width_bucket(1,0,10,0)"]
 for expr in cases+errors:
     p=subprocess.run(['psql','-X','-At','-v','ON_ERROR_STOP=1','-c',"SELECT json_build_object('value',("+expr+")::text)"],text=True,capture_output=True)
     if expr in errors:
@@ -24,5 +35,5 @@ for expr in cases+errors:
         output.append({'sql':expr,'error':True})
     else:
         if p.returncode: raise RuntimeError(expr+'\n'+p.stderr)
-        output.append({'sql':expr,**json.loads(p.stdout)})
+        output.append({'sql':expr,**json.loads(p.stdout),**({'json':True} if expr in json_cases else {}),**({'float':True} if expr in float_cases else {})})
 pathlib.Path(__file__).with_name('postgres_functions.json').write_text(json.dumps({'source':'PostgreSQL 16.15','cases':output},ensure_ascii=False,indent=2)+'\n')

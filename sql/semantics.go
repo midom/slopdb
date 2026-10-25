@@ -163,12 +163,16 @@ func suppliedColumn(columns []string, name string, defaultValues bool) bool {
 var scalarExactArguments = map[string]int{"IFNULL": 2, "NULLIF": 2, "LENGTH": 1, "UPPER": 1, "LOWER": 1, "ABS": 1, "IIF": 3, "REPLACE": 3, "RANDOM": 0, "CAST": 2, "HEX": 1, "TYPEOF": 1, "QUOTE": 1, "INSTR": 2, "CHANGES": 0, "LAST_INSERT_ROWID": 0}
 
 func validateScalarFunction(f *FuncCallExpr) error {
+	return validateScalarFunctionDialect(f, true)
+}
+
+func validateScalarFunctionDialect(f *FuncCallExpr, allowPostgres bool) error {
 	if f.Name == fulltextFunction {
 		return validateFulltextFunction(f)
 	}
 	name := strings.ToUpper(f.Name)
 	n := len(f.Args)
-	if valid, known := validPostgresFunction(name, n); known && valid {
+	if valid, known := validPostgresFunction(name, n); allowPostgres && known && valid {
 		return nil
 	}
 	if valid, known := validJSONFunction(name, n); known {
