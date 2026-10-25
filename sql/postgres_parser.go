@@ -221,6 +221,9 @@ func (t *Tokenizer) scanPostgresEscapeString() Token {
 }
 
 func (p *Parser) parsePostgresPrimary() (Expression, bool, error) {
+	if p.cur.Type != TokIdent && p.cur.Type != TokKeyword {
+		return nil, false, nil
+	}
 	name := strings.ToUpper(p.cur.Value)
 	switch name {
 	case "CURRENT_DATABASE", "CURRENT_SCHEMA", "CURRENT_USER", "SESSION_USER", "USER":
