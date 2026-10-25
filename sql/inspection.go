@@ -66,7 +66,7 @@ func localInspectionExpr(expr Expression) bool {
 		return localInspectionExpr(e.Expr) && localInspectionExpr(e.Low) && localInspectionExpr(e.High)
 	case *FuncCallExpr:
 		switch strings.ToUpper(e.Name) {
-		case "CAST", "COALESCE", "IFNULL", "NULLIF", "__SESSION_VARIABLE", "__SET_SESSION_VARIABLE", "__SYSTEM_VARIABLE":
+		case "CURRENT_SETTING", "CAST", "COALESCE", "IFNULL", "NULLIF", "__SESSION_VARIABLE", "__SET_SESSION_VARIABLE", "__SYSTEM_VARIABLE":
 		default:
 			return false
 		}

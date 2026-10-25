@@ -275,6 +275,12 @@ func (c *client) postgresFunction(ctx context.Context, name string, args []sql.V
 	if name == "CURRENT_SETTING" && len(args) > 0 && strings.EqualFold(args[0].String(), "application_name") {
 		return sql.NewTextValue(c.applicationName), true, nil
 	}
+	if name == "CURRENT_SETTING" && len(args) > 0 {
+		v, ok, e := c.server.database.RuntimeVariable(ctx, args[0].String())
+		if e != nil || ok {
+			return sql.NewTextValue(v), ok, e
+		}
+	}
 	return sql.Value{}, false, nil
 }
 
