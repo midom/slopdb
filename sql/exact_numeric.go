@@ -390,3 +390,19 @@ func decimalSortKey(text string) []byte {
 	}
 	return append([]byte{2}, payload...)
 }
+
+func integerBits(v Value) uint64 {
+	if v.Type == ColUnsigned {
+		return v.Uint
+	}
+	if v.Type == ColDecimal {
+		n, scale, err := valueDecimal(v)
+		if err != nil {
+			return 0
+		}
+		n.Quo(n, decimalPower(scale))
+		n.Mod(n, new(big.Int).Lsh(big.NewInt(1), 64))
+		return n.Uint64()
+	}
+	return uint64(integerValue(v))
+}

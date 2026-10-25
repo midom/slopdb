@@ -163,9 +163,9 @@ func cloneState(state *schemaState) *schemaState {
 func (s *Schema) persistentStateChanged() bool {
 	if s.hasTemporaryTables() {
 		state := s.captureState()
-		return s.catalogChanged() || !reflect.DeepEqual(state.stats, s.txState.stats) || !reflect.DeepEqual(state.distributions, s.txState.distributions) || !reflect.DeepEqual(state.autoinc, s.txState.autoinc) || s.userVersion != s.txState.userVersion || s.collation != s.txState.collation
+		return !reflect.DeepEqual(state.autoincUnsigned, s.txState.autoincUnsigned) || s.catalogChanged() || !reflect.DeepEqual(state.stats, s.txState.stats) || !reflect.DeepEqual(state.distributions, s.txState.distributions) || !reflect.DeepEqual(state.autoinc, s.txState.autoinc) || s.userVersion != s.txState.userVersion || s.collation != s.txState.collation
 	}
-	return s.catalogChanged() || !reflect.DeepEqual(s.stats, s.txState.stats) || !reflect.DeepEqual(s.distributions, s.txState.distributions) ||
+	return !reflect.DeepEqual(s.autoincUnsigned, s.txState.autoincUnsigned) || s.catalogChanged() || !reflect.DeepEqual(s.stats, s.txState.stats) || !reflect.DeepEqual(s.distributions, s.txState.distributions) ||
 		!reflect.DeepEqual(s.autoincMax, s.txState.autoinc) || s.userVersion != s.txState.userVersion || s.collation != s.txState.collation
 }
 
@@ -223,17 +223,18 @@ func mergeState(base, local, latest *schemaState) *schemaState {
 		collation = local.collation
 	}
 	merged := &schemaState{
-		tables:        mergeCatalogMap(base.tables, local.tables, latest.tables),
-		indexes:       mergeCatalogMap(base.indexes, local.indexes, latest.indexes),
-		views:         mergeCatalogMap(base.views, local.views, latest.views),
-		triggers:      mergeCatalogMap(base.triggers, local.triggers, latest.triggers),
-		stats:         mergeMap(base.stats, local.stats, latest.stats),
-		distributions: mergeMap(base.distributions, local.distributions, latest.distributions),
-		autoinc:       mergeCounter(base.autoinc, local.autoinc, latest.autoinc),
-		rowIDs:        mergeCounter(base.rowIDs, local.rowIDs, latest.rowIDs),
-		userVersion:   version,
-		collation:     collation,
-		nextObjectID:  max(local.nextObjectID, latest.nextObjectID),
+		tables:          mergeCatalogMap(base.tables, local.tables, latest.tables),
+		indexes:         mergeCatalogMap(base.indexes, local.indexes, latest.indexes),
+		views:           mergeCatalogMap(base.views, local.views, latest.views),
+		triggers:        mergeCatalogMap(base.triggers, local.triggers, latest.triggers),
+		stats:           mergeMap(base.stats, local.stats, latest.stats),
+		distributions:   mergeMap(base.distributions, local.distributions, latest.distributions),
+		autoinc:         mergeCounter(base.autoinc, local.autoinc, latest.autoinc),
+		autoincUnsigned: mergeUnsignedCounter(base.autoincUnsigned, local.autoincUnsigned, latest.autoincUnsigned),
+		rowIDs:          mergeCounter(base.rowIDs, local.rowIDs, latest.rowIDs),
+		userVersion:     version,
+		collation:       collation,
+		nextObjectID:    max(local.nextObjectID, latest.nextObjectID),
 	}
 	if reflect.DeepEqual(merged.tables, latest.tables) && reflect.DeepEqual(merged.indexes, latest.indexes) {
 		merged.lookups = latest.lookups

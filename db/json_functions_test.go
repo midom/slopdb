@@ -119,3 +119,31 @@ func TestJSONPreparedMutationIndexAndReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestJSONNumericEqualityAndIndexOrder(t *testing.T) {
+	d, err := db.Open(t.TempDir(), storage.DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	s := mysqlTypeSession(t, d)
+	for _, query := range []string{`SELECT CAST('1' AS JSON)=CAST('1.0' AS JSON) AS equal_value`, `SELECT CAST('{"a":1}' AS JSON)=CAST('{"a":1.00}' AS JSON) AS equal_value`} {
+		r := mysqlTypeExec(t, s, query)
+		if r.Rows[0]["equal_value"].Int != 1 {
+			t.Fatal(r.Rows)
+		}
+	}
+	mysqlTypeExec(t, s, `CREATE TABLE json_keys(id INTEGER PRIMARY KEY,v JSON UNIQUE);INSERT INTO json_keys VALUES(1,'1'),(2,'2'),(3,'10'),(4,'-5'),(5,'0.01')`)
+	if _, err = s.Exec(`INSERT INTO json_keys VALUES(6,'1.00')`); err == nil {
+		t.Fatal("numerically equal JSON values bypassed uniqueness")
+	}
+	r := mysqlTypeExec(t, s, "SELECT id FROM json_keys ORDER BY v")
+	for i, want := range []int64{4, 5, 1, 2, 3} {
+		if r.Rows[i]["id"].Int != want {
+			t.Fatal(r.Rows)
+		}
+	}
+	if _, err = d.CheckIntegrity(); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -136,6 +136,7 @@ type ExecResult struct {
 	Columns        []sql.ColumnDef
 	Rows           []map[string]sql.Value
 	LastID         int64
+	LastIDUnsigned uint64 // generated unsigned ID when it exceeds int64; zero means absent
 	Changes        int64
 }
 
@@ -439,6 +440,7 @@ func (db *statementExecutor) execStatement(stmt sql.Statement) (*ExecResult, err
 				result = &ExecResult{Changes: db.schema.StatementChanges()}
 			}
 		}
+		result.LastIDUnsigned = db.schema.LastInsertIDUnsigned()
 	case *sql.SelectStmt:
 		var rs *sql.ResultSet
 		var err error

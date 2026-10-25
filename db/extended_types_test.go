@@ -1,8 +1,10 @@
 package db_test
 
 import (
+	"fmt"
 	"math"
 	"strings"
+	"sync"
 	"testing"
 
 	"slopdb/db"
@@ -81,6 +83,104 @@ func TestUnsignedDecimalJSONPersistentValues(t *testing.T) {
 	}
 }
 
+func TestUnsignedAutoIncrementDurabilityAndTransactions(t *testing.T) {
+	path := t.TempDir()
+	d, err := db.Open(path, storage.DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Close() })
+	s := mysqlTypeSession(t, d)
+	mysqlTypeExec(t, s, "CREATE TABLE sequence(id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,v INTEGER)")
+	mysqlTypeExec(t, s, "INSERT INTO sequence VALUES(9223372036854775806,0)")
+	r := mysqlTypeExec(t, s, "INSERT INTO sequence(v) VALUES(1),(2)")
+	if r.LastID != math.MaxInt64 || r.LastIDUnsigned != 0 {
+		t.Fatalf("first generated ID: %+v", r)
+	}
+	r = mysqlTypeExec(t, s, "INSERT INTO sequence(v) SELECT 3")
+	if r.LastIDUnsigned != uint64(math.MaxInt64)+2 {
+		t.Fatalf("unsigned generated ID: %+v", r)
+	}
+	mysqlTypeExec(t, s, "BEGIN;INSERT INTO sequence(v) VALUES(4);ROLLBACK")
+	mysqlTypeExec(t, s, "DELETE FROM sequence WHERE id>=9223372036854775808")
+	if err = s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err = d.Close(); err != nil {
+		t.Fatal(err)
+	}
+	d, err = db.Open(path, storage.DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s = mysqlTypeSession(t, d)
+	r = mysqlTypeExec(t, s, "INSERT INTO sequence(v) VALUES(5)")
+	if r.LastIDUnsigned != uint64(math.MaxInt64)+3 {
+		t.Fatalf("durable unsigned floor: %+v", r)
+	}
+	mysqlTypeExec(t, s, "UPDATE sequence SET id=18446744073709551614 WHERE v=5")
+	r = mysqlTypeExec(t, s, "INSERT INTO sequence(v) VALUES(6)")
+	if r.LastIDUnsigned != math.MaxUint64 {
+		t.Fatalf("last unsigned ID: %+v", r)
+	}
+	if _, err = s.Exec("INSERT INTO sequence(v) VALUES(7)"); err == nil {
+		t.Fatal("unsigned auto-increment wrapped")
+	}
+	if _, err = d.CheckIntegrity(); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err = d.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUnsignedAutoIncrementConcurrentReservations(t *testing.T) {
+	d, err := db.Open(t.TempDir(), storage.DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	s := mysqlTypeSession(t, d)
+	mysqlTypeExec(t, s, "CREATE TABLE sequence(id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,v INTEGER)")
+	mysqlTypeExec(t, s, "INSERT INTO sequence VALUES(9223372036854775807,0)")
+	const workers = 8
+	sessions := make([]*db.Session, workers)
+	for i := range sessions {
+		sessions[i] = mysqlTypeSession(t, d)
+	}
+	var wg sync.WaitGroup
+	failures := make(chan error, workers)
+	for _, session := range sessions {
+		wg.Add(1)
+		go func(session *db.Session) {
+			defer wg.Done()
+			for i := 0; i < 8; i++ {
+				r, err := session.Exec("INSERT INTO sequence(v) VALUES(1)")
+				if err != nil {
+					failures <- err
+					return
+				}
+				if r.LastIDUnsigned <= math.MaxInt64 {
+					failures <- fmt.Errorf("unsigned ID %d", r.LastIDUnsigned)
+					return
+				}
+			}
+		}(session)
+	}
+	wg.Wait()
+	close(failures)
+	for err := range failures {
+		t.Fatal(err)
+	}
+	r := mysqlTypeExec(t, s, "SELECT COUNT(*) AS n,COUNT(DISTINCT id) AS distinct_ids FROM sequence")
+	if r.Rows[0]["n"].Int != workers*8+1 || r.Rows[0]["distinct_ids"].Int != workers*8+1 {
+		t.Fatal(r.Rows)
+	}
+}
+
 func TestExactNumericArithmeticAndAggregates(t *testing.T) {
 	d, err := db.Open(t.TempDir(), storage.DefaultOptions())
 	if err != nil {
@@ -119,5 +219,45 @@ func TestExactNumericArithmeticAndAggregates(t *testing.T) {
 	r = mysqlTypeExec(t, s, "SELECT SUM(v) AS total FROM unsigned_sum")
 	if r.Rows[0]["total"].String() != "36893488147419103230" {
 		t.Fatalf("unsigned sum: %+v", r.Rows)
+	}
+}
+
+func TestExactNumericWindowsAndArguments(t *testing.T) {
+	d, err := db.Open(t.TempDir(), storage.DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	s := mysqlTypeSession(t, d)
+	mysqlTypeExec(t, s, "CREATE TABLE measures(id INTEGER PRIMARY KEY,d DECIMAL(12,2),u BIGINT UNSIGNED);INSERT INTO measures VALUES(1,1.20,18446744073709551615),(2,2.30,18446744073709551615),(3,-0.50,1)")
+	r := mysqlTypeExec(t, s, "SELECT id,SUM(d) OVER(ORDER BY id ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS total,AVG(d) OVER(ORDER BY id ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS average,SUM(u) OVER(ORDER BY id ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS unsigned_total FROM measures ORDER BY id")
+	for i, want := range []string{"1.20", "3.50", "1.80"} {
+		if r.Rows[i]["total"].String() != want {
+			t.Fatal(r.Rows)
+		}
+	}
+	for i, want := range []string{"1.200000", "1.750000", "0.900000"} {
+		if r.Rows[i]["average"].String() != want {
+			t.Fatal(r.Rows)
+		}
+	}
+	for i, want := range []string{"18446744073709551615", "36893488147419103230", "18446744073709551616"} {
+		if r.Rows[i]["unsigned_total"].String() != want {
+			t.Fatal(r.Rows)
+		}
+	}
+	for _, test := range []struct{ query, want string }{
+		{"SELECT GREATEST(9.0,10.0) AS v", "10.0"},
+		{"SELECT LEAST(18446744073709551615,18446744073709551614) AS v", "18446744073709551614"},
+		{"SELECT SUBSTRING('abcdef',2.0,3.0) AS v", "bcd"},
+		{"SELECT SUBSTRING('abcdef',18446744073709551615) AS v", ""},
+		{"SELECT 18446744073709551615 & 9223372036854775808 AS v", "9223372036854775808"},
+		{"SELECT 18446744073709551615 >> 63 AS v", "1"},
+		{"SELECT ~18446744073709551615 AS v", "0"},
+	} {
+		r := mysqlTypeExec(t, s, test.query)
+		if r.Rows[0]["v"].String() != test.want {
+			t.Fatalf("%s: %+v", test.query, r.Rows)
+		}
 	}
 }

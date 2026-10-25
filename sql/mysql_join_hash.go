@@ -9,7 +9,7 @@ func mysqlJoinHashCompatible(left, right []map[string]Value, pairs []joinKeyPair
 			if !ok || value.Null {
 				continue
 			}
-			if value.Type == ColInteger || value.Type == ColReal {
+			if isNumeric(value) {
 				return 1
 			}
 			return 2

@@ -370,7 +370,7 @@ func (s *Schema) evaluateWindow(f *FuncCallExpr, rows []map[string]Value) error 
 				if err != nil {
 					return err
 				}
-				if v.Null || (v.Type != ColInteger && v.Type != ColReal) || toFloat(v) < 0 {
+				if v.Null || !isNumeric(v) || toFloat(v) < 0 {
 					return fmt.Errorf("RANGE offset must be nonnegative numeric")
 				}
 			} else {
@@ -573,11 +573,11 @@ func (s *Schema) windowFrame(w *WindowSpec, p []windowRow, i int, starts, ends, 
 			if err != nil {
 				return 0, err
 			}
-			if off.Null || (off.Type != ColInteger && off.Type != ColReal) || toFloat(off) < 0 {
+			if off.Null || !isNumeric(off) || toFloat(off) < 0 {
 				return 0, fmt.Errorf("RANGE offset must be nonnegative numeric")
 			}
 			cur := p[i].keys[0]
-			if cur.Null || cur.Type != ColInteger && cur.Type != ColReal {
+			if cur.Null || !isNumeric(cur) {
 				if end {
 					return ends[i], nil
 				}
@@ -592,7 +592,7 @@ func (s *Schema) windowFrame(w *WindowSpec, p []windowRow, i int, starts, ends, 
 			pos := sort.Search(len(p), func(j int) bool {
 				v := p[j].keys[0]
 				c := 0
-				if !v.Null && (v.Type == ColInteger || v.Type == ColReal) {
+				if !v.Null && isNumeric(v) {
 					c = windowRat(v).Cmp(threshold)
 					if w.OrderBy[0].Desc {
 						c = -c
@@ -663,12 +663,7 @@ func (s *Schema) streamOrderedSelectIfNoWindows(q *SelectStmt, info *TableInfo, 
 	return s.streamOrderedSelect(q, info, cols, defs)
 }
 
-func windowRat(v Value) *big.Rat {
-	if v.Type == ColInteger {
-		return new(big.Rat).SetInt64(v.Int)
-	}
-	return new(big.Rat).SetFloat64(v.Real)
-}
+func windowRat(v Value) *big.Rat { return valueRational(v) }
 
 func windowVolatile(f *FuncCallExpr) bool {
 	volatile := false

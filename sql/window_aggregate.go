@@ -10,14 +10,17 @@ import (
 // once per input row instead of rescanning every overlapping frame. Integer
 // sums stay exact while a compensated sum bounds error during REAL removal.
 type windowAggregate struct {
-	schema            *Schema
-	name              string
-	values            []Value
-	lo, hi            int
-	count, reals      int64
-	integer           big.Int
-	total, correction float64
-	extrema           []int
+	schema                      *Schema
+	name                        string
+	values                      []Value
+	lo, hi                      int
+	count, reals                int64
+	integer                     big.Int
+	decimal                     big.Rat
+	decimalCount, unsignedCount int64
+	scales                      map[int]int64
+	total, correction           float64
+	extrema                     []int
 }
 
 func (s *Schema) newWindowAggregate(f *FuncCallExpr, p []windowRow) (*windowAggregate, error) {
@@ -71,14 +74,31 @@ func (a *windowAggregate) change(v Value, add bool) error {
 	if v.EnumValue {
 		v = NewIntValue(v.EnumOrdinal)
 	}
-	if v.Type != ColInteger && v.Type != ColReal {
+	if !isNumeric(v) {
 		return fmt.Errorf("%s requires numeric arguments", a.name)
 	}
-	if v.Type == ColReal {
+	if v.Type == ColDecimal {
+		if a.scales == nil {
+			a.scales = map[int]int64{}
+		}
+		_, scale, _ := valueDecimal(v)
+		a.scales[scale] += direction
+		a.decimalCount += direction
+		if add {
+			a.decimal.Add(&a.decimal, valueRational(v))
+		} else {
+			a.decimal.Sub(&a.decimal, valueRational(v))
+		}
+	} else if v.Type == ColReal {
 		a.reals += direction
 	} else {
 		var n big.Int
-		n.SetInt64(v.Int)
+		if v.Type == ColUnsigned {
+			n.SetUint64(v.Uint)
+			a.unsignedCount += direction
+		} else {
+			n.SetInt64(v.Int)
+		}
 		if add {
 			a.integer.Add(&a.integer, &n)
 		} else {
@@ -150,6 +170,21 @@ func (a *windowAggregate) frame(lo, hi int) (Value, error) {
 	}
 	if a.name == "MIN" || a.name == "MAX" {
 		return a.values[a.extrema[0]], nil
+	}
+	if a.reals == 0 && (a.decimalCount > 0 || a.unsignedCount > 0) {
+		total := new(big.Rat).SetInt(&a.integer)
+		total.Add(total, &a.decimal)
+		scale := 0
+		for s, count := range a.scales {
+			if count > 0 {
+				scale = max(scale, s)
+			}
+		}
+		if a.name == "AVG" {
+			total.Quo(total, new(big.Rat).SetInt64(a.count))
+			scale = min(scale+4, 30)
+		}
+		return rationalDecimal(total, scale)
 	}
 	if a.name == "SUM" && a.reals == 0 {
 		if !a.integer.IsInt64() {

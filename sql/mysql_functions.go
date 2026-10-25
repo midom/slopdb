@@ -60,7 +60,7 @@ func (s *Schema) evalMySQLFunc(e *FuncCallExpr, row map[string]Value) (Value, bo
 		best := args[0]
 		allNumeric, anyReal := true, false
 		for _, arg := range args {
-			allNumeric = allNumeric && (arg.Type == ColInteger || arg.Type == ColReal)
+			allNumeric = allNumeric && isNumeric(arg)
 			anyReal = anyReal || arg.Type == ColReal
 		}
 		for _, arg := range args[1:] {
@@ -100,7 +100,7 @@ func (s *Schema) evalMySQLFunc(e *FuncCallExpr, row map[string]Value) (Value, bo
 				return NewNullValue(), true, nil
 			}
 		}
-		if args[1].Type != ColInteger && args[1].Type != ColReal {
+		if !isNumeric(args[1]) {
 			return NewNullValue(), true, fmt.Errorf("SUBSTRING position must be numeric")
 		}
 		count := int64(utf8.RuneCountInString(args[0].String()))
@@ -110,7 +110,7 @@ func (s *Schema) evalMySQLFunc(e *FuncCallExpr, row map[string]Value) (Value, bo
 		start := integerValue(args[1])
 		length := count
 		if len(args) == 3 {
-			if args[2].Type != ColInteger && args[2].Type != ColReal {
+			if !isNumeric(args[2]) {
 				return NewNullValue(), true, fmt.Errorf("SUBSTRING length must be numeric")
 			}
 			length = integerValue(args[2])

@@ -45,7 +45,7 @@ func appendClusteredValue(key []byte, value Value) []byte {
 		return appendEscapedClustered(key, decimalSortKey(value.Text))
 	case ColJSON:
 		key = append(key, 7)
-		return appendEscapedClustered(key, []byte(value.Text))
+		return appendEscapedClustered(key, jsonSortKey(value.Text))
 	case ColInteger:
 		key = append(key, 1)
 		return binary.BigEndian.AppendUint64(key, uint64(value.Int)^(1<<63))

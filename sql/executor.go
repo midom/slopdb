@@ -63,6 +63,9 @@ type ViewInfo struct {
 }
 
 type Schema struct {
+	autoincUnsigned          map[string]uint64
+	unsignedRowReservations  map[string]uint64
+	lastInsertIDUnsigned     uint64
 	isolation                IsolationLevel
 	nextIsolation            IsolationLevel
 	txIsolation              IsolationLevel
@@ -257,6 +260,7 @@ func newSchemaWithOptions(lsm *storage.LSMTree, pageSize int, opt *storage.Optio
 		views:            make(map[string]*ViewInfo),
 		triggers:         make(map[string]*TriggerInfo),
 		autoincMax:       make(map[string]int64),
+		autoincUnsigned:  make(map[string]uint64),
 		rowIDCount:       make(map[string]int64),
 	}
 	if snapshot != nil {
@@ -303,6 +307,9 @@ func newSchemaWithOptions(lsm *storage.LSMTree, pageSize int, opt *storage.Optio
 		}
 	}
 	s.loadAutoincMax()
+	if err := s.loadUnsignedAutoinc(); err != nil {
+		return nil, err
+	}
 	s.loadStats()
 	s.loadDistributions()
 	s.loadUserVersion()
@@ -651,6 +658,7 @@ func (s *Schema) DropTable(stmt *DropTableStmt) error {
 		s.removeRange([]byte(prefix), []byte(prefix+"\xff"))
 	}
 
+	delete(s.autoincUnsigned, s.rowCounterKey(name))
 	delete(s.rowIDCount, s.rowCounterKey(name))
 	delete(s.tables, name)
 	delete(s.autoincMax, name)
@@ -1726,6 +1734,7 @@ type schemaState struct {
 	triggers        map[string]*TriggerInfo
 	stats           map[string]int64
 	distributions   map[string]*tableStatistics
+	autoincUnsigned map[string]uint64
 	autoinc, rowIDs map[string]int64
 	userVersion     int64
 	collation       Collation
@@ -1740,7 +1749,7 @@ func (s *Schema) captureState() *schemaState {
 		s.catalogShared = true
 	}
 	return s.persistentTemporaryState(&schemaState{tables: s.tables, indexes: s.indexes, views: s.views, triggers: s.triggers,
-		stats: maps.Clone(s.stats), distributions: maps.Clone(s.distributions), autoinc: maps.Clone(s.autoincMax), rowIDs: maps.Clone(s.rowIDCount), userVersion: s.userVersion, collation: s.collation, nextObjectID: s.nextObjectID, lookups: s.catalogLookup})
+		stats: maps.Clone(s.stats), distributions: maps.Clone(s.distributions), autoinc: maps.Clone(s.autoincMax), autoincUnsigned: maps.Clone(s.autoincUnsigned), rowIDs: maps.Clone(s.rowIDCount), userVersion: s.userVersion, collation: s.collation, nextObjectID: s.nextObjectID, lookups: s.catalogLookup})
 }
 
 func (s *Schema) ensureCatalogWritable() {
@@ -1812,6 +1821,7 @@ func (s *Schema) restoreState(st *schemaState) {
 	s.stats = st.stats
 	s.distributions = st.distributions
 	s.autoincMax = st.autoinc
+	s.autoincUnsigned = st.autoincUnsigned
 	s.rowIDCount = st.rowIDs
 	s.userVersion = st.userVersion
 	s.collation = st.collation
@@ -1902,7 +1912,7 @@ func (s *Schema) Commit() error {
 	changed := s.catalogChanged()
 	persistent := s.persistentStateChanged()
 	queueAutoinc := s.enableAutoIncrementGroupCommit && s.parent != nil && s.lockHandler != nil && !s.hasTemporaryTables() && !changed &&
-		!reflect.DeepEqual(s.autoincMax, s.txState.autoinc)
+		(!reflect.DeepEqual(s.autoincMax, s.txState.autoinc)) && reflect.DeepEqual(s.autoincUnsigned, s.txState.autoincUnsigned)
 	if queueAutoinc {
 		// Earlier queued counter snapshots can contain higher IDs than this
 		// transaction. Keep the complete metadata records monotonic in the
@@ -1929,6 +1939,7 @@ func (s *Schema) Commit() error {
 		{schemaViewsPrefix, s.views, s.txState.views},
 		{schemaTrigPrefix, s.triggers, s.txState.triggers},
 		{autoincPrefix, currentState.autoinc, s.txState.autoinc},
+		{unsignedAutoincPrefix, currentState.autoincUnsigned, s.txState.autoincUnsigned},
 		{statsPrefix, currentState.stats, s.txState.stats},
 		{distributionPrefix, distributionMetadata{1, currentState.distributions}, distributionMetadata{1, s.txState.distributions}},
 	} {
@@ -3222,6 +3233,8 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 	}
 
 	var lastID int64
+	var lastUnsigned uint64
+	defer func() { s.lastInsertIDUnsigned = lastUnsigned }()
 	var returningRows []map[string]Value
 
 	for _, group := range allGroups {
@@ -3265,8 +3278,13 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 			return 0, nil, err
 		}
 		pkCol := s.getPKColumn(info)
+		if pkCol != nil && pkCol.AutoIncrement && pkCol.Unsigned {
+			if err := s.prepareUnsignedAuto(tableName, pkCol, row, suppliedColumn(stmt.ColumnNames, pkCol.Name, stmt.DefaultValues)); err != nil {
+				return 0, nil, err
+			}
+		}
 		var nextID int64
-		if len(info.PKColumns) == 0 || s.autoValueRequested(pkCol, row[pkName(pkCol)], suppliedColumn(stmt.ColumnNames, pkName(pkCol), stmt.DefaultValues)) {
+		if len(info.PKColumns) == 0 || (pkCol == nil || !pkCol.Unsigned) && s.autoValueRequested(pkCol, row[pkName(pkCol)], suppliedColumn(stmt.ColumnNames, pkName(pkCol), stmt.DefaultValues)) {
 			var err error
 			nextID, err = s.nextRowID(tableName)
 			if err != nil {
@@ -3274,14 +3292,14 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 			}
 		}
 
-		if pkCol != nil && pkCol.AutoIncrement {
+		if pkCol != nil && pkCol.AutoIncrement && !pkCol.Unsigned {
 			autoMax := s.getAutoincMax(tableName)
 			if autoMax >= nextID {
 				nextID = autoMax + 1
 			}
 		}
 
-		if pkCol != nil && pkCol.ColType == ColInteger && len(info.PKColumns) <= 1 {
+		if pkCol != nil && pkCol.ColType == ColInteger && len(info.PKColumns) <= 1 && !(pkCol.AutoIncrement && pkCol.Unsigned) {
 			pkVal := row[pkCol.Name]
 			if s.autoValueRequested(pkCol, pkVal, suppliedColumn(stmt.ColumnNames, pkCol.Name, stmt.DefaultValues)) {
 				if nextID <= 0 {
@@ -3301,7 +3319,7 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 
 		if pkCol != nil && pkCol.ColType == ColInteger && len(info.PKColumns) == 1 && row[pkCol.Name].Type == ColInteger {
 			nextID = row[pkCol.Name].Int
-			if pkCol.AutoIncrement && nextID >= s.rowIDCount[s.rowCounterKey(tableName)] {
+			if pkCol.AutoIncrement && !pkCol.Unsigned && nextID >= s.rowIDCount[s.rowCounterKey(tableName)] {
 				s.rowIDCount[s.rowCounterKey(tableName)] = nextID + 1
 				s.rowIDDirty = true
 			}
@@ -3383,6 +3401,9 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 			return 0, nil, err
 		}
 		s.statementChanges++
+		if pkCol != nil && row[pkCol.Name].Type == ColUnsigned && (!s.mysqlMode || pkCol.AutoIncrement) && lastUnsigned == 0 && (!s.mysqlMode || lastID == 0) {
+			lastUnsigned = row[pkCol.Name].Uint
+		}
 		if !s.mysqlMode {
 			lastID = nextID
 		} else if pkCol != nil && pkCol.AutoIncrement && lastID == 0 {
@@ -3814,13 +3835,15 @@ func (s *Schema) insertFromSelect(stmt *InsertStmt, info *TableInfo) (int64, *Re
 
 	tableName := strings.ToLower(stmt.Table)
 	var lastID int64
+	var lastUnsigned uint64
+	defer func() { s.lastInsertIDUnsigned = lastUnsigned }()
 	var returningRows []map[string]Value
 
 	pkCol := s.getPKColumn(info)
 
 	for _, srcRow := range rs.Rows {
 		var nextID int64
-		if pkCol != nil && pkCol.AutoIncrement {
+		if pkCol != nil && pkCol.AutoIncrement && !pkCol.Unsigned {
 			autoMax := s.getAutoincMax(tableName)
 			if autoMax >= nextID {
 				nextID = autoMax + 1
@@ -3862,7 +3885,12 @@ func (s *Schema) insertFromSelect(stmt *InsertStmt, info *TableInfo) (int64, *Re
 			return 0, nil, err
 		}
 
-		if len(info.PKColumns) == 0 || s.autoValueRequested(pkCol, row[pkName(pkCol)], suppliedColumn(stmt.ColumnNames, pkName(pkCol), false)) {
+		if pkCol != nil && pkCol.AutoIncrement && pkCol.Unsigned {
+			if err := s.prepareUnsignedAuto(tableName, pkCol, row, suppliedColumn(stmt.ColumnNames, pkCol.Name, false)); err != nil {
+				return 0, nil, err
+			}
+		}
+		if len(info.PKColumns) == 0 || (pkCol == nil || !pkCol.Unsigned) && s.autoValueRequested(pkCol, row[pkName(pkCol)], suppliedColumn(stmt.ColumnNames, pkName(pkCol), false)) {
 			var err error
 			nextID, err = s.nextRowID(tableName)
 			if err != nil {
@@ -3874,7 +3902,7 @@ func (s *Schema) insertFromSelect(stmt *InsertStmt, info *TableInfo) (int64, *Re
 		}
 		if pkCol != nil && pkCol.ColType == ColInteger && len(info.PKColumns) == 1 {
 			pkVal := row[pkCol.Name]
-			if s.autoValueRequested(pkCol, pkVal, suppliedColumn(stmt.ColumnNames, pkCol.Name, false)) {
+			if !pkCol.Unsigned && s.autoValueRequested(pkCol, pkVal, suppliedColumn(stmt.ColumnNames, pkCol.Name, false)) {
 				if nextID <= 0 {
 					return 0, nil, fmt.Errorf("integer primary key exhausted")
 				}
@@ -3884,7 +3912,7 @@ func (s *Schema) insertFromSelect(stmt *InsertStmt, info *TableInfo) (int64, *Re
 
 		if pkCol != nil && pkCol.ColType == ColInteger && len(info.PKColumns) == 1 && row[pkCol.Name].Type == ColInteger {
 			nextID = row[pkCol.Name].Int
-			if pkCol.AutoIncrement && nextID >= s.rowIDCount[s.rowCounterKey(tableName)] {
+			if pkCol.AutoIncrement && !pkCol.Unsigned && nextID >= s.rowIDCount[s.rowCounterKey(tableName)] {
 				s.rowIDCount[s.rowCounterKey(tableName)] = nextID + 1
 				s.rowIDDirty = true
 			}
@@ -3965,6 +3993,9 @@ func (s *Schema) insertFromSelect(stmt *InsertStmt, info *TableInfo) (int64, *Re
 			return 0, nil, err
 		}
 		s.statementChanges++
+		if pkCol != nil && row[pkCol.Name].Type == ColUnsigned && (!s.mysqlMode || pkCol.AutoIncrement) && lastUnsigned == 0 && (!s.mysqlMode || lastID == 0) {
+			lastUnsigned = row[pkCol.Name].Uint
+		}
 		if !s.mysqlMode {
 			lastID = nextID
 		} else if pkCol != nil && pkCol.AutoIncrement && lastID == 0 {
@@ -5856,6 +5887,11 @@ func (s *Schema) applyRowUpdate(table string, info *TableInfo, oldKey []byte, or
 	if err := s.normalizeMySQLRow(info, row); err != nil {
 		return nil, err
 	}
+	if pk := s.getPKColumn(info); pk != nil && pk.AutoIncrement && pk.Unsigned {
+		if err := s.prepareUnsignedAuto(table, pk, row, true); err != nil {
+			return nil, err
+		}
+	}
 	beforeTriggers := len(s.txWrites)
 	if err := s.fireTriggers(table, "UPDATE", "BEFORE", original, row); err != nil {
 		return nil, err
@@ -6101,7 +6137,10 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 			}
 			return NewRealValue(-toFloat(right)), nil
 		case "~":
-			return NewIntValue(^int64(toFloat(right))), nil
+			if right.Type == ColUnsigned {
+				return NewUnsignedValue(^right.Uint), nil
+			}
+			return NewIntValue(^integerValue(right)), nil
 		}
 
 	case *FuncCallExpr:
@@ -6932,7 +6971,34 @@ func integerValue(v Value) int64 {
 	if v.Type == ColInteger {
 		return v.Int
 	}
-	return int64(toFloat(v))
+	if v.Type == ColUnsigned {
+		if v.Uint > math.MaxInt64 {
+			return math.MaxInt64
+		}
+		return int64(v.Uint)
+	}
+	if v.Type == ColDecimal {
+		n, scale, err := valueDecimal(v)
+		if err != nil {
+			return 0
+		}
+		n.Quo(n, decimalPower(scale))
+		if n.IsInt64() {
+			return n.Int64()
+		}
+		if n.Sign() < 0 {
+			return math.MinInt64
+		}
+		return math.MaxInt64
+	}
+	f := toFloat(v)
+	if f >= 9223372036854775808.0 {
+		return math.MaxInt64
+	}
+	if f < math.MinInt64 {
+		return math.MinInt64
+	}
+	return int64(f)
 }
 
 func (s *Schema) evalBitwise(e *BinaryExpr, row map[string]Value, fn func(int64, int64) int64) (Value, error) {
@@ -6946,6 +7012,25 @@ func (s *Schema) evalBitwise(e *BinaryExpr, row map[string]Value, fn func(int64,
 	}
 	if lv.Null || rv.Null {
 		return NewNullValue(), nil
+	}
+	if lv.Type == ColUnsigned || rv.Type == ColUnsigned {
+		a, b := integerBits(lv), integerBits(rv)
+		switch e.Op {
+		case "&":
+			return NewUnsignedValue(a & b), nil
+		case "|":
+			return NewUnsignedValue(a | b), nil
+		case "<<":
+			if b >= 64 {
+				return NewUnsignedValue(0), nil
+			}
+			return NewUnsignedValue(a << b), nil
+		case ">>":
+			if b >= 64 {
+				return NewUnsignedValue(0), nil
+			}
+			return NewUnsignedValue(a >> b), nil
+		}
 	}
 	return NewIntValue(fn(integerValue(lv), integerValue(rv))), nil
 }
@@ -7033,9 +7118,6 @@ func applyAffinity(v Value, typ ColumnType) Value {
 		return v
 	}
 	if typ == ColJSON {
-		if n, err := NewJSONValue(v.String()); err == nil {
-			return n
-		}
 		return v
 	}
 	if typ == ColUnsigned {
@@ -7100,6 +7182,9 @@ func (s *Schema) appendValueIdentity(buf []byte, v Value) []byte {
 }
 
 func appendValueIdentity(buf []byte, v Value) []byte {
+	if v.Type == ColJSON {
+		v.Text = string(jsonSortKey(v.Text))
+	}
 	if v.Type == ColUnsigned && v.Uint <= math.MaxInt64 {
 		v = NewIntValue(int64(v.Uint))
 	}

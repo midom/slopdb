@@ -552,18 +552,24 @@ func (v Value) MarshalJSON() ([]byte, error) {
 }
 
 func (v *Value) UnmarshalJSON(data []byte) error {
-	var raw interface{}
-	if err := json.Unmarshal(data, &raw); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	var raw any
+	if err := decoder.Decode(&raw); err != nil {
 		return err
 	}
 	switch val := raw.(type) {
 	case nil:
 		*v = NewNullValue()
-	case float64:
-		if val == float64(int64(val)) && val < 1e15 {
-			*v = NewIntValue(int64(val))
+	case json.Number:
+		if n, err := strconv.ParseInt(string(val), 10, 64); err == nil {
+			*v = NewIntValue(n)
+		} else if n, err := strconv.ParseUint(string(val), 10, 64); err == nil {
+			*v = NewUnsignedValue(n)
+		} else if decimal, err := NewDecimalValue(string(val)); err == nil {
+			*v = decimal
 		} else {
-			*v = NewRealValue(val)
+			return err
 		}
 	case string:
 		*v = NewTextValue(val)
@@ -574,7 +580,11 @@ func (v *Value) UnmarshalJSON(data []byte) error {
 			*v = NewIntValue(0)
 		}
 	default:
-		*v = NewTextValue(fmt.Sprintf("%v", val))
+		value, err := NewJSONValue(string(data))
+		if err != nil {
+			return err
+		}
+		*v = value
 	}
 	return nil
 }
@@ -622,6 +632,15 @@ func (v Value) String() string {
 
 func ParseValue(typ ColumnType, s string) Value {
 	switch typ {
+	case ColUnsigned:
+		n, _ := strconv.ParseUint(s, 10, 64)
+		return NewUnsignedValue(n)
+	case ColDecimal:
+		v, _ := NewDecimalValue(s)
+		return v
+	case ColJSON:
+		v, _ := NewJSONValue(s)
+		return v
 	case ColInteger:
 		n, _ := strconv.ParseInt(s, 10, 64)
 		return NewIntValue(n)
@@ -646,6 +665,9 @@ func ValueCompare(a, b Value) int {
 		return 1
 	}
 
+	if a.Type == ColJSON || b.Type == ColJSON {
+		return compareJSONValues(a, b)
+	}
 	if (a.Type == ColUnsigned || a.Type == ColDecimal || b.Type == ColUnsigned || b.Type == ColDecimal) && isNumeric(a) && isNumeric(b) {
 		return exactNumericCompare(a, b)
 	}
