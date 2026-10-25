@@ -101,10 +101,44 @@ type limitBinding struct {
 // retained or modified by the caller after release.
 type BoundQuery struct {
 	metadata   bool
+	retained   *PreparedBinding
 	query      *PreparedQuery
 	statements []Statement
 	literals   []*LiteralExpr
 	limits     []limitBinding
+}
+
+// PreparedBinding retains one private execution tree across garbage collections.
+// It is intended for serialized owners such as a SQL session or protocol
+// connection. It must not be used concurrently. Release each returned BoundQuery
+// before binding again; Release clears argument values but retains plan storage.
+// Database-wide concurrent callers should continue to use PreparedQuery.Bind.
+type PreparedBinding struct {
+	query  *PreparedQuery
+	bound  *BoundQuery
+	active bool
+}
+
+func (q *PreparedQuery) NewBinding() *PreparedBinding { return &PreparedBinding{query: q} }
+
+func (p *PreparedBinding) Bind(args []Value) (*BoundQuery, error) {
+	if p.active {
+		return nil, fmt.Errorf("prepared binding is still in use")
+	}
+	if len(args) != p.query.count {
+		return nil, fmt.Errorf("expected %d arguments, got %d", p.query.count, len(args))
+	}
+	// Schema statements are intentionally cloned per execution; their ASTs can
+	// be rewritten during DDL and must never retain that mutable state.
+	if !p.query.pooled {
+		return p.query.Bind(args)
+	}
+	if p.bound == nil {
+		p.bound = p.query.newBound()
+		p.bound.retained = p
+	}
+	p.active = true
+	return p.bound.bind(args)
 }
 
 func (q *PreparedQuery) Bind(args []Value) (*BoundQuery, error) {
@@ -117,6 +151,10 @@ func (q *PreparedQuery) Bind(args []Value) (*BoundQuery, error) {
 	} else {
 		b = q.newBound()
 	}
+	return b.bind(args)
+}
+
+func (b *BoundQuery) bind(args []Value) (*BoundQuery, error) {
 	for _, limit := range b.limits {
 		v := args[limit.index]
 		if v.Null || v.Type != ColInteger {
@@ -157,7 +195,9 @@ func (b *BoundQuery) Release() {
 			literal.Value = Value{}
 		}
 	}
-	if b.query.pooled {
+	if b.retained != nil {
+		b.retained.active = false
+	} else if b.query.pooled {
 		b.query.pool.Put(b)
 	}
 }

@@ -29,7 +29,10 @@ type Stmt struct {
 	session    *Session
 	bound      bool
 	query      *sql.PreparedQuery
-	closed     atomic.Bool
+	// Protected by the owning session gate. Keep one private binding rather
+	// than rebuilding per-connection plans when sync.Pool entries are collected.
+	binding *sql.PreparedBinding
+	closed  atomic.Bool
 }
 
 func (db *Database) Prepare(query string) (*Stmt, error) {
@@ -276,6 +279,12 @@ func (s *Stmt) bind(database *Database, session *Session, bound bool, args []any
 			return nil, fmt.Errorf("argument %d: %w", i+1, err)
 		}
 		values[i] = v
+	}
+	if s.session != nil {
+		if s.binding == nil {
+			s.binding = s.query.NewBinding()
+		}
+		return s.binding.Bind(values)
 	}
 	return s.query.Bind(values)
 }
