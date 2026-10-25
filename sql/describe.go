@@ -318,15 +318,15 @@ func describeColumns(names ...string) []ColumnDef {
 func describeCommon(a, b ColumnDef) ColumnDef {
 	if a.ColType != b.ColType {
 		numeric := func(t ColumnType) bool { return t == ColInteger || t == ColUnsigned || t == ColDecimal || t == ColReal }
-		if numeric(a.ColType) && numeric(b.ColType) && (a.ColType == ColDecimal || b.ColType == ColDecimal) {
+		if a.ColType == ColReal || b.ColType == ColReal {
+			a = ColumnDef{Name: a.Name, ColType: ColReal}
+		} else if numeric(a.ColType) && numeric(b.ColType) && (a.ColType == ColDecimal || b.ColType == ColDecimal) {
 			a.ColType = ColDecimal
 			a.Declared = "DECIMAL"
 			a.Unsigned = false
 		} else if numeric(a.ColType) && numeric(b.ColType) && (a.ColType == ColUnsigned || b.ColType == ColUnsigned) {
 			a.ColType = ColUnsigned
 			a.Unsigned = true
-		} else if a.ColType == ColReal || b.ColType == ColReal {
-			a = ColumnDef{Name: a.Name, ColType: ColReal}
 		} else {
 			a = ColumnDef{Name: a.Name, ColType: ColText}
 		}
@@ -465,6 +465,9 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 		}
 		if a.ColType == ColReal || b.ColType == ColReal {
 			return real, nil
+		}
+		if e.Op == "/" && (s.mysqlMode || a.ColType == ColDecimal || b.ColType == ColDecimal) {
+			return ColumnDef{ColType: ColDecimal, Declared: "DECIMAL", Precision: 65, Scale: min(30, a.Scale+4)}, nil
 		}
 		if a.ColType == ColText || b.ColType == ColText {
 			return integer, nil

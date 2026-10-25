@@ -8,33 +8,39 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 
 	"slopdb/db"
 	"slopdb/sql"
 )
 
 type client struct {
-	capabilities uint32
-	moreResults  bool
-	preparedPath []string
-	server       *Server
-	conn         net.Conn
-	writer       packetWriter
-	ctx          context.Context
-	cancel       context.CancelFunc
-	session      *db.Session
-	id           uint32
-	selected     string
-	username     string
-	account      string
-	database     *db.Database
-	variables    sessionVariables
-	warningMu    sync.Mutex
-	warnings     []mysqlWarning
-	warningTotal uint64
-	autocommit   bool
-	statements   map[uint32]*prepared
-	nextStmt     uint32
+	capabilities            uint32
+	moreResults             bool
+	preparedPath            []string
+	binlogSkip              []gtidInterval
+	replicaID               uint32
+	replicaUUID             string
+	replicationHeartbeat    time.Duration
+	replicationChecksumNone bool
+	server                  *Server
+	conn                    net.Conn
+	writer                  packetWriter
+	ctx                     context.Context
+	cancel                  context.CancelFunc
+	session                 *db.Session
+	id                      uint32
+	selected                string
+	username                string
+	account                 string
+	database                *db.Database
+	variables               sessionVariables
+	warningMu               sync.Mutex
+	warnings                []mysqlWarning
+	warningTotal            uint64
+	autocommit              bool
+	statements              map[uint32]*prepared
+	nextStmt                uint32
 }
 
 func (c *client) run() {
@@ -113,6 +119,12 @@ func (c *client) closeStatements() {
 }
 func (c *client) dispatch(p []byte) error {
 	switch p[0] {
+	case 18: // COM_BINLOG_DUMP streams the persisted logical commit journal.
+		return c.dumpBinlog(p[1:])
+	case 21: // COM_REGISTER_SLAVE / COM_REGISTER_REPLICA
+		return c.registerReplica(p[1:])
+	case 30: // COM_BINLOG_DUMP_GTID
+		return c.dumpBinlogGTID(p[1:])
 	case 2: // COM_INIT_DB
 		return c.use(string(p[1:]))
 	case 3: // COM_QUERY
@@ -231,6 +243,9 @@ func (c *client) query(query string, stmt *db.Stmt, args []any) (*db.ExecResult,
 // control implements only settings whose effects the server can honor. Unknown
 // SETs go to the SQL engine and fail; they must never be silently acknowledged.
 func (c *client) control(query string) (*db.ExecResult, bool, error) {
+	if result, handled, err := c.binlogControl(query); handled {
+		return result, true, err
+	}
 	if result, handled, err := c.administration(query); handled {
 		return result, true, err
 	}

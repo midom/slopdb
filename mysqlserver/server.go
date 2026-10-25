@@ -55,6 +55,8 @@ type Server struct {
 	namedLocks namedLocks
 	accounts   serverAccounts
 	closeError error
+	binlogMu   sync.Mutex
+	binlog     *binlogState
 }
 
 func New(database *db.Database, config Config) (*Server, error) {

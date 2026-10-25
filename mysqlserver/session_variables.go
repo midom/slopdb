@@ -44,6 +44,36 @@ func (c *client) variable(name string, global bool) (sql.Value, error) {
 	switch strings.ToLower(name) {
 	case "warning_count":
 		return sql.NewIntValue(int64(c.warningCount())), nil
+	case "log_bin":
+		return sql.NewIntValue(1), nil
+	case "binlog_format":
+		return sql.NewTextValue("ROW"), nil
+	case "binlog_row_image":
+		return sql.NewTextValue("FULL"), nil
+	case "binlog_checksum":
+		return sql.NewTextValue("CRC32"), nil
+	case "gtid_mode", "enforce_gtid_consistency":
+		return sql.NewTextValue("ON"), nil
+	case "server_id", "server_uuid", "gtid_executed", "gtid_purged":
+		snapshot, err := c.server.binlogSnapshot(c.ctx)
+		if err != nil {
+			return sql.Value{}, err
+		}
+		if strings.EqualFold(name, "server_id") {
+			return sql.NewIntValue(int64(snapshot.serverID)), nil
+		}
+		if strings.EqualFold(name, "gtid_purged") {
+			return sql.NewTextValue(""), nil
+		}
+		source := snapshot.source
+		uuid := source[:8] + "-" + source[8:12] + "-" + source[12:16] + "-" + source[16:20] + "-" + source[20:]
+		if strings.EqualFold(name, "server_uuid") {
+			return sql.NewTextValue(uuid), nil
+		}
+		if len(snapshot.entries) == 0 {
+			return sql.NewTextValue(""), nil
+		}
+		return sql.NewTextValue(uuid + ":1-" + fmt.Sprint(snapshot.entries[len(snapshot.entries)-1].sequence)), nil
 	case "autocommit":
 		if c.autocommit {
 			return sql.NewIntValue(1), nil
@@ -217,6 +247,7 @@ func (c *client) compatibilityControl(query string) (*db.ExecResult, bool, error
 			pattern = tokens[i+1].Value
 		}
 		names := []string{"autocommit", "group_concat_max_len", "sql_mode", "read_only", "super_read_only", "character_set_client", "character_set_connection", "character_set_results", "collation_connection", "version", "version_comment", "max_allowed_packet", "ft_min_word_len", "transaction_isolation", "tx_isolation", "lower_case_table_names", "time_zone", "system_time_zone"}
+		names = append(names, "log_bin", "binlog_format", "binlog_row_image", "binlog_checksum", "gtid_mode", "enforce_gtid_consistency", "server_id", "server_uuid", "gtid_executed", "gtid_purged")
 		sort.Strings(names)
 		r := &db.ExecResult{Columns: []sql.ColumnDef{{Name: "Variable_name", ColType: sql.ColText}, {Name: "Value", ColType: sql.ColText}}}
 		for _, name := range names {
