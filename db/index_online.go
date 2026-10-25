@@ -15,9 +15,9 @@ func onlineIndexStatement(schema *sql.Schema, stmt sql.Statement) bool {
 	}
 	switch a := stmt.(type) {
 	case *sql.CreateIndexStmt:
-		return true
+		return !schema.IsTemporaryTable(a.Table)
 	case *sql.AlterTableStmt:
-		return a.Operation == "ADD_INDEX" && (a.ObjectKind == "" || a.ObjectKind == "TABLE")
+		return !schema.IsTemporaryTable(a.Table) && a.Operation == "ADD_INDEX" && (a.ObjectKind == "" || a.ObjectKind == "TABLE")
 	}
 	return false
 }

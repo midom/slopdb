@@ -98,6 +98,10 @@ func (s *Schema) EndStatement() {
 	s.validatedRowKey = ""
 }
 func (s *Schema) committedGet(key []byte) ([]byte, bool, error) {
+	if s.temporaryKey(key) {
+		value, found := s.temporary.rows[string(key)]
+		return copyBytes(value), found, nil
+	}
 	if s.statementActive {
 		return s.lsm.GetAtForReader(key, s.statementSnapshot, s.snapshotReader)
 	}
@@ -105,9 +109,9 @@ func (s *Schema) committedGet(key []byte) ([]byte, bool, error) {
 }
 func (s *Schema) committedIterator() storage.Iterator {
 	if s.statementActive {
-		return s.lsm.NewIteratorAt(s.statementSnapshot)
+		return s.temporaryIterator(s.lsm.NewIteratorAt(s.statementSnapshot), nil, nil)
 	}
-	return s.lsm.NewIterator()
+	return s.temporaryIterator(s.lsm.NewIterator(), nil, nil)
 }
 func (s *Schema) refreshReadCommittedLocked() error {
 	// A physical replica imports catalog and data together in the owner's
@@ -153,6 +157,10 @@ func cloneState(state *schemaState) *schemaState {
 }
 
 func (s *Schema) persistentStateChanged() bool {
+	if s.hasTemporaryTables() {
+		state := s.captureState()
+		return s.catalogChanged() || !reflect.DeepEqual(state.stats, s.txState.stats) || !reflect.DeepEqual(state.distributions, s.txState.distributions) || !reflect.DeepEqual(state.autoinc, s.txState.autoinc) || s.userVersion != s.txState.userVersion || s.collation != s.txState.collation
+	}
 	return s.catalogChanged() || !reflect.DeepEqual(s.stats, s.txState.stats) || !reflect.DeepEqual(s.distributions, s.txState.distributions) ||
 		!reflect.DeepEqual(s.autoincMax, s.txState.autoinc) || s.userVersion != s.txState.userVersion || s.collation != s.txState.collation
 }
@@ -233,6 +241,10 @@ func (s *Schema) catalogChanged() bool {
 	if s.txState == nil {
 		return false
 	}
+	if s.hasTemporaryTables() {
+		state := s.captureState()
+		return s.nextObjectID != s.txState.nextObjectID || s.collation != s.txState.collation || !reflect.DeepEqual(state.tables, s.txState.tables) || !reflect.DeepEqual(state.indexes, s.txState.indexes) || !reflect.DeepEqual(s.views, s.txState.views) || !reflect.DeepEqual(s.triggers, s.txState.triggers)
+	}
 	return s.nextObjectID != s.txState.nextObjectID || s.collation != s.txState.collation || !reflect.DeepEqual(s.tables, s.txState.tables) ||
 		!reflect.DeepEqual(s.indexes, s.txState.indexes) ||
 		!reflect.DeepEqual(s.views, s.txState.views) ||
@@ -248,6 +260,9 @@ func (s *Schema) recordWrites(pos int) error {
 			previous[string(w.key)] = true
 		}
 		for _, w := range s.txWrites[pos:] {
+			if s.temporaryKey(w.key) {
+				continue
+			}
 			if !bytes.HasPrefix(w.key, []byte(dataPrefix)) {
 				continue
 			}
@@ -337,7 +352,7 @@ func (s *Schema) prepareCommit() error {
 	// Only validate writes that still exist after savepoint or statement rollback.
 	final := make(map[string]txWrite)
 	for _, w := range s.txWrites {
-		if bytes.HasPrefix(w.key, []byte(dataPrefix)) {
+		if bytes.HasPrefix(w.key, []byte(dataPrefix)) && !s.temporaryKey(w.key) {
 			final[string(w.key)] = w
 		}
 	}

@@ -50,6 +50,9 @@ func (s *Schema) indexDataPrefix(name string) string {
 }
 
 func (s *Schema) allocateObjectID() (uint64, error) {
+	if s.temporary != nil && s.temporary.building {
+		return s.temporaryObjectID(), nil
+	}
 	if s.nextObjectID == math.MaxUint64 {
 		return 0, fmt.Errorf("storage object IDs exhausted")
 	}

@@ -123,6 +123,8 @@ type Schema struct {
 	savepoints           []savepoint
 	mysqlMode            bool
 	mysqlConflictChanged bool
+	temporary            *temporaryCatalog
+	nextTemporaryID      atomic.Uint64
 
 	// Sessions share a committed catalog, but keep private transaction state.
 	catalogShared      bool
@@ -385,7 +387,11 @@ func (s *Schema) saveSchema() error {
 	if s.inTx {
 		return nil
 	}
-	data, err := json.Marshal(s.tables)
+	tables := s.tables
+	if s.hasTemporaryTables() {
+		tables = s.captureState().tables
+	}
+	data, err := json.Marshal(tables)
 	if err != nil {
 		return err
 	}
@@ -404,7 +410,11 @@ func (s *Schema) saveAutoincMax() error {
 	if s.inTx || s.disableAutoIncrementPersistence {
 		return nil
 	}
-	data, err := json.Marshal(s.autoincMax)
+	counters := s.autoincMax
+	if s.hasTemporaryTables() {
+		counters = s.captureState().autoinc
+	}
+	data, err := json.Marshal(counters)
 	if err != nil {
 		return err
 	}
@@ -440,6 +450,9 @@ func (s *Schema) schemaGet(key []byte) (value []byte, found bool, err error) {
 }
 
 func (s *Schema) CreateTable(stmt *CreateTableStmt) error {
+	if stmt.Temporary {
+		return s.createTemporaryTable(stmt)
+	}
 	if stmt.Like != "" {
 		var err error
 		stmt, err = s.expandCreateTableLike(stmt)
@@ -580,6 +593,9 @@ func (s *Schema) CreateTable(stmt *CreateTableStmt) error {
 }
 
 func (s *Schema) DropTable(stmt *DropTableStmt) error {
+	if stmt.Temporary || s.isTemporaryTable(stmt.Table) {
+		return s.dropTemporaryTable(stmt)
+	}
 	s.ensureCatalogWritable()
 	if err := s.checkDropReferencedTable(strings.ToLower(stmt.Table)); err != nil {
 		return err
@@ -1700,8 +1716,8 @@ func (s *Schema) captureState() *schemaState {
 	if !s.catalogShared {
 		s.catalogShared = true
 	}
-	return &schemaState{tables: s.tables, indexes: s.indexes, views: s.views, triggers: s.triggers,
-		stats: maps.Clone(s.stats), distributions: maps.Clone(s.distributions), autoinc: maps.Clone(s.autoincMax), rowIDs: maps.Clone(s.rowIDCount), userVersion: s.userVersion, collation: s.collation, nextObjectID: s.nextObjectID, lookups: s.catalogLookup}
+	return s.persistentTemporaryState(&schemaState{tables: s.tables, indexes: s.indexes, views: s.views, triggers: s.triggers,
+		stats: maps.Clone(s.stats), distributions: maps.Clone(s.distributions), autoinc: maps.Clone(s.autoincMax), rowIDs: maps.Clone(s.rowIDCount), userVersion: s.userVersion, collation: s.collation, nextObjectID: s.nextObjectID, lookups: s.catalogLookup})
 }
 
 func (s *Schema) ensureCatalogWritable() {
@@ -1776,6 +1792,7 @@ func (s *Schema) restoreState(st *schemaState) {
 	s.userVersion = st.userVersion
 	s.collation = st.collation
 	s.nextObjectID = st.nextObjectID
+	s.overlayTemporaryState(st)
 }
 func (s *Schema) Begin() error {
 	if s.inTx {
@@ -1851,18 +1868,19 @@ func (s *Schema) Commit() error {
 	for _, w := range s.txWrites {
 		batch = append(batch, storage.Mutation{Key: w.key, Value: w.value, Delete: w.del})
 	}
+	currentState := s.captureState()
 	for _, meta := range []struct {
 		key    string
 		value  any
 		before any
 	}{
-		{schemaPrefix, s.tables, s.txState.tables},
-		{schemaIdxPrefix, s.indexes, s.txState.indexes},
+		{schemaPrefix, currentState.tables, s.txState.tables},
+		{schemaIdxPrefix, currentState.indexes, s.txState.indexes},
 		{schemaViewsPrefix, s.views, s.txState.views},
 		{schemaTrigPrefix, s.triggers, s.txState.triggers},
-		{autoincPrefix, s.autoincMax, s.txState.autoinc},
-		{statsPrefix, s.stats, s.txState.stats},
-		{distributionPrefix, distributionMetadata{1, s.distributions}, distributionMetadata{1, s.txState.distributions}},
+		{autoincPrefix, currentState.autoinc, s.txState.autoinc},
+		{statsPrefix, currentState.stats, s.txState.stats},
+		{distributionPrefix, distributionMetadata{1, currentState.distributions}, distributionMetadata{1, s.txState.distributions}},
 	} {
 		if reflect.DeepEqual(meta.value, meta.before) {
 			continue
@@ -2007,6 +2025,7 @@ func (s *Schema) ExecuteStatement(run func() error) error {
 		}
 	}
 	state := s.captureState()
+	temporaryBefore := s.snapshotTemporaryDefinitions()
 	pos := len(s.txWrites)
 	err := run()
 	if err == nil {
@@ -2019,6 +2038,7 @@ func (s *Schema) ExecuteStatement(run func() error) error {
 		err = s.recordWrites(pos)
 	}
 	if err != nil {
+		s.temporary = temporaryBefore
 		s.restoreState(state)
 		s.truncateTxWrites(pos)
 		if implicit {
@@ -2028,6 +2048,7 @@ func (s *Schema) ExecuteStatement(run func() error) error {
 	}
 	if implicit {
 		if err := s.Commit(); err != nil {
+			s.temporary = temporaryBefore
 			s.Rollback()
 			return err
 		}
@@ -2036,15 +2057,29 @@ func (s *Schema) ExecuteStatement(run func() error) error {
 }
 func (s *Schema) StatementChanges() int64 { return s.statementChanges }
 func (s *Schema) write(key, value []byte) error {
+	if s.temporary != nil && s.temporary.building && len(key) > 0 && key[0] == 0 {
+		return nil
+	}
 	if s.inTx {
 		s.txPut(key, value)
+		return nil
+	}
+	if s.temporaryKey(key) {
+		s.temporary.rows[string(key)] = copyBytes(value)
 		return nil
 	}
 	return s.lsm.Put(key, value)
 }
 func (s *Schema) remove(key []byte) error {
+	if s.temporary != nil && s.temporary.building && len(key) > 0 && key[0] == 0 {
+		return nil
+	}
 	if s.inTx {
 		s.txDelete(key)
+		return nil
+	}
+	if s.temporaryKey(key) {
+		delete(s.temporary.rows, string(key))
 		return nil
 	}
 	return s.lsm.Delete(key)
@@ -2332,7 +2367,14 @@ func (s *Schema) loadIndexes() error {
 
 func (s *Schema) saveIndexes() error {
 	s.catalogLookup = nil
-	data, err := json.Marshal(s.indexes)
+	if s.inTx && s.hasTemporaryTables() {
+		return nil
+	}
+	indexes := s.indexes
+	if s.hasTemporaryTables() {
+		indexes = s.captureState().indexes
+	}
+	data, err := json.Marshal(indexes)
 	if err != nil {
 		return err
 	}
@@ -2380,6 +2422,11 @@ func indexDataPrefix(indexName string) string {
 }
 
 func (s *Schema) CreateIndex(stmt *CreateIndexStmt) error {
+	if s.isTemporaryTable(stmt.Table) {
+		before := s.temporary.building
+		s.temporary.building = true
+		defer func() { s.temporary.building = before }()
+	}
 	s.ensureCatalogWritable()
 	idxName := strings.ToLower(stmt.Index)
 	tableName := strings.ToLower(stmt.Table)

@@ -12,6 +12,28 @@ import (
 )
 
 func (s *Schema) nextRowID(table string) (id int64, err error) {
+	if s.isTemporaryTable(table) {
+		counter := s.rowCounterKey(table)
+		current, ok := s.temporary.nextRow[counter]
+		if !ok {
+			maxID, e := s.lastRowID(table, s.tables[table])
+			if e != nil {
+				return 0, e
+			}
+			maxID = max(maxID, s.getAutoincMax(table))
+			if maxID == math.MaxInt64 {
+				return 0, fmt.Errorf("integer primary key exhausted")
+			}
+			current = maxID + 1
+		}
+		current = max(current, s.rowIDCount[counter])
+		if current <= 0 {
+			return 0, fmt.Errorf("integer primary key exhausted")
+		}
+		s.temporary.nextRow[counter] = current + 1
+		s.rowIDCount[counter] = current + 1
+		return current, nil
+	}
 	counter := s.rowCounterKey(table)
 	root := s
 	if s.parent != nil {

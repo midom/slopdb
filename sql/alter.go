@@ -15,6 +15,11 @@ func (s *Schema) AlterTable(a *AlterTableStmt) error {
 	if !s.inTx {
 		return s.ExecuteStatement(func() error { return s.AlterTable(a) })
 	}
+	if s.isTemporaryTable(a.Table) {
+		before := s.temporary.building
+		s.temporary.building = true
+		defer func() { s.temporary.building = before }()
+	}
 	s.ensureCatalogWritable()
 	if a.ObjectKind == "INDEX" {
 		return s.alterIndex(a)

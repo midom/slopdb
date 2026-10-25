@@ -21,6 +21,10 @@ func indexCleanupKey(id uint64) []byte {
 }
 
 func (s *Schema) markIndexCleanup(idx *IndexInfo) error {
+	if s.temporaryKey([]byte(idx.storagePrefix())) {
+		prefix := []byte(idx.storagePrefix())
+		return s.removeRange(prefix, prefixSuccessor(prefix))
+	}
 	if idx.ID == 0 {
 		return fmt.Errorf("index cleanup requires a storage object ID")
 	}
