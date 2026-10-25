@@ -14,6 +14,9 @@ import (
 // PostgresColumnOID describes the declared PostgreSQL type without changing the
 // native row encoding. Zero means the column has no PostgreSQL declaration.
 func PostgresColumnOID(col ColumnDef) uint32 {
+	if col.Unsigned && col.ColType == ColInteger {
+		return 1700
+	}
 	name := strings.ToUpper(strings.TrimSpace(col.Declared))
 	if i := strings.IndexByte(name, '('); i >= 0 {
 		if j := strings.IndexByte(name[i:], ')'); j >= 0 {

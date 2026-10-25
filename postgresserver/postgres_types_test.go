@@ -165,3 +165,45 @@ func TestPostgresMultiwordAndChainedParameterCasts(t *testing.T) {
 		t.Fatal(got, e)
 	}
 }
+
+func TestPostgresBridgePreservesNativeWideNumericTypes(t *testing.T) {
+	s := startTestServer(t, "tcp", Config{})
+	// These tables predate the PostgreSQL session and use native int64/float64.
+	if _, e := s.database.Exec(`CREATE TABLE native_wide(id INTEGER PRIMARY KEY,r REAL); INSERT INTO native_wide VALUES(9223372036854775807,1.2345678901234567); CREATE VIEW native_wide_view AS SELECT id,r FROM native_wide`); e != nil {
+		t.Fatal(e)
+	}
+	ctx := context.Background()
+	c, e := pgx.Connect(ctx, s.dsn("slopdb", "", "slopdb"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer c.Close(ctx)
+	for _, mode := range []pgx.QueryExecMode{pgx.QueryExecModeCacheStatement, pgx.QueryExecModeSimpleProtocol} {
+		for _, relation := range []string{"native_wide", "native_wide_view"} {
+			rows, e := c.Query(ctx, "SELECT id,r FROM "+relation, mode)
+			if e != nil {
+				t.Fatal(e)
+			}
+			fields := rows.FieldDescriptions()
+			if len(fields) != 2 || fields[0].DataTypeOID != oidInt8 || fields[1].DataTypeOID != oidFloat8 {
+				t.Fatalf("mode %v %s: %+v", mode, relation, fields)
+			}
+			if !rows.Next() {
+				t.Fatal(rows.Err())
+			}
+			var id int64
+			var r float64
+			if e = rows.Scan(&id, &r); e != nil {
+				t.Fatal(e)
+			}
+			rows.Close()
+			if id != 9223372036854775807 || r != 1.2345678901234567 {
+				t.Fatalf("changed native numeric: %d %.17g", id, r)
+			}
+		}
+	}
+	var real float64
+	if e = c.QueryRow(ctx, `SELECT r FROM native_wide WHERE id=$1`, int64(9223372036854775807)).Scan(&real); e != nil || real != 1.2345678901234567 {
+		t.Fatal(real, e)
+	}
+}

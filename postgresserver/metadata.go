@@ -45,71 +45,39 @@ func (m *metadata) table(name string, scope map[string][]field, depth int) ([]fi
 		m.tables[name] = fields
 		return fields, nil
 	}
-	// This reads catalog metadata only; user SELECTs and DML never run at Parse,
-	// Bind or Describe, including volatile expressions and locking reads.
-	result, err := m.client.session.ExecContext(m.ctx, "PRAGMA table_info("+quote(name)+")")
-	if err != nil {
-		// SHOW CREATE VIEW exposes canonical catalog SQL. Resolve projections
-		// statically, including this session's uncommitted catalog changes.
-		views, e := m.client.session.ExecContext(m.ctx, "SHOW CREATE VIEW \""+strings.ReplaceAll(name, "\"", "\"\"")+"\"")
-		if e != nil {
-			return nil, err
-		}
-		if len(views.Rows) == 0 {
-			return nil, err
-		}
-		stmts, e := sql.Parse(views.Rows[0]["Create view"].Text)
-		if e != nil {
-			return nil, e
-		}
-		if len(stmts) != 1 {
-			return nil, fmt.Errorf("invalid view metadata")
-		}
-		view, ok := stmts[0].(*sql.CreateViewStmt)
-		if !ok {
-			return nil, fmt.Errorf("invalid view metadata")
-		}
-		fields, e := m.statement(view.Select, scope, depth+1)
-		if e != nil {
-			return nil, e
-		}
-		if len(view.Columns) > 0 {
-			if len(view.Columns) != len(fields) {
-				return nil, fmt.Errorf("invalid view columns")
-			}
-			for i, name := range view.Columns {
-				fields[i].name = name
-			}
-		}
-		m.tables[name] = fields
-		return fields, nil
+	// Describe the actual catalog types without executing user expressions or
+	// scanning rows. Native INTEGER/REAL keep their int64/float64 wire types;
+	// PostgreSQL-created columns retain their narrower declared types.
+	parts := strings.Split(name, ".")
+	for i := range parts {
+		parts[i] = "\"" + strings.ReplaceAll(parts[i], "\"", "\"\"") + "\""
 	}
-	var fields []field
-	for _, row := range result.Rows {
-		typ := strings.ToUpper(row["type"].Text)
-		oid := oidText
-		switch {
-		case strings.Contains(typ, "UNSIGNED") && strings.HasPrefix(typ, "BIGINT"):
+	stmt, err := m.client.session.PrepareContext(m.ctx, "SELECT * FROM "+strings.Join(parts, "."))
+	if err != nil {
+		return nil, err
+	}
+	defer stmt.Close()
+	columns, err := m.client.session.DescribePrepared(m.ctx, stmt)
+	if err != nil {
+		return nil, err
+	}
+	fields := make([]field, 0, len(columns))
+	for _, col := range columns {
+		oid := nativeOID(col.ColType)
+		if col.Unsigned {
 			oid = oidNumeric
-		case strings.HasPrefix(typ, "DECIMAL") || strings.HasPrefix(typ, "NUMERIC"):
-			oid = oidNumeric
-		case typ == "JSON" || typ == "JSONB":
-			oid = oidJSON
-		case strings.HasPrefix(typ, "INT") || strings.HasPrefix(typ, "BIGINT") || strings.HasPrefix(typ, "SMALLINT") || strings.HasPrefix(typ, "TINYINT") || strings.HasPrefix(typ, "MEDIUMINT"):
-			oid = oidInt8
-		case typ == "REAL":
-			oid = oidFloat8
-		case typ == "BLOB" || strings.HasPrefix(typ, "VARBINARY"):
-			oid = oidBytea
 		}
-		if _, pgOID := typeName(typ); pgOID != 0 {
-			oid = pgOID
+		if col.Postgres {
+			if typed := sql.PostgresColumnOID(col); typed != 0 {
+				oid = typed
+			}
 		}
-		fields = append(fields, field{row["name"].Text, oid})
+		fields = append(fields, field{col.Name, oid})
 	}
 	m.tables[name] = fields
 	return fields, nil
 }
+
 func (m *metadata) statement(stmt sql.Statement, outer map[string][]field, depth int) ([]field, error) {
 	if depth > 64 {
 		return nil, &protocolError{"54001", "metadata nesting limit exceeded"}
