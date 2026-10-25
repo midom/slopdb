@@ -55,6 +55,24 @@ excluding warmup. `AverageCPUCores` is CPU seconds divided by elapsed seconds;
 `CPUPercent` divides that by the host's logical CPU count. Background Go GC
 work contributes to process CPU use. More CPU use alone is not a speedup.
 
+Reports also record the runtime environment, timed GC cycles and stop-the-world
+pause seconds, and process voluntary/involuntary context-switch deltas. Compare
+CPU seconds per completed query and latency alongside throughput when increasing
+concurrency. GC pause time does not include concurrent collector CPU time.
+The JSON fields are `RuntimeEnv`, `GCPauseSeconds`,
+`VoluntaryContextSwitches` and `InvoluntaryContextSwitches`. Worker setup and
+sample-summary work are outside the allocation and GC measurement window.
+
+Use `-reuse-results` to measure the existing `Session.ExecPreparedInto` API.
+Each worker keeps its own result destination and validates it before the next
+call. This reuses row maps, column slices and BLOB buffers; callers surrender
+the previous result contents on each call. The default still measures
+`ExecPrepared`, whose results can be retained independently. Keep the API mode
+fixed for code comparisons and label API-mode comparisons separately.
+Reports and runner manifests label the modes `ExecPrepared` (default, owned
+results) and `ExecPreparedInto` (reusable destination). Both matrix scripts
+accept `--reuse-results`; use separate output directories for the two modes.
+
 To measure scaling at a fully fitting cache, run:
 
 ```sh
@@ -66,6 +84,22 @@ python3 scripts/select_scaling.py \
 
 Keep runtime settings (`GOGC`, `GOMEMLIMIT`, `GOMAXPROCS`) the same for code
 comparisons. Record tuning experiments separately, including their memory cost.
+
+The scaling runner accepts `--memory heap|mmap` and `--reuse-results`. For example,
+to compare reader counts with reusable results and all 60 execution slots:
+
+```sh
+env -u GOGC -u GOMEMLIMIT GOMAXPROCS=60 python3 scripts/select_scaling.py \
+  --binary ~/slopdb-bench/select-bench --dir ~/slopdb-small-row-10gb \
+  --output ~/slopdb-bench/select-reuse-scaling --reuse-results \
+  --workers 1 8 16 32 60 120 240
+```
+
+An mmap cache is outside the Go heap. A fully cached database can therefore
+leave a small live heap and trigger frequent GC while allocating fresh query
+results. Measure explicit GC headroom separately from library changes. A Go
+memory limit also excludes the anonymous cache mapping; assess whole-process
+RSS rather than treating that limit as a process memory ceiling.
 
 For `GOGC=200` alone, explicitly unset any inherited memory limit:
 

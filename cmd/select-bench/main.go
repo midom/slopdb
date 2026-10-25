@@ -39,35 +39,40 @@ type seedInfo struct {
 }
 
 type config struct {
-	CachePolicy string
-	CacheMemory string
-	Dir         string
-	SeedBytes   int64
-	CacheBytes  int
-	Workers     int
-	Duration    time.Duration
-	Samples     int
-	Prewarm     bool
-	ProfileDir  string
-	JSON        string
+	CachePolicy  string
+	CacheMemory  string
+	Dir          string
+	SeedBytes    int64
+	CacheBytes   int
+	Workers      int
+	Duration     time.Duration
+	Samples      int
+	Prewarm      bool
+	ReuseResults bool
+	ProfileDir   string
+	JSON         string
 }
 
 type sample struct {
-	CPUSeconds, AverageCPUCores, CPUPercent     float64
-	Queries                                     int64
-	Seconds                                     float64
-	QueriesPerSecond                            float64
-	MeanUS, P50US, P95US, P99US                 float64
-	AllocatedBytesPerQuery, AllocationsPerQuery float64
-	GCs                                         uint32
-	Before, After                               storage.LSMStats
+	CPUSeconds, AverageCPUCores, CPUPercent              float64
+	Queries                                              int64
+	Seconds                                              float64
+	QueriesPerSecond                                     float64
+	MeanUS, P50US, P95US, P99US                          float64
+	AllocatedBytesPerQuery, AllocationsPerQuery          float64
+	GCs                                                  uint32
+	GCPauseSeconds                                       float64
+	VoluntaryContextSwitches, InvoluntaryContextSwitches int64
+	Before, After                                        storage.LSMStats
 }
 
 type report struct {
 	Config         config
+	APIMode        string
 	Seed           seedInfo
 	GoVersion      string
 	GOMAXPROCS     int
+	RuntimeEnv     map[string]string
 	Started        time.Time
 	PrewarmQueries int64
 	PrewarmSeconds float64
@@ -260,6 +265,17 @@ type workerStats struct {
 
 func run(c config) (r report, err error) {
 	r = report{Config: c, GoVersion: runtime.Version(), GOMAXPROCS: runtime.GOMAXPROCS(0), Started: time.Now().UTC()}
+	r.APIMode = "ExecPrepared"
+	if c.ReuseResults {
+		r.APIMode = "ExecPreparedInto"
+	}
+	r.RuntimeEnv = make(map[string]string)
+	for _, key := range []string{"GOGC", "GOMEMLIMIT", "GOMAXPROCS"} {
+		r.RuntimeEnv[key] = "runtime default"
+		if value, ok := os.LookupEnv(key); ok {
+			r.RuntimeEnv[key] = value
+		}
+	}
 	defer func() {
 		if err != nil {
 			r.Error = err.Error()
@@ -319,8 +335,9 @@ func run(c config) (r report, err error) {
 			go func(i int, s *db.Session) {
 				defer wg.Done()
 				buf := make([]byte, payloadBytes)
+				var dst db.ExecResult
 				for id := int64(1 + i*8); id <= r.Seed.Rows; id += int64(c.Workers * 8) {
-					out, e := s.ExecPrepared(stmt, id)
+					out, e := execute(s, stmt, &dst, c.ReuseResults, id)
 					if e == nil {
 						e = check(out, id, buf)
 					}
@@ -370,7 +387,6 @@ func run(c config) (r report, err error) {
 	}
 	for n := 0; n < c.Samples; n++ {
 		var beforeMem, afterMem runtime.MemStats
-		runtime.ReadMemStats(&beforeMem)
 		sample := sample{Before: d.Stats()}
 		results := make([]workerStats, c.Workers)
 		var stop atomic.Bool
@@ -383,12 +399,13 @@ func run(c config) (r report, err error) {
 				defer wg.Done()
 				rng := rand.New(rand.NewSource(42 + int64(i) + int64(n)*1000))
 				buf := make([]byte, payloadBytes)
+				var dst db.ExecResult
 				ready.Done()
 				<-startGate
 				for !stop.Load() {
 					id := rng.Int63n(r.Seed.Rows) + 1
 					started := time.Now()
-					out, e := s.ExecPrepared(stmt, id)
+					out, e := execute(s, stmt, &dst, c.ReuseResults, id)
 					elapsed := time.Since(started).Nanoseconds()
 					if e == nil {
 						e = check(out, id, buf)
@@ -405,14 +422,21 @@ func run(c config) (r report, err error) {
 			}(i, s)
 		}
 		ready.Wait()
-		cpuStart := processCPUSeconds()
+		// Worker creation, PRNG setup, validation buffers and sample metadata
+		// are outside the allocation/GC window, just as they are for CPU time.
+		runtime.ReadMemStats(&beforeMem)
+		usageStart := processUsage()
 		start := time.Now()
 		close(startGate)
 		timer := time.AfterFunc(c.Duration, func() { stop.Store(true) })
 		wg.Wait()
 		timer.Stop()
 		sample.Seconds = time.Since(start).Seconds()
-		sample.CPUSeconds = processCPUSeconds() - cpuStart
+		usageEnd := processUsage()
+		runtime.ReadMemStats(&afterMem)
+		sample.CPUSeconds = cpuSeconds(usageEnd) - cpuSeconds(usageStart)
+		sample.VoluntaryContextSwitches = usageEnd.Nvcsw - usageStart.Nvcsw
+		sample.InvoluntaryContextSwitches = usageEnd.Nivcsw - usageStart.Nivcsw
 		sample.AverageCPUCores = sample.CPUSeconds / sample.Seconds
 		sample.CPUPercent = sample.AverageCPUCores * 100 / float64(runtime.NumCPU())
 		var h histogram
@@ -435,10 +459,10 @@ func run(c config) (r report, err error) {
 		sample.P50US = h.percentile(.5)
 		sample.P95US = h.percentile(.95)
 		sample.P99US = h.percentile(.99)
-		runtime.ReadMemStats(&afterMem)
 		sample.AllocatedBytesPerQuery = float64(afterMem.TotalAlloc-beforeMem.TotalAlloc) / float64(sample.Queries)
 		sample.AllocationsPerQuery = float64(afterMem.Mallocs-beforeMem.Mallocs) / float64(sample.Queries)
 		sample.GCs = afterMem.NumGC - beforeMem.NumGC
+		sample.GCPauseSeconds = float64(afterMem.PauseTotalNs-beforeMem.PauseTotalNs) / 1e9
 		sample.After = d.Stats()
 		r.Samples = append(r.Samples, sample)
 		fmt.Fprintf(os.Stderr, "sample %d: %.0f SELECT/s; mean %.1f us p99 <= %.1f us; cache %.3f GB; %.1f CPU cores (%.1f%% of host)\n", n+1, sample.QueriesPerSecond, sample.MeanUS, sample.P99US, float64(sample.After.BlockCacheBytes)/1e9, sample.AverageCPUCores, sample.CPUPercent)
@@ -446,11 +470,22 @@ func run(c config) (r report, err error) {
 	return r, nil
 }
 
-func processCPUSeconds() float64 {
+func execute(s *db.Session, stmt *db.Stmt, dst *db.ExecResult, reuse bool, id int64) (*db.ExecResult, error) {
+	if reuse {
+		return s.ExecPreparedInto(dst, stmt, id)
+	}
+	return s.ExecPrepared(stmt, id)
+}
+
+func processUsage() syscall.Rusage {
 	var usage syscall.Rusage
 	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &usage); err != nil {
 		panic(err)
 	}
+	return usage
+}
+
+func cpuSeconds(usage syscall.Rusage) float64 {
 	return float64(usage.Utime.Sec+usage.Stime.Sec) + float64(usage.Utime.Usec+usage.Stime.Usec)/1e6
 }
 
@@ -473,6 +508,7 @@ func main() {
 	flag.DurationVar(&c.Duration, "duration", 30*time.Second, "measurement duration per sample")
 	flag.IntVar(&c.Samples, "samples", 3, "consecutive samples in the same process")
 	flag.BoolVar(&c.Prewarm, "prewarm", true, "checked page-spaced point SELECT warmup before timing (stride 8 rows)")
+	flag.BoolVar(&c.ReuseResults, "reuse-results", false, "reuse worker-private results through ExecPreparedInto")
 	flag.StringVar(&c.ProfileDir, "profile-dir", "", "optional diagnostic profiles (use separate runs)")
 	flag.StringVar(&c.JSON, "json", "", "report destination")
 	flag.Parse()
