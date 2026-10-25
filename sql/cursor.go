@@ -42,6 +42,11 @@ func (s *Schema) OpenRowCursor(stmt *SelectStmt) (*RowCursor, bool, error) {
 	if info == nil || stmt.FromExpr != nil || stmt.Virtual != nil || len(stmt.Joins) != 0 || stmt.Lock != nil || stmt.Distinct || len(stmt.GroupBy) != 0 || stmt.Having != nil || hasAggregates(stmt) {
 		return nil, false, nil
 	}
+	expandedStatement, err := s.expandQualifiedStars(stmt, nil, 0)
+	if err != nil {
+		return nil, true, err
+	}
+	stmt = expandedStatement
 	if !cursorExpressionSafe(s, stmt.Where) {
 		return nil, false, nil
 	}

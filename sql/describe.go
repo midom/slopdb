@@ -133,6 +133,11 @@ func (s *Schema) describeStatement(stmt Statement, outer map[string][]ColumnDef,
 	}
 	switch st := stmt.(type) {
 	case *SelectStmt:
+		var expandErr error
+		st, expandErr = s.expandQualifiedStars(st, scope, depth+1)
+		if expandErr != nil {
+			return nil, expandErr
+		}
 		s.describeLimitParameters(st.LimitParam, st.OffsetParam)
 		if st.Compound != nil {
 			return s.describeStatement(st.Compound, scope, depth+1)
@@ -405,6 +410,24 @@ func (s *Schema) describeProjection(columns []SelectColumn, all []ColumnDef, env
 	exprIndex := 0
 	for i, sc := range columns {
 		if sc.Star {
+			if sc.StarQualifier != "" {
+				qualifier := sc.StarQualifier
+				if len(all) > 0 {
+					if _, ok := env[qualifier+"."+all[0].Name]; !ok {
+						qualifier = s.canonicalStarQualifier(qualifier)
+					}
+				}
+				valid := len(all) > 0
+				for _, col := range all {
+					if _, ok := env[qualifier+"."+col.Name]; !ok {
+						valid = false
+						break
+					}
+				}
+				if !valid {
+					return nil, fmt.Errorf("unknown star qualifier %q", qualifier)
+				}
+			}
 			out = append(out, all...)
 			continue
 		}
@@ -434,6 +457,9 @@ func (s *Schema) describeProjection(columns []SelectColumn, all []ColumnDef, env
 		if sc.Alias != "" {
 			c.OriginalName = ""
 			c.DisplayName = ""
+		}
+		if sc.starLabel != "" {
+			c.DisplayName = sc.starLabel
 		}
 		out = append(out, c)
 		exprIndex++

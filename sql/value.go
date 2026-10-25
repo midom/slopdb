@@ -249,9 +249,11 @@ type JoinClause struct {
 }
 
 type SelectColumn struct {
-	Expr  Expression
-	Alias string
-	Star  bool
+	StarQualifier string // relation alias or schema-qualified table for qualifier.*
+	starLabel     string // expanded bare output label; source lookup remains qualified
+	Expr          Expression
+	Alias         string
+	Star          bool
 }
 
 type OrderByClause struct {

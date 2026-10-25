@@ -1234,7 +1234,7 @@ func (p *Parser) parseSelect() (Statement, error) {
 		}
 		p.advance()
 	}
-	stmt.SelectAll = len(stmt.Columns) == 1 && stmt.Columns[0].Star
+	stmt.SelectAll = len(stmt.Columns) == 1 && stmt.Columns[0].Star && stmt.Columns[0].StarQualifier == ""
 
 	if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "FROM" {
 		p.advance()
@@ -1452,6 +1452,9 @@ func (p *Parser) parseSelect() (Statement, error) {
 }
 
 func (p *Parser) parseSelectColumn() (SelectColumn, error) {
+	if column, ok, err := p.parseQualifiedStar(); ok || err != nil {
+		return column, err
+	}
 	if p.cur.Type == TokStar {
 		p.advance()
 		return SelectColumn{Star: true}, nil
@@ -2767,6 +2770,9 @@ func formatSelectSQL(s *SelectStmt) string {
 				b.WriteString(", ")
 			}
 			if col.Star {
+				if col.StarQualifier != "" {
+					b.WriteString(formatRef(col.StarQualifier) + ".")
+				}
 				b.WriteString("*")
 			} else {
 				b.WriteString(formatExpr(col.Expr))
@@ -3090,4 +3096,30 @@ func (p *Parser) declaredColumnName() string {
 		return p.cur.Value
 	}
 	return ""
+}
+
+// Inspect a tokenizer copy so ordinary qualified expressions keep their parser
+// path. A star is valid only as an entire projection slot.
+func (p *Parser) parseQualifiedStar() (SelectColumn, bool, error) {
+	if p.cur.Type != TokIdent && p.cur.Type != TokKeyword {
+		return SelectColumn{}, false, nil
+	}
+	look := *p.tok
+	parts := []string{strings.ToLower(p.cur.Value)}
+	for look.Next().Type == TokDot {
+		token := look.Next()
+		if token.Type == TokStar {
+			if len(parts) > 2 {
+				return SelectColumn{}, false, fmt.Errorf("too many star qualifiers")
+			}
+			*p.tok = look
+			p.advance()
+			return SelectColumn{Star: true, StarQualifier: strings.Join(parts, ".")}, true, nil
+		}
+		if token.Type != TokIdent && token.Type != TokKeyword {
+			break
+		}
+		parts = append(parts, strings.ToLower(token.Value))
+	}
+	return SelectColumn{}, false, nil
 }

@@ -96,7 +96,7 @@ func (s *Schema) selectProjection(stmt *SelectStmt, info *TableInfo) ([]ColumnDe
 				}
 			}
 			index++
-			columns = append(columns, ColumnDef{Name: name})
+			columns = append(columns, ColumnDef{Name: name, DisplayName: sc.starLabel})
 			expressions = append(expressions, selectExprCol{name: name, expr: sc.Expr})
 		}
 	}

@@ -643,6 +643,14 @@ func (s *Schema) resolveNamespaceStatement(stmt Statement, outer map[string]bool
 			}
 		}
 	}
+	if selectStmt, ok := stmt.(*SelectStmt); ok {
+		for i := range selectStmt.Columns {
+			col := &selectStmt.Columns[i]
+			if alias := aliases[col.StarQualifier]; col.StarQualifier != "" && alias != "" {
+				col.StarQualifier = alias
+			}
+		}
+	}
 	if update, ok := stmt.(*UpdateStmt); ok {
 		for i := range update.Set {
 			for table, alias := range aliases {

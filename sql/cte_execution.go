@@ -354,6 +354,14 @@ func (s *Schema) cteQueryColumnDefs(query Statement, outer map[string][]ColumnDe
 	case *UnionStmt:
 		return s.cteQueryColumnDefs(q.Left, names)
 	case *SelectStmt:
+		for _, col := range q.Columns {
+			if col.Star && col.StarQualifier != "" {
+				if defs, err := s.describeStatement(q, names, 0); err == nil {
+					return defs
+				}
+				break
+			}
+		}
 		if q.JoinGroup {
 			cols, _ := s.joinGroupColumns(q)
 			return cols
@@ -595,6 +603,10 @@ func cteScopeColumns(scope map[string]*ResultSet) map[string][]ColumnDef {
 func (s *Schema) preserveDerivedOutputNames(q *SelectStmt, scope map[string][]ColumnDef) {
 	if q == nil {
 		return
+	}
+	if expanded, err := s.expandQualifiedStars(q, scope, 0); err == nil && expanded != q {
+		q.Columns = expanded.Columns
+		q.SelectAll = false
 	}
 	if q.Compound != nil {
 		s.preserveDerivedOutputNames(q.Compound.Left, scope)

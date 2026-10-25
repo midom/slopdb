@@ -334,6 +334,9 @@ func formatDMLStatement(stmt Statement) (string, error) {
 			for i, c := range cols {
 				if c.Star {
 					a[i] = "*"
+					if c.StarQualifier != "" {
+						a[i] = formatRef(c.StarQualifier) + ".*"
+					}
 				} else {
 					a[i] = formatExpr(c.Expr)
 				}

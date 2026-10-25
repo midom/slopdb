@@ -4268,6 +4268,14 @@ func (s *Schema) insertFromSelect(stmt *InsertStmt, info *TableInfo) (int64, *Re
 }
 
 func (s *Schema) buildReturningResult(cols []SelectColumn, rows []map[string]Value, info *TableInfo) (*ResultSet, error) {
+	for _, col := range cols {
+		if col.Star && col.StarQualifier != "" {
+			_, bare := SplitSchemaName(info.Name)
+			if col.StarQualifier != info.Name && col.StarQualifier != bare && s.canonicalStarQualifier(col.StarQualifier) != info.Name {
+				return nil, fmt.Errorf("unknown star qualifier %q", col.StarQualifier)
+			}
+		}
+	}
 	rs := &ResultSet{}
 	var expressions []selectExprCol
 	for i, sc := range cols {
@@ -4553,6 +4561,10 @@ func (s *Schema) selectInto(stmt *SelectStmt, dst *ResultSet) (result *ResultSet
 		return nil, err
 	}
 	stmt, err = s.resolveCTETables(stmt)
+	if err != nil {
+		return nil, err
+	}
+	stmt, err = s.expandQualifiedStars(stmt, cteScopeColumns(s.cteScope), 0)
 	if err != nil {
 		return nil, err
 	}
@@ -5590,7 +5602,9 @@ func (s *Schema) addJoinColumns(rs *ResultSet, jc JoinClause, baseColumns []Colu
 			if exists && alias != "" {
 				name = alias + "." + name
 			}
-			rs.Columns = append(rs.Columns, ColumnDef{Name: name, ColType: col.ColType})
+			label := col.ResultName()
+			col.Name, col.DisplayName = name, label
+			rs.Columns = append(rs.Columns, col)
 		}
 		return
 	}
@@ -5607,7 +5621,9 @@ func (s *Schema) addJoinColumns(rs *ResultSet, jc JoinClause, baseColumns []Colu
 		if baseExist[name] {
 			name = alias + "." + name
 		}
-		rs.Columns = append(rs.Columns, ColumnDef{Name: name, ColType: col.ColType})
+		label := col.ResultName()
+		col.Name, col.DisplayName = name, label
+		rs.Columns = append(rs.Columns, col)
 		baseExist[name] = true
 	}
 }
