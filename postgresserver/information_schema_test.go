@@ -60,4 +60,27 @@ func TestPostgreSQLCanonicalInformationSchemaWire(t *testing.T) {
 	if e = c.QueryRow(ctx, "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='catalog_view'").Scan(&name); e != nil || name != "parent_id" {
 		t.Fatal(name, e)
 	}
+	showDescription, e := c.Prepare(ctx, "show_index", "SHOW INDEX FROM catalog_child")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if len(showDescription.Fields) != 15 || showDescription.Fields[1].DataTypeOID != 20 || showDescription.Fields[3].DataTypeOID != 20 {
+		t.Fatal("wrong PostgreSQL SHOW descriptor", showDescription)
+	}
+	showRows, e := c.Query(ctx, "show_index")
+	if e != nil {
+		t.Fatal(e)
+	}
+	count = 0
+	for showRows.Next() {
+		if _, e = showRows.Values(); e != nil {
+			t.Fatal(e)
+		}
+		count++
+	}
+	showRows.Close()
+	if showRows.Err() != nil || count < 2 {
+		t.Fatal(count, showRows.Err())
+	}
+
 }

@@ -55,4 +55,33 @@ func TestMySQLCanonicalCatalogPreparedWire(t *testing.T) {
 	if e = c.QueryRowContext(ctx, "SELECT engine FROM information_schema.engines WHERE support='DEFAULT'").Scan(&engine); e != nil || engine != "LSM" {
 		t.Fatal(engine, e)
 	}
+	preparedShow, e := c.PrepareContext(ctx, "SHOW FULL COLUMNS FROM catalog_child")
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer preparedShow.Close()
+	showRows, e := preparedShow.QueryContext(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	labels, e := showRows.Columns()
+	if e != nil || len(labels) != 9 || labels[2] != "Collation" || labels[7] != "Privileges" {
+		t.Fatal(labels, e)
+	}
+	showRows.Close()
+	preparedIndex, e := c.PrepareContext(ctx, "SHOW INDEX FROM catalog_child")
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer preparedIndex.Close()
+	showRows, e = preparedIndex.QueryContext(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	metadata, e := showRows.ColumnTypes()
+	if e != nil || len(metadata) != 15 || metadata[1].DatabaseTypeName() != "BIGINT" || metadata[3].DatabaseTypeName() != "BIGINT" {
+		t.Fatal("wrong prepared SHOW numeric fields", e)
+	}
+	showRows.Close()
+
 }

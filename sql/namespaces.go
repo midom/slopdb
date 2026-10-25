@@ -603,7 +603,7 @@ func (s *Schema) resolveNamespaceStatement(stmt Statement, outer map[string]bool
 	case *ShowStmt:
 		if st.Database != "" {
 			st.Database = s.namespaceAlias(st.Database)
-			if !s.namespaces[st.Database] {
+			if !s.namespaces[st.Database] && !s.catalogSystemNamespace(st.Database) {
 				return fmt.Errorf("unknown schema %q", st.Database)
 			}
 			if st.Object != "" && !strings.Contains(st.Object, ".") {

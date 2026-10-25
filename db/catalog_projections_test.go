@@ -159,3 +159,87 @@ func TestSharedCatalogNamespacePolicy(t *testing.T) {
 		t.Fatal("explicit root alias leaked physical shadow", r, e)
 	}
 }
+
+func TestCatalogSelfDescriptionAndShowFrames(t *testing.T) {
+	for _, dialect := range []sql.Dialect{sql.DialectMySQL, sql.DialectPostgreSQL} {
+		t.Run(dialect.String(), func(t *testing.T) {
+			d, _ := bulkDatabase(t)
+			s, e := d.NewSession()
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer s.Close()
+			if e = s.SetDialect(dialect); e != nil {
+				t.Fatal(e)
+			}
+			exec := func(q string) *ExecResult {
+				t.Helper()
+				r, e := s.Exec(q)
+				if e != nil {
+					t.Fatalf("%s: %v", q, e)
+				}
+				return r
+			}
+			r := exec("SELECT table_name,table_type FROM information_schema.tables WHERE table_schema='information_schema' AND table_name='columns'")
+			if len(r.Rows) != 1 || r.Rows[0]["table_type"].Text != "SYSTEM VIEW" {
+				t.Fatal(r)
+			}
+			r = exec("SELECT column_name,ordinal_position FROM information_schema.columns WHERE table_schema='information_schema' AND table_name='columns' ORDER BY ordinal_position")
+			if len(r.Rows) < 30 || r.Rows[0]["column_name"].Text != "table_catalog" || r.Rows[0]["ordinal_position"].Int != 1 {
+				t.Fatal("missing static self description")
+			}
+			r = exec("SHOW TABLES FROM information_schema LIKE 'columns'")
+			if len(r.Rows) != 1 {
+				t.Fatal(r)
+			}
+			r = exec("SHOW COLUMNS FROM information_schema.columns")
+			if len(r.Rows) < 30 || r.Rows[4]["Type"].Text != "BIGINT" {
+				t.Fatal("wrong system column descriptions")
+			}
+			exec("CREATE TABLE described(id BIGINT PRIMARY KEY, value INTEGER DEFAULT (1/0));CREATE VIEW described_view AS SELECT id FROM described;CREATE TRIGGER described_trigger AFTER INSERT ON described BEGIN SELECT 1; END")
+			for _, test := range []struct{ show, query, key string }{
+				{"SHOW CREATE TABLE described", "SELECT slopdb_create_sql FROM information_schema.tables WHERE table_name='described'", "Create table"},
+				{"SHOW CREATE VIEW described_view", "SELECT slopdb_create_sql FROM information_schema.views WHERE table_name='described_view'", "Create view"},
+				{"SHOW CREATE TRIGGER described_trigger", "SELECT slopdb_create_sql FROM information_schema.triggers WHERE trigger_name='described_trigger'", "SQL Original Statement"},
+			} {
+				show := exec(test.show)
+				catalog := exec(test.query)
+				if len(catalog.Rows) != 1 || show.Rows[0][test.key].Text != catalog.Rows[0]["slopdb_create_sql"].Text {
+					t.Fatalf("definition projections differ %s: show=%q catalog=%q count=%d", test.show, show.Rows[0][test.key].Text, catalog.Rows[0]["slopdb_create_sql"].Text, len(catalog.Rows))
+				}
+			}
+			exec("INSERT INTO described(id,value) VALUES(1,1),(2,2)")
+			status := exec("SHOW TABLE STATUS LIKE 'described'")
+			info := exec("SELECT table_rows,data_length,index_length,auto_increment FROM information_schema.tables WHERE table_name='described' AND table_schema='" + map[sql.Dialect]string{sql.DialectMySQL: "main", sql.DialectPostgreSQL: "public"}[dialect] + "'")
+			if len(status.Rows) != 1 || len(info.Rows) != 1 || status.Rows[0]["Rows"].Int != info.Rows[0]["table_rows"].Int || status.Rows[0]["Data_length"].Int != info.Rows[0]["data_length"].Int || status.Rows[0]["Index_length"].Int != info.Rows[0]["index_length"].Int {
+				t.Fatal("status projections differ", status.Rows, info.Rows)
+			}
+			for _, q := range []string{"SHOW FULL COLUMNS FROM described", "SHOW FULL TABLES", "SHOW INDEX FROM described", "SHOW TABLE STATUS LIKE 'described'", "SHOW CREATE TABLE described", "SHOW CREATE VIEW described_view", "SHOW CREATE TRIGGER described_trigger", "SHOW TRIGGERS"} {
+				parsed, e := s.Prepare(q)
+				if e != nil {
+					t.Fatal(q, e)
+				}
+				description, e := s.DescribePreparedTypes(context.Background(), parsed, sql.DescribeOptions{})
+				if e != nil {
+					t.Fatal(q, e)
+				}
+				actual := exec(q)
+				if len(description.Results) != len(actual.Columns) {
+					t.Fatalf("%s descriptor count %d != %d", q, len(description.Results), len(actual.Columns))
+				}
+				for i, c := range description.Results {
+					if c.Name != actual.Columns[i].Name || c.ColType != actual.Columns[i].ColType {
+						t.Fatalf("%s static column %d %+v != %+v", q, i, c, actual.Columns[i])
+					}
+				}
+				parsed.Close()
+			}
+			if dialect == sql.DialectPostgreSQL {
+				r = exec("SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='information_schema' AND c.relname='columns'")
+				if len(r.Rows) != 1 {
+					t.Fatal("system view absent from PG catalog", r)
+				}
+			}
+		})
+	}
+}

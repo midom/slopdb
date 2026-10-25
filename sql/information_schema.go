@@ -11,9 +11,9 @@ import (
 // relations never evaluate defaults or infer permissions from connection names.
 var informationSchemaSchemas = map[string]string{
 	"schemata":                              "catalog_name schema_name default_character_set_name default_collation_name sql_path schema_owner default_character_set_catalog default_character_set_schema",
-	"tables":                                "table_catalog table_schema table_name table_type engine version:i row_format table_rows:i avg_row_length:i data_length:i max_data_length:i index_length:i data_free:i auto_increment:i create_time update_time check_time table_collation checksum:i create_options table_comment self_referencing_column_name reference_generation user_defined_type_catalog user_defined_type_schema user_defined_type_name is_insertable_into is_typed commit_action slopdb_table_id:u slopdb_temporary",
+	"tables":                                "table_catalog table_schema table_name table_type engine version:i row_format table_rows:i avg_row_length:i data_length:i max_data_length:i index_length:i data_free:i auto_increment:i create_time update_time check_time table_collation checksum:i create_options table_comment self_referencing_column_name reference_generation user_defined_type_catalog user_defined_type_schema user_defined_type_name is_insertable_into is_typed commit_action slopdb_table_id:u slopdb_temporary slopdb_create_sql",
 	"columns":                               "table_catalog table_schema table_name column_name ordinal_position:i column_default is_nullable data_type column_type column_key extra character_set_name collation_name character_maximum_length:i character_octet_length:i numeric_precision:i numeric_precision_radix:i numeric_scale:i datetime_precision:i interval_type interval_precision:i character_set_catalog character_set_schema collation_catalog collation_schema domain_catalog domain_schema domain_name udt_catalog udt_schema udt_name scope_catalog scope_schema scope_name maximum_cardinality:i dtd_identifier is_self_referencing is_identity identity_generation identity_start identity_increment identity_maximum identity_minimum identity_cycle is_generated generation_expression is_updatable privileges column_comment slopdb_default_expression slopdb_declared_type slopdb_column_ordinal:i",
-	"views":                                 "table_catalog table_schema table_name view_definition check_option is_updatable is_insertable_into is_trigger_updatable is_trigger_deletable is_trigger_insertable_into definer security_type character_set_client collation_connection",
+	"views":                                 "table_catalog table_schema table_name view_definition check_option is_updatable is_insertable_into is_trigger_updatable is_trigger_deletable is_trigger_insertable_into definer security_type character_set_client collation_connection slopdb_create_sql",
 	"statistics":                            "table_catalog table_schema table_name non_unique:i index_schema index_name seq_in_index:i column_name collation cardinality:i sub_part:i packed nullable index_type comment index_comment is_visible expression slopdb_index_id:u",
 	"table_indexes":                         "table_catalog table_schema table_name index_schema index_name index_type is_unique is_primary slopdb_index_id:u",
 	"table_constraints":                     "constraint_catalog constraint_schema constraint_name table_catalog table_schema table_name constraint_type is_deferrable initially_deferred enforced nulls_distinct",
@@ -21,7 +21,7 @@ var informationSchemaSchemas = map[string]string{
 	"referential_constraints":               "constraint_catalog constraint_schema constraint_name unique_constraint_catalog unique_constraint_schema unique_constraint_name match_option update_rule delete_rule table_name referenced_table_name",
 	"check_constraints":                     "constraint_catalog constraint_schema constraint_name check_clause",
 	"constraint_column_usage":               "table_catalog table_schema table_name column_name constraint_catalog constraint_schema constraint_name",
-	"triggers":                              "trigger_catalog trigger_schema trigger_name event_manipulation event_object_catalog event_object_schema event_object_table action_order:i action_condition action_statement action_orientation action_timing action_reference_old_table action_reference_new_table action_reference_old_row action_reference_new_row created sql_mode definer character_set_client collation_connection database_collation",
+	"triggers":                              "trigger_catalog trigger_schema trigger_name event_manipulation event_object_catalog event_object_schema event_object_table action_order:i action_condition action_statement action_orientation action_timing action_reference_old_table action_reference_new_table action_reference_old_row action_reference_new_row created sql_mode definer character_set_client collation_connection database_collation slopdb_create_sql",
 	"character_sets":                        "character_set_name default_collate_name description maxlen:i character_set_catalog character_set_schema character_repertoire form_of_use default_collate_catalog default_collate_schema",
 	"collations":                            "collation_name character_set_name id:i is_default is_compiled sortlen:i pad_attribute collation_catalog collation_schema pad_attribute_description",
 	"collation_character_set_applicability": "collation_name character_set_name collation_catalog collation_schema character_set_catalog character_set_schema",
@@ -45,10 +45,15 @@ func informationSchemaColumns(name string) ([]ColumnDef, bool) {
 	return cols, true
 }
 
-type catalogFilter struct{ Schema, Table string }
+type catalogFilter struct {
+	Schema, Table, Object string
+	Pattern               *string
+	Definitions, Status   bool
+}
 type catalogRelationFact struct {
 	Key      string
 	Relation CatalogRelation
+	Virtual  bool
 }
 
 func (s *Schema) catalogVisibleNamespace(name string) bool {
@@ -105,7 +110,7 @@ func (s *Schema) catalogRelations(filter catalogFilter, describeViews bool) ([]c
 		if !s.catalogVisibleNamespace(ns) {
 			continue
 		}
-		if filter.Table != "" && bare != filter.Table || filter.Schema != "" && s.catalogNamespace(ns) != filter.Schema {
+		if filter.Table != "" && bare != filter.Table || filter.Schema != "" && s.catalogNamespace(ns) != filter.Schema || filter.Pattern != nil && !likeMatchEsc(bare, *filter.Pattern, '\\') {
 			continue
 		}
 		if err := s.checkInterrupt(); err != nil {
@@ -130,6 +135,14 @@ func (s *Schema) catalogRelations(filter catalogFilter, describeViews bool) ([]c
 		}
 		out = append(out, catalogRelationFact{Key: n, Relation: relation})
 	}
+	for key, columns := range s.catalogSystemRelations(filter) {
+		ns, bare := SplitSchemaName(key)
+		if filter.Schema != "" && s.catalogNamespace(ns) != filter.Schema || filter.Table != "" && bare != filter.Table || filter.Pattern != nil && !likeMatchEsc(bare, *filter.Pattern, '\\') {
+			continue
+		}
+		out = append(out, catalogRelationFact{Key: key, Virtual: true, Relation: CatalogRelation{Schema: ns, Name: bare, Kind: "view", Columns: columns}})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
 	return out, nil
 }
 func catalogEmptyRow(r *ResultSet) map[string]Value {
@@ -259,7 +272,11 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 	if n == "constraint_column_usage" {
 		relationFilter = catalogFilter{}
 	}
-	relations, err := s.catalogRelations(relationFilter, n == "columns")
+	var relations []catalogRelationFact
+	var err error
+	if n != "triggers" {
+		relations, err = s.catalogRelations(relationFilter, n == "columns")
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -283,6 +300,9 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 			}
 			if rel.Kind == "view" {
 				kind = "VIEW"
+				if f.Virtual {
+					kind = "SYSTEM VIEW"
+				}
 			} else {
 				row["engine"] = "LSM"
 				row["row_format"] = "LSM"
@@ -298,13 +318,30 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 			row["is_typed"] = "NO"
 			row["create_options"] = ""
 			row["slopdb_temporary"] = catalogYes(rel.Temporary)
-			add(row)
+			if filter.Definitions && !f.Virtual {
+				row["slopdb_create_sql"] = s.catalogCreateSQL(f)
+			}
+			if filter.Status && t != nil {
+				values := catalogEmptyRow(r)
+				catalogSet(values, row)
+				if err := s.catalogStorageFacts(values, f); err != nil {
+					return nil, err
+				}
+				r.Rows = append(r.Rows, values)
+			} else {
+				add(row)
+			}
 		case "views":
 			if rel.Kind != "view" {
 				continue
 			}
 			row := base()
-			row["view_definition"] = rel.ViewSQL
+			if rel.ViewSQL != "" {
+				row["view_definition"] = rel.ViewSQL
+			}
+			if filter.Definitions && !f.Virtual {
+				row["slopdb_create_sql"] = s.catalogCreateSQL(f)
+			}
 			row["check_option"] = "NONE"
 			row["is_updatable"] = "NO"
 			row["is_insertable_into"] = "NO"
@@ -316,6 +353,9 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 			for i, c := range rel.Columns {
 				row := base()
 				decl := c.DeclaredType()
+				if f.Virtual && c.Declared != "" {
+					decl = c.Declared
+				}
 				dt := strings.ToLower(decl)
 				if pos := strings.IndexAny(dt, "( "); pos >= 0 {
 					dt = dt[:pos]
@@ -576,6 +616,10 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 	}
 	if n == "triggers" {
 		for _, name := range view.TriggerNames() {
+			_, triggerName := SplitSchemaName(name)
+			if filter.Object != "" && triggerName != filter.Object {
+				continue
+			}
 			tr := view.triggers[name]
 			target := tr.Table
 			if target == "" {
@@ -589,7 +633,6 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 			if filter.Schema != "" && ns != filter.Schema || filter.Table != "" && bare != filter.Table {
 				continue
 			}
-			_, triggerName := SplitSchemaName(name)
 			timing := tr.Timing
 			if tr.InsteadOf {
 				timing = "INSTEAD OF"
@@ -604,7 +647,11 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 			if tr.When != "" {
 				condition = NewTextValue(tr.When)
 			}
-			add(map[string]any{"trigger_catalog": database, "trigger_schema": ns, "trigger_name": triggerName, "event_manipulation": tr.Event, "event_object_catalog": database, "event_object_schema": ns, "event_object_table": bare, "action_order": 1, "action_condition": condition, "action_statement": strings.Join(tr.Body, "; "), "action_orientation": orientation, "action_timing": timing})
+			fields := map[string]any{"trigger_catalog": database, "trigger_schema": ns, "trigger_name": triggerName, "event_manipulation": tr.Event, "event_object_catalog": database, "event_object_schema": ns, "event_object_table": bare, "action_order": 1, "action_condition": condition, "action_statement": strings.Join(tr.Body, "; "), "action_orientation": orientation, "action_timing": timing}
+			if filter.Definitions {
+				fields["slopdb_create_sql"] = s.Dialect().RenderSQL(s.GetTriggerSQL(name))
+			}
+			add(fields)
 		}
 	}
 	if n == "constraint_column_usage" && (filter.Schema != "" || filter.Table != "") {
@@ -705,4 +752,49 @@ func (s *Schema) catalogTextCollation(c ColumnDef, table *TableInfo) Collation {
 		return s.collation
 	}
 	return "UTF8MB4_BIN"
+}
+
+func (s *Schema) catalogSystemRelations(filter catalogFilter) map[string][]ColumnDef {
+	relations := make(map[string][]ColumnDef, len(informationSchemaSchemas))
+	for name := range informationSchemaSchemas {
+		if filter.Schema != "" && filter.Schema != "information_schema" || filter.Table != "" && filter.Table != name {
+			continue
+		}
+		cols, _ := informationSchemaColumns(name)
+		relations["information_schema."+name] = cols
+	}
+	if s.PostgresMode() {
+		for name := range postgresCatalogSchemas {
+			if filter.Schema != "" && filter.Schema != "pg_catalog" || filter.Table != "" && filter.Table != name {
+				continue
+			}
+			relations["pg_catalog."+name] = pgCatalogFor(name).Columns
+		}
+	}
+	return relations
+}
+func (s *Schema) catalogSystemNamespace(name string) bool {
+	return name == "information_schema" || s.PostgresMode() && name == "pg_catalog"
+}
+func (s *Schema) catalogCreateSQL(fact catalogRelationFact) Value {
+	text := ""
+	if fact.Relation.Kind == "table" {
+		text = s.getCreateTableSQL(fact.Key, true)
+		if text != "" && s.MySQLMode() {
+			text = strings.TrimSuffix(text, ";")
+			if !strings.Contains(strings.ToUpper(text), " ENGINE=") {
+				text += " ENGINE=LSM"
+			}
+			text += ";"
+		}
+	} else {
+		text = s.GetCreateViewSQL(fact.Key)
+	}
+	if text == "" {
+		return NewNullValue()
+	}
+	if fact.Relation.Temporary {
+		text = strings.Replace(text, "CREATE TABLE ", "CREATE TEMPORARY TABLE ", 1)
+	}
+	return NewTextValue(s.Dialect().RenderSQL(text))
 }

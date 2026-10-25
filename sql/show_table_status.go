@@ -4,18 +4,13 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 
 	"slopdb/storage"
 )
 
 func (s *Schema) showTableStatus(stmt *ShowStmt) (*ResultSet, error) {
-	rs := showResult("Name", "Engine", "Version", "Row_format", "Rows", "Avg_row_length", "Data_length", "Max_data_length", "Index_length", "Data_free", "Auto_increment", "Create_time", "Update_time", "Check_time", "Collation", "Checksum", "Create_options", "Comment")
-	for i := range rs.Columns {
-		switch rs.Columns[i].Name {
-		case "Version", "Rows", "Avg_row_length", "Data_length", "Max_data_length", "Index_length", "Data_free", "Auto_increment", "Checksum":
-			rs.Columns[i].ColType = ColInteger
-		}
-	}
+	rs := s.showFrame(stmt)
 	if stmt.Where != nil {
 		if err := s.validateQuery(&SelectStmt{Where: stmt.Where}, &TableInfo{Columns: rs.Columns}); err != nil {
 			return nil, err
@@ -25,90 +20,73 @@ func (s *Schema) showTableStatus(stmt *ShowStmt) (*ResultSet, error) {
 	if stmt.Database != "" {
 		namespace = s.namespaceAlias(stmt.Database)
 	}
-	dataRows, err := s.informationSchemaTable("tables", catalogFilter{Schema: s.catalogNamespace(namespace)})
+	dataRows, err := s.informationSchemaTable("tables", catalogFilter{Schema: s.catalogNamespace(namespace), Pattern: stmt.Like, Status: true})
 	if err != nil {
 		return nil, err
 	}
-	facts := s.catalogFacts()
 	for _, catalogRow := range dataRows.Rows {
-		bare := catalogRow["table_name"].Text
-		name := bare
-		if namespace != "main" {
-			name = namespace + "." + bare
-		}
-		if err := s.checkInterrupt(); err != nil {
-			return nil, err
-		}
-		// Avoid touching storage for objects rejected by a LIKE filter.
-		if stmt.Like != nil && !likeMatchEsc(bare, *stmt.Like, '\\') {
-			continue
-		}
-		row := make(map[string]Value, len(rs.Columns))
-		for _, col := range rs.Columns {
-			row[col.Name] = NewNullValue()
-		}
+		row := catalogEmptyRow(rs)
 		for label, source := range map[string]string{"Name": "table_name", "Engine": "engine", "Version": "version", "Row_format": "row_format", "Rows": "table_rows", "Avg_row_length": "avg_row_length", "Data_length": "data_length", "Max_data_length": "max_data_length", "Index_length": "index_length", "Data_free": "data_free", "Auto_increment": "auto_increment", "Create_time": "create_time", "Update_time": "update_time", "Check_time": "check_time", "Collation": "table_collation", "Checksum": "checksum", "Create_options": "create_options", "Comment": "table_comment"} {
 			row[label] = catalogRow[source]
 		}
-		if catalogRow["table_type"].Text == "VIEW" {
+		if strings.Contains(catalogRow["table_type"].Text, "VIEW") {
 			row["Comment"] = NewTextValue("VIEW")
-			rs.Rows = append(rs.Rows, row)
-			continue
-		}
-		info := facts.tables[name]
-		data, err := s.estimateStatusRange(info.storagePrefix(name), true)
-		if err != nil {
-			return nil, fmt.Errorf("table %s: %w", name, err)
-		}
-		var indexBytes int64
-		// Include every physical secondary index, including automatic constraint
-		// indexes. The clustered primary key is part of Data_length.
-		for _, idx := range facts.indexes {
-			if idx.Table != name {
-				continue
-			}
-			estimate, err := s.estimateStatusRange(idx.storagePrefix(), false)
-			if err != nil {
-				return nil, fmt.Errorf("index %s: %w", idx.Name, err)
-			}
-			indexBytes = statusAdd(indexBytes, statusAdd(estimate.DiskBytes, estimate.MemoryBytes))
-		}
-		dataBytes := statusAdd(data.DiskBytes, data.MemoryBytes)
-		row["Engine"] = NewTextValue("LSM")
-		row["Row_format"] = NewTextValue("LSM")
-		row["Rows"] = NewIntValue(data.Rows)
-		average := int64(0)
-		if data.Rows > 0 {
-			average = dataBytes / data.Rows
-		}
-		row["Avg_row_length"] = NewIntValue(average)
-		row["Data_length"] = NewIntValue(dataBytes)
-		row["Index_length"] = NewIntValue(indexBytes)
-		row["Collation"] = NewTextValue(string(s.collation))
-		row["Create_options"] = NewTextValue("")
-		row["Comment"] = NewTextValue("Estimated sizes include compressed SST data blocks and unflushed records, including retained versions; Rows is sampled")
-		if col := s.getPKColumn(info); col != nil && col.AutoIncrement {
-			last, err := s.lastRowID(name, info)
-			if err != nil {
-				return nil, err
-			}
-			last = max(last, s.getAutoincMax(name))
-			root := s
-			if s.parent != nil {
-				root = s.parent
-			}
-			root.commitMu.RLock()
-			root.rowIDMu.Lock()
-			reserved := root.rowIDReservations[s.rowCounterKey(name)]
-			root.rowIDMu.Unlock()
-			root.commitMu.RUnlock()
-			if last < math.MaxInt64 {
-				row["Auto_increment"] = NewIntValue(max(last+1, reserved))
-			}
+		} else if !row["Collation"].Null {
+			row["Collation"] = NewTextValue(strings.ToUpper(row["Collation"].Text))
 		}
 		rs.Rows = append(rs.Rows, row)
 	}
 	return rs, nil
+}
+
+// Catalog estimates are optional requested facts. The provider calls this only
+// after schema/name/pattern filtering; ordinary name/column introspection never
+// touches storage. No exact COUNT or user expression evaluation occurs here.
+func (s *Schema) catalogStorageFacts(row map[string]Value, fact catalogRelationFact) error {
+	info := fact.Relation.Definition
+	name := fact.Key
+	data, err := s.estimateStatusRange(info.storagePrefix(name), true)
+	if err != nil {
+		return fmt.Errorf("table %s: %w", name, err)
+	}
+	var indexBytes int64
+	for _, idx := range fact.Relation.Indexes {
+		estimate, err := s.estimateStatusRange(idx.storagePrefix(), false)
+		if err != nil {
+			return fmt.Errorf("index %s: %w", idx.Name, err)
+		}
+		indexBytes = statusAdd(indexBytes, statusAdd(estimate.DiskBytes, estimate.MemoryBytes))
+	}
+	dataBytes := statusAdd(data.DiskBytes, data.MemoryBytes)
+	average := int64(0)
+	if data.Rows > 0 {
+		average = dataBytes / data.Rows
+	}
+	row["table_rows"] = NewIntValue(data.Rows)
+	row["avg_row_length"] = NewIntValue(average)
+	row["data_length"] = NewIntValue(dataBytes)
+	row["index_length"] = NewIntValue(indexBytes)
+	row["table_comment"] = NewTextValue("Estimated sizes include compressed SST data blocks and unflushed records, including retained versions; Rows is sampled")
+	if col := s.getPKColumn(info); col != nil && col.AutoIncrement {
+		last, err := s.lastRowID(name, info)
+		if err != nil {
+			return err
+		}
+		last = max(last, s.getAutoincMax(name))
+		root := s
+		if s.parent != nil {
+			root = s.parent
+		}
+		root.commitMu.RLock()
+		root.rowIDMu.Lock()
+		reserved := root.rowIDReservations[s.rowCounterKey(name)]
+		root.rowIDMu.Unlock()
+		root.commitMu.RUnlock()
+		if last < math.MaxInt64 {
+			row["auto_increment"] = NewIntValue(max(last+1, reserved))
+		}
+	}
+	return nil
 }
 
 func statusAdd(a, b int64) int64 {

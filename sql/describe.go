@@ -326,20 +326,10 @@ func (s *Schema) describeStatement(stmt Statement, outer map[string][]ColumnDef,
 		switch st.Kind {
 		case "LSM STATUS", "RAFT STATUS", "GLOBAL VARIABLES":
 			return describeColumns("Variable_name", "Value"), nil
-		case "COLUMNS":
-			return describeColumns("Field", "Type", "Null", "Key", "Default", "Extra"), nil
-		case "INDEX":
-			return describeColumns("Table", "Non_unique", "Key_name", "Seq_in_index", "Column_name", "Collation", "Cardinality", "Sub_part", "Packed", "Null", "Index_type", "Comment", "Index_comment", "Visible", "Expression"), nil
-		case "CREATE TABLE":
-			return describeColumns("Table", "Create table"), nil
-		case "CREATE VIEW":
-			return describeColumns("View", "Create view", "character_set_client", "collation_connection"), nil
-		case "DATABASES":
-			return describeColumns("Database"), nil
-		case "TABLES":
-			return describeColumns("Tables_in_main"), nil
+		default:
+			return s.showMetadata(st)
 		}
-		return nil, fmt.Errorf("metadata unsupported for SHOW %s", st.Kind)
+
 	case *PragmaStmt:
 		switch st.Name {
 		case "table_info":

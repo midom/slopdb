@@ -44,7 +44,7 @@ func TestInformationSchemaDoesNotEvaluateDefaults(t *testing.T) {
 	s, _ := statisticsSchema(t, t.TempDir())
 	statisticsSQL(t, s, "CREATE TABLE catalog_default(id INTEGER DEFAULT (1 / 0))")
 	s.SetContext(WithMySQLSession(context.Background(), MySQLSessionOptions{Database: "wiki"}))
-	r, e := s.mysqlCatalogTable("information_schema.columns", MySQLSessionOptions{Database: "wiki"})
+	r, e := s.informationSchemaTable("columns", catalogFilter{Schema: "wiki", Table: "catalog_default"})
 	if e != nil || len(r.Rows) != 1 || r.Rows[0]["column_default"].Null {
 		t.Fatalf("default SQL introspection: %+v %v", r, e)
 	}

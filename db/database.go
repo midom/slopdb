@@ -554,7 +554,9 @@ func (db *statementExecutor) execStatement(stmt sql.Statement) (*ExecResult, err
 		if err != nil {
 			return nil, fmt.Errorf("SHOW error: %w", err)
 		}
-		if db.parseOptions.MySQLQuoting && strings.HasPrefix(s.Kind, "CREATE ") {
+		// Preserve the native API's legacy input-quoting preference. Explicit
+		// MySQL sessions already render definitions in the common provider.
+		if db.parseOptions.MySQLQuoting && db.schema.Dialect() == sql.DialectNative && strings.HasPrefix(s.Kind, "CREATE ") {
 			for _, row := range rs.Rows {
 				for _, name := range []string{"Create table", "Create view", "SQL Original Statement"} {
 					if value, ok := row[name]; ok {

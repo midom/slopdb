@@ -1,13 +1,5 @@
 package sql
 
-func mysqlCatalog(columns ...string) *ResultSet {
-	r := &ResultSet{}
-	for _, name := range columns {
-		r.Columns = append(r.Columns, ColumnDef{Name: name, ColType: ColText})
-	}
-	return r
-}
-
 func (s *Schema) mysqlCatalogTable(name string, options MySQLSessionOptions) (*ResultSet, error) {
 	if data := options.SystemTables[name]; data != nil {
 		return copyCTEResult(data), nil
@@ -24,8 +16,4 @@ func (s *Schema) mysqlCatalogTable(name string, options MySQLSessionOptions) (*R
 	return s.informationSchemaTable(name, catalogFilter{})
 }
 
-func mysqlCatalogFor(name string) *ResultSet {
-	columns, _ := informationSchemaColumns(name)
-	return &ResultSet{Columns: columns}
-}
 func mysqlCatalogColumns(name string) ([]ColumnDef, bool) { return informationSchemaColumns(name) }

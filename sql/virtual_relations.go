@@ -68,6 +68,7 @@ func (s *Schema) resolveCatalogTables(stmt *SelectStmt) (*SelectStmt, error) {
 				if s.collation == "" || s.collation == BinaryCollation {
 					filter = catalogPredicateFilter(stmt.Where, name, alias, len(stmt.Joins) == 0)
 				}
+				catalogRequestedFacts(stmt, name, alias, len(stmt.Joins) == 0, &filter)
 				data, err = s.informationSchemaTable(name, filter)
 			} else if pg {
 				data, err = s.PostgresCatalogTable(name)
@@ -163,4 +164,51 @@ func catalogPredicateFilter(where Expression, table, alias string, unqualified b
 	}
 	visit(where)
 	return f
+}
+
+// Optional expensive facts are populated only when projected or used by a
+// predicate/order expression. Describe still reads the static schema alone.
+func catalogRequestedFacts(stmt *SelectStmt, table, alias string, unqualified bool, filter *catalogFilter) {
+	all := stmt.SelectAll
+	visit := func(expr Expression) {
+		_ = walkExpression(expr, func(expr Expression) (bool, error) {
+			ref, ok := expr.(*ColumnRefExpr)
+			if !ok {
+				return true, nil
+			}
+			name := ref.Name
+			if dot := strings.LastIndexByte(name, '.'); dot >= 0 {
+				qual := name[:dot]
+				if qual != alias && qual != table {
+					return true, nil
+				}
+				name = name[dot+1:]
+			} else if !unqualified {
+				return true, nil
+			}
+			switch strings.ToLower(name) {
+			case "slopdb_create_sql":
+				filter.Definitions = true
+			case "table_rows", "avg_row_length", "data_length", "index_length", "auto_increment":
+				filter.Status = true
+			}
+			return true, nil
+		})
+	}
+	for _, column := range stmt.Columns {
+		all = all || column.Star
+		visit(column.Expr)
+	}
+	visit(stmt.Where)
+	visit(stmt.Having)
+	for _, order := range stmt.OrderBy {
+		visit(order.Expr)
+	}
+	for _, group := range stmt.GroupBy {
+		visit(group)
+	}
+	if all {
+		filter.Definitions = true
+		filter.Status = true
+	}
 }

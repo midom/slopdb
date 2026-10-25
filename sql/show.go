@@ -6,14 +6,6 @@ import (
 	"strings"
 )
 
-func showResult(names ...string) *ResultSet {
-	rs := &ResultSet{Rows: make([]map[string]Value, 0)}
-	for _, name := range names {
-		rs.Columns = append(rs.Columns, ColumnDef{Name: name, ColType: ColText})
-	}
-	return rs
-}
-
 // ExecuteShow returns ordinary query results without starting a write transaction.
 // Virtual namespace names resolve through the same catalog as ordinary queries.
 func (s *Schema) ExecuteShow(stmt *ShowStmt) (*ResultSet, error) {
@@ -29,7 +21,7 @@ func (s *Schema) ExecuteShow(stmt *ShowStmt) (*ResultSet, error) {
 	if stmt.Database != "" {
 		namespace = s.namespaceAlias(stmt.Database)
 	}
-	if !s.namespaces[namespace] {
+	if !s.namespaces[namespace] && !s.catalogSystemNamespace(namespace) {
 		return nil, fmt.Errorf("unknown database %q", namespace)
 	}
 	var rs *ResultSet
@@ -44,7 +36,7 @@ func (s *Schema) ExecuteShow(stmt *ShowStmt) (*ResultSet, error) {
 		if e != nil {
 			return nil, e
 		}
-		rs = showResult("Database")
+		rs = s.showFrame(stmt)
 		likeColumn = "Database"
 		for _, row := range data.Rows {
 			name := row["schema_name"].Text
@@ -56,10 +48,7 @@ func (s *Schema) ExecuteShow(stmt *ShowStmt) (*ResultSet, error) {
 	case "TABLES":
 		display := s.catalogNamespace(namespace)
 		likeColumn = "Tables_in_" + display
-		rs = showResult(likeColumn)
-		if stmt.Full {
-			rs.Columns = append(rs.Columns, ColumnDef{Name: "Table_type", ColType: ColText})
-		}
+		rs = s.showFrame(stmt)
 		data, e := s.informationSchemaTable("tables", catalogFilter{Schema: display})
 		if e != nil {
 			return nil, e
@@ -190,18 +179,19 @@ func (view *CatalogSnapshot) keys(info *TableInfo) []showKey {
 }
 
 func (s *Schema) showColumns(stmt *ShowStmt) (*ResultSet, error) {
-	if _, ok := s.catalogFacts().relation(stmt.Object); !ok {
+	ns, name := SplitSchemaName(stmt.Object)
+	facts, err := s.catalogRelations(catalogFilter{Schema: s.catalogNamespace(ns), Table: name}, false)
+	if err != nil {
+		return nil, err
+	}
+	if len(facts) == 0 {
 		return nil, fmt.Errorf("table or view %q does not exist", stmt.Object)
 	}
-	ns, name := SplitSchemaName(stmt.Object)
 	data, err := s.informationSchemaTable("columns", catalogFilter{Schema: s.catalogNamespace(ns), Table: name})
 	if err != nil {
 		return nil, err
 	}
-	rs := showResult("Field", "Type", "Null", "Key", "Default", "Extra")
-	if stmt.Full {
-		rs = showResult("Field", "Type", "Collation", "Null", "Key", "Default", "Extra", "Privileges", "Comment")
-	}
+	rs := s.showFrame(stmt)
 	for _, row := range data.Rows {
 		projected := map[string]Value{"Field": row["column_name"], "Type": row["slopdb_declared_type"], "Null": row["is_nullable"], "Key": row["column_key"], "Default": row["column_default"], "Extra": row["extra"]}
 		if s.PostgresMode() { // SHOW preserves its native literal-default presentation.
@@ -231,14 +221,8 @@ func (s *Schema) showIndexes(name string) (*ResultSet, error) {
 	if err != nil {
 		return nil, err
 	}
-	rs := showResult("Table", "Non_unique", "Key_name", "Seq_in_index", "Column_name", "Collation", "Cardinality", "Sub_part", "Packed", "Null", "Index_type", "Comment", "Index_comment", "Visible", "Expression")
+	rs := s.showFrame(&ShowStmt{Kind: "INDEX"})
 	fields := map[string]string{"Non_unique": "non_unique", "Key_name": "index_name", "Seq_in_index": "seq_in_index", "Column_name": "column_name", "Collation": "collation", "Cardinality": "cardinality", "Sub_part": "sub_part", "Packed": "packed", "Null": "nullable", "Index_type": "index_type", "Comment": "comment", "Index_comment": "index_comment", "Visible": "is_visible", "Expression": "expression"}
-	for i := range rs.Columns {
-		switch rs.Columns[i].Name {
-		case "Non_unique", "Seq_in_index", "Cardinality", "Sub_part":
-			rs.Columns[i].ColType = ColInteger
-		}
-	}
 	for _, row := range data.Rows {
 		projected := map[string]Value{"Table": NewTextValue(name)}
 		for label, source := range fields {
@@ -251,21 +235,26 @@ func (s *Schema) showIndexes(name string) (*ResultSet, error) {
 
 func (s *Schema) showCreate(stmt *ShowStmt) (*ResultSet, error) {
 	objectType := strings.TrimPrefix(stmt.Kind, "CREATE ")
+	ns, name := SplitSchemaName(stmt.Object)
+	filter := catalogFilter{Schema: s.catalogNamespace(ns), Table: name, Definitions: true}
+	relation := "tables"
+	if objectType == "VIEW" {
+		relation = "views"
+	} else if objectType == "TRIGGER" {
+		relation = "triggers"
+		filter.Table = ""
+		filter.Object = name
+	}
+	data, err := s.informationSchemaTable(relation, filter)
+	if err != nil {
+		return nil, err
+	}
 	text := ""
-	switch objectType {
-	case "TABLE":
-		text = s.getCreateTableSQL(stmt.Object, true)
-		if text != "" && s.MySQLMode() {
-			text = strings.TrimSuffix(text, ";") + " ENGINE=LSM;"
-		}
-		if text == "" && s.views[stmt.Object] != nil {
+	if len(data.Rows) > 0 {
+		text = data.Rows[0]["slopdb_create_sql"].Text
+		if objectType == "TABLE" && data.Rows[0]["table_type"].Text == "VIEW" {
 			objectType = "VIEW"
-			text = s.GetCreateViewSQL(stmt.Object)
 		}
-	case "VIEW":
-		text = s.GetCreateViewSQL(stmt.Object)
-	case "TRIGGER":
-		text = s.GetTriggerSQL(stmt.Object)
 	}
 	if text == "" {
 		return nil, fmt.Errorf("%s %q does not exist", strings.ToLower(objectType), stmt.Object)
@@ -275,12 +264,9 @@ func (s *Schema) showCreate(stmt *ShowStmt) (*ResultSet, error) {
 	if objectType == "TRIGGER" {
 		ddlColumn = "SQL Original Statement"
 	}
-	rs := showResult(nameColumn, ddlColumn)
-	if objectType == "VIEW" {
-		rs = showResult(nameColumn, ddlColumn, "character_set_client", "collation_connection")
-	} else if objectType == "TRIGGER" {
-		rs = showResult(nameColumn, "sql_mode", ddlColumn, "character_set_client", "collation_connection", "Database Collation", "Created")
-	}
+	frame := *stmt
+	frame.Kind = "CREATE " + objectType
+	rs := s.showFrame(&frame)
 	row := make(map[string]Value, len(rs.Columns))
 	for _, col := range rs.Columns {
 		row[col.Name] = NewNullValue()
@@ -295,7 +281,7 @@ func (s *Schema) showTriggers(namespace string) (*ResultSet, error) {
 	if err != nil {
 		return nil, err
 	}
-	rs := showResult("Trigger", "Event", "Table", "Statement", "Timing", "Created", "sql_mode", "Definer", "character_set_client", "collation_connection", "Database Collation")
+	rs := s.showFrame(&ShowStmt{Kind: "TRIGGERS"})
 	fields := map[string]string{"Trigger": "trigger_name", "Event": "event_manipulation", "Table": "event_object_table", "Statement": "action_statement", "Timing": "action_timing", "Created": "created", "sql_mode": "sql_mode", "Definer": "definer", "character_set_client": "character_set_client", "collation_connection": "collation_connection", "Database Collation": "database_collation"}
 	for _, row := range data.Rows {
 		projected := make(map[string]Value, len(fields))
@@ -305,114 +291,4 @@ func (s *Schema) showTriggers(namespace string) (*ResultSet, error) {
 		rs.Rows = append(rs.Rows, projected)
 	}
 	return rs, nil
-}
-
-// Derive view metadata without executing its SELECT or reading table rows.
-func (s *Schema) showViewColumns(view *ViewInfo, depth int) ([]ColumnDef, error) {
-	if depth >= 100 {
-		return nil, fmt.Errorf("view nesting limit exceeded")
-	}
-	query := view.Parsed
-	if query == nil {
-		return nil, fmt.Errorf("view %q has no query", view.Name)
-	}
-	sources := make(map[string]ColumnDef)
-	var base []ColumnDef
-	addSource := func(name, alias string) error {
-		var cols []ColumnDef
-		if table := s.tables[name]; table != nil {
-			cols = table.Columns
-		} else if nested := s.views[name]; nested != nil {
-			var err error
-			cols, err = s.showViewColumns(nested, depth+1)
-			if err != nil {
-				return err
-			}
-		} else if name != "" {
-			return fmt.Errorf("table or view %q does not exist", name)
-		}
-		if alias == "" {
-			alias = name
-		}
-		for _, col := range cols {
-			sources[col.Name] = col
-			sources[alias+"."+col.Name] = col
-			base = append(base, col)
-		}
-		return nil
-	}
-	if err := addSource(query.From, query.FromAlias); err != nil {
-		return nil, err
-	}
-	for _, join := range query.Joins {
-		if err := addSource(join.Table, join.Alias); err != nil {
-			return nil, err
-		}
-	}
-	var cols []ColumnDef
-	for i, selected := range query.Columns {
-		if selected.Star {
-			cols = append(cols, base...)
-			continue
-		}
-		col := ColumnDef{Name: selected.Alias, ColType: ColInteger}
-		switch expr := selected.Expr.(type) {
-		case *ColumnRefExpr:
-			if source, ok := sources[expr.Name]; ok {
-				col.ColType = source.ColType
-			}
-			if col.Name == "" {
-				col.Name = expr.Name
-			}
-		case *LiteralExpr:
-			col.ColType = expr.Value.Type
-		case *FuncCallExpr:
-			if col.Name == "" {
-				col.Name = expr.Name
-			}
-			switch expr.Name {
-			case "UPPER", "LOWER", "SUBSTR", "REPLACE", "TRIM", "LTRIM", "RTRIM", "GROUP_CONCAT", "DATE", "TIME", "DATETIME", "STRFTIME", "HEX", "TYPEOF", "QUOTE":
-				col.ColType = ColText
-			case "AVG", "TOTAL", "JULIANDAY":
-				col.ColType = ColReal
-			case "CAST":
-				if len(expr.Args) == 2 {
-					if typ, ok := expr.Args[1].(*LiteralExpr); ok {
-						switch typ.Value.Text {
-						case "TEXT":
-							col.ColType = ColText
-						case "REAL":
-							col.ColType = ColReal
-						case "BLOB":
-							col.ColType = ColBlob
-						}
-					}
-				}
-			}
-		case *BinaryExpr:
-			if expr.Op == "||" {
-				col.ColType = ColText
-			}
-		}
-		if col.Name == "" {
-			col.Name = fmt.Sprintf("expr%d", i)
-		}
-		cols = append(cols, col)
-	}
-	if query.SelectAll && len(cols) == 0 {
-		cols = append(cols, base...)
-	}
-	if len(view.Columns) > 0 {
-		if len(view.Columns) != len(cols) {
-			return nil, fmt.Errorf("view %q column count does not match its query", view.Name)
-		}
-		for i, name := range view.Columns {
-			cols[i].Name = name
-		}
-	}
-	// View columns do not inherit constraints or defaults from their sources.
-	for i, col := range cols {
-		cols[i] = ColumnDef{Name: col.Name, ColType: col.ColType}
-	}
-	return cols, nil
 }
