@@ -5,9 +5,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -166,7 +169,7 @@ func TestCopyFragmentedExtendedAndLateMessages(t *testing.T) {
 	s := startTestServer(t, "tcp", Config{})
 	c := connectRaw(t, s)
 	c.query(t, "CREATE TABLE fragmented(id BIGINT PRIMARY KEY,v TEXT)")
-	c.send(t, &pgproto3.Parse{Name: "copy", Query: "COPY fragmented FROM STDIN (FORMAT csv)"}, &pgproto3.Describe{ObjectType: 'S', Name: "copy"}, &pgproto3.Bind{PreparedStatement: "copy"}, &pgproto3.Execute{})
+	c.send(t, &pgproto3.Parse{Name: "copy", Query: "COPY fragmented FROM STDIN (FORMAT csv)"}, &pgproto3.Describe{ObjectType: 'S', Name: "copy"}, &pgproto3.Bind{PreparedStatement: "copy"}, &pgproto3.Execute{}, &pgproto3.Flush{}, &pgproto3.Sync{})
 	receive[*pgproto3.ParseComplete](t, c)
 	receive[*pgproto3.ParameterDescription](t, c)
 	receive[*pgproto3.NoData](t, c)
@@ -288,7 +291,7 @@ func TestCopyCancellationDisconnectAndBinaryErrors(t *testing.T) {
 	if _, err = connection.Exec(context.Background(), "INSERT INTO cancelled_copy VALUES(2,'after disconnect')"); err != nil {
 		t.Fatal(err)
 	}
-	bad := [][]byte{[]byte("bad"), append(append([]byte{}, copySignature...), 0, 1, 0, 0, 0, 0, 0, 0), append(append([]byte{}, copySignature...), 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 8, 0)}
+	bad := [][]byte{nil, []byte("bad"), append(append([]byte{}, copySignature...), 0, 1, 0, 0, 0, 0, 0, 0), append(append([]byte{}, copySignature...), 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 8, 0)}
 	for _, data := range bad {
 		if _, err = connection.PgConn().CopyFrom(context.Background(), bytes.NewReader(data), "COPY cancelled_copy FROM STDIN (FORMAT binary)"); err == nil {
 			t.Fatalf("invalid binary accepted %x", data)
@@ -380,5 +383,206 @@ func TestCopyPostgresPrimitiveTypesPGX(t *testing.T) {
 		if err = c.QueryRow(ctx, "SELECT number::text FROM copy_pg_types").Scan(&text); err != nil || text != "1234.50" {
 			t.Fatalf("%s decimal %q %v", format, text, err)
 		}
+	}
+}
+
+func TestCopyFormatErrorsAreAtomic(t *testing.T) {
+	s := startTestServer(t, "tcp", Config{MaxPacketBytes: 1024})
+	c := copyConnection(t, s)
+	ctx := context.Background()
+	if _, err := c.Exec(ctx, "CREATE TABLE invalid_copy(a TEXT,b TEXT)"); err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		format string
+		data   []byte
+	}{
+		{"text", []byte("a\tb\r\nx\ty\n")},
+		{"csv", []byte("a,b\r\nx,y\n")},
+		{"csv", []byte("ok,row\n\"unfinished,row\n")},
+		{"text", []byte("ok\trow\nx\n")},
+		{"text", []byte("ok\trow\nx\ty\textra\n")},
+		{"text", []byte("ok\trow\ninvalid\t\\000\n")},
+		{"text", []byte("ok\trow\ninvalid\t\\xff\n")},
+		{"csv", []byte("ok,row\n" + strings.Repeat("x", 1025) + ",y\n")},
+	}
+	// Independent PostgreSQL binary shape; invalid text payloads remain invalid
+	// even though the outer stream is binary rather than escaped text.
+	for _, payload := range [][]byte{{0}, {255}} {
+		data := append([]byte{}, copySignature...)
+		data = append(data, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 1, 'x', 0, 0, 0, 1)
+		data = append(data, payload...)
+		data = append(data, 255, 255)
+		cases = append(cases, struct {
+			format string
+			data   []byte
+		}{"binary", data})
+	}
+	for _, tc := range cases {
+		// Split the input into small CopyData packets so the record limit, rather
+		// than the independently enforced packet limit, rejects oversized records.
+		reader := &shortCopyReader{Reader: bytes.NewReader(tc.data), limit: 64}
+		if _, err := c.PgConn().CopyFrom(ctx, reader, "COPY invalid_copy FROM STDIN (FORMAT "+tc.format+")"); err == nil {
+			t.Fatalf("accepted %s %q", tc.format, tc.data)
+		}
+		var n int
+		if err := c.QueryRow(ctx, "SELECT count(*) FROM invalid_copy").Scan(&n); err != nil || n != 0 {
+			t.Fatalf("%s rollback count %d error %v", tc.format, n, err)
+		}
+	}
+	for _, q := range []string{"COPY t FROM STDIN (FORMAT csv HEADER true)", "COPY t FROM STDIN (FORMAT csv,)", "COPY t FROM STDIN (FORMAT csv, FORMAT text)", "COPY t FROM STDIN (FORMAT csv, FORCE_NULL(a), FORCE_NULL(b))"} {
+		if _, err := parseCopy(q); err == nil {
+			t.Fatalf("malformed COPY options accepted: %s", q)
+		}
+	}
+}
+
+type shortCopyReader struct {
+	io.Reader
+	limit int
+}
+
+func (r *shortCopyReader) Read(out []byte) (int, error) {
+	if len(out) > r.limit {
+		out = out[:r.limit]
+	}
+	return r.Reader.Read(out)
+}
+
+func TestCopyOutputSnapshotAndBlockedWriteCancellation(t *testing.T) {
+	s := startTestServer(t, "tcp", Config{})
+	if _, err := s.database.Exec("CREATE TABLE copy_snapshot(id BIGINT PRIMARY KEY,v TEXT);INSERT INTO copy_snapshot VALUES(1,'before'),(2,'before'),(3,'before')"); err != nil {
+		t.Fatal(err)
+	}
+	for _, cancelled := range []bool{false, true} {
+		t.Run(fmt.Sprint(cancelled), func(t *testing.T) {
+			session, err := s.database.NewSession()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer session.Close()
+			if err = session.SetPostgresMode(true); err != nil {
+				t.Fatal(err)
+			}
+			serverConn, readerConn := net.Pipe()
+			defer serverConn.Close()
+			defer readerConn.Close()
+			_ = readerConn.SetDeadline(time.Now().Add(5 * time.Second))
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			client := &client{server: s.server, session: session, conn: serverConn, id: 99}
+			command, err := parseCopy("COPY copy_snapshot TO STDOUT")
+			if err != nil {
+				t.Fatal(err)
+			}
+			type outcome struct {
+				count int64
+				err   error
+			}
+			done := make(chan outcome, 1)
+			go func() { count, e := client.runCopy(ctx, command); done <- outcome{count, e} }()
+			frontend := pgproto3.NewFrontend(readerConn, readerConn)
+			if m, e := frontend.Receive(); e != nil {
+				t.Fatal(e)
+			} else if _, ok := m.(*pgproto3.CopyOutResponse); !ok {
+				t.Fatalf("%T", m)
+			}
+			if cancelled {
+				// net.Pipe gives a deterministic blocked writer; CancelRequest uses the
+				// same context cancellation path in a real network connection.
+				cancel()
+				select {
+				case result := <-done:
+					if !errors.Is(result.err, context.Canceled) {
+						t.Fatalf("cancel result %v", result)
+					}
+				case <-time.After(5 * time.Second):
+					t.Fatal("COPY output remained blocked after cancellation")
+				}
+				if session.InTransaction() {
+					t.Fatal("cancelled COPY transaction remains active")
+				}
+				if _, err = session.Exec("SELECT 1"); err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			first, err := frontend.Receive()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if data, ok := first.(*pgproto3.CopyData); !ok || !bytes.Contains(data.Data, []byte("before")) {
+				t.Fatalf("first data %T %v", first, first)
+			}
+			if _, err = s.database.Exec("UPDATE copy_snapshot SET v='after'"); err != nil {
+				t.Fatal(err)
+			}
+			n := 1
+			for {
+				message, e := frontend.Receive()
+				if e != nil {
+					t.Fatal(e)
+				}
+				if _, ok := message.(*pgproto3.CopyDone); ok {
+					break
+				}
+				data, ok := message.(*pgproto3.CopyData)
+				if !ok || !bytes.Contains(data.Data, []byte("before")) {
+					t.Fatalf("snapshot output %T %v", message, message)
+				}
+				n++
+			}
+			if result := <-done; result.err != nil || result.count != 3 || n != 3 {
+				t.Fatalf("COPY output %v rows=%d", result, n)
+			}
+		})
+	}
+}
+
+// Captured independently through pgconn.CopyFrom/CopyTo against PostgreSQL
+// 16.15, including error SQLSTATEs. Ordinary tests need no reference server.
+func TestCopyPostgres16ReferenceFixtures(t *testing.T) {
+	data, err := os.ReadFile("testdata/copy-postgres16.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases []struct{ Name, Options, Input, Output, Code, Error string }
+	if err = json.Unmarshal(data, &cases); err != nil {
+		t.Fatal(err)
+	}
+	s := startTestServer(t, "tcp", Config{})
+	c := copyConnection(t, s)
+	ctx := context.Background()
+	if _, err = c.Exec(ctx, "CREATE TABLE copy_oracle(id BIGINT,a TEXT,b TEXT)"); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range cases {
+		t.Run(tc.Name, func(t *testing.T) {
+			if _, err = c.Exec(ctx, "DELETE FROM copy_oracle"); err != nil {
+				t.Fatal(err)
+			}
+			_, copyErr := c.PgConn().CopyFrom(ctx, strings.NewReader(tc.Input), "COPY copy_oracle FROM STDIN "+tc.Options)
+			if tc.Code != "" {
+				var pe *pgconn.PgError
+				if !errors.As(copyErr, &pe) || pe.Code != tc.Code {
+					t.Fatalf("COPY error %v, want SQLSTATE %s", copyErr, tc.Code)
+				}
+				var n int
+				if err = c.QueryRow(ctx, "SELECT count(*) FROM copy_oracle").Scan(&n); err != nil || n != 0 {
+					t.Fatalf("failed COPY count %d %v", n, err)
+				}
+				return
+			}
+			if copyErr != nil {
+				t.Fatal(copyErr)
+			}
+			var out bytes.Buffer
+			if _, err = c.PgConn().CopyTo(ctx, &out, "COPY copy_oracle TO STDOUT (FORMAT csv)"); err != nil {
+				t.Fatal(err)
+			}
+			if out.String() != tc.Output {
+				t.Fatalf("COPY output %q, PostgreSQL16 %q", out.String(), tc.Output)
+			}
+		})
 	}
 }

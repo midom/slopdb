@@ -1,0 +1,90 @@
+[
+  {
+    "Name": "text escapes",
+    "Options": "",
+    "Input": "1\thello\\t世界\t\\N\n2\t\\\\N\t\n3\tline\\nnext\tx\n",
+    "Output": "1,hello\t世界,\n2,\\N,\"\"\n3,\"line\nnext\",x\n",
+    "Code": "",
+    "Error": ""
+  },
+  {
+    "Name": "CSV header",
+    "Options": "(FORMAT csv,HEADER MATCH)",
+    "Input": "id,a,b\r\n1,\"a,b\nnext\"\"quote\",\r\n2,\"\",\"\"\r\n",
+    "Output": "1,\"a,b\nnext\"\"quote\",\n2,\"\",\"\"\n",
+    "Code": "",
+    "Error": ""
+  },
+  {
+    "Name": "force custom",
+    "Options": "(FORMAT csv,DELIMITER ';',NULL 'NULL',QUOTE '''',ESCAPE '!',FORCE_NOT_NULL(a),FORCE_NULL(b))",
+    "Input": "1;NULL;NULL\n2;'NULL';'NULL'\n3;'escape!'quote';'bang!!'\n",
+    "Output": "1,NULL,\n2,NULL,\n3,escape'quote,bang!\n",
+    "Code": "",
+    "Error": ""
+  },
+  {
+    "Name": "mixed eol",
+    "Options": "",
+    "Input": "1\ta\tb\r\n2\tx\ty\n",
+    "Output": "",
+    "Code": "22P04",
+    "Error": "ERROR: literal newline found in data (SQLSTATE 22P04)"
+  },
+  {
+    "Name": "CSV mixed eol",
+    "Options": "CSV",
+    "Input": "1,a,b\r\n2,x,y\n",
+    "Output": "",
+    "Code": "22P04",
+    "Error": "ERROR: unquoted newline found in data (SQLSTATE 22P04)"
+  },
+  {
+    "Name": "endmark",
+    "Options": "",
+    "Input": "1\tx\ty\n\\.\nignored\n",
+    "Output": "1,x,y\n",
+    "Code": "",
+    "Error": ""
+  },
+  {
+    "Name": "endmark EOF",
+    "Options": "",
+    "Input": "\\.",
+    "Output": "",
+    "Code": "22P04",
+    "Error": "ERROR: end-of-copy marker corrupt (SQLSTATE 22P04)"
+  },
+  {
+    "Name": "final escape",
+    "Options": "",
+    "Input": "1\tx\ty\\",
+    "Output": "1,x,y\n",
+    "Code": "",
+    "Error": ""
+  },
+  {
+    "Name": "octal hex",
+    "Options": "",
+    "Input": "1\t\\141\\x62\\v\tx\n",
+    "Output": "1,ab\u000b,x\n",
+    "Code": "",
+    "Error": ""
+  },
+  {
+    "Name": "unterminated quote",
+    "Options": "CSV",
+    "Input": "1,ok,row\n2,\"unfinished,row\n",
+    "Output": "",
+    "Code": "22P04",
+    "Error": "ERROR: unterminated CSV quoted field (SQLSTATE 22P04)"
+  },
+  {
+    "Name": "CSV quote placement",
+    "Options": "CSV",
+    "Input": "1,a, before\"quoted\"after\n",
+    "Output": "1,a, beforequotedafter\n",
+    "Code": "",
+    "Error": ""
+  }
+]

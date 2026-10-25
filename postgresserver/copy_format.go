@@ -23,6 +23,7 @@ type copyRecords struct {
 	limit         int
 	binaryStarted bool
 	ended         bool
+	lineEnding    string
 }
 
 func (r *copyRecords) next(n int) ([]copyField, error) {
@@ -55,6 +56,9 @@ func (r *copyRecords) next(n int) ([]copyField, error) {
 				return nil, io.EOF
 			}
 			fields = append(fields, f)
+			if len(fields) == 1 && !f.quoted && bytes.Equal(f.data, []byte(`\.`)) {
+				return nil, &protocolError{"22P04", "end-of-copy marker corrupt"}
+			}
 			return fields, nil
 		}
 		if err != nil {
@@ -93,8 +97,13 @@ func (r *copyRecords) next(n int) ([]copyField, error) {
 				return nil, err
 			}
 			next, e := r.reader.ReadByte()
+			if e == io.EOF {
+				f.data = f.data[:len(f.data)-1]
+				fields = append(fields, f)
+				return fields, nil
+			}
 			if e != nil {
-				return nil, &protocolError{"22P04", "COPY ends with escape character"}
+				return nil, e
 			}
 			if err = appendByte(next); err != nil {
 				return nil, err
@@ -110,12 +119,18 @@ func (r *copyRecords) next(n int) ([]copyField, error) {
 			continue
 		}
 		if b == '\n' || b == '\r' {
+			ending := string(b)
 			if b == '\r' {
 				next, _ := r.reader.Peek(1)
 				if len(next) > 0 && next[0] == '\n' {
 					_, _ = r.reader.ReadByte()
+					ending = "\r\n"
 				}
 			}
+			if r.lineEnding != "" && r.lineEnding != ending {
+				return nil, &protocolError{"22P04", "inconsistent line endings in COPY data"}
+			}
+			r.lineEnding = ending
 			fields = append(fields, f)
 			if len(fields) == 1 && !f.quoted && bytes.Equal(f.data, []byte(`\.`)) {
 				r.ended = true
@@ -135,7 +150,7 @@ func (r *copyRecords) next(n int) ([]copyField, error) {
 func (r *copyRecords) nextBinary(n int) ([]copyField, error) {
 	if !r.binaryStarted {
 		header := make([]byte, 19)
-		if _, err := io.ReadFull(r.reader, header); err != nil {
+		if err := copyReadFull(r.reader, header); err != nil {
 			return nil, err
 		}
 		if !bytes.Equal(header[:11], copySignature) {
@@ -149,12 +164,22 @@ func (r *copyRecords) nextBinary(n int) ([]copyField, error) {
 			return nil, &protocolError{"54000", "COPY binary extension too large"}
 		}
 		if _, err := io.CopyN(io.Discard, r.reader, int64(size)); err != nil {
+			if err == io.EOF {
+				err = io.ErrUnexpectedEOF
+			}
 			return nil, err
 		}
 		r.binaryStarted = true
 	}
 	var size [4]byte
+	// PostgreSQL accepts CopyDone at a row boundary without a binary trailer;
+	// pgx.CopyFrom deliberately uses that form. Its row-count read also treats
+	// a final single byte as end of stream (verified against PostgreSQL16.15).
 	if _, err := io.ReadFull(r.reader, size[:2]); err != nil {
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			r.ended = true
+			return nil, io.EOF
+		}
 		return nil, err
 	}
 	count := int(int16(binary.BigEndian.Uint16(size[:2])))
@@ -175,7 +200,7 @@ func (r *copyRecords) nextBinary(n int) ([]copyField, error) {
 	fields := make([]copyField, n)
 	total := 0
 	for i := range fields {
-		if _, err := io.ReadFull(r.reader, size[:]); err != nil {
+		if err := copyReadFull(r.reader, size[:]); err != nil {
 			return nil, err
 		}
 		length := int32(binary.BigEndian.Uint32(size[:]))
@@ -187,7 +212,7 @@ func (r *copyRecords) nextBinary(n int) ([]copyField, error) {
 		}
 		total += int(length)
 		fields[i].data = make([]byte, int(length))
-		if _, err := io.ReadFull(r.reader, fields[i].data); err != nil {
+		if err := copyReadFull(r.reader, fields[i].data); err != nil {
 			return nil, err
 		}
 	}
@@ -258,6 +283,15 @@ func copyUnescape(data []byte) []byte {
 func (c *copyCommand) decode(f copyField, field field) (any, error) {
 	data := f.data
 	if c.format == "binary" {
+		if data != nil && (field.oid == oidText || field.oid == oidVarchar || field.oid == oidJSON || field.oid == oidJSONB) {
+			text := data
+			if field.oid == oidJSONB && len(text) > 0 {
+				text = text[1:]
+			}
+			if !utf8.Valid(text) || bytes.IndexByte(text, 0) >= 0 {
+				return nil, &protocolError{"22021", "invalid UTF8 or zero byte in COPY text"}
+			}
+		}
 		return decodeValue(data, field.oid, true)
 	}
 	name := field.name
@@ -354,4 +388,12 @@ func (c *copyCommand) encode(values []sql.Value, fields []field) ([]byte, error)
 		out = append(out, '\n')
 	}
 	return out, nil
+}
+
+func copyReadFull(reader io.Reader, out []byte) error {
+	_, err := io.ReadFull(reader, out)
+	if err == io.EOF {
+		return io.ErrUnexpectedEOF
+	}
+	return err
 }

@@ -2,8 +2,9 @@ package postgresserver
 
 import (
 	"fmt"
-	"slopdb/sql"
 	"strings"
+
+	"slopdb/sql"
 )
 
 type copyCommand struct {
@@ -102,10 +103,22 @@ func parseCopy(query string) (*copyCommand, error) {
 		tok = t.Next()
 	}
 	options := map[string]string{}
+	seenOptions := map[string]bool{}
 	for tok.Type != sql.TokEOF && tok.Type != sql.TokSemicolon && tok.Type != sql.TokRParen {
 		key := strings.ToUpper(tok.Value)
+		optionKey := key
+		if key == "CSV" || key == "BINARY" {
+			optionKey = "FORMAT"
+		}
+		if seenOptions[optionKey] {
+			return nil, copySyntax("conflicting COPY options")
+		}
+		seenOptions[optionKey] = true
 		tok = t.Next()
 		if key == "CSV" || key == "BINARY" {
+			if parens {
+				return nil, copySyntax("use FORMAT with parenthesized COPY options")
+			}
 			options["FORMAT"] = strings.ToLower(key)
 			continue
 		}
@@ -169,8 +182,14 @@ func parseCopy(query string) (*copyCommand, error) {
 		default:
 			return nil, &protocolError{"0A000", fmt.Sprintf("unsupported COPY option %s", key)}
 		}
-		if parens && tok.Type == sql.TokComma {
+		if parens && tok.Type != sql.TokRParen {
+			if tok.Type != sql.TokComma {
+				return nil, copySyntax("expected comma in COPY options")
+			}
 			tok = t.Next()
+			if tok.Type == sql.TokRParen {
+				return nil, copySyntax("missing COPY option after comma")
+			}
 		}
 	}
 	if parens {
@@ -216,7 +235,7 @@ func parseCopy(query string) (*copyCommand, error) {
 	if v, ok := options["NULL"]; ok {
 		c.null = v
 	}
-	if strings.ContainsAny(c.null, "\r\n") {
+	if strings.ContainsAny(c.null, "\r\n\x00") {
 		return nil, &protocolError{"22023", "COPY null marker cannot contain newline"}
 	}
 	if v, ok := options["ENCODING"]; ok && !strings.EqualFold(v, "UTF8") && !strings.EqualFold(v, "UTF-8") {
