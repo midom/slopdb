@@ -201,14 +201,15 @@ func (d *Database) Activity(ctx context.Context) ([]sql.SessionActivity, error) 
 		return true
 	})
 	waits := d.LockWaits()
+	bySession := make(map[uint64]LockWaitInfo, len(waits))
+	for _, w := range waits {
+		bySession[w.SessionID] = w
+	}
 	for i := range result {
-		for _, w := range waits {
-			if w.SessionID == result[i].SessionID {
-				result[i].Waiting = true
-				result[i].WaitKind = w.ResourceKind
-				result[i].WaitResource = w.Resource
-				break
-			}
+		if w, ok := bySession[result[i].SessionID]; ok {
+			result[i].Waiting = true
+			result[i].WaitKind = w.ResourceKind
+			result[i].WaitResource = w.Resource
 		}
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
