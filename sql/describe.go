@@ -384,7 +384,7 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 		if e.BoundParameter || e.Value.Null {
 			return text, nil
 		}
-		if s.mysqlMode && (e.Value.NumericText != "" || e.Value.Type == ColDecimal) {
+		if s.mysqlMode && (e.Value.NumericText != "" && !strings.ContainsAny(e.Value.NumericText, "eE") || e.Value.Type == ColDecimal) {
 			value := e.Value
 			if value.NumericText != "" {
 				var err error

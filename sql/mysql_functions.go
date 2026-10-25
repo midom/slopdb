@@ -206,13 +206,6 @@ func (s *Schema) evalMySQLFunc(e *FuncCallExpr, row map[string]Value) (Value, bo
 		if !utf8.ValidString(text) {
 			return NewNullValue(), true, fmt.Errorf("invalid UTF-8 in CONVERT")
 		}
-		if charset == "utf8" || charset == "utf8mb3" {
-			for _, r := range text {
-				if r > 0xffff {
-					return NewNullValue(), true, fmt.Errorf("character outside utf8mb3 range")
-				}
-			}
-		}
 		if charset != "utf8" && charset != "utf8mb3" && charset != "utf8mb4" {
 			return NewNullValue(), true, fmt.Errorf("unsupported character set: %s", charset)
 		}

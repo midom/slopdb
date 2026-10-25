@@ -6122,7 +6122,7 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 			v.Blob = copyBytes(v.Blob)
 			return v, nil
 		}
-		if s.mysqlMode && e.Value.NumericText != "" {
+		if s.mysqlMode && e.Value.NumericText != "" && !strings.ContainsAny(e.Value.NumericText, "eE") {
 			return NewDecimalValue(e.Value.NumericText)
 		}
 		return e.Value, nil
@@ -6294,6 +6294,9 @@ func (s *Schema) evalFunc(e *FuncCallExpr, row map[string]Value) (Value, error) 
 		}
 		if v.Type == ColBlob {
 			return NewIntValue(int64(len(v.Blob))), nil
+		}
+		if s.mysqlMode {
+			return NewIntValue(int64(len(v.String()))), nil
 		}
 		return NewIntValue(int64(utf8.RuneCountInString(v.String()))), nil
 	case "UPPER":

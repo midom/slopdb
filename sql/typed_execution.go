@@ -147,7 +147,7 @@ func (p *typedProgram) eval(slots []Value) (Value, error) {
 			v = i.value
 			if i.literal != nil {
 				v = i.literal.Value
-				if p.mysqlMode && v.NumericText != "" {
+				if p.mysqlMode && v.NumericText != "" && !strings.ContainsAny(v.NumericText, "eE") {
 					v, err = NewDecimalValue(v.NumericText)
 				}
 			}
