@@ -149,6 +149,7 @@ type Schema struct {
 	triggerDepth         int
 	viewDepth            int
 	savepoints           []savepoint
+	sessionState         SessionState
 	dialect              Dialect
 	dialectEpoch         uint64
 	mysqlFunctions       mysqlFunctionSessionState
@@ -499,6 +500,16 @@ func (s *Schema) schemaGet(key []byte) (value []byte, found bool, err error) {
 }
 
 func (s *Schema) CreateTable(stmt *CreateTableStmt) error {
+	for _, c := range stmt.Columns {
+		if expressionUsesSessionVariable(c.Default) || expressionUsesSessionVariable(c.Check) {
+			return fmt.Errorf("session variables cannot appear in persistent table definitions")
+		}
+	}
+	for _, e := range stmt.TableCheck {
+		if expressionUsesSessionVariable(e) {
+			return fmt.Errorf("session variables cannot appear in persistent table definitions")
+		}
+	}
 	if s.PostgresMode() {
 		if _, known := postgresCatalogName(stmt.Table); known {
 			return fmt.Errorf("system catalog %q is read only", stmt.Table)
@@ -4318,11 +4329,7 @@ func (s *Schema) validateQueryUncached(stmt *SelectStmt, info *TableInfo) error 
 			return validate(e.Right, allowAlias)
 		case *FuncCallExpr:
 			if !isAggregate(e) && e.Window == nil {
-				if s.PostgresMode() {
-					if valid, known := validPostgresFunction(strings.ToUpper(e.Name), len(e.Args)); known && !valid {
-						return fmt.Errorf("wrong number of arguments to %s", e.Name)
-					}
-				} else if err := validateScalarFunctionDialect(e, false); err != nil {
+				if err := validateResolvedFunction(s.Dialect(), e); err != nil {
 					return err
 				}
 			}

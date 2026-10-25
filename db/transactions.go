@@ -221,6 +221,7 @@ func (s *Session) closeLocked() {
 		s.cancelActive()
 		_ = s.schema.Rollback()
 		s.schema.DiscardTemporaryTables()
+		s.schema.ResetSessionState()
 		s.db.locks.release(s.schema)
 		s.db.locks.forget(s.schema)
 		s.closed = true

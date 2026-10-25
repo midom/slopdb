@@ -8,10 +8,13 @@ type SessionFunction func(context.Context, string, []Value) (Value, bool, error)
 
 // SessionContext carries shared connection identity and callback facilities.
 // Dialect-specific settings (SQL_MODE, warnings, etc.) remain extension options.
+type SystemVariableGetter func(context.Context, string, bool) (Value, error)
+
 type SessionContext struct {
 	Dialect        Dialect
 	Database, User string
 	BackendID      uint64
+	SystemVariable SystemVariableGetter
 	Function       SessionFunction
 }
 type sessionContextKey struct{}

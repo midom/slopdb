@@ -86,7 +86,7 @@ func (s *Schema) selectProjection(stmt *SelectStmt, info *TableInfo) ([]ColumnDe
 				case *ColumnRefExpr:
 					name = e.Name
 				case *FuncCallExpr:
-					name = e.Name
+					name = e.ResultName()
 				default:
 					name = fmt.Sprintf("expr%d", index)
 				}

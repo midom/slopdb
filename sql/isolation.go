@@ -89,6 +89,9 @@ func (s *Schema) StatementReadView(statement Statement) {
 	s.statementConsistent = false
 	s.statementQuery = false
 	switch stmt := statement.(type) {
+	case *SessionVariableStmt:
+		s.statementQuery = true
+		s.statementConsistent = stmt.ReadsData()
 	case *SelectStmt:
 		s.statementQuery = true
 		s.statementConsistent = stmt.Lock == nil && selectReadsTable(stmt)

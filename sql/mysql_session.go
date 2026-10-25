@@ -19,6 +19,7 @@ type MySQLSessionOptions struct {
 	Function          func(context.Context, string, []Value) (Value, bool, error)
 	SystemTables      map[string]*ResultSet
 	SystemTable       func(string) (*ResultSet, error)
+	SystemVariable    SystemVariableGetter
 }
 
 type mysqlSessionKey struct{}
@@ -27,7 +28,7 @@ func WithMySQLSession(ctx context.Context, options MySQLSessionOptions) context.
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	ctx = WithSessionContext(ctx, SessionContext{Dialect: DialectMySQL, Database: options.Database, User: options.User, BackendID: options.BackendID, Function: options.Function})
+	ctx = WithSessionContext(ctx, SessionContext{Dialect: DialectMySQL, Database: options.Database, User: options.User, BackendID: options.BackendID, Function: options.Function, SystemVariable: options.SystemVariable})
 	return context.WithValue(ctx, mysqlSessionKey{}, options)
 }
 

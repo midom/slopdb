@@ -301,6 +301,13 @@ func (s *Schema) describeStatement(stmt Statement, outer map[string][]ColumnDef,
 			return nil, err
 		}
 		return s.describeProjection(st.Returning, cols, env, scope, depth, true)
+	case *SessionVariableStmt:
+		for _, e := range st.Assignments {
+			if _, err := s.describeExpression(e, nil, scope, depth+1); err != nil {
+				return nil, err
+			}
+		}
+		return nil, nil
 	case *ExplainStmt:
 		if _, err := s.describeStatement(st.Stmt, scope, depth+1); err != nil {
 			return nil, err
@@ -390,7 +397,7 @@ func (s *Schema) describeProjection(columns []SelectColumn, all []ColumnDef, env
 				name = e.Name
 			case *FuncCallExpr:
 				if !returning {
-					name = e.Name
+					name = e.ResultName()
 				}
 			}
 		}

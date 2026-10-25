@@ -42,6 +42,7 @@ const (
 	TokJSONPathText
 	TokTypeCast
 	TokRegex
+	TokAssign
 )
 
 type Token struct {
@@ -139,6 +140,10 @@ func (t *Tokenizer) Next() (tok Token) {
 
 	switch ch {
 	case ':':
+		if t.pos+1 < len(t.input) && t.input[t.pos+1] == '=' {
+			t.pos += 2
+			return Token{Type: TokAssign, Value: ":="}
+		}
 		if t.pos+1 < len(t.input) && t.input[t.pos+1] == ':' {
 			t.pos += 2
 			return Token{Type: TokTypeCast, Value: "::"}

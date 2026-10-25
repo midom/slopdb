@@ -45,3 +45,48 @@ func TestSharedSessionContextAndDialectExtensions(t *testing.T) {
 		t.Fatal(v, handled, e)
 	}
 }
+
+func TestSessionTypedStateOwnershipBudgetAndReset(t *testing.T) {
+	var state SessionState
+	blob := NewBlobValue([]byte{1, 2})
+	if e := state.SetVariable("a", blob, 1024); e != nil {
+		t.Fatal(e)
+	}
+	blob.Blob[0] = 9
+	got, ok := state.Variable("a")
+	if !ok || got.Blob[0] != 1 {
+		t.Fatal(got, ok)
+	}
+	got.Blob[0] = 8
+	got, _ = state.Variable("a")
+	if got.Blob[0] != 1 {
+		t.Fatal("aliased read")
+	}
+	if e := state.SetVariable("a", NewBlobValue(make([]byte, 2048)), 1024); e == nil {
+		t.Fatal("budget accepted")
+	}
+	got, _ = state.Variable("a")
+	if got.Blob[0] != 1 {
+		t.Fatal("failed write changed value")
+	}
+	state.Reset()
+	if _, ok = state.Variable("a"); ok || state.bytes != 0 {
+		t.Fatal("reset retained state")
+	}
+}
+
+func TestSessionVariableInspectionClassification(t *testing.T) {
+	for _, tc := range []struct {
+		q     string
+		local bool
+	}{{"SET @a=1+2", true}, {"SET @a=(SELECT @@read_only)", true}, {"SET @a=(SELECT @b+1)", true}, {"SET @a=(SELECT n FROM table_name)", false}, {"SET @a=(SELECT n FROM table_name)+(SELECT 1)", false}, {"SET @a=(WITH x AS (SELECT n FROM table_name) SELECT n FROM x)", false}, {"SET @a=(SELECT ROW_NUMBER() OVER(ORDER BY 1))", false}} {
+		statements, e := Parse(tc.q)
+		if e != nil {
+			t.Fatal(tc.q, e)
+		}
+		statement := statements[0].(*SessionVariableStmt)
+		if statement.LocalOnly() != tc.local {
+			t.Fatalf("%s local=%v want%v", tc.q, statement.LocalOnly(), tc.local)
+		}
+	}
+}

@@ -22,7 +22,12 @@ func defaultSessionVariables() sessionVariables {
 }
 
 func (c *client) mysqlContext() context.Context {
-	ctx := sql.WithMySQLSession(c.ctx, sql.MySQLSessionOptions{Database: c.selectedDatabaseName(), RootDatabase: c.server.config.Database, User: c.username, BackendID: uint64(c.id), GroupConcatMaxLen: c.variables.groupConcatMaxLen, SQLMode: c.variables.sqlMode, Function: c.mysqlFunction, SystemTable: c.accountTable, FoundRows: c.capabilities&clientFoundRows != 0, Warning: c.addWarning})
+	ctx := sql.WithMySQLSession(c.ctx, sql.MySQLSessionOptions{Database: c.selectedDatabaseName(), RootDatabase: c.server.config.Database, User: c.username, BackendID: uint64(c.id), GroupConcatMaxLen: c.variables.groupConcatMaxLen, SQLMode: c.variables.sqlMode, Function: c.mysqlFunction, SystemVariable: func(ctx context.Context, name string, global bool) (sql.Value, error) {
+		if err := ctx.Err(); err != nil {
+			return sql.Value{}, err
+		}
+		return c.variable(name, global)
+	}, SystemTable: c.accountTable, FoundRows: c.capabilities&clientFoundRows != 0, Warning: c.addWarning})
 	if len(c.preparedPath) > 0 {
 		ctx = sql.WithNamespaceSearchPath(ctx, c.preparedPath)
 	}
@@ -110,87 +115,9 @@ func (c *client) variable(name string, global bool) (sql.Value, error) {
 	}
 }
 
-// rewriteVariables replaces only lexical @@ references. Quoted strings,
-// identifiers and comments are left untouched, and the ordinary SQL parser
-// still rejects multi-statements and validates the resulting expression.
-func (c *client) rewriteVariables(query string) (string, bool, error) {
-	tokens := sqlTokens(query, c.currentDatabase().ParseOptions())
-	var out strings.Builder
-	end := 0
-	changed := false
-	for i := 0; i < len(tokens); i++ {
-		if tokens[i].Value != "@" || tokens[i].Type != sql.TokInvalid {
-			continue
-		}
-		if i+2 >= len(tokens) || tokens[i+1].Value != "@" {
-			return "", false, fmt.Errorf("user variables are not supported")
-		}
-		start := tokens[i].Start
-		j := i + 2
-		global := false
-		if j+1 < len(tokens) && tokens[j+1].Type == sql.TokDot {
-			scope := strings.ToUpper(tokens[j].Value)
-			if scope != "GLOBAL" && scope != "SESSION" && scope != "LOCAL" {
-				return "", false, fmt.Errorf("unknown variable scope %s", scope)
-			}
-			global = scope == "GLOBAL"
-			j += 2
-		}
-		if j >= len(tokens) || tokens[j].Type != sql.TokIdent && tokens[j].Type != sql.TokKeyword {
-			return "", false, fmt.Errorf("expected system variable name")
-		}
-		value, err := c.variable(tokens[j].Value, global)
-		if err != nil {
-			return "", false, err
-		}
-		next := len(query)
-		if j+1 < len(tokens) {
-			next = tokens[j+1].Start
-		} else {
-			next = len(query)
-		}
-		out.WriteString(query[end:start])
-		if value.Type == sql.ColInteger {
-			out.WriteString(strconv.FormatInt(value.Int, 10))
-		} else {
-			out.WriteByte('\'')
-			out.WriteString(strings.ReplaceAll(value.Text, "'", "''"))
-			out.WriteByte('\'')
-		}
-		out.WriteByte(' ')
-		end = next
-		i = j
-		changed = true
-	}
-	if !changed {
-		return query, false, nil
-	}
-	out.WriteString(query[end:])
-	return out.String(), true, nil
-}
-
 func (c *client) compatibilityControl(query string) (*db.ExecResult, bool, error) {
 	first := sql.NewTokenizerWithOptions(query, c.currentDatabase().ParseOptions()).Next()
-	if strings.EqualFold(first.Value, "SELECT") && strings.Contains(query, "@") {
-		rewritten, changed, err := c.rewriteVariables(query)
-		if err != nil {
-			return nil, true, err
-		}
-		if changed {
-			statements, parseErr := sql.ParseWithOptions(rewritten, c.currentDatabase().ParseOptions())
-			if parseErr != nil {
-				return nil, true, parseErr
-			}
-			if len(statements) != 1 {
-				return nil, true, &protocolError{1064, "42000", "exactly one SQL statement is required"}
-			}
-			if err := c.authorize(statements[0]); err != nil {
-				return nil, true, err
-			}
-			result, err := c.session.ExecContext(c.mysqlContext(), rewritten)
-			return result, true, err
-		}
-	}
+
 	if !strings.EqualFold(first.Value, "SET") && !strings.EqualFold(first.Value, "SHOW") {
 		return nil, false, nil
 	}
@@ -273,6 +200,9 @@ func variableLike(value, pattern string) bool { return sql.SystemVariableLike(va
 
 func (c *client) setSessionVariables(tokens []sql.Token) (*db.ExecResult, bool, error) {
 	i := 1
+	if i < len(tokens) && tokens[i].Type == sql.TokInvalid && tokens[i].Value == "@" {
+		return nil, false, nil
+	}
 	if strings.EqualFold(tokens[i].Value, "READ") || strings.EqualFold(tokens[i].Value, "TRANSACTION") || strings.EqualFold(tokens[i].Value, "NAMES") {
 		return nil, false, nil
 	}

@@ -351,7 +351,7 @@ func (db *Database) execAdmittedStatementsInto(ctx context.Context, stmts []sql.
 				result, err = db.execOnlineIndex(ctx, schema, stmt, lockTimeout, &lockDeadline)
 			} else if err == nil {
 				switch stmt.(type) {
-				case *sql.BeginStmt, *sql.SetIsolationStmt, *sql.SetConstraintsStmt, *sql.CommitStmt, *sql.RollbackStmt, *sql.SavepointStmt, *sql.ReleaseStmt, *sql.SelectStmt, *sql.UnionStmt, *sql.ExplainStmt, *sql.ShowStmt, *sql.VacuumStmt:
+				case *sql.SessionVariableStmt, *sql.BeginStmt, *sql.SetIsolationStmt, *sql.SetConstraintsStmt, *sql.CommitStmt, *sql.RollbackStmt, *sql.SavepointStmt, *sql.ReleaseStmt, *sql.SelectStmt, *sql.UnionStmt, *sql.ExplainStmt, *sql.ShowStmt, *sql.VacuumStmt:
 					result, err = executor.execStatement(stmt)
 				case *sql.NamespaceStmt:
 					if stmt.(*sql.NamespaceStmt).Operation == "use" || stmt.(*sql.NamespaceStmt).Operation == "search_path" {
@@ -443,6 +443,11 @@ func (db *Database) execAdmittedStatementsInto(ctx context.Context, stmts []sql.
 func (db *statementExecutor) execStatement(stmt sql.Statement) (*ExecResult, error) {
 	var result *ExecResult
 	switch s := stmt.(type) {
+	case *sql.SessionVariableStmt:
+		if err := db.schema.ExecuteSessionVariables(s); err != nil {
+			return nil, err
+		}
+		result = &ExecResult{}
 	case *sql.NamespaceStmt:
 		rs, err := db.schema.ExecuteNamespace(s)
 		if err != nil {

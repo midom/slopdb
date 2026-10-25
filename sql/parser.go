@@ -84,6 +84,12 @@ func (p *Parser) parse() ([]Statement, error) {
 		if err != nil {
 			return nil, p.parseError(err)
 		}
+		switch stmt.(type) {
+		case *CreateTableStmt, *AlterTableStmt, *CreateViewStmt:
+			if statementUsesSessionVariables(stmt) {
+				return nil, p.parseError(fmt.Errorf("session variables cannot appear in persistent schema definitions"))
+			}
+		}
 		stmts = append(stmts, stmt)
 		if p.cur.Type == TokSemicolon {
 			p.advance()
@@ -203,6 +209,10 @@ func (p *Parser) parseStatement() (Statement, error) {
 		return p.parseNamespaceSetting()
 	}
 	if p.showWord("SET") {
+
+		if next := p.tok.Peek(); next.Type == TokInvalid && next.Value == "@" {
+			return p.parseSessionVariableSetting()
+		}
 		look := *p.tok
 		next := look.Next().Value
 		if strings.EqualFold(next, "CONSTRAINTS") {
@@ -1647,7 +1657,23 @@ func (p *Parser) parseDrop() (Statement, error) {
 }
 
 func (p *Parser) parseExpression() (Expression, error) {
-	return p.parseOr()
+	left, err := p.parseOr()
+	if err != nil {
+		return nil, err
+	}
+	if p.cur.Type == TokAssign {
+		name, ok := sessionVariableName(left)
+		if !ok {
+			return nil, fmt.Errorf(":= requires a user variable")
+		}
+		p.advance()
+		value, err := p.parseExpression()
+		if err != nil {
+			return nil, err
+		}
+		return variableExpression(name, value), nil
+	}
+	return left, nil
 }
 
 func (p *Parser) parseOr() (Expression, error) {
@@ -2166,6 +2192,10 @@ func (p *Parser) parseUnary() (Expression, error) {
 }
 
 func (p *Parser) parsePrimary() (Expression, error) {
+	if p.cur.Type == TokInvalid && p.cur.Value == "@" {
+		return p.parseSessionVariable()
+	}
+
 	if e, handled, err := p.parsePostgresPrimary(); handled {
 		return e, err
 	}
@@ -2866,6 +2896,16 @@ func formatExpr(e Expression) string {
 		}
 		return "(" + x.Op + " " + formatExpr(x.Right) + ")"
 	case *FuncCallExpr:
+		if x.Name == sessionVariableRead && len(x.Args) == 1 {
+			if name, ok := x.Args[0].(*LiteralExpr); ok {
+				return "@`" + strings.ReplaceAll(name.Value.Text, "`", "``") + "`"
+			}
+		}
+		if x.Name == sessionVariableAssign && len(x.Args) == 2 {
+			if name, ok := x.Args[0].(*LiteralExpr); ok {
+				return "(@`" + strings.ReplaceAll(name.Value.Text, "`", "``") + "` := " + formatExpr(x.Args[1]) + ")"
+			}
+		}
 		if x.Name == fulltextFunction {
 			return formatFulltextMatch(x)
 		}
