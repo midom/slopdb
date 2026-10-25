@@ -1,5 +1,7 @@
 package sql
 
+import "strings"
+
 // applyResultMetadata changes only descriptor types. Row map keys, duplicate
 // labels and native cell values remain owned by the executing result.
 func applyResultMetadata(columns, types []ColumnDef) {
@@ -8,6 +10,12 @@ func applyResultMetadata(columns, types []ColumnDef) {
 	}
 	for i, t := range types {
 		name, label := columns[i].Name, columns[i].DisplayName
+		if label == "" {
+			label = t.DisplayName
+		}
+		if label == "" && name != t.Name && strings.Contains(name, ".") {
+			label = t.ResultName()
+		}
 		logical := t.LogicalType()
 		t.SemanticType = logical.Kind
 		t.Default, t.Check = nil, nil
