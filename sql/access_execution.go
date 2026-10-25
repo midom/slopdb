@@ -144,7 +144,7 @@ func appendAccessValueColumn(prefix []byte, v Value, idx *IndexInfo, info *Table
 		return appendClusteredValue(copyBytes(prefix), v)
 	}
 	encoded := valueToSortableKey(idx.keyValue(column, v))
-	if len(idx.columnNames()) > 1 {
+	if len(idx.columnNames()) > 1 || idx.hasPrefixes() {
 		encoded = hex.EncodeToString([]byte(encoded))
 	}
 	return append(append(copyBytes(prefix), encoded...), ':')
@@ -563,7 +563,7 @@ func (s *Schema) queryMultiGet(keys [][]byte) ([]storage.PointValue, error) {
 
 func (s *Schema) accessIndexRowKey(p *accessPath, interval coveringInterval, key, data []byte) ([]byte, error) {
 	idx := p.index
-	if len(idx.columnNames()) > 1 {
+	if len(idx.columnNames()) > 1 || idx.hasPrefixes() {
 		return compositeIndexRowKey(idx, key)
 	}
 	// Binary integer/REAL encodings can themselves contain ':'. Text and blob

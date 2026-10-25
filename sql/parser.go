@@ -381,7 +381,9 @@ func (p *Parser) parseCreateTable() (Statement, error) {
 				}
 				stmt.PKColumns = c.Columns
 			case "UNIQUE":
-				stmt.TableUnique = append(stmt.TableUnique, c.Columns)
+				if !(&IndexInfo{PrefixLengths: c.PrefixLengths}).hasPrefixes() {
+					stmt.TableUnique = append(stmt.TableUnique, c.Columns)
+				}
 			case "CHECK":
 				stmt.TableCheck = append(stmt.TableCheck, c.Check)
 			case "FOREIGN":
@@ -700,25 +702,15 @@ func (p *Parser) parseTableConstraint(stmt *CreateTableStmt) error {
 			stmt.Indexes = append(stmt.Indexes, def)
 			return nil
 		}
-		if err := p.expect(TokLParen); err != nil {
+		cols, prefixes, err := p.parseIndexColumnsDetailed()
+		if err != nil {
 			return err
 		}
-		var cols []string
-		for {
-			cols = append(cols, strings.ToLower(p.cur.Value))
-			if p.cur.Type == TokIdent || p.cur.Type == TokKeyword {
-				p.advance()
-			}
-			if p.cur.Type == TokComma {
-				p.advance()
-			} else {
-				break
-			}
+		if (&IndexInfo{PrefixLengths: prefixes}).hasPrefixes() {
+			stmt.Indexes = append(stmt.Indexes, IndexDef{Columns: cols, PrefixLengths: prefixes, Unique: true})
+		} else {
+			stmt.TableUnique = append(stmt.TableUnique, cols)
 		}
-		if err := p.expect(TokRParen); err != nil {
-			return err
-		}
-		stmt.TableUnique = append(stmt.TableUnique, cols)
 		return nil
 	}
 

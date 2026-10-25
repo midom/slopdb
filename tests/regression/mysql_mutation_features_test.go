@@ -273,7 +273,8 @@ func TestMySQLAlterPrefixIndexes(t *testing.T) {
 		}
 	}
 	check()
-	for _, text := range []string{"ALTER TABLE prefixes ADD UNIQUE INDEX invalid_unique(a(5))", "ALTER TABLE prefixes ADD CONSTRAINT invalid_constraint UNIQUE KEY (a(5))", "ALTER TABLE prefixes ADD INDEX invalid_number(id(2))", "ALTER TABLE prefixes ADD INDEX invalid_length(a(21))", "EXPLAIN ALTER TABLE prefixes ADD UNIQUE KEY invalid_explain(a(2))"} {
+	exec("EXPLAIN ALTER TABLE prefixes ADD UNIQUE KEY valid_explain(a(2))")
+	for _, text := range []string{"ALTER TABLE prefixes ADD UNIQUE INDEX invalid_unique(a(5))", "ALTER TABLE prefixes ADD CONSTRAINT invalid_constraint UNIQUE KEY (a(5))", "ALTER TABLE prefixes ADD INDEX invalid_number(id(2))", "ALTER TABLE prefixes ADD INDEX invalid_length(a(21))"} {
 		if _, err := d.Exec(text); err == nil {
 			t.Errorf("accepted %s", text)
 		}

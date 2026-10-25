@@ -27,6 +27,12 @@ func localAccessPredicate(expr Expression, table, alias string) Expression {
 // prefixes whose ':' delimiter sorts after the upper bound's next byte. Keep
 // those bands separate instead of inflating one interval over unrelated values.
 func accessRangeIntervals(start []byte, column string, info *TableInfo, idx *IndexInfo, c *tupleConstraint) ([]coveringInterval, bool) {
+	if idx != nil && idx.prefixLength(column) > 0 {
+		copy := *c
+		copy.lowerStrict = false
+		copy.upperStrict = false
+		c = &copy
+	}
 	low, high, exact := accessRangeBounds(start, column, info, idx, c)
 	var intervals []coveringInterval
 	add := func(a, b []byte) {
@@ -47,7 +53,7 @@ func accessRangeIntervals(start []byte, column string, info *TableInfo, idx *Ind
 	// the SQL predicate as a residual instead.
 	if idx != nil && typ == ColText && !idx.binaryColumns[column] && idx.collation != "" && idx.collation != BinaryCollation {
 		band := []byte{3}
-		if len(idx.columnNames()) > 1 {
+		if len(idx.columnNames()) > 1 || idx.hasPrefixes() {
 			band = []byte(hex.EncodeToString(band))
 		}
 		low := append(copyBytes(start), band...)
@@ -128,7 +134,7 @@ func accessRangeBounds(start []byte, column string, info *TableInfo, idx *IndexI
 		tag = 4
 	}
 	band := []byte{tag}
-	if idx != nil && len(idx.columnNames()) > 1 {
+	if idx != nil && (len(idx.columnNames()) > 1 || idx.hasPrefixes()) {
 		band = []byte(hex.EncodeToString(band))
 	}
 	low = append(copyBytes(start), band...)
@@ -159,7 +165,7 @@ func accessRangeBounds(start []byte, column string, info *TableInfo, idx *IndexI
 			// byte of the bound, even though the shorter SQL value is smaller.
 			// Include every proper prefix's delimiter band, then recheck SQL.
 			step := 1
-			if len(idx.columnNames()) > 1 {
+			if len(idx.columnNames()) > 1 || idx.hasPrefixes() {
 				step = 2
 			}
 			if len(encoded)-len(start)-len(band) > 64*step {

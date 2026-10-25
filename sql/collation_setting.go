@@ -159,6 +159,20 @@ func (s *Schema) rebuildCollation(mode Collation) error {
 			}
 			uniqueKeys[groupKey] = true
 		}
+		for _, idx := range s.tableIndexes(entry.table) {
+			if !idx.IsUnique || !idx.hasPrefixes() {
+				continue
+			}
+			values, null := indexValues(idx.columnNames(), entry.row)
+			if null {
+				continue
+			}
+			identity := "prefix:" + idx.Name + "\x00" + indexTuplePrefix(idx, values)
+			if uniqueKeys[identity] {
+				return fmt.Errorf("collation %s violates UNIQUE prefix index %s", mode, idx.Name)
+			}
+			uniqueKeys[identity] = true
+		}
 		newRows = append(newRows, storage.Mutation{Key: key, Value: entry.data})
 		for _, idx := range s.tableIndexes(entry.table) {
 			if s.isClusteredIndex(idx) {

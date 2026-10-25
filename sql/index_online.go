@@ -166,6 +166,9 @@ func (s *Schema) StartOnlineIndex(stmt *CreateIndexStmt) (*OnlineIndexBuild, err
 		return nil, err
 	}
 	idx.PrefixLengths = append([]int64(nil), stmt.PrefixLengths...)
+	if idx.hasPrefixes() {
+		idx.PrefixEncoding = 1
+	}
 	if err := validateIndexPrefixes(info.Columns, idx); err != nil {
 		log.Close()
 		disk.close()

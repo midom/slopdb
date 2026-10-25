@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 func (idx *IndexInfo) columnNames() []string {
@@ -122,6 +123,9 @@ func (s *Schema) prepareInlineIndexes(table string, stmt *CreateTableStmt) ([]*I
 			return nil, err
 		}
 		idx.PrefixLengths = append([]int64(nil), def.PrefixLengths...)
+		if idx.hasPrefixes() {
+			idx.PrefixEncoding = 1
+		}
 		if err := validateIndexPrefixes(stmt.Columns, idx); err != nil {
 			return nil, err
 		}
@@ -158,7 +162,42 @@ func (c Collation) keyValue(value Value) Value {
 	return value
 }
 
+func (idx *IndexInfo) hasPrefixes() bool {
+	for _, n := range idx.PrefixLengths {
+		if n > 0 {
+			return true
+		}
+	}
+	return false
+}
+func (idx *IndexInfo) prefixLength(column string) int64 {
+	for i, name := range idx.columnNames() {
+		if name == column && i < len(idx.PrefixLengths) {
+			return idx.PrefixLengths[i]
+		}
+	}
+	return 0
+}
 func (idx *IndexInfo) keyValue(column string, value Value) Value {
+	if n := idx.prefixLength(column); n > 0 && !value.Null {
+		switch value.Type {
+		case ColText:
+			if int64(utf8.RuneCountInString(value.Text)) > n {
+				count := int64(0)
+				for offset := range value.Text {
+					if count == n {
+						value.Text = value.Text[:offset]
+						break
+					}
+					count++
+				}
+			}
+		case ColBlob:
+			if int64(len(value.Blob)) > n {
+				value.Blob = value.Blob[:int(n)]
+			}
+		}
+	}
 	if idx.binaryColumns[column] {
 		return value
 	}
@@ -178,7 +217,7 @@ func equalIndexValues(a, b []Value) bool {
 // encoded so embedded separators and binary values cannot change tuple boundaries.
 func encodeRowIndexKey(idx *IndexInfo, row map[string]Value, rowKey []byte) []byte {
 	columns := idx.columnNames()
-	if len(columns) == 1 {
+	if len(columns) == 1 && !idx.hasPrefixes() {
 		value, ok := row[columns[0]]
 		if !ok {
 			value = NewNullValue()
@@ -198,7 +237,7 @@ func encodeRowIndexKey(idx *IndexInfo, row map[string]Value, rowKey []byte) []by
 
 func indexValuePrefix(idx *IndexInfo, value Value) string {
 	encoded := valueToSortableKey(idx.keyValue(idx.columnNames()[0], value))
-	if len(idx.columnNames()) > 1 {
+	if len(idx.columnNames()) > 1 || idx.hasPrefixes() {
 		encoded = hex.EncodeToString([]byte(encoded))
 	}
 	return idx.storagePrefix() + encoded + ":"

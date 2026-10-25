@@ -139,7 +139,7 @@ func (s *Schema) uniqueGroups(table string, info *TableInfo) [][]string {
 		}
 	}
 	for _, idx := range s.tableIndexes(table) {
-		if idx.IsUnique {
+		if idx.IsUnique && !idx.hasPrefixes() {
 			add(idx.columnNames())
 		}
 	}

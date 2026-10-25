@@ -39,18 +39,19 @@ type TableInfo struct {
 }
 
 type IndexInfo struct {
-	DisplayName   string          `json:"display_name,omitempty"`
-	PrefixLengths []int64         `json:"prefix_lengths,omitempty"`
-	collation     Collation       `json:"-"`
-	binaryColumns map[string]bool `json:"-"`
-	ID            uint64          `json:"id,omitempty"`
-	Name          string          `json:"name"`
-	Table         string          `json:"table"`
-	Column        string          `json:"column"`
-	IsUnique      bool            `json:"is_unique"`
-	Columns       []string        `json:"columns,omitempty"`
-	Auto          bool            `json:"auto,omitempty"`
-	Fulltext      bool            `json:"fulltext,omitempty"`
+	PrefixEncoding int             `json:"prefix_encoding,omitempty"`
+	DisplayName    string          `json:"display_name,omitempty"`
+	PrefixLengths  []int64         `json:"prefix_lengths,omitempty"`
+	collation      Collation       `json:"-"`
+	binaryColumns  map[string]bool `json:"-"`
+	ID             uint64          `json:"id,omitempty"`
+	Name           string          `json:"name"`
+	Table          string          `json:"table"`
+	Column         string          `json:"column"`
+	IsUnique       bool            `json:"is_unique"`
+	Columns        []string        `json:"columns,omitempty"`
+	Auto           bool            `json:"auto,omitempty"`
+	Fulltext       bool            `json:"fulltext,omitempty"`
 }
 
 type ViewInfo struct {
@@ -312,6 +313,9 @@ func newSchemaWithOptions(lsm *storage.LSMTree, pageSize int, opt *storage.Optio
 			return nil, err
 		}
 		if err := s.normalizeConstraintCatalog(); err != nil {
+			return nil, err
+		}
+		if err := s.upgradePrefixIndexes(); err != nil {
 			return nil, err
 		}
 		if opt != nil && opt.VerifyIndexesOnOpen {
@@ -916,7 +920,11 @@ func (s *Schema) getCreateTableSQL(tableName string, inlineIndexes bool) string 
 		case "PRIMARY":
 			b.WriteString("PRIMARY KEY (" + quotedNames(c.Columns) + ")")
 		case "UNIQUE":
-			b.WriteString("UNIQUE (" + quotedNames(c.Columns) + ")")
+			if (&IndexInfo{PrefixLengths: c.PrefixLengths}).hasPrefixes() {
+				b.WriteString("UNIQUE KEY (" + formatIndexColumns(&IndexInfo{Columns: c.Columns, PrefixLengths: c.PrefixLengths}) + ")")
+			} else {
+				b.WriteString("UNIQUE (" + quotedNames(c.Columns) + ")")
+			}
 		case "CHECK":
 			b.WriteString("CHECK (" + c.CheckSQL + ")")
 		case "FOREIGN":
@@ -1750,6 +1758,7 @@ func (s *Schema) ensureCatalogWritable() {
 		c.Constraints = slices.Clone(v.Constraints)
 		for i := range c.Constraints {
 			c.Constraints[i].Columns = slices.Clone(v.Constraints[i].Columns)
+			c.Constraints[i].PrefixLengths = slices.Clone(v.Constraints[i].PrefixLengths)
 			c.Constraints[i].RefColumns = slices.Clone(v.Constraints[i].RefColumns)
 		}
 		c.Columns = slices.Clone(v.Columns)
@@ -2511,6 +2520,9 @@ func (s *Schema) CreateIndex(stmt *CreateIndexStmt) error {
 		return err
 	}
 	idx.PrefixLengths = append([]int64(nil), stmt.PrefixLengths...)
+	if idx.hasPrefixes() {
+		idx.PrefixEncoding = 1
+	}
 	if err := validateIndexPrefixes(info.Columns, idx); err != nil {
 		return err
 	}
@@ -3497,6 +3509,12 @@ func (s *Schema) checkUniqueConstraintsOriginal(tableName string, info *TableInf
 
 	for _, idx := range s.tableIndexes(tableName) {
 		if idx.Table == tableName && idx.IsUnique {
+			if idx.hasPrefixes() {
+				if err := s.checkPrefixUnique(idx, row, rowKey); err != nil {
+					return err
+				}
+				continue
+			}
 			if err := checkUnique(idx.columnNames()); err != nil {
 				return err
 			}
@@ -3626,7 +3644,7 @@ func (s *Schema) checkUnique(tableName string, colNames []string, row map[string
 			return nil
 		}
 		for _, idx := range s.tableIndexes(tableName) {
-			if idx.IsUnique && slices.Equal(idx.columnNames(), colNames) {
+			if idx.IsUnique && !idx.hasPrefixes() && slices.Equal(idx.columnNames(), colNames) {
 				prefix := []byte(indexTuplePrefix(idx, values))
 				it := s.newRangeIterator(prefix, prefixSuccessor(prefix), false)
 				defer it.Close()
@@ -3651,7 +3669,7 @@ func (s *Schema) checkUnique(tableName string, colNames []string, row map[string
 
 func (s *Schema) findIndexOnColumn(tableName, colName string) *IndexInfo {
 	for _, idx := range s.tableIndexes(tableName) {
-		if idx.Table == tableName && len(idx.columnNames()) == 1 && idx.Column == colName {
+		if idx.Table == tableName && !idx.hasPrefixes() && !idx.Fulltext && len(idx.columnNames()) == 1 && idx.Column == colName {
 			return idx
 		}
 	}
@@ -5985,7 +6003,7 @@ func (s *Schema) deleteConflicts(table string, info *TableInfo, row map[string]V
 	}
 	for _, entry := range entries {
 		old := decodeRow(entry.Value, info)
-		conflict := false
+		conflict := s.prefixedConflictIndex(table, row, old)
 		for _, group := range groups {
 			match := true
 			for _, name := range group {

@@ -404,6 +404,7 @@ func (s *Schema) AlterTable(a *AlterTableStmt) error {
 	for i := range seen {
 		seen[i] = make(map[string]bool)
 	}
+	prefixSeen := make(map[string]bool)
 	keys := make([][]byte, len(rows))
 	pkChanged := !slices.Equal(oldInfo.PKColumns, info.PKColumns) || a.Operation == "ALTER_TYPE" || a.Operation == "MODIFY_COLUMN"
 	for i, row := range rows {
@@ -417,6 +418,20 @@ func (s *Schema) AlterTable(a *AlterTableStmt) error {
 		}
 		if err = s.checkNonUniqueConstraintsPreserving(info.Name, info, row, original, assigned); err != nil {
 			return err
+		}
+		for _, idx := range s.tableIndexes(info.Name) {
+			if !idx.IsUnique || !idx.hasPrefixes() {
+				continue
+			}
+			values, null := indexValues(idx.columnNames(), row)
+			if null {
+				continue
+			}
+			identity := idx.Name + "\x00" + indexTuplePrefix(idx, values)
+			if prefixSeen[identity] {
+				return fmt.Errorf("UNIQUE constraint failed: %s.%s", info.Name, strings.Join(idx.columnNames(), ","))
+			}
+			prefixSeen[identity] = true
 		}
 		for n, g := range groups {
 			values, hasNull := indexValues(g, row)
@@ -722,6 +737,10 @@ func (s *Schema) addConstraintIndex(info *TableInfo, c *ConstraintDef) error {
 		name = "__constraint_" + strconv.FormatUint(id, 10)
 	}
 	idx := newIndexInfo(name, info.Name, c.Columns, true)
+	idx.PrefixLengths = slices.Clone(c.PrefixLengths)
+	if idx.hasPrefixes() {
+		idx.PrefixEncoding = 1
+	}
 	s.bindIndexCollation(idx)
 	idx.ID = id
 	idx.Auto = true

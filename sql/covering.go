@@ -33,7 +33,11 @@ func coveringTableInfo(idx *IndexInfo, table *TableInfo) *TableInfo {
 			}
 		}
 	}
-	add(idx.columnNames())
+	for _, name := range idx.columnNames() {
+		if idx.prefixLength(name) == 0 {
+			add([]string{name})
+		}
+	}
 	add(table.PKColumns)
 	return info
 }

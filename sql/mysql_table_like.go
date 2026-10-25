@@ -82,6 +82,7 @@ func (s *Schema) expandCreateTableLike(input *CreateTableStmt) (*CreateTableStmt
 		}
 		constraint.IndexID = 0
 		constraint.Columns = slices.Clone(constraint.Columns)
+		constraint.PrefixLengths = slices.Clone(constraint.PrefixLengths)
 		var err error
 		if constraint.Check, err = cloneLikeExpression(constraint.Check); err != nil {
 			return nil, err

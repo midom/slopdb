@@ -405,10 +405,8 @@ func (s *Schema) comparisonAffinity(v Value, col ColumnDef) Value {
 	return applyAffinity(v, col.ColType)
 }
 
-// Nonunique prefix declarations use full-value physical keys. This keeps every
-// answer and ordering correct while retaining the requested prefix metadata.
-// Unique prefixes need a different uniqueness domain and must never be silently
-// substituted with full-value uniqueness.
+// Prefixes are physical key components: TEXT counts code points and BLOB
+// counts bytes. Unique prefix indexes enforce equality on these components.
 func validateIndexPrefixes(columns []ColumnDef, idx *IndexInfo) error {
 	for i, n := range idx.PrefixLengths {
 		if n == 0 {
@@ -416,9 +414,6 @@ func validateIndexPrefixes(columns []ColumnDef, idx *IndexInfo) error {
 		}
 		if i >= len(idx.columnNames()) || n < 0 {
 			return fmt.Errorf("invalid index prefix length")
-		}
-		if idx.IsUnique {
-			return fmt.Errorf("unique prefix indexes are not supported")
 		}
 		for _, col := range columns {
 			if col.Name == idx.columnNames()[i] {

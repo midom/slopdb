@@ -3,6 +3,7 @@ package sql
 import (
 	"bytes"
 	"fmt"
+	"slopdb/storage"
 	"strings"
 )
 
@@ -175,8 +176,8 @@ func (p *Parser) parseOnConflictAfterOn() (*OnConflictClause, error) {
 func (s *Schema) validateOnConflict(clause *OnConflictClause, info *TableInfo) error {
 	if len(clause.Target) > 0 {
 		found := false
-		for _, group := range s.uniqueGroups(info.Name, info) {
-			found = found || candidateColumns(clause.Target, group)
+		for _, spec := range s.uniqueSpecs(info.Name, info) {
+			found = found || candidateColumns(clause.Target, spec.columns)
 		}
 		if !found {
 			return fmt.Errorf("ON CONFLICT target does not match a PRIMARY KEY or UNIQUE constraint")
@@ -223,8 +224,9 @@ func (s *Schema) handleInsertConflict(table string, info *TableInfo, attempted m
 	if err := s.checkNonUniqueConstraints(table, info, attempted); err != nil {
 		return false, nil, err
 	}
-	groups := s.uniqueGroups(table, info)
-	for _, group := range groups {
+	specs := s.uniqueSpecs(table, info)
+	for _, spec := range specs {
+		group := spec.columns
 		if len(clause.Target) > 0 && !candidateColumns(clause.Target, group) {
 			continue
 		}
@@ -250,7 +252,22 @@ func (s *Schema) handleInsertConflict(table string, info *TableInfo, attempted m
 		if s.lockHandler != nil {
 			s.statementActive = false
 		}
-		entries, err := s.matchingDMLRows(table, info, predicate, 1, 0)
+		var entries []storage.KeyValue
+		var err error
+		if spec.index != nil {
+			var key []byte
+			key, err = s.prefixUniqueConflict(spec.index, attempted, nil)
+			if err == nil && key != nil {
+				var value []byte
+				var found bool
+				value, found, err = s.schemaGet(key)
+				if found {
+					entries = []storage.KeyValue{{Key: storage.InternalKey{UserKey: key}, Value: value}}
+				}
+			}
+		} else {
+			entries, err = s.matchingDMLRows(table, info, predicate, 1, 0)
+		}
 		s.statementActive = active
 		if err != nil {
 			return false, nil, err

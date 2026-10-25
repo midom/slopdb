@@ -9,7 +9,7 @@ import (
 )
 
 func sameConstraint(a, b ConstraintDef) bool {
-	return a.Kind == b.Kind && (a.Kind == "PRIMARY" || a.Inline == b.Inline) && slices.Equal(a.Columns, b.Columns) && a.CheckSQL == b.CheckSQL && a.RefTable == b.RefTable && slices.Equal(a.RefColumns, b.RefColumns)
+	return a.Kind == b.Kind && (a.Kind == "PRIMARY" || a.Inline == b.Inline) && slices.Equal(a.Columns, b.Columns) && slices.Equal(a.PrefixLengths, b.PrefixLengths) && a.CheckSQL == b.CheckSQL && a.RefTable == b.RefTable && slices.Equal(a.RefColumns, b.RefColumns)
 }
 func (s *Schema) initializeConstraintNames(info *TableInfo, createIndexes ...bool) error {
 	build := len(createIndexes) == 0 || createIndexes[0]
@@ -90,7 +90,7 @@ func (s *Schema) initializeConstraintNames(info *TableInfo, createIndexes ...boo
 		}
 		if (c.Kind == "UNIQUE" || c.Kind == "PRIMARY") && c.IndexID == 0 {
 			for _, idx := range s.indexes {
-				if idx.Table == info.Name && idx.Auto && slices.Equal(idx.columnNames(), c.Columns) {
+				if idx.Table == info.Name && idx.Auto && slices.Equal(idx.columnNames(), c.Columns) && slices.Equal(idx.PrefixLengths, c.PrefixLengths) {
 					c.IndexID = idx.ID
 					break
 				}
@@ -123,7 +123,9 @@ func (s *Schema) addTableConstraint(info *TableInfo, c ConstraintDef) error {
 		}
 		info.PKColumns = slices.Clone(c.Columns)
 	case "UNIQUE":
-		info.TableUnique = append(info.TableUnique, slices.Clone(c.Columns))
+		if !(&IndexInfo{PrefixLengths: c.PrefixLengths}).hasPrefixes() {
+			info.TableUnique = append(info.TableUnique, slices.Clone(c.Columns))
+		}
 		if err := s.addConstraintIndex(info, &c); err != nil {
 			return err
 		}
@@ -181,7 +183,7 @@ func (s *Schema) dropTableConstraint(info *TableInfo, name string, ifExists, cas
 					info.Columns[i].Unique = false
 				}
 			}
-		} else {
+		} else if !(&IndexInfo{PrefixLengths: c.PrefixLengths}).hasPrefixes() {
 			for i, g := range info.TableUnique {
 				if slices.Equal(g, c.Columns) {
 					info.TableUnique = append(info.TableUnique[:i], info.TableUnique[i+1:]...)

@@ -154,6 +154,21 @@ func (s *Schema) lockRow(table string, info *TableInfo, row map[string]Value, ke
 	if err := s.validateLockedRow(key); err != nil {
 		return err
 	}
+	for _, idx := range s.tableIndexes(table) {
+		if !idx.IsUnique || !idx.hasPrefixes() {
+			continue
+		}
+		values, null := indexValues(idx.columnNames(), row)
+		if null {
+			continue
+		}
+		for i, v := range values {
+			values[i] = idx.keyValue(idx.columnNames()[i], v)
+		}
+		if err := s.RequestLock(LockRequest{Resource: "unique-index:" + frameLockName(idx.Name), Values: values, Exclusive: true}); err != nil {
+			return err
+		}
+	}
 	for _, group := range s.uniqueGroups(table, info) {
 		// Integer primary keys have a canonical physical row key. The row lock
 		// already serializes every insert, delete and primary-key change for this

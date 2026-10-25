@@ -47,7 +47,7 @@ func (s *Schema) foreignDefinitions(info *TableInfo) error {
 			unique = unique || (col.Unique && len(ref) == 1 && ref[0] == col.Name)
 		}
 		for _, idx := range s.indexes {
-			unique = unique || (idx.Table == parent.Name && idx.IsUnique && candidateColumns(ref, idx.columnNames()))
+			unique = unique || (idx.Table == parent.Name && idx.IsUnique && !idx.hasPrefixes() && candidateColumns(ref, idx.columnNames()))
 		}
 		if !unique {
 			return fmt.Errorf("foreign key on %s must reference a PRIMARY KEY or UNIQUE key", info.Name)

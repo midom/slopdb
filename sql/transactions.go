@@ -392,10 +392,14 @@ func (s *Schema) prepareCommit() error {
 		}
 		if table, info := s.rowTable(w.key); info != nil {
 			groups := s.uniqueGroups(table, info)
-			if len(groups) == 0 {
-				continue
-			}
 			row := decodeRow(w.value, info)
+			for _, idx := range s.tableIndexes(table) {
+				if idx.IsUnique && idx.hasPrefixes() {
+					if err := s.checkPrefixUnique(idx, row, w.key); err != nil {
+						return fmt.Errorf("%w: %v", ErrConflict, err)
+					}
+				}
+			}
 			for _, group := range groups {
 				if err := s.checkUnique(table, group, row, w.key, info); err != nil {
 					if !strings.HasPrefix(err.Error(), "UNIQUE constraint failed:") {
