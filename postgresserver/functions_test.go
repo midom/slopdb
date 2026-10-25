@@ -95,3 +95,68 @@ func TestPostgresPredicateTypesInBothProtocols(t *testing.T) {
 		}
 	}
 }
+
+func TestPostgresDuplicateLabelsPreserveValues(t *testing.T) {
+	s := startTestServer(t, "tcp", Config{})
+	ctx := context.Background()
+	c, e := pgx.Connect(ctx, s.dsn("slopdb", "", "slopdb"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer c.Close(ctx)
+	for _, mode := range []pgx.QueryExecMode{pgx.QueryExecModeCacheStatement, pgx.QueryExecModeSimpleProtocol} {
+		rows, e := c.Query(ctx, `SELECT true::boolean,'550e8400-e29b-41d4-a716-446655440000'::uuid,DATE '2024-02-29'`, mode)
+		if e != nil {
+			t.Fatal(e)
+		}
+		want := []uint32{oidBool, oidUUID, oidDate}
+		for i, f := range rows.FieldDescriptions() {
+			if f.DataTypeOID != want[i] {
+				t.Fatalf("mode %v field %d OID %d", mode, i, f.DataTypeOID)
+			}
+		}
+		if !rows.Next() {
+			t.Fatal(rows.Err())
+		}
+		values, e := rows.Values()
+		if e != nil {
+			t.Fatal(e)
+		}
+		rows.Close()
+		if values[0] != true || !values[2].(time.Time).Equal(time.Date(2024, 2, 29, 0, 0, 0, 0, time.UTC)) {
+			t.Fatal(values)
+		}
+		rows, e = c.Query(ctx, `SELECT chr(65) AS same,chr(66) AS same,chr(67) AS same`, mode)
+		if e != nil {
+			t.Fatal(e)
+		}
+		for _, f := range rows.FieldDescriptions() {
+			if f.Name != "same" {
+				t.Fatal(f.Name)
+			}
+		}
+		if !rows.Next() {
+			t.Fatal(rows.Err())
+		}
+		values, e = rows.Values()
+		if e != nil {
+			t.Fatal(e)
+		}
+		rows.Close()
+		for i, w := range []string{"A", "B", "C"} {
+			if values[i] != w {
+				t.Fatal(values)
+			}
+		}
+	}
+	if _, e = c.Exec(ctx, `CREATE TABLE repeated_returning(id INTEGER PRIMARY KEY,v TEXT)`); e != nil {
+		t.Fatal(e)
+	}
+	var a, b string
+	if e = c.QueryRow(ctx, `INSERT INTO repeated_returning VALUES(1,'value') RETURNING v AS same,upper(v) AS same`).Scan(&a, &b); e != nil || a != "value" || b != "VALUE" {
+		t.Fatal(a, b, e)
+	}
+	if e = c.QueryRow(ctx, `SELECT v AS same,upper(v) AS same FROM repeated_returning UNION ALL SELECT 'x','Y' LIMIT 1`).Scan(&a, &b); e != nil || a != "value" || b != "VALUE" {
+		t.Fatal(a, b, e)
+	}
+}

@@ -412,7 +412,7 @@ func (c *client) executePortal(ctx context.Context, p *portal, maxRows uint32) e
 			return &protocolError{"0A000", "cached result column count changed; prepare again"}
 		}
 		for i, f := range p.prepared.fields {
-			if result.Columns[i].Name != f.name {
+			if result.Columns[i].ResultName() != f.name {
 				return &protocolError{"0A000", "cached result column names changed; prepare again"}
 			}
 		}

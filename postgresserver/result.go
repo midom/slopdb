@@ -270,7 +270,7 @@ func resultFields(result *db.ExecResult) []field {
 		if col.Postgres {
 			if typed := sql.PostgresColumnOID(col); typed != 0 {
 				oid = typed
-				fields[i] = field{col.Name, oid}
+				fields[i] = field{col.ResultName(), oid}
 				continue
 			}
 		}
@@ -294,7 +294,7 @@ func resultFields(result *db.ExecResult) []field {
 				break
 			}
 		}
-		fields[i] = field{col.Name, oid}
+		fields[i] = field{col.ResultName(), oid}
 	}
 	return fields
 }

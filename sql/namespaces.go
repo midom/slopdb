@@ -258,6 +258,8 @@ func (s *Schema) ResolveNamespaces(stmt Statement) (Statement, error) {
 	if !needed {
 		namespaceVisit(reflect.ValueOf(stmt), func(value any) {
 			switch st := value.(type) {
+			case *FuncCallExpr:
+				needed = needed || st.PostgresBare && !s.postgresMode
 			case *SelectStmt:
 				needed = needed || strings.Contains(st.From, ".")
 			case JoinClause:
@@ -289,6 +291,9 @@ func (s *Schema) ResolveNamespaces(stmt Statement) (Statement, error) {
 		return stmt, nil
 	}
 	copy := (&BoundQuery{}).clone(reflect.ValueOf(stmt)).Interface().(Statement)
+	if !s.postgresMode {
+		resolveNativeBareExpressions(reflect.ValueOf(copy))
+	}
 	namespaceVisit(reflect.ValueOf(copy), func(value any) {
 		switch st := value.(type) {
 		case *SelectStmt:
@@ -301,6 +306,40 @@ func (s *Schema) ResolveNamespaces(stmt Statement) (Statement, error) {
 		return nil, err
 	}
 	return copy, nil
+}
+
+// Parsing is shared across dialects. PostgreSQL's bare session keywords remain
+// ordinary column identifiers for native and MySQL sessions. Resolve a private
+// AST before expression validation or read-plan column selection.
+func resolveNativeBareExpressions(v reflect.Value) {
+	if !v.IsValid() {
+		return
+	}
+	switch v.Kind() {
+	case reflect.Interface:
+		if v.IsNil() {
+			return
+		}
+		if f, ok := v.Interface().(*FuncCallExpr); ok && f.PostgresBare && v.CanSet() {
+			v.Set(reflect.ValueOf(&ColumnRefExpr{Name: strings.ToLower(f.Name)}))
+			return
+		}
+		resolveNativeBareExpressions(v.Elem())
+	case reflect.Pointer:
+		if !v.IsNil() {
+			resolveNativeBareExpressions(v.Elem())
+		}
+	case reflect.Struct:
+		for i := 0; i < v.NumField(); i++ {
+			if v.Type().Field(i).IsExported() {
+				resolveNativeBareExpressions(v.Field(i))
+			}
+		}
+	case reflect.Slice:
+		for i := 0; i < v.Len(); i++ {
+			resolveNativeBareExpressions(v.Index(i))
+		}
+	}
 }
 func namespaceVisit(v reflect.Value, visit func(any)) {
 	if !v.IsValid() {

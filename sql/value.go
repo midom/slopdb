@@ -493,6 +493,7 @@ type UnaryExpr struct {
 }
 
 type FuncCallExpr struct {
+	PostgresBare         bool // parser keyword expression; native mode resolves it as a column
 	MySQLGroupConcat     bool
 	GroupConcatOrder     []OrderByClause
 	GroupConcatSeparator Expression

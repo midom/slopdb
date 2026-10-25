@@ -132,3 +132,45 @@ func TestPostgresClockSnapshotsAndCancellation(t *testing.T) {
 	}
 	exec("SELECT 1")
 }
+
+func TestPostgresBareSessionKeywordsPreserveNativeColumns(t *testing.T) {
+	d, e := db.Open(t.TempDir(), nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer d.Close()
+	for _, mysql := range []bool{false, true} {
+		s, e := d.NewSession()
+		if e != nil {
+			t.Fatal(e)
+		}
+		s.SetMySQLMode(mysql)
+		if _, e = s.Exec("CREATE TABLE IF NOT EXISTS bare_keywords(id INTEGER PRIMARY KEY,user TEXT,current_schema TEXT)"); e != nil {
+			t.Fatal(e)
+		}
+		if _, e = s.Exec("REPLACE INTO bare_keywords VALUES(1,'alice','local')"); e != nil {
+			t.Fatal(e)
+		}
+		p, e := s.Prepare("SELECT user AS u,current_schema AS s FROM bare_keywords WHERE id=?")
+		if e != nil {
+			t.Fatal(e)
+		}
+		r, e := p.Exec(int64(1))
+		if e != nil || r.Rows[0]["u"].Text != "alice" || r.Rows[0]["s"].Text != "local" {
+			t.Fatal(mysql, r, e)
+		}
+		p.Close()
+		s.Close()
+	}
+	s, e := d.NewSession()
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	s.SetPostgresMode(true)
+	ctx := sql.WithPostgresSession(context.Background(), sql.PostgresSessionOptions{Database: "demo", User: "alice"})
+	r, e := s.ExecContext(ctx, "SELECT current_user AS u,current_database AS d,current_schema AS s")
+	if e != nil || r.Rows[0]["u"].Text != "alice" || r.Rows[0]["d"].Text != "demo" || r.Rows[0]["s"].Text != "public" {
+		t.Fatal(r, e)
+	}
+}

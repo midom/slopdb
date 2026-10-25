@@ -227,9 +227,9 @@ func (p *Parser) parsePostgresPrimary() (Expression, bool, error) {
 	name := strings.ToUpper(p.cur.Value)
 	switch name {
 	case "CURRENT_DATABASE", "CURRENT_SCHEMA", "CURRENT_USER", "SESSION_USER", "USER":
-		if p.tok.Peek().Type != TokLParen && p.cur.Start < len(p.tok.input) && !strings.ContainsRune("`\"[", rune(p.tok.input[p.cur.Start])) {
+		if p.tok.Peek().Type != TokLParen && p.tok.Peek().Type != TokDot && p.cur.Start < len(p.tok.input) && !strings.ContainsRune("`\"[", rune(p.tok.input[p.cur.Start])) {
 			p.advance()
-			return &FuncCallExpr{Name: name}, true, nil
+			return &FuncCallExpr{Name: name, PostgresBare: true}, true, nil
 		}
 	}
 	if name == "OVERLAY" && p.tok.Peek().Type == TokLParen {
