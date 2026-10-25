@@ -87,3 +87,34 @@ func TestPostgresIntervalExactComponents(t *testing.T) {
 		}
 	}
 }
+
+func TestPostgresBinaryAndCharacterCasts(t *testing.T) {
+	for _, input := range []string{`\x00ff5c`, `\000\377\\`} {
+		v, e := CastPostgresValue(NewTextValue(input), "BYTEA")
+		if e != nil || len(v.Blob) != 3 || v.Blob[0] != 0 || v.Blob[1] != 255 || v.Blob[2] != '\\' {
+			t.Fatal(v, e)
+		}
+		text, e := CastPostgresValue(v, "TEXT")
+		if e != nil || text.Text != `\x00ff5c` {
+			t.Fatal(text, e)
+		}
+	}
+	for _, input := range []string{`\x0`, `\xG0`, `\xA B`, `\777`, `\q`} {
+		if _, e := ParsePostgresBytea(input); e == nil {
+			t.Errorf("accepted %s", input)
+		}
+	}
+	v, e := CastPostgresValue(NewTextValue("abc☺"), "VARCHAR(3)")
+	if e != nil || v.Text != "abc" {
+		t.Fatal(v, e)
+	}
+	v, e = CastPostgresValue(NewTextValue("abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghij☺"), "NAME")
+	if e != nil || len(v.Text) > 63 {
+		t.Fatal(v, e)
+	}
+	for _, bad := range []string{"-550e8400e29b41d4a716446655440000", "550e8400e29b41d4a716446655440000-", "550e8-400e29b41d4a716446655440000", "{550e8400-e29b-41d4-a716-446655440000"} {
+		if _, e := CastPostgresValue(NewTextValue(bad), "UUID"); e == nil {
+			t.Errorf("accepted UUID %s", bad)
+		}
+	}
+}

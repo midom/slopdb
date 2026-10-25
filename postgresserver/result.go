@@ -446,14 +446,8 @@ func decodeValue(data []byte, oid uint32, binaryFormat bool) (any, error) {
 		}
 		return v, nil
 	case oidBytea:
-		if len(data) == 0 {
-			return []byte{}, nil
-		}
-		if !strings.HasPrefix(string(data), "\\x") {
-			return invalid()
-		}
-		v, err := hex.DecodeString(string(data[2:]))
-		if err != nil {
+		v, e := sql.ParsePostgresBytea(string(data))
+		if e != nil {
 			return invalid()
 		}
 		return v, nil

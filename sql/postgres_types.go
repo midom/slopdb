@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // PostgresColumnOID describes the declared PostgreSQL type without changing the
@@ -238,10 +239,27 @@ func CastPostgresValue(v Value, target string) (Value, error) {
 			break
 		}
 		text := strings.TrimSpace(v.String())
-		text = strings.TrimPrefix(strings.TrimSuffix(text, "}"), "{")
-		text = strings.ReplaceAll(text, "-", "")
-		raw, e := hex.DecodeString(text)
-		if e != nil || len(raw) != 16 {
+		if strings.HasPrefix(text, "{") && strings.HasSuffix(text, "}") {
+			text = text[1 : len(text)-1]
+		}
+		digits := strings.Builder{}
+		previousHyphen := false
+		for _, c := range text {
+			if c == '-' {
+				if previousHyphen || digits.Len() == 0 || digits.Len() >= 32 || digits.Len()%4 != 0 {
+					return invalid()
+				}
+				previousHyphen = true
+				continue
+			}
+			if !strings.ContainsRune("0123456789abcdefABCDEF", c) {
+				return invalid()
+			}
+			digits.WriteRune(c)
+			previousHyphen = false
+		}
+		raw, e := hex.DecodeString(digits.String())
+		if e != nil || len(raw) != 16 || previousHyphen {
 			return invalid()
 		}
 		result = NewBlobValue(raw)
@@ -257,11 +275,22 @@ func CastPostgresValue(v Value, target string) (Value, error) {
 		if v.Type == ColBlob {
 			result = NewBlobValue(append([]byte(nil), v.Blob...))
 		} else {
-			result = NewBlobValue([]byte(v.String()))
+			raw, e := ParsePostgresBytea(v.String())
+			if e != nil {
+				return NewNullValue(), e
+			}
+			result = NewBlobValue(raw)
 		}
 	case 19, 25, 1043:
-		if _, _, ok := varyingCastType(name); ok {
-			result, err = castSQLValue(v, name)
+		if typ, length, ok := varyingCastType(name); ok && typ == ColText {
+			result, err = CastPostgresValue(v, "TEXT")
+			if err != nil {
+				return NewNullValue(), err
+			}
+			chars := []rune(result.Text)
+			if int64(len(chars)) > length {
+				result.Text = string(chars[:int(length)])
+			}
 			break
 		}
 		if v.PGType == "BOOLEAN" || v.PGType == "BOOL" {
@@ -270,6 +299,8 @@ func CastPostgresValue(v Value, target string) (Value, error) {
 			} else {
 				result = NewTextValue("false")
 			}
+		} else if PostgresValueOID(v) == 17 && v.Type == ColBlob {
+			result = NewTextValue("\\x" + hex.EncodeToString(v.Blob))
 		} else if PostgresValueOID(v) == 2950 && len(v.Blob) == 16 {
 			text := hex.EncodeToString(v.Blob)
 			result = NewTextValue(text[:8] + "-" + text[8:12] + "-" + text[12:16] + "-" + text[16:20] + "-" + text[20:])
@@ -281,6 +312,12 @@ func CastPostgresValue(v Value, target string) (Value, error) {
 	}
 	if err != nil {
 		return NewNullValue(), err
+	}
+	if oid == 19 && len(result.Text) > 63 {
+		result.Text = result.Text[:63]
+		for !utf8.ValidString(result.Text) {
+			result.Text = result.Text[:len(result.Text)-1]
+		}
 	}
 	result.PGType = name
 	return result, nil
