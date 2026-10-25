@@ -38,30 +38,30 @@ services use separate data and ports; their HTTP endpoint still returned 200.
 
 ## Recorded verification
 
-The tested binary was built from clean revision `12c881d`; its SHA256 is
-`d70c5d6b683d9606c9f8f33003b5eb163a963789c3a043eed003931073a352cc`.
+The tested binary was built from clean revision `530fe77`; its SHA256 is
+`ed9c3595e1a8a30c59a7f32cabf2515ad8a8961b94a1cf1e5f3358a8b7a3bec6`.
 `artifacts/release-buildinfo.txt` retains its build metadata.
 
 Sixteen real HTTP/authenticated REST checks passed: homepage, admin login,
 block editor, category creation, draft creation, publishing/content updates,
 comment creation/readback, REST search, published page, HTTP search, PNG upload
 and image metadata, thumbnail generation, media download, attachment metadata
-and settings updates. Retained content includes post 19, comment 4 and image 21.
+and settings updates. Retained content includes post 23, comment 5 and image 25.
 A normal core `wp_scheduled_delete` cron event also ran successfully.
 
 After clean shutdown/restart, six checks verified the published post, comment,
 image metadata/thumbnails, taxonomy, settings and HTTP page. They passed again
-after integrity verification and full compaction. Integrity reported 216 rows
-and 498 index entries before and after maintenance. Five SSTables were rewritten
-into one 46,527-byte L6 SSTable, with L0–L5 empty. These are fixture observations,
+after integrity verification and full compaction. Integrity reported 227 rows
+and 533 index entries before and after maintenance. Two SSTables were rewritten
+into one 47,609-byte L6 SSTable, with L0–L5 empty. These are fixture observations,
 not storage or throughput benchmarks. Live `SHOW LSM STATUS` reported that
 layout; `@@read_only=0` and `@@log_bin=0` confirmed writable standalone operation
 without activating CDC.
 
 Final HTTP, restart and maintenance logs contained no WordPress database errors,
-PHP warnings or PHP fatal errors. Reports include `http-check-release.log`,
+PHP warnings or PHP fatal errors. Reports include `http-check-final.log`,
 `http-results.json`, `persistence-results.json`, `cron-check.log`,
-`integrity-vacuum.log` and `storage-maintained.tsv`. Integrity used SlopDB's
+`integrity-vacuum-final.log` and `storage-final.tsv`. Integrity used SlopDB's
 `.integrity` command with `--allow-dot-commands` while the server was stopped;
 `PRAGMA integrity_check` is not a supported alias.
 
