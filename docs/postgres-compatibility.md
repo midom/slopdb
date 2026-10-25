@@ -34,7 +34,8 @@ and read-only transaction modes remain unsupported.
 
 ## Functions
 
-A separate PostgreSQL registry implements string and byte operations, quoting,
+A separate PostgreSQL registry implements 150 function names and aliases across
+string and byte operations, quoting,
 FORMAT `%s`/`%I`/`%L`, concatenation with PostgreSQL NULL rules, regex functions,
 JSON/JSONB builders and scalar access/update functions, exact NUMERIC operations,
 mathematical functions, date parts/truncation/formatting, transaction/statement/
