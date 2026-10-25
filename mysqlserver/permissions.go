@@ -12,20 +12,108 @@ func (c *client) authorize(statement sql.Statement) error {
 	if c.isBootstrap() {
 		return nil
 	}
+	private, err := c.session.TemporaryCatalog(c.ctx)
+	if err != nil {
+		return err
+	}
+	tableName := func(name string) string {
+		name = strings.ToLower(name)
+		if schema, table, qualified := strings.Cut(name, "."); qualified {
+			if !strings.EqualFold(schema, c.selectedDatabaseName()) {
+				return name
+			}
+			name = table
+		}
+		return name
+	}
+	isTemporary := func(table string) bool { _, exists := private.Tables[tableName(table)]; return exists }
 	required := make(map[string]bool)
+	require := func(table, privilege string) {
+		if table != "" && isTemporary(table) {
+			return
+		}
+		if privilege == "SELECT" && strings.HasPrefix(strings.ToLower(table), "information_schema.") {
+			return
+		}
+		required[privilege] = true
+	}
+	relations := func(table, alias string, joins []sql.JoinClause) map[string]string {
+		names := map[string]string{}
+		if alias == "" {
+			alias = table
+		}
+		names[alias] = table
+		for _, join := range joins {
+			name := join.Alias
+			if name == "" {
+				name = join.Table
+			}
+			names[name] = join.Table
+		}
+		return names
+	}
 	switch stmt := statement.(type) {
 	case *sql.InsertStmt:
-		required["INSERT"] = true
+		require(stmt.Table, "INSERT")
 		if stmt.Replace {
-			required["DELETE"] = true
+			require(stmt.Table, "DELETE")
 		}
 		if stmt.OnConflict != nil && !stmt.OnConflict.DoNothing {
-			required["UPDATE"] = true
+			require(stmt.Table, "UPDATE")
 		}
 	case *sql.UpdateStmt:
-		required["UPDATE"] = true
+		names := relations(stmt.Table, stmt.Alias, stmt.Joins)
+		if len(stmt.Joins) == 0 {
+			require(stmt.Table, "UPDATE")
+		} else {
+			for _, table := range names {
+				require(table, "SELECT")
+			}
+			for _, set := range stmt.Set {
+				alias, column, qualified := strings.Cut(set.Column, ".")
+				if qualified {
+					table, exists := names[alias]
+					if !exists {
+						required["UPDATE"] = true
+					} else {
+						require(table, "UPDATE")
+					}
+					continue
+				}
+				// An unqualified assignment that matches a private column either updates
+				// that table or fails SQL's ambiguity check. Otherwise a persistent target
+				// requires UPDATE. No hidden permanent table is selected through its shadow.
+				column = alias
+				temporaryTarget := false
+				for _, table := range names {
+					for _, name := range private.Tables[tableName(table)] {
+						temporaryTarget = temporaryTarget || name == column
+					}
+				}
+				if !temporaryTarget {
+					required["UPDATE"] = true
+				}
+			}
+		}
 	case *sql.DeleteStmt:
-		required["DELETE"] = true
+		names := relations(stmt.From, stmt.Alias, stmt.Joins)
+		if len(stmt.Joins) > 0 {
+			for _, table := range names {
+				require(table, "SELECT")
+			}
+		}
+		if len(stmt.Targets) == 0 {
+			require(stmt.From, "DELETE")
+		} else {
+			for _, target := range stmt.Targets {
+				table, exists := names[target]
+				if !exists {
+					required["DELETE"] = true
+				} else {
+					require(table, "DELETE")
+				}
+			}
+		}
 	case *sql.CreateTableStmt:
 		if stmt.Temporary {
 			required["CREATE TEMPORARY TABLES"] = true
@@ -33,22 +121,40 @@ func (c *client) authorize(statement sql.Statement) error {
 			required["CREATE"] = true
 		}
 		if stmt.Like != "" {
-			required["SELECT"] = true
+			require(stmt.Like, "SELECT")
 		}
 	case *sql.DropTableStmt:
-		required["DROP"] = true
+		require(stmt.Table, "DROP")
 	case *sql.AlterTableStmt:
-		required["ALTER"] = true
-	case *sql.CreateIndexStmt, *sql.DropIndexStmt:
-		required["INDEX"] = true
+		var alter func(*sql.AlterTableStmt, string)
+		alter = func(action *sql.AlterTableStmt, table string) {
+			if action.Table != "" {
+				table = action.Table
+			}
+			if action.ObjectKind == "VIEW" {
+				required["ALTER"] = true
+			} else if len(action.Actions) == 0 {
+				require(table, "ALTER")
+			}
+			for _, child := range action.Actions {
+				alter(child, table)
+			}
+		}
+		alter(stmt, "")
+	case *sql.CreateIndexStmt:
+		require(stmt.Table, "INDEX")
+	case *sql.DropIndexStmt:
+		table := stmt.Table
+		if table == "" {
+			table = private.IndexTables[strings.ToLower(stmt.Index)]
+		}
+		require(table, "INDEX")
 	case *sql.CreateViewStmt:
 		required["CREATE VIEW"] = true
 		required["SELECT"] = true
 	case *sql.DropViewStmt:
 		required["DROP"] = true
 	case *sql.CreateTriggerStmt, *sql.DropTriggerStmt:
-		// Database-level grants intentionally require the trigger definer to
-		// have all ordinary data privileges; we do not fabricate definer ACLs.
 		for _, p := range []string{"TRIGGER", "SELECT", "INSERT", "UPDATE", "DELETE"} {
 			required[p] = true
 		}
@@ -68,16 +174,16 @@ func (c *client) authorize(statement sql.Statement) error {
 			if v.IsNil() {
 				return
 			}
-			if selectStmt, ok := v.Interface().(*sql.SelectStmt); ok && selectStmt.From != "" && !strings.HasPrefix(strings.ToLower(selectStmt.From), "information_schema.") {
-				required["SELECT"] = true
+			if selectStmt, ok := v.Interface().(*sql.SelectStmt); ok && selectStmt.From != "" {
+				require(selectStmt.From, "SELECT")
 			}
 			walk(v.Elem())
 			return
 		}
 		switch v.Kind() {
 		case reflect.Struct:
-			if join, ok := v.Interface().(sql.JoinClause); ok && join.Table != "" && !strings.HasPrefix(strings.ToLower(join.Table), "information_schema.") {
-				required["SELECT"] = true
+			if join, ok := v.Interface().(sql.JoinClause); ok && join.Table != "" {
+				require(join.Table, "SELECT")
 			}
 			for i := 0; i < v.NumField(); i++ {
 				if v.Type().Field(i).IsExported() {

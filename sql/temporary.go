@@ -364,3 +364,28 @@ func (s *Schema) applyTemporaryBatch(batch []storage.Mutation) {
 		}
 	}
 }
+
+// TemporaryCatalogInfo is a caller-owned snapshot of this session's private
+// object names. It does not include persistent objects hidden by temporary ones.
+type TemporaryCatalogInfo struct {
+	Tables      map[string][]string
+	IndexTables map[string]string
+}
+
+func (s *Schema) TemporaryCatalog() TemporaryCatalogInfo {
+	result := TemporaryCatalogInfo{Tables: map[string][]string{}, IndexTables: map[string]string{}}
+	if s.temporary == nil {
+		return result
+	}
+	for name, info := range s.temporary.tables {
+		columns := make([]string, len(info.Columns))
+		for i, column := range info.Columns {
+			columns[i] = column.Name
+		}
+		result.Tables[name] = columns
+	}
+	for name, index := range s.temporary.indexes {
+		result.IndexTables[name] = index.Table
+	}
+	return result
+}

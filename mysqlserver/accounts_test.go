@@ -248,3 +248,74 @@ func TestMySQLAccountsRefreshAppliedMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestMySQLTemporaryOwnerPrivilegesAndPersistentSources(t *testing.T) {
+	s := accountServer(t, t.TempDir())
+	owner := s.open(t, "owner", "owner-password", "wiki")
+	mustExec(t, owner, "CREATE TABLE scratch(id INT PRIMARY KEY,v INT)")
+	mustExec(t, owner, "INSERT INTO scratch VALUES(1,700)")
+	mustExec(t, owner, "CREATE TABLE protected(id INT PRIMARY KEY,secret INT)")
+	mustExec(t, owner, "INSERT INTO protected VALUES(1,99)")
+	mustExec(t, owner, "CREATE USER 'temporary'@'localhost' IDENTIFIED BY 'password'")
+	mustExec(t, owner, "GRANT CREATE TEMPORARY TABLES ON wiki.* TO 'temporary'@'localhost'")
+	pool := s.open(t, "temporary", "password", "wiki")
+	ctx := context.Background()
+	connection, err := pool.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+	exec := func(query string) {
+		t.Helper()
+		if _, err := connection.ExecContext(ctx, query); err != nil {
+			t.Fatal(query, err)
+		}
+	}
+	deny := func(query string) {
+		t.Helper()
+		if _, err := connection.ExecContext(ctx, query); err == nil {
+			t.Fatal("persistent privilege bypass", query)
+		}
+	}
+	exec("CREATE TEMPORARY TABLE scratch(id INT PRIMARY KEY,v INT)")
+	exec("INSERT INTO scratch VALUES(1,1)")
+	exec("UPDATE scratch SET v=2 WHERE id=1")
+	exec("REPLACE INTO scratch VALUES(1,3)")
+	exec("INSERT INTO scratch VALUES(1,4) ON DUPLICATE KEY UPDATE v=4")
+	exec("ALTER TABLE scratch ADD COLUMN extra INT DEFAULT 0")
+	exec("CREATE INDEX private_v ON scratch(v)")
+	exec("DROP INDEX private_v ON scratch")
+	statement, err := connection.PrepareContext(ctx, "UPDATE scratch SET v=? WHERE id=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = statement.ExecContext(ctx, 5); err != nil {
+		t.Fatal(err)
+	}
+	statement.Close()
+	var value int
+	if err = connection.QueryRowContext(ctx, "SELECT v FROM scratch").Scan(&value); err != nil || value != 5 {
+		t.Fatal(value, err)
+	}
+	deny("SELECT secret FROM protected")
+	deny("INSERT INTO scratch(id,v) SELECT id,secret FROM protected")
+	deny("UPDATE scratch t JOIN protected p ON t.id=p.id SET t.v=p.secret")
+	deny("DROP TABLE protected")
+	mustExec(t, owner, "GRANT SELECT ON wiki.* TO 'temporary'@'localhost'")
+	exec("UPDATE scratch t JOIN protected p ON t.id=p.id SET t.v=p.secret")
+	exec("UPDATE scratch t JOIN protected p ON t.id=p.id SET v=p.secret")
+	deny("UPDATE scratch t JOIN protected p ON t.id=p.id SET p.secret=0")
+	deny("UPDATE scratch t JOIN protected p ON t.id=p.id SET secret=0")
+	deny("DELETE p FROM scratch t JOIN protected p ON t.id=p.id")
+	exec("DELETE t FROM scratch t JOIN protected p ON t.id=p.id")
+	exec("DROP TABLE scratch")
+	// The private exemption ends with DROP; its permanent shadow is protected.
+	deny("UPDATE scratch SET v=0")
+	deny("DROP TABLE scratch")
+	if err = owner.QueryRow("SELECT v FROM scratch").Scan(&value); err != nil || value != 700 {
+		t.Fatal(value, err)
+	}
+	if err = owner.QueryRow("SELECT secret FROM protected").Scan(&value); err != nil || value != 99 {
+		t.Fatal(value, err)
+	}
+}
