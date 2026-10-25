@@ -309,8 +309,15 @@ func accessPathsMayRepeatRows(paths []*accessPath) bool {
 func (s *Schema) walkAccessRaw(info *TableInfo, needed map[string]bool, paths []*accessPath, visit func([]byte, []scanColumn) error) error {
 	columnsFor := func(info *TableInfo) []scanColumn {
 		cols := make([]scanColumn, len(info.Columns))
+		anyNeeded := false
 		for i, c := range info.Columns {
-			cols[i] = scanColumn{name: c.Name, needed: needed == nil || needed[c.Name], definition: c}
+			use := needed == nil || needed[c.Name]
+			anyNeeded = anyNeeded || use
+			cols[i] = scanColumn{name: c.Name, needed: use, definition: c}
+		}
+		// COUNT(*) and constant-only expressions require no field decoding.
+		if !anyNeeded {
+			return nil
 		}
 		return cols
 	}
@@ -376,7 +383,11 @@ func (s *Schema) walkAccessRaw(info *TableInfo, needed map[string]bool, paths []
 	}
 	if paths == nil {
 		prefix := []byte(info.storagePrefix(info.Name))
-		it := s.newIteratorSeek(prefix)
+		upper := prefixSuccessor(prefix)
+		if s.profile != nil {
+			upper = nil
+		} // Preserve the Scan visit at the prefix boundary.
+		it := s.newBorrowedRangeReader(prefix, upper, false, "Scan")
 		defer it.Close()
 		for it.Valid() {
 			key := it.Key().UserKey
@@ -390,9 +401,11 @@ func (s *Schema) walkAccessRaw(info *TableInfo, needed map[string]bool, paths []
 		}
 		return storage.IteratorError(it)
 	}
+	var batchKeys [][]byte
+	var batchValues []storage.PointValue
 	for _, p := range paths {
 		if p.points != nil {
-			values, err := s.queryMultiGet(p.points)
+			values, err := s.accessMultiGetInto(p.points, batchValues)
 			if err != nil {
 				return err
 			}
@@ -403,6 +416,7 @@ func (s *Schema) walkAccessRaw(info *TableInfo, needed map[string]bool, paths []
 					}
 				}
 			}
+			batchValues = trimAccessValues(values)
 			continue
 		}
 		payload := s.lookups().covering[p.index]
@@ -430,7 +444,7 @@ func (s *Schema) walkAccessRaw(info *TableInfo, needed map[string]bool, paths []
 			payloadColumns = columnsFor(payload)
 		}
 		for _, interval := range p.intervals {
-			it := s.newRangeIterator(interval.lower, interval.upper, false)
+			it := s.newBorrowedRangeIterator(interval.lower, interval.upper, false)
 			err := func() error {
 				defer it.Close()
 				for it.Valid() {
@@ -456,19 +470,24 @@ func (s *Schema) walkAccessRaw(info *TableInfo, needed map[string]bool, paths []
 						it.Next()
 						continue
 					}
-					keys := make([][]byte, 0, 128)
-					for it.Valid() && len(keys) < 128 {
+					if batchKeys == nil {
+						batchKeys = make([][]byte, 128)
+					}
+					n := 0
+					for it.Valid() && n < len(batchKeys) {
 						key, err := s.accessIndexRowKey(p, interval, it.Key().UserKey, it.Value())
 						if err != nil {
 							return err
 						}
-						keys = append(keys, copyBytes(key))
+						batchKeys[n] = append(batchKeys[n][:0], key...)
+						n++
 						it.Next()
 					}
 					if err := storage.IteratorError(it); err != nil {
 						return err
 					}
-					values, err := s.queryMultiGet(keys)
+					keys := batchKeys[:n]
+					values, err := s.accessMultiGetInto(keys, batchValues)
 					if err != nil {
 						return err
 					}
@@ -479,6 +498,14 @@ func (s *Schema) walkAccessRaw(info *TableInfo, needed map[string]bool, paths []
 						if err := accept(v.Value, keys[i], columns); err != nil {
 							return err
 						}
+					}
+					batchValues = trimAccessValues(values)
+					var keyBytes int
+					for _, key := range batchKeys {
+						keyBytes += cap(key)
+					}
+					if keyBytes > 64<<10 {
+						clear(batchKeys)
 					}
 				}
 				return storage.IteratorError(it)
@@ -499,7 +526,7 @@ func (s *Schema) countAccessPaths(paths []*accessPath, limit int64) (int64, erro
 			continue
 		}
 		for _, interval := range p.intervals {
-			it := s.newRangeIterator(interval.lower, interval.upper, false)
+			it := s.newBorrowedRangeIterator(interval.lower, interval.upper, false)
 			err := func() error {
 				defer it.Close()
 				for it.Valid() {
@@ -737,4 +764,17 @@ func (s *Schema) streamSelectScan(stmt *SelectStmt, info *TableInfo) ([]map[stri
 		err = nil
 	}
 	return rows, true, err
+}
+
+// Encoded row batches are callback-private scratch. Avoid retaining a large
+// batch behind later small reads; selected/aggregate values already own bytes.
+func trimAccessValues(values []storage.PointValue) []storage.PointValue {
+	var bytes int
+	for _, value := range values {
+		bytes += cap(value.Value)
+	}
+	if bytes > 64<<10 {
+		clear(values)
+	}
+	return values
 }

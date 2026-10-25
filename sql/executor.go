@@ -2404,6 +2404,12 @@ func (s *Schema) txNewIterator() storage.Iterator {
 }
 
 func (s *Schema) txIterator(base storage.Iterator, lower, upper []byte) storage.Iterator {
+	return s.txIteratorMode(base, lower, upper, false)
+}
+
+// Reusable mode is reserved for consumers which decode/copy before movement.
+// The overlay must own its current base row before advancing a borrowed base.
+func (s *Schema) txIteratorMode(base storage.Iterator, lower, upper []byte, reusable bool) storage.Iterator {
 	rows := make([]storage.KeyValue, 0)
 	for _, index := range s.txLatest {
 		w := s.txWrites[index]
@@ -2418,7 +2424,7 @@ func (s *Schema) txIterator(base storage.Iterator, lower, upper []byte) storage.
 	}
 	deletes, err := s.snapshotIndexDeletes()
 	if err != nil {
-		return &transactionIterator{base: base, err: err}
+		return &transactionIterator{base: base, err: err, reusable: reusable}
 	}
 	for key := range deletes {
 		data := []byte(key)
@@ -2433,19 +2439,22 @@ func (s *Schema) txIterator(base storage.Iterator, lower, upper []byte) storage.
 		return base
 	}
 	sort.Slice(rows, func(i, j int) bool { return bytes.Compare(rows[i].Key.UserKey, rows[j].Key.UserKey) < 0 })
-	it := &transactionIterator{base: base, rows: rows}
+	it := &transactionIterator{base: base, rows: rows, reusable: reusable}
 	it.Next()
 	return it
 }
 
 type transactionIterator struct {
-	err      error
-	base     storage.Iterator
-	rows     []storage.KeyValue
-	pos      int
-	current  storage.KeyValue
-	valid    bool
-	afterEnd bool
+	reusable                              bool
+	closed                                bool
+	keyScratch, valueScratch, seekScratch []byte
+	err                                   error
+	base                                  storage.Iterator
+	rows                                  []storage.KeyValue
+	pos                                   int
+	current                               storage.KeyValue
+	valid                                 bool
+	afterEnd                              bool
 }
 
 func (it *transactionIterator) Err() error {
@@ -2456,7 +2465,13 @@ func (it *transactionIterator) Err() error {
 }
 func (it *transactionIterator) Valid() bool { return it.valid }
 func (it *transactionIterator) Next() {
+	if it.closed {
+		return
+	}
 	it.valid = false
+	if it.reusable {
+		it.resetBorrowedCurrent()
+	}
 	for it.base.Valid() || it.pos < len(it.rows) {
 		if err := storage.IteratorError(it.base); err != nil {
 			it.err = err
@@ -2474,7 +2489,11 @@ func (it *transactionIterator) Next() {
 			}
 			it.current = kv
 		} else {
-			it.current = storage.KeyValue{Key: it.base.Key(), Value: it.base.Value()}
+			if it.reusable {
+				it.copyBorrowedBase()
+			} else {
+				it.current = storage.KeyValue{Key: it.base.Key(), Value: it.base.Value()}
+			}
 			it.base.Next()
 		}
 		it.valid = true
@@ -2485,6 +2504,9 @@ func (it *transactionIterator) Next() {
 	it.afterEnd = true
 }
 func (it *transactionIterator) Prev() {
+	if it.closed {
+		return
+	}
 	if !it.valid && !it.afterEnd {
 		return
 	}
@@ -2519,6 +2541,11 @@ func (it *transactionIterator) Prev() {
 			it.err = storage.IteratorError(it.base)
 			return
 		}
+		if it.reusable {
+			// Seek can overwrite a borrowed candidate's child key buffer.
+			it.seekScratch = append(it.seekScratch[:0], candidate...)
+			candidate = it.seekScratch
+		}
 		it.Seek(candidate)
 		if it.valid && bytes.Equal(it.current.Key.UserKey, candidate) {
 			return
@@ -2530,6 +2557,9 @@ func (it *transactionIterator) Prev() {
 	}
 }
 func (it *transactionIterator) Seek(key []byte) {
+	if it.closed {
+		return
+	}
 	it.base.Seek(key)
 	it.pos = sort.Search(len(it.rows), func(i int) bool { return bytes.Compare(it.rows[i].Key.UserKey, key) >= 0 })
 	it.Next()
@@ -2546,7 +2576,19 @@ func (it *transactionIterator) Value() []byte {
 	}
 	return nil
 }
-func (it *transactionIterator) Close() { it.base.Close(); it.valid = false; it.afterEnd = false }
+func (it *transactionIterator) Close() {
+	if it.closed {
+		return
+	}
+	it.closed = true
+	it.base.Close()
+	it.valid, it.afterEnd = false, false
+	if it.reusable {
+		it.current = storage.KeyValue{}
+		it.keyScratch, it.valueScratch, it.seekScratch = nil, nil, nil
+		it.rows = nil
+	}
+}
 
 func copyBytes(b []byte) []byte {
 	if b == nil {

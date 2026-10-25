@@ -316,16 +316,36 @@ func (s *Schema) newRangeIterator(lower, upper []byte, reverse bool) storage.Ite
 }
 
 // Cursor consumers decode the current value before advancing, so they can use
-// borrowed storage buffers. Transaction overlays and profiled readers retain
-// their ordinary iterator path and its ownership/measurement contracts.
+// borrowed storage buffers. The generic borrowed reader also preserves
+// transactional overlay and profiling ownership/measurement contracts.
 func (s *Schema) newCursorRangeIterator(lower, upper []byte, reverse bool) storage.Iterator {
-	if s.profile != nil || s.inTx && len(s.txWrites) > 0 {
-		return s.newRangeIterator(lower, upper, reverse)
-	}
+	return s.newBorrowedRangeIterator(lower, upper, reverse)
+}
+
+// newBorrowedRangeIterator is for synchronous readers that decode or copy every
+// key/value before advancing. Profiling visits consume bytes synchronously;
+// private overlays copy their current row before advancing the borrowed base.
+func (s *Schema) newBorrowedRangeIterator(lower, upper []byte, reverse bool) storage.Iterator {
+	return s.newBorrowedRangeReader(lower, upper, reverse, "RangeScan")
+}
+
+func (s *Schema) newBorrowedRangeReader(lower, upper []byte, reverse bool, operator string) storage.Iterator {
+	overlay := s.inTx && len(s.txWrites) > 0
+	var base storage.Iterator
 	if s.statementActive && !s.temporaryKey(lower) {
-		return s.lsm.NewIteratorAtRangeReusable(s.statementSnapshot, lower, upper, reverse)
+		base = s.lsm.NewIteratorAtRangeReusable(s.statementSnapshot, lower, upper, reverse && !overlay)
+	} else {
+		base = s.lsm.NewIteratorRangeReusable(lower, upper, reverse && !overlay)
 	}
-	return s.lsm.NewIteratorRangeReusable(lower, upper, reverse)
+	if overlay {
+		base = s.txIteratorMode(base, lower, upper, true)
+		if reverse {
+			base.Seek(upper)
+			base.Prev()
+		}
+		base = storage.BoundIterator(base, lower, upper)
+	}
+	return s.profileReader(base, operator)
 }
 
 func coveredRangePredicate(e Expression, column, table, alias string) bool {
@@ -359,4 +379,74 @@ func coveredRangePredicate(e Expression, column, table, alias string) bool {
 		name = strings.TrimPrefix(name, alias+".")
 	}
 	return name == column
+}
+
+// accessMultiGetInto serves synchronous physical-read callbacks. Encoded values
+// are exclusively owned scratch until the next batch; no result enters the
+// statement's retained queryMultiGet cache. Temporary keys read the latest view,
+// regular keys read the statement snapshot, and private writes shadow storage.
+func (s *Schema) accessMultiGetInto(keys [][]byte, dst []storage.PointValue) (results []storage.PointValue, err error) {
+	temporary := s.hasTemporaryTables()
+	profileBatch := s.profile != nil && !temporary
+	if profileBatch && len(keys) > 0 {
+		started := time.Now()
+		defer func() {
+			elapsed := time.Since(started) / time.Duration(len(keys))
+			for i, key := range keys {
+				var value storage.PointValue
+				if i < len(results) {
+					value = results[i]
+				}
+				s.profilePoint(key, value.Value, value.Found, elapsed)
+			}
+		}()
+	}
+	snapshot := ^uint64(0)
+	if s.statementActive {
+		snapshot = s.statementSnapshot
+	}
+	if !temporary && (!s.inTx || len(s.txLatest) == 0) {
+		return s.lsm.GetMultiAtForReaderInto(keys, snapshot, s.snapshotReader, dst)
+	}
+	if len(dst) > len(keys) {
+		clear(dst[len(keys):])
+	}
+	if cap(dst) < len(keys) {
+		grown := make([]storage.PointValue, len(keys))
+		copy(grown, dst)
+		dst = grown
+	} else {
+		dst = dst[:len(keys)]
+	}
+	for i, key := range keys {
+		started := time.Time{}
+		if s.profile != nil && !profileBatch {
+			started = time.Now()
+		}
+		value, found, readErr := s.accessPointInto(key, snapshot, dst[i].Value)
+		if !started.IsZero() {
+			s.profilePoint(key, value, found, time.Since(started))
+		}
+		if readErr != nil {
+			return nil, readErr
+		}
+		dst[i] = storage.PointValue{Value: value, Found: found}
+	}
+	return dst, nil
+}
+
+func (s *Schema) accessPointInto(key []byte, snapshot uint64, dst []byte) ([]byte, bool, error) {
+	if s.inTx {
+		if position, ok := s.txLatest[string(key)]; ok {
+			write := s.txWrites[position]
+			if write.del {
+				return dst[:0], false, nil
+			}
+			return append(dst[:0], write.value...), true, nil
+		}
+	}
+	if s.temporaryKey(key) {
+		snapshot = ^uint64(0)
+	}
+	return s.lsm.GetAtForReaderInto(key, snapshot, s.snapshotReader, dst)
 }
