@@ -20,6 +20,9 @@ type protocolError struct {
 func (e *protocolError) Error() string { return e.message }
 func (c *client) status() uint16 {
 	var status uint16
+	if c.moreResults {
+		status |= 8
+	}
 	if c.autocommit {
 		status |= 2
 	}

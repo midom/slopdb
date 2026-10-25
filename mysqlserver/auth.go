@@ -14,6 +14,9 @@ const (
 	clientFoundRows        uint32 = 1 << 1
 	clientLongFlag         uint32 = 1 << 2
 	clientConnectDB        uint32 = 1 << 3
+	clientCompress         uint32 = 1 << 5
+	clientMultiStatements  uint32 = 1 << 16
+	clientMultiResults     uint32 = 1 << 17
 	clientProtocol41       uint32 = 1 << 9
 	clientSSL              uint32 = 1 << 11
 	clientTransactions     uint32 = 1 << 13
@@ -22,7 +25,7 @@ const (
 	clientConnectAttrs     uint32 = 1 << 20
 	clientPluginAuthLenenc uint32 = 1 << 21
 	clientSessionTrack     uint32 = 1 << 23
-	capabilities                  = clientLongPassword | clientFoundRows | clientLongFlag | clientConnectDB | clientProtocol41 | clientTransactions | clientSecureConnection | clientPluginAuth | clientConnectAttrs | clientPluginAuthLenenc | clientSessionTrack
+	capabilities                  = clientLongPassword | clientFoundRows | clientLongFlag | clientConnectDB | clientProtocol41 | clientTransactions | clientSecureConnection | clientPluginAuth | clientConnectAttrs | clientPluginAuthLenenc | clientSessionTrack | clientCompress | clientMultiStatements | clientMultiResults
 	authPlugin                    = "mysql_native_password"
 	serverVersion                 = "5.7.44-SlopDB"
 )
@@ -184,7 +187,14 @@ func (c *client) handshake() error {
 			return c.fail(1049, "42000", err.Error())
 		}
 	}
-	return c.ok(nil)
+	if err := c.ok(nil); err != nil {
+		return err
+	}
+	if c.capabilities&clientCompress != 0 {
+		compressed := newCompressedConn(c.conn)
+		c.conn, c.writer.conn = compressed, compressed
+	}
+	return nil
 }
 func checkPassword(password string, salt, response []byte) bool {
 	if password == "" {

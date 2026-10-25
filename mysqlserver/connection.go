@@ -15,6 +15,7 @@ import (
 
 type client struct {
 	capabilities uint32
+	moreResults  bool
 	server       *Server
 	conn         net.Conn
 	writer       packetWriter
@@ -50,8 +51,9 @@ func (c *client) run() {
 	// A separate reader detects EOF even while SQL waits on another session's
 	// locks. It cancels execution immediately so disconnects release transactions.
 	type command struct {
-		data     []byte
-		sequence byte
+		data               []byte
+		sequence           byte
+		compressedSequence byte
 	}
 	commands := make(chan command)
 	readerDone := make(chan struct{})
@@ -61,12 +63,19 @@ func (c *client) run() {
 		defer c.cancel()
 		defer c.conn.Close()
 		for {
+			compressedSequence := byte(0)
+			if compressed, ok := c.conn.(*compressedConn); ok {
+				compressed.readSequence = 0
+			}
 			data, next, err := readPacket(c.conn, 0, c.server.config.MaxPacketBytes)
+			if compressed, ok := c.conn.(*compressedConn); ok {
+				compressedSequence = compressed.readSequence
+			}
 			if err != nil {
 				return
 			}
 			select {
-			case commands <- command{data, next}:
+			case commands <- command{data, next, compressedSequence}:
 			case <-c.ctx.Done():
 				return
 			}
@@ -78,6 +87,9 @@ func (c *client) run() {
 			return
 		}
 		c.writer.sequence = cmd.sequence
+		if compressed, ok := c.conn.(*compressedConn); ok {
+			compressed.writeSequence = cmd.compressedSequence
+		}
 		if len(cmd.data) == 0 {
 			if c.writeError(errMalformed) != nil {
 				return
@@ -103,11 +115,21 @@ func (c *client) dispatch(p []byte) error {
 	case 2: // COM_INIT_DB
 		return c.use(string(p[1:]))
 	case 3: // COM_QUERY
-		result, err := c.query(string(p[1:]), nil, nil)
-		if err != nil {
-			return c.writeError(err)
+		return c.queryResults(string(p[1:]))
+	case 27: // COM_SET_OPTION: enable/disable multi-statements on this connection.
+		if len(p) != 3 {
+			return c.writeError(errMalformed)
 		}
-		return c.result(result, false)
+		switch binary.LittleEndian.Uint16(p[1:]) {
+		case 0:
+			c.capabilities |= clientMultiStatements
+		case 1:
+			c.capabilities &^= clientMultiStatements
+		default:
+			return c.writeError(errMalformed)
+		}
+		return c.eof()
+
 	case 14: // COM_PING
 		if len(p) != 1 {
 			return c.writeError(errMalformed)
