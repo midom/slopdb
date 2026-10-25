@@ -12,6 +12,7 @@ type namespaceRequirements struct {
 	qualified, nativeBare bool
 	rootRead              bool
 	multiPartReference    bool
+	catalogReference      bool
 }
 
 func compileNamespaceRequirements(stmt Statement) namespaceRequirements {
@@ -25,6 +26,7 @@ func compileNamespaceRequirements(stmt Statement) namespaceRequirements {
 		case SelectColumn:
 			requirements.multiPartReference = requirements.multiPartReference || strings.Contains(st.StarQualifier, ".")
 		case *SelectStmt:
+			requirements.catalogReference = requirements.catalogReference || catalogRelationName(st.From)
 			requirements.qualified = requirements.qualified || strings.Contains(st.From, ".")
 		case JoinClause:
 			requirements.qualified = requirements.qualified || strings.Contains(st.Table, ".")
@@ -68,4 +70,15 @@ func preparedNamespaceRequirements(stmt Statement) (namespaceRequirements, bool)
 		return namespaceRequirements{}, false
 	}
 	return owner.namespaces, true
+}
+
+// Virtual relation names are immutable parser inputs. Compile the possibility
+// once; dialect-specific projection and its live snapshot remain execution work.
+func catalogRelationName(name string) bool {
+	name = strings.ToLower(name)
+	if strings.HasPrefix(name, "information_schema.") || name == "mysql.user" {
+		return true
+	}
+	_, known := postgresCatalogName(name)
+	return known
 }

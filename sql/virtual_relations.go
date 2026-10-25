@@ -41,6 +41,13 @@ func (s *Schema) virtualRelationColumns(name string) ([]ColumnDef, bool, error) 
 	return nil, false, nil
 }
 func (s *Schema) resolveCatalogTables(stmt *SelectStmt) (*SelectStmt, error) {
+	// The prepared template already proves that this simple relation name cannot
+	// denote a system view in any dialect. Catalog changes still invalidate its
+	// physical read recipe below; live catalog names always take the normal path.
+	if requirements, compiled := preparedNamespaceRequirements(stmt); compiled && requirements.rootRead && !requirements.catalogReference && stmt.FromExpr == nil && stmt.materialized == nil {
+		return stmt, nil
+	}
+
 	pg := s.expressionPostgres()
 	cp := stmt
 	// Ordinary physical relations do not need a private AST. Clone lazily only
