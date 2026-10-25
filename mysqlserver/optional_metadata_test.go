@@ -295,7 +295,7 @@ func TestOptionalMetadataTextPreparedAndMultipleResultsets(t *testing.T) {
 			s := startTestServer(t, "tcp", Config{})
 			flags := negotiated | clientMultiStatements | clientMultiResults
 			c := connectRawWithFlags(t, s, flags)
-			expectOK(t, c.command(t, append([]byte{3}, "CREATE TABLE lean_metadata_rows(id INTEGER PRIMARY KEY, v TEXT)"...)), 2)
+			expectOK(t, c.command(t, append([]byte{3}, "CREATE TABLE lean_metadata_rows(id BIGINT PRIMARY KEY, v TEXT)"...)), 2)
 			expectOK(t, c.command(t, append([]byte{3}, "INSERT INTO lean_metadata_rows VALUES(7,'value')"...)), 2)
 			for _, full := range []bool{true, false, true} {
 				if !full && flags&clientOptionalMetadata == 0 {

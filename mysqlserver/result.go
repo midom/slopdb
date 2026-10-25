@@ -223,7 +223,11 @@ func appendTemporal(p []byte, value string, kind byte) []byte {
 	return p
 }
 func columnPacket(col sql.ColumnDef, database string) []byte {
-	p := appendString(nil, []byte("def"))
+	return appendColumnPacket(nil, col, database)
+}
+
+func appendColumnPacket(p []byte, col sql.ColumnDef, database string) []byte {
+	p = appendString(p, []byte("def"))
 	p = appendString(p, []byte(database))
 	p = appendString(p, nil)
 	p = appendString(p, nil)
@@ -299,6 +303,45 @@ func columnPacket(col sql.ColumnDef, database string) []byte {
 	}
 	return append(p, decimals, 0, 0)
 }
+
+const maxRetainedResponseBytes = 64 << 10
+
+func (c *client) writeColumnDefinition(col sql.ColumnDef, database string) error {
+	p := appendColumnPacket(c.metadataPacket[:0], col, database)
+	err := c.writer.write(p)
+	if cap(p) <= maxRetainedResponseBytes {
+		c.metadataPacket = p[:0]
+	} else {
+		c.metadataPacket = nil
+	}
+	return err
+}
+
+// Append directly to the row packet. Numeric scratch stays on the stack; text
+// and binary values do not need temporary byte slices before their wire copy.
+func appendTextValue(p []byte, v sql.Value) []byte {
+	var scratch [32]byte
+	switch v.Type {
+	case sql.ColInteger:
+		return appendString(p, strconv.AppendInt(scratch[:0], v.Int, 10))
+	case sql.ColUnsigned:
+		return appendString(p, strconv.AppendUint(scratch[:0], v.Uint, 10))
+	case sql.ColReal:
+		return appendString(p, strconv.AppendFloat(scratch[:0], v.Real, 'g', -1, 64))
+	case sql.ColBlob:
+		return appendString(p, v.Blob)
+	default:
+		p = appendLen(p, uint64(len(v.Text)))
+		return append(p, v.Text...)
+	}
+}
+
+func integerBits(v sql.Value) uint64 {
+	if v.Type == sql.ColUnsigned {
+		return v.Uint
+	}
+	return uint64(v.Int)
+}
 func valueBytes(v sql.Value) []byte {
 	switch v.Type {
 	case sql.ColInteger:
@@ -319,43 +362,59 @@ func (c *client) result(result *db.ExecResult, binaryRows bool) error {
 	}
 	// SQL expression columns can contain different types in different rows.
 	// Use a string wire type for mixed columns to avoid truncation or rounding.
-	columns := append([]sql.ColumnDef(nil), result.Columns...)
+	columns := result.Columns
+	copied := false
+	defer func() {
+		clear(c.resultColumns)
+		if cap(c.resultColumns) > 64 {
+			c.resultColumns = nil
+		}
+	}()
 	for i, col := range columns {
 		if col.SemanticType != sql.TypeUnknown {
 			continue
 		}
 		seen := false
+		typ, notNull := col.ColType, col.NotNull
 		for _, row := range result.Rows {
 			v, ok := row[col.Name]
 			if !ok || v.Null {
 				continue
 			}
 			if !seen {
-				columns[i].ColType = v.Type
+				typ = v.Type
 				seen = true
-			} else if columns[i].ColType != v.Type {
-				columns[i].ColType = sql.ColText
-				columns[i].NotNull = false
+			} else if typ != v.Type {
+				typ = sql.ColText
+				notNull = false
 				break
 			}
 		}
-	}
-	if err := c.writer.write(appendLen(nil, uint64(len(columns)))); err != nil {
-		return err
-	}
-	for _, col := range columns {
-		if err := c.writer.write(columnPacket(col, c.selected)); err != nil {
-			return err
+		if typ != col.ColType || notNull != col.NotNull {
+			if !copied {
+				c.resultColumns = append(c.resultColumns[:0], columns...)
+				columns, copied = c.resultColumns, true
+			}
+			columns[i].ColType, columns[i].NotNull = typ, notNull
 		}
 	}
-	if err := c.eof(); err != nil {
+	if err := c.writeResultHeader(columns); err != nil {
 		return err
 	}
+	p := c.resultPacket[:0]
+	defer func() {
+		if cap(p) <= maxRetainedResponseBytes {
+			c.resultPacket = p[:0]
+		} else {
+			c.resultPacket = nil
+		}
+	}()
 	for _, row := range result.Rows {
-		var p []byte
+		p = p[:0]
 		nullBytes := (len(columns) + 9) / 8
 		if binaryRows {
-			p = make([]byte, 1+nullBytes)
+			p = append(p, 0)
+			p = append(p, make([]byte, nullBytes)...)
 		}
 		for i, col := range columns {
 			v, ok := row[col.Name]
@@ -370,13 +429,13 @@ func (c *client) result(result *db.ExecResult, binaryRows bool) error {
 			if binaryRows {
 				switch wireType(col) {
 				case typeTiny:
-					p = append(p, byte(v.Int))
+					p = append(p, byte(integerBits(v)))
 					continue
 				case typeShort:
-					p = append16(p, uint16(v.Int))
+					p = append16(p, uint16(integerBits(v)))
 					continue
 				case typeLong:
-					p = append32(p, uint32(v.Int))
+					p = append32(p, uint32(integerBits(v)))
 					continue
 				case typeFloat:
 					p = append32(p, math.Float32bits(float32(v.Real)))
@@ -396,11 +455,11 @@ func (c *client) result(result *db.ExecResult, binaryRows bool) error {
 					continue
 				}
 			}
-			p = appendString(p, valueBytes(v))
+			p = appendTextValue(p, v)
 		}
 		if err := c.writer.write(p); err != nil {
 			return err
 		}
 	}
-	return c.eof()
+	return c.resultTerminator(result)
 }

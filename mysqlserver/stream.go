@@ -1,6 +1,7 @@
 package mysqlserver
 
 import (
+	"context"
 	"slopdb/db"
 	"slopdb/sql"
 	"strings"
@@ -41,12 +42,24 @@ func (c *client) streamQuery(query string) (bool, error) {
 		}
 	}
 	status := c.status()
-	eof := func() error { return c.writer.write(append16(append16([]byte{0xfe}, c.warningCount()), status)) }
+	eof := func() error { return c.resultTerminatorStatus(nil, status) }
 	rows, e := c.session.QueryContext(sql.WithActivityQuery(c.mysqlContext(), query), query)
 	if e != nil {
 		return true, e
 	}
 	defer rows.Close()
+	// The query context ends on normal row exhaustion. A final batched write
+	// still needs a lifecycle cancellation source after that snapshot is released.
+	closed := make(chan struct{})
+	stopClosing := context.AfterFunc(c.session.ClosingContext(), func() {
+		defer close(closed)
+		_ = c.conn.Close()
+	})
+	defer func() {
+		if !stopClosing() {
+			<-closed
+		}
+	}()
 	stop := rows.OnCancel(func() { _ = c.conn.SetWriteDeadline(time.Now()) })
 	defer func() { stop(); _ = c.conn.SetWriteDeadline(time.Time{}) }()
 	columns := rows.Columns()
@@ -69,30 +82,33 @@ func (c *client) streamQuery(query string) (bool, error) {
 		if e = c.result(result, false); e != nil {
 			return true, &streamWriteError{e}
 		}
-		return true, nil
-	}
-	if e = c.writer.write(appendLen(nil, uint64(len(columns)))); e != nil {
-		return true, &streamWriteError{e}
-	}
-	for _, col := range columns {
-		if e = c.writer.write(columnPacket(col, c.selected)); e != nil {
+		if e = c.writer.flush(); e != nil {
 			return true, &streamWriteError{e}
 		}
+		return true, nil
 	}
-	if e = eof(); e != nil {
+	if e = c.writeResultHeaderStatus(columns, status); e != nil {
 		return true, &streamWriteError{e}
 	}
+	packet := c.resultPacket[:0]
+	defer func() {
+		if cap(packet) <= maxRetainedResponseBytes {
+			c.resultPacket = packet[:0]
+		} else {
+			c.resultPacket = nil
+		}
+	}()
 	for rows.Next() {
 		values, e := rows.Values()
 		if e != nil {
 			return true, e
 		}
-		var packet []byte
+		packet = packet[:0]
 		for _, v := range values {
 			if v.Null {
 				packet = append(packet, 0xfb)
 			} else {
-				packet = appendString(packet, valueBytes(v))
+				packet = appendTextValue(packet, v)
 			}
 		}
 		if e = c.writer.write(packet); e != nil {
@@ -103,6 +119,9 @@ func (c *client) streamQuery(query string) (bool, error) {
 		return true, e
 	}
 	if e = eof(); e != nil {
+		return true, &streamWriteError{e}
+	}
+	if e = c.writer.flush(); e != nil {
 		return true, &streamWriteError{e}
 	}
 	return true, nil

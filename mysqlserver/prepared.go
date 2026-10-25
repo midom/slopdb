@@ -17,6 +17,8 @@ type prepared struct {
 	types      []uint16
 	long       map[uint16][]byte
 	longErr    error
+	args       []any
+	result     db.ExecResult
 }
 
 func unknownStatement() error { return &protocolError{1243, "HY000", "unknown prepared statement"} }
@@ -143,13 +145,37 @@ func (c *client) executePrepared(p []byte) error {
 	if err != nil {
 		return c.writeError(err)
 	}
+	defer clear(args)
+	defer func() {
+		// Only small result destinations are useful hot state. A one-off scan or
+		// large value must not remain live for this statement's entire lifetime.
+		if !retainPreparedResult(&s.result) {
+			s.result = db.ExecResult{}
+		}
+	}()
 	c.preparedPath = s.schemaPath
 	defer func() { c.preparedPath = nil }()
-	result, err := c.query(s.query, s.stmt, args)
+	result, err := c.queryInto(s.query, s.stmt, args, &s.result)
 	if err != nil {
 		return c.writeError(err)
 	}
 	return c.result(result, true)
+}
+
+func retainPreparedResult(result *db.ExecResult) bool {
+	if cap(result.Rows) > 64 || cap(result.Columns) > 64 {
+		return false
+	}
+	bytes := 0
+	for _, row := range result.Rows {
+		for _, v := range row {
+			bytes += len(v.Text) + cap(v.Blob)
+			if bytes > maxRetainedResponseBytes {
+				return false
+			}
+		}
+	}
+	return true
 }
 func decodeBindings(s *prepared, p []byte) ([]any, error) {
 	n := s.stmt.NumInput()
@@ -166,7 +192,15 @@ func decodeBindings(s *prepared, p []byte) ([]any, error) {
 		return nil, errMalformed
 	}
 	if fresh == 1 {
-		types := make([]uint16, n)
+		if len(d.data) < 2*n {
+			return nil, errMalformed
+		}
+		types := s.types
+		if cap(types) < n {
+			types = make([]uint16, n)
+		} else {
+			types = types[:n]
+		}
 		for i := range types {
 			types[i] = d.u16()
 		}
@@ -181,7 +215,19 @@ func decodeBindings(s *prepared, p []byte) ([]any, error) {
 	if len(s.types) != n {
 		return nil, errMalformed
 	}
-	args := make([]any, n)
+	if cap(s.args) < n {
+		s.args = make([]any, n)
+	} else {
+		s.args = s.args[:n]
+		clear(s.args)
+	}
+	args := s.args
+	success := false
+	defer func() {
+		if !success {
+			clear(args)
+		}
+	}()
 	for i := range args {
 		if nulls[i/8]&(1<<(i%8)) != 0 {
 			continue
@@ -207,6 +253,7 @@ func decodeBindings(s *prepared, p []byte) ([]any, error) {
 	if len(d.data) != 0 {
 		return nil, errMalformed
 	}
+	success = true
 	return args, nil
 }
 func decodeValue(d *decoder, typ uint16) (any, error) {

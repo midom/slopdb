@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	gosql "database/sql"
+	"fmt"
 	"net"
 	"reflect"
 	"testing"
@@ -119,6 +120,12 @@ func (c *blockedWriteConn) Write(p []byte) (int, error) {
 	return c.Conn.Write(p)
 }
 func TestMySQLStreamDatabaseCloseInterruptsBlockedOutput(t *testing.T) {
+	for _, batch := range []bool{false, true} {
+		t.Run(fmt.Sprint(batch), func(t *testing.T) { testMySQLStreamClose(t, batch) })
+	}
+}
+
+func testMySQLStreamClose(t *testing.T, batch bool) {
 	s := startTestServer(t, "tcp", Config{})
 	if _, e := s.database.Exec("CREATE TABLE blocked_stream(id INTEGER PRIMARY KEY,v TEXT);INSERT INTO blocked_stream VALUES(1,'value')"); e != nil {
 		t.Fatal(e)
@@ -138,6 +145,9 @@ func TestMySQLStreamDatabaseCloseInterruptsBlockedOutput(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	c := &client{server: s.server, conn: conn, writer: packetWriter{conn: conn}, session: session, ctx: ctx, cancel: cancel, autocommit: true, variables: defaultSessionVariables()}
+	if batch {
+		c.writer.beginBatch()
+	}
 	done := make(chan error, 1)
 	go func() { _, e := c.streamQuery("SELECT v FROM blocked_stream"); done <- e }()
 	select {

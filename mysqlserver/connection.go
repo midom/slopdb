@@ -48,6 +48,9 @@ type client struct {
 	autocommit                       bool
 	statements                       map[uint32]*prepared
 	nextStmt                         uint32
+	resultPacket                     []byte
+	resultColumns                    []sql.ColumnDef
+	metadataPacket                   []byte
 }
 
 func (c *client) run() {
@@ -201,7 +204,7 @@ func (c *client) dispatch(p []byte) error {
 		default:
 			return c.writeError(errMalformed)
 		}
-		return c.eof()
+		return c.resultTerminator(nil)
 
 	case 14: // COM_PING
 		defer c.session.TrackActivity(c.ctx, "COM_PING")()
@@ -280,6 +283,10 @@ func scalar(name string, value sql.Value) *db.ExecResult {
 }
 
 func (c *client) query(query string, stmt *db.Stmt, args []any) (*db.ExecResult, error) {
+	return c.queryInto(query, stmt, args, nil)
+}
+
+func (c *client) queryInto(query string, stmt *db.Stmt, args []any, dst *db.ExecResult) (*db.ExecResult, error) {
 	previousQuery := c.activityQuery
 	c.activityQuery = query
 	defer func() { c.activityQuery = previousQuery }()
@@ -309,6 +316,9 @@ func (c *client) query(query string, stmt *db.Stmt, args []any) (*db.ExecResult,
 		}
 	}
 	if stmt != nil {
+		if dst != nil {
+			return c.session.ExecPreparedContextInto(sql.WithActivityQuery(c.mysqlContext(), query), dst, stmt, args...)
+		}
 		return stmt.ExecContext(sql.WithActivityQuery(c.mysqlContext(), query), args...)
 	}
 	return c.session.ExecContext(sql.WithActivityQuery(c.mysqlContext(), query), query)
