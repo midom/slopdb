@@ -162,12 +162,13 @@ func cdcCatalog(catalog map[string][]byte) (map[uint64]CDCTable, error) {
 // CDCReader owns only decoding state; it does not pin an MVCC snapshot or hold
 // an execution lock between calls. The durable journal is the resume source.
 type CDCReader struct {
-	mu       sync.Mutex
-	database *Database
-	sequence uint64
-	catalog  map[string][]byte
-	tables   map[uint64]CDCTable
-	metadata CDCMetadata
+	mu         sync.Mutex
+	database   *Database
+	sequence   uint64
+	generation uint64
+	catalog    map[string][]byte
+	tables     map[uint64]CDCTable
+	metadata   CDCMetadata
 }
 
 func (d *Database) NewCDCReader(ctx context.Context, after uint64) (*CDCReader, error) {
@@ -208,7 +209,7 @@ func (d *Database) NewCDCReader(ctx context.Context, after uint64) (*CDCReader, 
 	if err != nil {
 		return nil, err
 	}
-	return &CDCReader{database: d, sequence: after, catalog: catalog, tables: tables, metadata: *metadata}, nil
+	return &CDCReader{database: d, sequence: after, generation: d.generation.Load(), catalog: catalog, tables: tables, metadata: *metadata}, nil
 }
 
 func cloneCDCTable(table CDCTable) CDCTable {
@@ -259,7 +260,26 @@ func (r *CDCReader) Read(ctx context.Context, limit int) ([]CDCTransaction, erro
 	if d.closed.Load() {
 		return nil, fmt.Errorf("database closed")
 	}
-	records, err := d.currentStorage.Load().ReadChanges(ctx, r.sequence, limit)
+	tree := d.currentStorage.Load()
+	generation := d.generation.Load()
+	if generation != r.generation {
+		header, err := tree.ChangeLogHeader()
+		if err != nil {
+			return nil, err
+		}
+		if header == nil || header.SourceID != r.metadata.SourceID {
+			return nil, fmt.Errorf("CDC source changed after storage replacement")
+		}
+		position, err := tree.ChangeLogPosition()
+		if err != nil {
+			return nil, err
+		}
+		if position < r.sequence {
+			return nil, fmt.Errorf("CDC source position moved backwards after storage replacement")
+		}
+		r.generation = generation
+	}
+	records, err := tree.ReadChanges(ctx, r.sequence, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -280,8 +300,20 @@ func (r *CDCReader) Read(ctx context.Context, limit int) ([]CDCTransaction, erro
 	return result, nil
 }
 
+var cdcClosedChanges = func() <-chan struct{} { ch := make(chan struct{}); close(ch); return ch }()
+
 func (r *CDCReader) Changes() <-chan struct{} {
-	return r.database.currentStorage.Load().ChangeNotification()
+	d := r.database
+	// Pair storage selection/channel acquisition with the replacement writer.
+	// Otherwise a handoff between those two steps can miss its notification.
+	if err := d.execution.RLockContext(context.Background()); err != nil {
+		return cdcClosedChanges
+	}
+	defer d.execution.RUnlock()
+	if d.closed.Load() {
+		return cdcClosedChanges
+	}
+	return d.currentStorage.Load().ChangeNotification()
 }
 
 func (r *CDCReader) decode(record storage.ChangeRecord) (CDCTransaction, error) {

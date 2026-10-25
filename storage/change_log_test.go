@@ -391,3 +391,18 @@ func TestChangeLogBudgetFailuresPreserveSourceAndPositions(t *testing.T) {
 		}
 	}
 }
+
+func TestChangeLogCloseWakesExistingAndFutureWaiters(t *testing.T) {
+	tree := openReaderViewTest(t)
+	wait := tree.ChangeNotification()
+	if err := tree.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, ch := range []<-chan struct{}{wait, tree.ChangeNotification()} {
+		select {
+		case <-ch:
+		default:
+			t.Fatal("change waiter remained blocked after close")
+		}
+	}
+}

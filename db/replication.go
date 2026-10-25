@@ -184,8 +184,10 @@ func (d *Database) ReplaceReplicaStorage(next *storage.LSMTree, directory string
 		if err := publish(); err != nil {
 			return err
 		}
+		previous := d.currentStorage.Load()
 		d.lsm, d.dir = next, directory
 		d.currentStorage.Store(next)
+		previous.NotifyChangeReaders()
 		return d.reloadReplicaCatalog()
 	})
 }

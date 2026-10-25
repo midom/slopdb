@@ -23,6 +23,7 @@ type LSMTree struct {
 	changeLogEnabled      atomic.Bool
 	changeMu              sync.Mutex
 	changeChanged         chan struct{}
+	changeClosed          bool
 	replication           atomic.Pointer[ReplicationHooks]
 	mu                    sync.RWMutex
 	writerMu              sync.Mutex
@@ -1335,6 +1336,7 @@ func (l *LSMTree) Close() error {
 	}
 	l.cond.Broadcast()
 	l.mu.Unlock()
+	l.closeChangeNotification()
 	l.flushWg.Wait()
 	l.compactionWg.Wait()
 	l.walSyncWg.Wait()

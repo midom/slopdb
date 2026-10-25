@@ -607,9 +607,29 @@ func (l *LSMTree) ChangeNotification() <-chan struct{} {
 	return l.changeChanged
 }
 
+// NotifyChangeReaders wakes consumers when a database owner changes its active
+// storage generation. It publishes no data and assigns no CDC position.
+func (l *LSMTree) NotifyChangeReaders() { l.notifyChanges() }
+
+func (l *LSMTree) closeChangeNotification() {
+	l.changeMu.Lock()
+	defer l.changeMu.Unlock()
+	if l.changeClosed {
+		return
+	}
+	if l.changeChanged == nil {
+		l.changeChanged = make(chan struct{})
+	}
+	close(l.changeChanged)
+	l.changeClosed = true
+}
+
 func (l *LSMTree) notifyChanges() {
 	l.changeMu.Lock()
 	defer l.changeMu.Unlock()
+	if l.changeClosed {
+		return
+	}
 	if l.changeChanged != nil {
 		close(l.changeChanged)
 	}

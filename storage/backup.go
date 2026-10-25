@@ -86,7 +86,7 @@ func (l *LSMTree) Backup(ctx context.Context, destination string) (err error) {
 		if len(batch) == 0 {
 			return nil
 		}
-		if e := copyDB.WriteBatch(batch); e != nil {
+		if e := copyDB.RestoreSnapshotBatch(batch); e != nil {
 			return e
 		}
 		batch = batch[:0]
@@ -96,6 +96,10 @@ func (l *LSMTree) Backup(ctx context.Context, destination string) (err error) {
 	for iterator.Valid() {
 		if err = ctx.Err(); err != nil {
 			return err
+		}
+		if key := iterator.Key().UserKey; len(key) > 0 && key[0] == 3 {
+			iterator.Next()
+			continue // temporary rows/indexes have no durable catalog
 		}
 		key, value := append([]byte{}, iterator.Key().UserKey...), append([]byte{}, iterator.Value()...)
 		batch = append(batch, Mutation{Key: key, Value: value})

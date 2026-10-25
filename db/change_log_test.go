@@ -1,7 +1,11 @@
 package db
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
+	"path/filepath"
 	"slopdb/sql"
 	"slopdb/storage"
 	"testing"
@@ -179,5 +183,156 @@ func TestCDCMetadataAndTransactionIndexesAreCallerOwned(t *testing.T) {
 	}
 	if len(rows[1].SchemaChanges) != 1 || index(*rows[1].SchemaChanges[0].Before).Column != "body" {
 		t.Fatal("schema before-image corrupted", rows)
+	}
+}
+
+func TestCDCReaderStorageHandoffWakesAndContinues(t *testing.T) {
+	d, err := Open(t.TempDir(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	ctx := context.Background()
+	if _, err = d.EnableCDC(ctx); err != nil {
+		t.Fatal(err)
+	}
+	objectExec(t, d, "CREATE TABLE docs(id INTEGER PRIMARY KEY,v TEXT);INSERT INTO docs VALUES(1,'old')")
+	position, err := d.CDCPosition(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := d.NewCDCReader(ctx, position)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wait := reader.Changes()
+	temporary, err := d.NewSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer temporary.Close()
+	if _, err = temporary.Exec("CREATE TEMPORARY TABLE scratch(id INTEGER PRIMARY KEY,v TEXT);INSERT INTO scratch VALUES(1,'private backup')"); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "snapshot")
+	if err = d.Backup(path); err != nil {
+		t.Fatal(err)
+	}
+	next, err := storage.NewLSMTree(path, storage.DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := d.ReplicationStorage()
+	sourceHeader, e := previous.ChangeLogHeader()
+	if e != nil {
+		t.Fatal(e)
+	}
+	backupHeader, e := next.ChangeLogHeader()
+	if e != nil {
+		t.Fatal(e)
+	}
+	sourceJSON, _ := json.Marshal(sourceHeader)
+	backupJSON, _ := json.Marshal(backupHeader)
+	if !bytes.Equal(sourceJSON, backupJSON) {
+		t.Fatal("backup changed CDC baseline")
+	}
+	sourceRows, e := previous.ReadChanges(ctx, 0, 100)
+	if e != nil {
+		t.Fatal(e)
+	}
+	backupRows, e := next.ReadChanges(ctx, 0, 100)
+	if e != nil {
+		t.Fatal(e)
+	}
+	sourceJSON, _ = json.Marshal(sourceRows)
+	backupJSON, _ = json.Marshal(backupRows)
+	if !bytes.Equal(sourceJSON, backupJSON) {
+		t.Fatal("backup changed exact journal history")
+	}
+	it := next.NewIteratorRange([]byte{3}, []byte{4}, false)
+	if it.Valid() {
+		it.Close()
+		t.Fatal("backup contains temporary data")
+	}
+	it.Close()
+	defer previous.Close()
+	if err = d.ReplaceReplicaStorage(next, path, func() error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-wait:
+	default:
+		t.Fatal("storage handoff did not wake existing CDC waiter")
+	}
+	objectExec(t, d, "UPDATE docs SET v='new'")
+	rows, err := reader.Read(ctx, 10)
+	if err != nil || len(rows) != 1 || rows[0].Changes[0].After[1].Text != "new" {
+		t.Fatal(rows, err)
+	}
+	wait = reader.Changes()
+	if err = d.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, ch := range []<-chan struct{}{wait, reader.Changes()} {
+		select {
+		case <-ch:
+		default:
+			t.Fatal("database close did not wake CDC waiter")
+		}
+	}
+	if _, err = reader.Read(ctx, 10); err == nil {
+		t.Fatal("reader accepted closed database")
+	}
+}
+
+func TestCDCReaderRejectsReplacementRewindAndSourceChange(t *testing.T) {
+	for _, changed := range []bool{false, true} {
+		t.Run(fmt.Sprint(changed), func(t *testing.T) {
+			d, err := Open(t.TempDir(), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer d.Close()
+			ctx := context.Background()
+			if _, err = d.EnableCDC(ctx); err != nil {
+				t.Fatal(err)
+			}
+			objectExec(t, d, "CREATE TABLE docs(id INTEGER PRIMARY KEY)")
+			path := filepath.Join(t.TempDir(), "snapshot")
+			if !changed {
+				if err = d.Backup(path); err != nil {
+					t.Fatal(err)
+				}
+			}
+			objectExec(t, d, "INSERT INTO docs VALUES(1)")
+			position, err := d.CDCPosition(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			reader, err := d.NewCDCReader(ctx, position)
+			if err != nil {
+				t.Fatal(err)
+			}
+			next, err := storage.NewLSMTree(path, storage.DefaultOptions())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if changed {
+				if _, err = next.EnableChangeLog(ctx); err != nil {
+					t.Fatal(err)
+				}
+			}
+			old := d.ReplicationStorage()
+			defer old.Close()
+			if err = d.ReplaceReplicaStorage(next, path, func() error { return nil }); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = reader.Read(ctx, 10); err == nil {
+				t.Fatal("reader accepted changed storage history")
+			}
+			if reader.Position() != position {
+				t.Fatal("failed handoff advanced reader")
+			}
+		})
 	}
 }
