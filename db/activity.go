@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -20,6 +21,14 @@ type activityRecord struct {
 	inTransaction        bool
 	failed               bool
 	lastTransactionStart time.Time
+	// Native facts are accessed only under the owner's gate and execution view.
+	// Protocol reports use a generation to invalidate this cache without requiring
+	// that gate; observers continue to read only value under mu.
+	protocolVersion                  atomic.Uint64
+	nativeVersion                    uint64
+	nativeValid, nativeInTransaction bool
+	nativeDialect                    sql.Dialect
+	nativeDatabase                   string
 }
 
 func (d *Database) registerActivity(s *sql.Schema) {
@@ -82,6 +91,7 @@ func (s *Session) SetActivityTransactionState(active, failed bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	now := time.Now()
+	r.protocolVersion.Add(1)
 	r.inTransaction, r.failed = active, failed
 	if active {
 		if r.value.TransactionStart.IsZero() {
@@ -168,8 +178,15 @@ func (d *Database) syncActivity(s *sql.Schema) {
 	inTx := s.InTransaction()
 	dialect := s.Dialect()
 	database := s.CurrentSchema()
+	version := r.protocolVersion.Load()
+	if r.nativeValid && r.nativeInTransaction == inTx && r.nativeDialect == dialect && r.nativeDatabase == database && r.nativeVersion == version {
+		return
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.nativeValid = true
+	r.nativeInTransaction, r.nativeDialect, r.nativeDatabase = inTx, dialect, database
+	r.nativeVersion = r.protocolVersion.Load()
 	r.inTransaction = inTx
 	r.failed = false
 	if inTx {
