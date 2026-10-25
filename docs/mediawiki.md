@@ -76,8 +76,8 @@ report removes password/token fields. The runner needs a separately installed
 wiki and is not required by `go test ./...`.
 
 On the test machine, installation and the HTTP checks passed against a fresh
-SlopDB database. Maintenance job execution and close/reopen checks are part of
-the application acceptance run. Binaries, databases, private logs and reports
+SlopDB database. The stock `maintenance/run.php update --quick` and `runJobs --maxjobs=100`
+commands also passed, followed by the HTTP checks after a server restart. Binaries, databases, private logs and reports
 remain outside this repository.
 
 ## Boundaries
