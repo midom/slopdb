@@ -232,6 +232,10 @@ func (s *Schema) bindFulltextExpressions(stmt *SelectStmt) error {
 		expressions = append(expressions, c.Expr)
 	}
 	expressions = append(expressions, stmt.Where, stmt.Having)
+	expressions = append(expressions, stmt.GroupBy...)
+	for _, join := range stmt.Joins {
+		expressions = append(expressions, join.On)
+	}
 	for _, c := range stmt.OrderBy {
 		expressions = append(expressions, c.Expr)
 	}
@@ -279,8 +283,14 @@ func (q *fulltextQuery) indexed(word string) bool {
 }
 
 func parseBooleanFulltext(text string, q *fulltextQuery) ([]fulltextTerm, error) {
+	nodes, depth := 0, 0
 	var parse func(int, bool) ([]fulltextTerm, int, error)
 	parse = func(pos int, group bool) ([]fulltextTerm, int, error) {
+		depth++
+		defer func() { depth-- }()
+		if depth > 64 {
+			return nil, pos, fmt.Errorf("fulltext groups exceed nesting limit")
+		}
 		var terms []fulltextTerm
 		for pos < len(text) {
 			if unicode.IsSpace(rune(text[pos])) {
@@ -308,6 +318,9 @@ func parseBooleanFulltext(text string, q *fulltextQuery) ([]fulltextTerm, error)
 					term.weight *= .5
 				}
 				pos++
+			}
+			if math.IsInf(term.weight, 0) || math.Abs(term.weight) > 1e6 {
+				return nil, pos, fmt.Errorf("fulltext term weight exceeds limit")
 			}
 			if pos >= len(text) {
 				return nil, pos, fmt.Errorf("fulltext operator without a term")
@@ -343,9 +356,10 @@ func parseBooleanFulltext(text string, q *fulltextQuery) ([]fulltextTerm, error)
 				term.words = fulltextWords(word)
 			}
 			if len(term.words) > 0 || len(term.children) > 0 {
+				nodes++
 				terms = append(terms, term)
 			}
-			if len(terms) > 1024 {
+			if nodes > 1024 {
 				return nil, pos, fmt.Errorf("fulltext query has too many terms")
 			}
 		}
@@ -445,7 +459,7 @@ func (s *Schema) evalFulltext(f *FuncCallExpr, row map[string]Value) (Value, err
 	if queryValue.Null {
 		return NewNullValue(), nil
 	}
-	text := queryValue.String()
+	text := mysqlStringValue(queryValue)
 	if len(text) > 64<<10 {
 		return NewNullValue(), fmt.Errorf("fulltext query exceeds 64 KiB")
 	}
@@ -460,6 +474,9 @@ func (s *Schema) evalFulltext(f *FuncCallExpr, row map[string]Value) (Value, err
 			for _, w := range fulltextWords(text) {
 				if q.indexed(w) {
 					q.terms = append(q.terms, fulltextTerm{words: []string{w}, weight: 1})
+					if len(q.terms) > 1024 {
+						return NewNullValue(), fmt.Errorf("fulltext query has too many terms")
+					}
 				}
 			}
 		}

@@ -195,3 +195,30 @@ func TestMySQLFulltextPersistsOnReopen(t *testing.T) {
 	}
 	d = nil
 }
+
+func TestMySQLFulltextJoinBindingsAndResourceLimits(t *testing.T) {
+	d := fulltextDatabase(t)
+	fulltextExec(t, d, "CREATE TABLE documents(id INTEGER PRIMARY KEY,body TEXT,FULLTEXT INDEX ft_body(body));CREATE TABLE links(id INTEGER PRIMARY KEY)")
+	fulltextExec(t, d, "INSERT INTO documents VALUES(1,'quasar nebula'),(2,'unrelated planet');INSERT INTO links VALUES(1),(2)")
+	r := fulltextExec(t, d, "SELECT d.id AS id FROM links AS l JOIN documents AS d ON l.id=d.id AND MATCH(d.body) AGAINST('quasar' IN BOOLEAN MODE)")
+	if len(r.Rows) != 1 || r.Rows[0]["id"].Int != 1 {
+		t.Fatalf("joined fulltext: %+v", r.Rows)
+	}
+	p, err := d.Prepare("SELECT id FROM documents WHERE MATCH(body) AGAINST(? IN BOOLEAN MODE)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	if r, err = p.Exec([]byte("+quasar")); err != nil || len(r.Rows) != 1 {
+		t.Fatalf("binary search: %+v %v", r, err)
+	}
+	for _, query := range []string{strings.Repeat("(", 65) + "quasar" + strings.Repeat(")", 65), strings.Repeat(">", 100) + "quasar", strings.Repeat("quasar ", 1025)} {
+		if _, err = p.Exec(query); err == nil {
+			t.Fatal("accepted unbounded fulltext search")
+		}
+	}
+	if _, err = d.Exec("SELECT MATCH(body) AGAINST('" + strings.Repeat("quasar ", 1025) + "') FROM documents"); err == nil {
+		t.Fatal("accepted unbounded natural search")
+	}
+	fulltextIDs(t, d, "MATCH(body) AGAINST('quasar' IN BOOLEAN MODE)", []int64{1})
+}
