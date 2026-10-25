@@ -110,6 +110,23 @@ The ordinary API continues to return independent results that can be retained.
 Point SELECTs decode only columns needed by the projection and WHERE predicate,
 so an unselected text or BLOB field is not copied.
 
+Prepared root reads compile namespace and system-view classification once and
+retain the private bound AST and read recipe when no rewrite is needed. Other
+namespace paths retain normal resolution; schema, dialect, temporary-table and
+catalog changes still invalidate affected recipes. Point recipes also cache
+immutable projection and decoding metadata instead of parsing declared types
+for every returned value.
+
+Reusable destinations retain their row and BLOB storage across empty results.
+WHERE-only values use private, bounded scratch and never retain a projected
+caller buffer. Exact signed-integer primary-key predicates can omit redundant
+residual evaluation only after the compiled key proof and this execution's
+binding checks succeed. Extra, duplicate, volatile and error-producing
+conditions retain normal evaluation and validation.
+
+The [SELECT benchmark](../cmd/select-bench/README.md) exposes `-reuse-results`;
+use a fixed API mode and runtime configuration when comparing engine versions.
+
 Prepared plan counters use 128 independent counter shards. A private bound AST
 gets its shard when it is created and keeps it through metadata invalidation.
 The hot query path does not update a global counter. `PlanStats` sums the shards;
