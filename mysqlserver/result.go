@@ -308,6 +308,10 @@ const maxRetainedResponseBytes = 64 << 10
 
 func (c *client) writeColumnDefinition(col sql.ColumnDef, database string) error {
 	p := appendColumnPacket(c.metadataPacket[:0], col, database)
+	return c.writeMetadataPacket(p)
+}
+
+func (c *client) writeMetadataPacket(p []byte) error {
 	err := c.writer.write(p)
 	if cap(p) <= maxRetainedResponseBytes {
 		c.metadataPacket = p[:0]

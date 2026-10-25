@@ -33,11 +33,11 @@ func (c *client) writeResultHeaderStatus(columns []sql.ColumnDef, status uint16)
 	// MySQL's implementation emits count THEN flag, despite the opposite order
 	// in some protocol reference tables: Protocol_classic::start_result_metadata.
 	// https://github.com/mysql/mysql-server/blob/8.0/sql/protocol_classic.cc
-	packet := appendLen(nil, uint64(len(columns)))
+	packet := appendLen(c.metadataPacket[:0], uint64(len(columns)))
 	if c.capabilities&clientOptionalMetadata != 0 {
 		packet = append(packet, c.resultMetadataFlag())
 	}
-	if err := c.writer.write(packet); err != nil {
+	if err := c.writeMetadataPacket(packet); err != nil {
 		return err
 	}
 	if c.sendResultMetadata() {
@@ -56,7 +56,7 @@ func (c *client) resultMetadataEnd(status uint16) error {
 	}
 	// MySQL THD::send_result_metadata calls end_result_metadata even for NONE.
 	// Consequently a legacy metadata EOF remains, without any field packets.
-	return c.writer.write(append16(append16([]byte{0xfe}, c.warningCount()), status))
+	return c.writeMetadataPacket(append16(append16(append(c.metadataPacket[:0], 0xfe), c.warningCount()), status))
 }
 
 func (c *client) resultTerminator(result *db.ExecResult) error {
@@ -65,7 +65,7 @@ func (c *client) resultTerminator(result *db.ExecResult) error {
 
 func (c *client) resultTerminatorStatus(result *db.ExecResult, status uint16) error {
 	if c.capabilities&clientDeprecateEOF == 0 {
-		return c.writer.write(append16(append16([]byte{0xfe}, c.warningCount()), status))
+		return c.resultMetadataEnd(status)
 	}
 	// EOF replacement is an OK packet with header FE, zero affected rows and
 	// zero insert ID. Preserve statement status, warnings and session tracking.
@@ -76,7 +76,7 @@ func (c *client) resultTerminatorStatus(result *db.ExecResult, status uint16) er
 	if position != "" && c.capabilities&clientSessionTrack != 0 {
 		status |= 1 << 14
 	}
-	packet := append16([]byte{0xfe, 0, 0}, status)
+	packet := append16(append(c.metadataPacket[:0], 0xfe, 0, 0), status)
 	packet = append16(packet, c.warningCount())
 	info := ""
 	if position != "" {
@@ -93,5 +93,5 @@ func (c *client) resultTerminatorStatus(result *db.ExecResult, status uint16) er
 	} else {
 		packet = append(packet, info...)
 	}
-	return c.writer.write(packet)
+	return c.writeMetadataPacket(packet)
 }
