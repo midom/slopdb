@@ -37,6 +37,7 @@ type field struct {
 	oid  uint32
 }
 type prepared struct {
+	copy                   *copyCommand
 	stmt                   *db.Stmt
 	native, original, kind string
 	positions              []int
@@ -109,6 +110,19 @@ func translate(query string) (string, []int, map[int]uint32, error) {
 	return out.String(), positions, hints, nil
 }
 func (c *client) prepare(ctx context.Context, query string, oids []uint32) (*prepared, error) {
+	copyCommand, copyErr := parseCopy(query)
+	if copyErr != nil {
+		return nil, copyErr
+	}
+	if copyCommand != nil {
+		if len(oids) > 0 {
+			return nil, &protocolError{"0A000", "COPY parameters are unsupported"}
+		}
+		if _, _, err := c.copyFields(ctx, copyCommand); err != nil {
+			return nil, err
+		}
+		return &prepared{copy: copyCommand, kind: "COPY", original: query, native: query}, nil
+	}
 	native, positions, hints, err := translate(query)
 	if err != nil {
 		return nil, err

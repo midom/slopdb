@@ -1,0 +1,330 @@
+package postgresserver
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/binary"
+	"errors"
+	"io"
+	"net"
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgproto3"
+	"github.com/lib/pq"
+)
+
+func copyConnection(t *testing.T, s *testServer) *pgx.Conn {
+	t.Helper()
+	c, err := pgx.Connect(context.Background(), s.dsn("slopdb", "", "slopdb"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.Close(context.Background()) })
+	return c
+}
+func TestCopyTextCSVAndQuery(t *testing.T) {
+	s := startTestServer(t, "tcp", Config{})
+	c := copyConnection(t, s)
+	ctx := context.Background()
+	if _, err := c.Exec(ctx, "CREATE TABLE c(id BIGINT PRIMARY KEY, v TEXT, missing TEXT, def TEXT DEFAULT 'default')"); err != nil {
+		t.Fatal(err)
+	}
+	input := "1\thello\\t世界\t\\N\n2\t\\\\N\t\n3\tline\\nnext\tx\n"
+	tag, err := c.PgConn().CopyFrom(ctx, strings.NewReader(input), "COPY c(id,v,missing) FROM STDIN")
+	if err != nil || tag.RowsAffected() != 3 {
+		t.Fatalf("%s %v", tag, err)
+	}
+	var out bytes.Buffer
+	tag, err = c.PgConn().CopyTo(ctx, &out, "COPY (SELECT id,v,missing FROM c ORDER BY id) TO STDOUT")
+	if err != nil || out.String() != input {
+		t.Fatalf("%s %v output %q", tag, err, out.String())
+	}
+	csv := "id,v,missing\r\n4,\"a,b\nnext\"\"quote\",\r\n5,\"\",\"\"\r\n6,\\N,value\r\n"
+	tag, err = c.PgConn().CopyFrom(ctx, strings.NewReader(csv), "COPY c(id,v,missing) FROM STDIN WITH (FORMAT csv, HEADER MATCH)")
+	if err != nil || tag.RowsAffected() != 3 {
+		t.Fatalf("%s %v", tag, err)
+	}
+	out.Reset()
+	_, err = c.PgConn().CopyTo(ctx, &out, "COPY (SELECT id,v,missing FROM c WHERE id>=4 ORDER BY id) TO STDOUT WITH (FORMAT csv, HEADER true)")
+	want := "id,v,missing\n4,\"a,b\nnext\"\"quote\",\n5,\"\",\"\"\n6,\\N,value\n"
+	if err != nil || out.String() != want {
+		t.Fatalf("csv %v output %q want %q", err, out.String(), want)
+	}
+	var n int
+	if err = c.QueryRow(ctx, "SELECT count(*) FROM c WHERE def='default'").Scan(&n); err != nil || n != 6 {
+		t.Fatalf("default count %d %v", n, err)
+	}
+}
+func TestCopyBinaryPGXAndIndependentFixture(t *testing.T) {
+	s := startTestServer(t, "tcp", Config{})
+	c := copyConnection(t, s)
+	ctx := context.Background()
+	if _, err := c.Exec(ctx, "CREATE TABLE binary_copy(id BIGINT PRIMARY KEY, txt TEXT, b BLOB, amount REAL)"); err != nil {
+		t.Fatal(err)
+	}
+	rows := [][]any{{int64(1), "hello 世界", []byte{0, 1, 255}, 1.25}, {int64(2), nil, []byte{}, -2.5}}
+	n, err := c.CopyFrom(ctx, pgx.Identifier{"binary_copy"}, []string{"id", "txt", "b", "amount"}, pgx.CopyFromRows(rows))
+	if err != nil || n != 2 {
+		t.Fatalf("pgx binary copy %d %v", n, err)
+	}
+	var out bytes.Buffer
+	_, err = c.PgConn().CopyTo(ctx, &out, "COPY (SELECT id,txt,b,amount FROM binary_copy ORDER BY id) TO STDOUT (FORMAT binary)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Independent format fixture: signature, flags, extension, typed field lengths,
+	// network-endian integer/float payload, null -1, empty bytea length 0, trailer.
+	fixture := []byte{'P', 'G', 'C', 'O', 'P', 'Y', '\n', 255, '\r', '\n', 0, 0, 0, 0, 0, 0, 0, 0, 0}
+	put := func(v []byte) {
+		if v == nil {
+			fixture = binary.BigEndian.AppendUint32(fixture, 0xffffffff)
+		} else {
+			fixture = binary.BigEndian.AppendUint32(fixture, uint32(len(v)))
+			fixture = append(fixture, v...)
+		}
+	}
+	for i := 0; i < 2; i++ {
+		fixture = binary.BigEndian.AppendUint16(fixture, 4)
+		put(binary.BigEndian.AppendUint64(nil, uint64(i+1)))
+		if i == 0 {
+			put([]byte("hello 世界"))
+			put([]byte{0, 1, 255})
+			put([]byte{0x3f, 0xf4, 0, 0, 0, 0, 0, 0})
+		} else {
+			put(nil)
+			put([]byte{})
+			put([]byte{0xc0, 0x04, 0, 0, 0, 0, 0, 0})
+		}
+	}
+	fixture = append(fixture, 255, 255)
+	if !bytes.Equal(out.Bytes(), fixture) {
+		t.Fatalf("binary output\n%x\nwant\n%x", out.Bytes(), fixture)
+	}
+}
+func TestCopyLibPQAndAtomicFailure(t *testing.T) {
+	s := startTestServer(t, "tcp", Config{})
+	c := s.open(t, "")
+	mustExec(t, c, "CREATE TABLE copy_atomic(id BIGINT PRIMARY KEY,v TEXT)")
+	tx, err := c.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stmt, err := tx.Prepare(pq.CopyIn("copy_atomic", "id", "v"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range [][]any{{int64(1), "one"}, {int64(2), "tab\tline\nslash\\"}} {
+		if _, err = stmt.Exec(row...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err = stmt.Exec(); err != nil {
+		t.Fatal(err)
+	}
+	if err = stmt.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err = tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	pg := copyConnection(t, s)
+	ctx := context.Background()
+	if _, err = pg.PgConn().CopyFrom(ctx, strings.NewReader("3\tgood\n1\tduplicate\n4\tlate\n"), "COPY copy_atomic FROM STDIN"); err == nil {
+		t.Fatal("duplicate COPY succeeded")
+	}
+	var n int
+	if err = pg.QueryRow(ctx, "SELECT count(*) FROM copy_atomic").Scan(&n); err != nil || n != 2 {
+		t.Fatalf("atomic count %d %v", n, err)
+	}
+	if _, err = pg.Exec(ctx, "BEGIN; INSERT INTO copy_atomic VALUES(10,'before'); SAVEPOINT caller"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = pg.PgConn().CopyFrom(ctx, strings.NewReader("11\tgood\ninvalid\tbad\n"), "COPY copy_atomic FROM STDIN")
+	if err == nil {
+		t.Fatal("invalid COPY succeeded")
+	}
+	_, err = pg.Exec(ctx, "SELECT 1")
+	var pe *pgconn.PgError
+	if !errors.As(err, &pe) || pe.Code != "25P02" {
+		t.Fatalf("failed tx %v", err)
+	}
+	if _, err = pg.Exec(ctx, "ROLLBACK TO caller; COMMIT"); err != nil {
+		t.Fatal(err)
+	}
+	if err = pg.QueryRow(ctx, "SELECT count(*) FROM copy_atomic WHERE id>=10").Scan(&n); err != nil || n != 1 {
+		t.Fatalf("savepoint recovery %d %v", n, err)
+	}
+}
+func TestCopyFragmentedExtendedAndLateMessages(t *testing.T) {
+	s := startTestServer(t, "tcp", Config{})
+	c := connectRaw(t, s)
+	c.query(t, "CREATE TABLE fragmented(id BIGINT PRIMARY KEY,v TEXT)")
+	c.send(t, &pgproto3.Parse{Name: "copy", Query: "COPY fragmented FROM STDIN (FORMAT csv)"}, &pgproto3.Describe{ObjectType: 'S', Name: "copy"}, &pgproto3.Bind{PreparedStatement: "copy"}, &pgproto3.Execute{})
+	receive[*pgproto3.ParseComplete](t, c)
+	receive[*pgproto3.ParameterDescription](t, c)
+	receive[*pgproto3.NoData](t, c)
+	receive[*pgproto3.BindComplete](t, c)
+	receive[*pgproto3.CopyInResponse](t, c)
+	for _, b := range []byte("1,\"héllo\n世界\"\n2,\"\"\n") {
+		c.send(t, &pgproto3.CopyData{Data: []byte{b}})
+	}
+	c.send(t, &pgproto3.CopyDone{}, &pgproto3.Sync{})
+	if tag := receive[*pgproto3.CommandComplete](t, c); string(tag.CommandTag) != "COPY 2" {
+		t.Fatal(tag)
+	}
+	for {
+		m, err := c.frontend.Receive()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := m.(*pgproto3.ReadyForQuery); ok {
+			break
+		}
+		if _, ok := m.(*pgproto3.ParameterStatus); !ok {
+			t.Fatalf("%T", m)
+		}
+	}
+	c.send(t, &pgproto3.Query{String: "COPY fragmented FROM STDIN"})
+	receive[*pgproto3.CopyInResponse](t, c)
+	c.send(t, &pgproto3.CopyData{Data: []byte("3\tgood\n")}, &pgproto3.CopyFail{Message: "source failed"}, &pgproto3.CopyData{Data: []byte("4\tlate\n")}, &pgproto3.CopyDone{})
+	receive[*pgproto3.ErrorResponse](t, c)
+	receive[*pgproto3.ReadyForQuery](t, c)
+	c.send(t, &pgproto3.Query{String: "SELECT count(*) FROM fragmented"})
+	receive[*pgproto3.RowDescription](t, c)
+	if row := receive[*pgproto3.DataRow](t, c); string(row.Values[0]) != "2" {
+		t.Fatal(row)
+	}
+	receive[*pgproto3.CommandComplete](t, c)
+	receive[*pgproto3.ReadyForQuery](t, c)
+}
+func TestCopyRecordFormatsAndBounds(t *testing.T) {
+	cases := []struct {
+		format, input string
+		want          []string
+	}{
+		{"text", `a\tb` + "\tc\\141\\x62\\v\n", []string{"a\tb", "cab\v"}},
+		{"csv", "\"a\r\nb\",\"double\"\"quote\"\r\n", []string{"a\r\nb", "double\"quote"}},
+	}
+	for _, tc := range cases {
+		command, _ := parseCopy("COPY t FROM STDIN (FORMAT " + tc.format + ")")
+		r := copyRecords{reader: bufio.NewReader(strings.NewReader(tc.input)), command: command, limit: 1024}
+		record, err := r.next(2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for _, f := range record {
+			data := f.data
+			if tc.format == "text" {
+				data = copyUnescape(data)
+			}
+			got = append(got, string(data))
+		}
+		if !reflect.DeepEqual(got, tc.want) {
+			t.Fatalf("%q != %q", got, tc.want)
+		}
+		if _, err = r.next(2); err != io.EOF {
+			t.Fatal(err)
+		}
+	}
+	command, _ := parseCopy("COPY t FROM STDIN")
+	r := copyRecords{reader: bufio.NewReader(strings.NewReader(strings.Repeat("x", 100))), command: command, limit: 10}
+	if _, err := r.next(1); err == nil {
+		t.Fatal("unbounded record")
+	}
+}
+
+func TestCopyCancellationDisconnectAndBinaryErrors(t *testing.T) {
+	s := startTestServer(t, "tcp", Config{})
+	c := connectRaw(t, s)
+	c.query(t, "CREATE TABLE cancelled_copy(id BIGINT PRIMARY KEY,v TEXT)")
+	c.send(t, &pgproto3.Query{String: "COPY cancelled_copy FROM STDIN"})
+	receive[*pgproto3.CopyInResponse](t, c)
+	c.send(t, &pgproto3.CopyData{Data: []byte("1\tfirst\n")})
+	s.server.mu.Lock()
+	var id, secret uint32
+	for _, backend := range s.server.backends {
+		id = backend.id
+		secret = backend.secret
+	}
+	s.server.mu.Unlock()
+	cancelConn, err := net.Dial(s.network, s.address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := (&pgproto3.CancelRequest{ProcessID: id, SecretKey: secret}).Encode(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = writeAll(cancelConn, request); err != nil {
+		t.Fatal(err)
+	}
+	_ = cancelConn.Close()
+	if response := receive[*pgproto3.ErrorResponse](t, c); response.Code != "57014" {
+		t.Fatal(response)
+	}
+	if ready := receive[*pgproto3.ReadyForQuery](t, c); ready.TxStatus != 'I' {
+		t.Fatal(ready)
+	}
+	c.send(t, &pgproto3.CopyDone{})
+	c.query(t, "SELECT 1")
+	connection := copyConnection(t, s)
+	var n int
+	if err = connection.QueryRow(context.Background(), "SELECT count(*) FROM cancelled_copy").Scan(&n); err != nil || n != 0 {
+		t.Fatalf("cancel count %d %v", n, err)
+	}
+	c.send(t, &pgproto3.Query{String: "COPY cancelled_copy FROM STDIN"})
+	receive[*pgproto3.CopyInResponse](t, c)
+	c.send(t, &pgproto3.CopyData{Data: []byte("2\tsecond\n")})
+	_ = c.conn.Close()
+	// A conflicting writer waits for the disconnected COPY to release its lock.
+	if _, err = connection.Exec(context.Background(), "INSERT INTO cancelled_copy VALUES(2,'after disconnect')"); err != nil {
+		t.Fatal(err)
+	}
+	bad := [][]byte{[]byte("bad"), append(append([]byte{}, copySignature...), 0, 1, 0, 0, 0, 0, 0, 0), append(append([]byte{}, copySignature...), 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 8, 0)}
+	for _, data := range bad {
+		if _, err = connection.PgConn().CopyFrom(context.Background(), bytes.NewReader(data), "COPY cancelled_copy FROM STDIN (FORMAT binary)"); err == nil {
+			t.Fatalf("invalid binary accepted %x", data)
+		}
+	}
+	if err = connection.QueryRow(context.Background(), "SELECT count(*) FROM cancelled_copy").Scan(&n); err != nil || n != 1 {
+		t.Fatalf("disconnect/malformed atomic count %d %v", n, err)
+	}
+}
+func TestCopyOptionsNullForceAndEndMarker(t *testing.T) {
+	s := startTestServer(t, "tcp", Config{})
+	c := copyConnection(t, s)
+	ctx := context.Background()
+	if _, err := c.Exec(ctx, "CREATE TABLE opts(id BIGINT PRIMARY KEY,a TEXT,b TEXT)"); err != nil {
+		t.Fatal(err)
+	}
+	data := "1;NULL;NULL\n2;'NULL';'NULL'\n3;'escape!'quote';'bang!!'\n"
+	command := "COPY opts FROM STDIN (FORMAT csv, DELIMITER ';', NULL 'NULL', QUOTE '''', ESCAPE '!', FORCE_NOT_NULL(a), FORCE_NULL(b))"
+	if _, err := c.PgConn().CopyFrom(ctx, strings.NewReader(data), command); err != nil {
+		t.Fatal(err)
+	}
+	var a, b *string
+	if err := c.QueryRow(ctx, "SELECT a,b FROM opts WHERE id=1").Scan(&a, &b); err != nil || a == nil || *a != "NULL" || b != nil {
+		t.Fatalf("force not null %v %v %v", a, b, err)
+	}
+	if err := c.QueryRow(ctx, "SELECT a,b FROM opts WHERE id=2").Scan(&a, &b); err != nil || a == nil || *a != "NULL" || b != nil {
+		t.Fatalf("force null %v %v %v", a, b, err)
+	}
+	if _, err := c.PgConn().CopyFrom(ctx, strings.NewReader("4\tx\ty\n\\.\nignored\n"), "COPY opts FROM STDIN"); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if _, err := c.PgConn().CopyTo(ctx, &out, "COPY (SELECT a,b FROM opts WHERE id=3) TO STDOUT WITH CSV FORCE_QUOTE *"); err != nil || out.String() != "\"escape'quote\",\"bang!\"\n" {
+		t.Fatalf("custom csv %q %v", out.String(), err)
+	}
+	for _, q := range []string{"COPY opts FROM '/tmp/secret'", "COPY opts TO PROGRAM 'cat'", "COPY opts FROM STDIN (FORMAT unknown)", "COPY opts FROM STDIN (FORMAT binary, DELIMITER ',')", "COPY opts FROM STDIN (FORMAT text, HEADER false)", "COPY opts TO STDOUT (FORMAT csv, FORCE_NULL(a))", "COPY opts FROM STDIN (FORMAT csv, NULL 'a,b')"} {
+		if _, err := parseCopy(q); err == nil {
+			t.Fatalf("invalid options accepted: %s", q)
+		}
+	}
+}

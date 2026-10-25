@@ -2,6 +2,7 @@ package postgresserver
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"strings"
@@ -13,6 +14,7 @@ import (
 )
 
 type client struct {
+	incoming                    <-chan frontendPacket
 	server                      *Server
 	conn                        net.Conn
 	ctx                         context.Context
@@ -63,11 +65,8 @@ func (c *client) run() {
 	if err := c.welcome(); err != nil {
 		return
 	}
-	type packet struct {
-		kind byte
-		body []byte
-	}
-	incoming := make(chan packet)
+	incoming := make(chan frontendPacket)
+	c.incoming = incoming
 	readerDone := make(chan struct{})
 	go func() {
 		defer close(readerDone)
@@ -84,7 +83,7 @@ func (c *client) run() {
 				return
 			}
 			select {
-			case incoming <- packet{kind[0], body}:
+			case incoming <- frontendPacket{kind[0], body}:
 			case <-c.ctx.Done():
 				return
 			}
@@ -94,6 +93,10 @@ func (c *client) run() {
 	for packet := range incoming {
 		if c.ctx.Err() != nil {
 			return
+		}
+		// COPY consumes its input synchronously. PostgreSQL ignores late COPY data after errors.
+		if packet.kind == 'd' || packet.kind == 'c' || packet.kind == 'f' {
+			continue
 		}
 		if c.skipUntilSync && packet.kind != 'S' && packet.kind != 'X' {
 			continue
@@ -392,6 +395,15 @@ func (c *client) executePortal(ctx context.Context, p *portal, maxRows uint32) e
 			}
 			c.extendedImplicit = true
 		}
+		if p.prepared.copy != nil {
+			count, err := c.runCopy(ctx, p.prepared.copy)
+			if err != nil {
+				return err
+			}
+			p.tag = fmt.Sprintf("COPY %d", count)
+			p.started = true
+			return c.send(&pgproto3.CommandComplete{CommandTag: []byte(p.tag)})
+		}
 		result, tag, err := c.executeSQL(ctx, p.prepared, p.args)
 		if err != nil {
 			return err
@@ -416,6 +428,9 @@ func (c *client) executePortal(ctx context.Context, p *portal, maxRows uint32) e
 			}
 		}
 		p.result, p.tag, p.started = result, tag, true
+	}
+	if p.prepared.copy != nil {
+		return c.send(&pgproto3.CommandComplete{CommandTag: []byte(p.tag)})
 	}
 	end := len(p.result.Rows)
 	if maxRows > 0 && uint64(maxRows) < uint64(end-p.position) {
@@ -481,6 +496,20 @@ func (c *client) simple(ctx context.Context, query string) error {
 	for _, part := range parts {
 		c.currentSQL = part
 		c.reportPositions = len(parts) == 1 && part == query && !strings.Contains(part, "$")
+		copyCommand, err := parseCopy(part)
+		if err != nil {
+			return err
+		}
+		if copyCommand != nil {
+			count, e := c.runCopy(ctx, copyCommand)
+			if e != nil {
+				return e
+			}
+			if e = c.send(&pgproto3.CommandComplete{CommandTag: []byte(fmt.Sprintf("COPY %d", count))}); e != nil {
+				return e
+			}
+			continue
+		}
 		native, positions, _, err := translate(part)
 		if err != nil {
 			return err

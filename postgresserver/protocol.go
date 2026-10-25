@@ -126,6 +126,12 @@ func decodeMessage(kind byte, body []byte) (pgproto3.FrontendMessage, error) {
 	d := decoder{data: body}
 	var message pgproto3.FrontendMessage
 	switch kind {
+	case 'd':
+		message = &pgproto3.CopyData{Data: d.take(len(d.data))}
+	case 'c':
+		message = &pgproto3.CopyDone{}
+	case 'f':
+		message = &pgproto3.CopyFail{Message: d.nul()}
 	case 'Q':
 		message = &pgproto3.Query{String: d.nul()}
 	case 'P':
