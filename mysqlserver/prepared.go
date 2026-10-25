@@ -58,27 +58,35 @@ func (c *client) prepare(query string) error {
 	p := append32([]byte{0}, c.nextStmt)
 	p = append16(p, uint16(len(columns)))
 	p = append16(p, uint16(stmt.NumInput()))
-	p = append(p, 0, 0, 0)
+	p = append(p, 0)
+	p = append16(p, c.warningCount())
+	if c.capabilities&clientOptionalMetadata != 0 {
+		p = append(p, c.resultMetadataFlag())
+	}
 	if err := c.writer.write(p); err != nil {
 		return err
 	}
-	for i := 0; i < stmt.NumInput(); i++ {
-		if err := c.writer.write(columnPacket(sql.ColumnDef{Name: "?", ColType: sql.ColText}, "")); err != nil {
-			return err
+	if c.sendResultMetadata() {
+		for i := 0; i < stmt.NumInput(); i++ {
+			if err := c.writeColumnDefinition(sql.ColumnDef{Name: "?", ColType: sql.ColText}, ""); err != nil {
+				return err
+			}
 		}
 	}
 	if stmt.NumInput() > 0 {
-		if err := c.eof(); err != nil {
+		if err := c.resultMetadataEnd(c.status()); err != nil {
 			return err
 		}
 	}
-	for _, col := range columns {
-		if err := c.writer.write(columnPacket(col, c.selected)); err != nil {
-			return err
+	if c.sendResultMetadata() {
+		for _, col := range columns {
+			if err := c.writeColumnDefinition(col, c.selected); err != nil {
+				return err
+			}
 		}
 	}
 	if len(columns) > 0 {
-		return c.eof()
+		return c.resultMetadataEnd(c.status())
 	}
 	return nil
 }

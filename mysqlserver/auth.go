@@ -26,7 +26,9 @@ const (
 	clientConnectAttrs     uint32 = 1 << 20
 	clientPluginAuthLenenc uint32 = 1 << 21
 	clientSessionTrack     uint32 = 1 << 23
-	capabilities                  = clientLocalFiles | clientLongPassword | clientFoundRows | clientLongFlag | clientConnectDB | clientProtocol41 | clientTransactions | clientSecureConnection | clientPluginAuth | clientConnectAttrs | clientPluginAuthLenenc | clientSessionTrack | clientCompress | clientMultiStatements | clientMultiResults
+	clientDeprecateEOF     uint32 = 1 << 24
+	clientOptionalMetadata uint32 = 1 << 25
+	capabilities                  = clientLocalFiles | clientLongPassword | clientFoundRows | clientLongFlag | clientConnectDB | clientProtocol41 | clientTransactions | clientSecureConnection | clientPluginAuth | clientConnectAttrs | clientPluginAuthLenenc | clientSessionTrack | clientCompress | clientMultiStatements | clientMultiResults | clientDeprecateEOF | clientOptionalMetadata
 	authPlugin                    = "mysql_native_password"
 	serverVersion                 = "5.7.44-SlopDB"
 )

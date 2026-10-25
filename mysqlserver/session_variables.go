@@ -15,10 +15,11 @@ type sessionVariables struct {
 	groupConcatMaxLen               int64
 	netReadTimeout, netWriteTimeout int64
 	sqlMode, charset                string
+	resultsetMetadata               byte
 }
 
 func defaultSessionVariables() sessionVariables {
-	return sessionVariables{groupConcatMaxLen: 1024, netReadTimeout: 30, netWriteTimeout: 60, sqlMode: "STRICT_TRANS_TABLES", charset: "utf8mb4"}
+	return sessionVariables{groupConcatMaxLen: 1024, netReadTimeout: 30, netWriteTimeout: 60, sqlMode: "STRICT_TRANS_TABLES", charset: "utf8mb4", resultsetMetadata: resultsetMetadataFull}
 }
 
 func (c *client) mysqlContext() context.Context {
@@ -54,6 +55,14 @@ func (c *client) variable(name string, global bool) (sql.Value, error) {
 		return value, err
 	}
 	switch strings.ToLower(name) {
+	case "resultset_metadata":
+		if global {
+			return sql.Value{}, &protocolError{1238, "HY000", "Variable 'resultset_metadata' is a SESSION variable"}
+		}
+		if c.variables.resultsetMetadata == resultsetMetadataNone {
+			return sql.NewTextValue("NONE"), nil
+		}
+		return sql.NewTextValue("FULL"), nil
 	case "net_read_timeout":
 		if global {
 			return sql.NewIntValue(30), nil
@@ -164,6 +173,9 @@ func (c *client) compatibilityControl(query string) (*db.ExecResult, bool, error
 		}
 		names := []string{"autocommit", "group_concat_max_len", "sql_mode", "read_only", "super_read_only", "character_set_client", "character_set_connection", "character_set_results", "collation_connection", "version", "version_comment", "max_allowed_packet", "ft_min_word_len", "transaction_isolation", "tx_isolation", "lower_case_table_names", "time_zone", "system_time_zone"}
 		names = append(names, "net_read_timeout", "net_write_timeout", "log_bin", "binlog_format", "binlog_row_image", "binlog_checksum", "gtid_mode", "enforce_gtid_consistency", "server_id", "server_uuid", "gtid_executed", "gtid_purged")
+		if !global {
+			names = append(names, "resultset_metadata")
+		}
 		extra, err := c.serverVariableNames()
 		if err != nil {
 			return nil, true, err
@@ -203,7 +215,7 @@ func variableLike(value, pattern string) bool { return sql.SystemVariableLike(va
 
 func (c *client) setSessionVariables(tokens []sql.Token) (*db.ExecResult, bool, error) {
 	i := 1
-	if i < len(tokens) && tokens[i].Type == sql.TokInvalid && tokens[i].Value == "@" {
+	if i < len(tokens) && tokens[i].Type == sql.TokInvalid && tokens[i].Value == "@" && (i+1 >= len(tokens) || tokens[i+1].Type != sql.TokInvalid || tokens[i+1].Value != "@") {
 		return nil, false, nil
 	}
 	if strings.EqualFold(tokens[i].Value, "READ") || strings.EqualFold(tokens[i].Value, "TRANSACTION") || strings.EqualFold(tokens[i].Value, "NAMES") {
@@ -222,6 +234,25 @@ func (c *client) setSessionVariables(tokens []sql.Token) (*db.ExecResult, bool, 
 	autocommit := c.autocommit
 	var isolation sql.IsolationLevel
 	for i < len(tokens) {
+		if tokens[i].Type == sql.TokInvalid && tokens[i].Value == "@" {
+			if i+1 >= len(tokens) || tokens[i+1].Type != sql.TokInvalid || tokens[i+1].Value != "@" {
+				return nil, false, nil
+			}
+			i += 2
+			if i+1 < len(tokens) && tokens[i+1].Type == sql.TokDot {
+				switch strings.ToUpper(tokens[i].Value) {
+				case "SESSION", "LOCAL":
+				case "GLOBAL":
+					return nil, true, fmt.Errorf("global variable changes are not supported")
+				default:
+					return nil, true, fmt.Errorf("invalid system variable scope")
+				}
+				i += 2
+			}
+			if i >= len(tokens) {
+				return nil, true, fmt.Errorf("missing system variable name")
+			}
+		}
 		name := strings.ToLower(tokens[i].Value)
 		i++
 		if i >= len(tokens) || tokens[i].Type != sql.TokEq {
@@ -234,6 +265,18 @@ func (c *client) setSessionVariables(tokens []sql.Token) (*db.ExecResult, bool, 
 		v := tokens[i]
 		i++
 		switch name {
+		case "resultset_metadata":
+			switch strings.ToUpper(v.Value) {
+			case "FULL", "1", "DEFAULT":
+				next.resultsetMetadata = resultsetMetadataFull
+			case "NONE", "0":
+				if c.capabilities&clientOptionalMetadata == 0 {
+					return nil, true, &protocolError{3640, "HY000", "The client does not support optional metadata transfer"}
+				}
+				next.resultsetMetadata = resultsetMetadataNone
+			default:
+				return nil, true, &protocolError{1231, "42000", "Variable 'resultset_metadata' can't be set to the requested value"}
+			}
 		case "transaction_isolation", "tx_isolation":
 			var err error
 			isolation, err = sql.ParseIsolationLevel(v.Value)
