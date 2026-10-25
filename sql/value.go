@@ -100,6 +100,8 @@ func (col ColumnDef) DeclaredType() string {
 type CreateTableStmt struct {
 	Engine        string
 	Charset       string
+	Temporary     bool
+	Like          string // source table for CREATE TABLE ... LIKE
 	Constraints   []ConstraintDef
 	Table         string
 	Columns       []ColumnDef
@@ -225,7 +227,9 @@ type UpdateSet struct {
 }
 
 type DropTableStmt struct {
-	Table string
+	Table     string
+	Temporary bool
+	IfExists  bool
 }
 
 type CreateViewStmt struct {

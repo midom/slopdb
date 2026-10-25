@@ -257,6 +257,16 @@ func (p *Parser) parseCreate() (Statement, error) {
 	p.advance()
 	kw := strings.ToUpper(p.cur.Value)
 	switch kw {
+	case "TEMPORARY":
+		p.advance()
+		if !strings.EqualFold(p.cur.Value, "TABLE") {
+			return nil, fmt.Errorf("expected TABLE after CREATE TEMPORARY")
+		}
+		stmt, err := p.parseCreateTable()
+		if err == nil {
+			stmt.(*CreateTableStmt).Temporary = true
+		}
+		return stmt, err
 	case "TABLE":
 		return p.parseCreateTable()
 	case "INDEX", "UNIQUE", "FULLTEXT":
@@ -288,11 +298,28 @@ func (p *Parser) parseCreateTable() (Statement, error) {
 	if err := p.expect(TokIdent); err != nil {
 		return nil, err
 	}
+	stmt := &CreateTableStmt{Table: strings.ToLower(tableName), IfNotExists: ifNotExists}
+	wrappedLike := p.cur.Type == TokLParen && strings.EqualFold(p.tok.Peek().Value, "LIKE")
+	if wrappedLike {
+		p.advance()
+	}
+	if strings.EqualFold(p.cur.Value, "LIKE") {
+		p.advance()
+		if p.cur.Type != TokIdent {
+			return nil, fmt.Errorf("expected source table after LIKE")
+		}
+		stmt.Like = strings.ToLower(p.cur.Value)
+		p.advance()
+		if wrappedLike {
+			if err := p.expect(TokRParen); err != nil {
+				return nil, err
+			}
+		}
+		return stmt, nil
+	}
 	if err := p.expect(TokLParen); err != nil {
 		return nil, err
 	}
-
-	stmt := &CreateTableStmt{Table: strings.ToLower(tableName), IfNotExists: ifNotExists}
 
 	expectComma := false
 	for {
@@ -1534,13 +1561,30 @@ func (p *Parser) parseDrop() (Statement, error) {
 	}
 
 	kw := strings.ToUpper(p.cur.Value)
+	temporary := false
+	if kw == "TEMPORARY" {
+		temporary = true
+		p.advance()
+		kw = strings.ToUpper(p.cur.Value)
+		if kw != "TABLE" {
+			return nil, fmt.Errorf("expected TABLE after DROP TEMPORARY")
+		}
+	}
 	if kw == "TABLE" {
 		p.advance()
+		ifExists := false
+		if strings.EqualFold(p.cur.Value, "IF") {
+			p.advance()
+			if err := p.expectKeyword("EXISTS"); err != nil {
+				return nil, err
+			}
+			ifExists = true
+		}
 		tableName := p.cur.Value
 		if err := p.expect(TokIdent); err != nil {
 			return nil, err
 		}
-		return &DropTableStmt{Table: strings.ToLower(tableName)}, nil
+		return &DropTableStmt{Table: strings.ToLower(tableName), Temporary: temporary, IfExists: ifExists}, nil
 	}
 	if kw == "VIEW" {
 		p.advance()
