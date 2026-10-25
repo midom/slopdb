@@ -76,7 +76,7 @@ func postgresCatalogFunctions() map[string]mysqlFunctionSpec {
 				resolved, ok := s.pgLookupRelation(obj)
 				return pgBool(ok && resolved == oid), nil
 			}
-			if pgPrimaryOID(t) != 0 && pgPrimaryOID(t) == oid {
+			if pgPrimaryIsSynthetic(t) && pgPrimaryOID(t) == oid {
 				resolved, ok := s.pgLookupRelation(pgPrimaryName(t))
 				return pgBool(ok && resolved == oid), nil
 			}
@@ -118,7 +118,7 @@ func postgresCatalogFunctions() map[string]mysqlFunctionSpec {
 		}
 
 		for _, t := range s.tables {
-			if pgPrimaryOID(t) != 0 && pgPrimaryOID(t) == oid {
+			if pgPrimaryIsSynthetic(t) && pgPrimaryOID(t) == oid {
 				if len(a) > 1 && !a[1].Null {
 					n, e := pgCatalogInt(a[1])
 					if e != nil {
@@ -395,7 +395,7 @@ func (s *Schema) pgLookupRelation(name string) (int64, bool) {
 		}
 		for _, t := range s.tables {
 			tns, _ := SplitSchemaName(t.Name)
-			if tns == s.namespaceAlias(ns) && pgPrimaryOID(t) != 0 && pgPrimaryName(t) == obj {
+			if tns == s.namespaceAlias(ns) && pgPrimaryIsSynthetic(t) && pgPrimaryName(t) == obj {
 				return pgPrimaryOID(t), true
 			}
 		}

@@ -259,7 +259,7 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 		if e := claim(pgObjectOID(t.ID), "table:"+n); e != nil {
 			return nil, e
 		}
-		if pgPrimaryOID(t) != 0 {
+		if pgPrimaryIsSynthetic(t) {
 			if e := claim(pgPrimaryOID(t), "primary:"+n); e != nil {
 				return nil, e
 			}
@@ -365,7 +365,7 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 				has = has || idx.Table == n
 			}
 			add(pgObjectOID(t.ID), n, "r", len(t.Columns), has, s.isTemporaryTable(n))
-			if pgPrimaryOID(t) != 0 {
+			if pgPrimaryIsSynthetic(t) {
 				ns, _ := pgObjectNames(n)
 				add(pgPrimaryOID(t), ns+"."+pgPrimaryName(t), "i", len(t.PKColumns), false, s.isTemporaryTable(n))
 			}
@@ -425,7 +425,7 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 
 		for _, n := range tables {
 			t := s.tables[n]
-			if pgPrimaryOID(t) == 0 {
+			if !pgPrimaryIsSynthetic(t) {
 				continue
 			}
 			var key []string
@@ -477,7 +477,7 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 
 		for _, n := range tables {
 			t := s.tables[n]
-			if pgPrimaryOID(t) != 0 {
+			if pgPrimaryIsSynthetic(t) {
 				ns, obj := pgObjectNames(n)
 				pgCatalogRow(r, ns, obj, pgPrimaryName(t), nil, pgPrimarySQL(t))
 			}
@@ -663,6 +663,12 @@ func pgAction(action string) string {
 // A clustered primary key is a real maintained LSM index even though it has no
 // separate secondary IndexInfo. Publish it as a logical catalog index too.
 func pgPrimaryOID(t *TableInfo) int64 {
+
+	for _, c := range t.Constraints {
+		if c.Kind == "PRIMARY" && c.IndexID != 0 {
+			return pgObjectOID(c.IndexID)
+		}
+	}
 	if len(t.PKColumns) == 0 {
 		return 0
 	}
@@ -688,4 +694,16 @@ func pgPrimarySQL(t *TableInfo) string {
 func pgConstraintName(t *TableInfo, c ConstraintDef) string {
 	ns, _ := SplitSchemaName(t.Name)
 	return strings.TrimPrefix(c.Name, ns+".")
+}
+
+func pgPrimaryIsSynthetic(t *TableInfo) bool {
+	if len(t.PKColumns) == 0 {
+		return false
+	}
+	for _, c := range t.Constraints {
+		if c.Kind == "PRIMARY" && c.IndexID != 0 {
+			return false
+		}
+	}
+	return true
 }
