@@ -2337,12 +2337,12 @@ func (p *Parser) parsePrimary() (Expression, error) {
 
 	if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "TRUE" {
 		p.advance()
-		return &LiteralExpr{Value: Value{Type: ColInteger, Int: 1, PGType: "BOOLEAN"}}, nil
+		return &LiteralExpr{Value: Value{Type: ColInteger, Int: 1, SemanticType: TypeBoolean}}, nil
 	}
 
 	if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "FALSE" {
 		p.advance()
-		return &LiteralExpr{Value: Value{Type: ColInteger, Int: 0, PGType: "BOOLEAN"}}, nil
+		return &LiteralExpr{Value: Value{Type: ColInteger, Int: 0, SemanticType: TypeBoolean}}, nil
 	}
 
 	if p.cur.Type == TokIdent {

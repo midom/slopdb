@@ -113,16 +113,16 @@ func normalizePostgresColumnValue(v Value, col ColumnDef) (Value, error) {
 		copy := col
 		copy.Postgres = false
 		r, e := normalizeColumnValue(v, copy)
-		r.PGType = "NUMERIC"
+		r = r.WithDeclaredType("NUMERIC")
 		return r, e
 	}
 	if v.Null {
-		v.PGType = col.Declared
+		v = v.WithDeclaredType(col.Declared)
 		return v, nil
 	}
 	if col.ColType == ColDecimal && col.Precision > 0 {
 		r, e := normalizeDecimal(v, col)
-		r.PGType = col.Declared
+		r = r.WithDeclaredType(col.Declared)
 		return r, e
 	}
 	target := col.Declared
@@ -141,7 +141,7 @@ func normalizePostgresColumnValue(v Value, col ColumnDef) (Value, error) {
 }
 
 // CastPostgresValue performs the conversion used by PostgreSQL casts and typed
-// parameter decoding. PGType is transient; tables persist their declaration in
+// parameter decoding. Logical type IDs are transient; tables persist their declaration in
 // the catalog and restore it when rows are decoded.
 func CastPostgresValue(v Value, target string) (Value, error) {
 	name := strings.ToUpper(strings.TrimSpace(target))
@@ -149,7 +149,7 @@ func CastPostgresValue(v Value, target string) (Value, error) {
 		name = strings.TrimPrefix(name, "PG_CATALOG.")
 	}
 	if v.Null {
-		v.PGType = name
+		v = v.WithDeclaredType(name)
 		return v, nil
 	}
 	oid := PostgresColumnOID(ColumnDef{Declared: name})
@@ -304,7 +304,7 @@ func CastPostgresValue(v Value, target string) (Value, error) {
 			}
 			break
 		}
-		if v.PGType == "BOOLEAN" || v.PGType == "BOOL" {
+		if v.LogicalType().Kind == TypeBoolean {
 			if v.Int != 0 {
 				result = NewTextValue("true")
 			} else {
@@ -330,7 +330,7 @@ func CastPostgresValue(v Value, target string) (Value, error) {
 			result.Text = result.Text[:len(result.Text)-1]
 		}
 	}
-	result.PGType = name
+	result = result.WithDeclaredType(name)
 	return result, nil
 }
 

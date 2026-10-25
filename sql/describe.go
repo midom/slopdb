@@ -455,7 +455,10 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 		}
 		col := ColumnDef{ColType: e.Value.Type, NotNull: true}
 		if s.PostgresMode() {
-			col.Declared, col.Postgres = e.Value.PGType, e.Value.PGType != ""
+			if typ := e.Value.LogicalType(); typ.Known() {
+				col.SemanticType = typ.Kind
+				col.Declared = typ.Declaration()
+			}
 		}
 		return col, nil
 	case *ParameterExpr:

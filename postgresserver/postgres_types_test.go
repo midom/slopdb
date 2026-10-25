@@ -231,3 +231,56 @@ func TestPostgresTimetzSecondOffsetsAndEndOfDay(t *testing.T) {
 		}
 	}
 }
+
+func TestSharedTypedParameterIdentityWithoutCasts(t *testing.T) {
+	s := startTestServer(t, "tcp", Config{})
+	ctx := context.Background()
+	c, e := pgx.Connect(ctx, s.dsn("slopdb", "", "slopdb"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer c.Close(ctx)
+	// Protocol-declared types remain attached to otherwise untyped parameter
+	// expressions. Metadata and returned values must agree in text and binary.
+	for _, mode := range []pgx.QueryExecMode{pgx.QueryExecModeCacheStatement, pgx.QueryExecModeDescribeExec} {
+		for _, tc := range []struct {
+			q   string
+			v   any
+			oid uint32
+		}{
+			{"SELECT $1::smallint", int16(123), oidInt2}, {"SELECT $1::integer", int32(123), oidInt4},
+			{"SELECT $1::real", float32(1.25), oidFloat4}, {"SELECT $1::jsonb", `{"ok":true}`, oidJSONB},
+		} {
+			rows, e := c.Query(ctx, tc.q, mode, tc.v)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if len(rows.FieldDescriptions()) != 1 || rows.FieldDescriptions()[0].DataTypeOID != tc.oid {
+				t.Fatal(rows.FieldDescriptions())
+			}
+			if !rows.Next() {
+				t.Fatal(rows.Err())
+			}
+			if _, e = rows.Values(); e != nil {
+				t.Fatal(e)
+			}
+			rows.Close()
+		}
+	}
+
+	for _, tc := range []struct {
+		oid  uint32
+		text string
+	}{{oidBool, "t"}, {oidInt2, "123"}, {oidInt4, "123"}, {oidFloat4, "1.25"}, {oidJSONB, `{"ok":true}`}, {oidUUID, "550e8400-e29b-41d4-a716-446655440000"}} {
+		result := c.PgConn().ExecParams(ctx, "SELECT $1", [][]byte{[]byte(tc.text)}, []uint32{tc.oid}, []int16{0}, []int16{0}).Read()
+		if result.Err != nil || len(result.Rows) != 1 || len(result.FieldDescriptions) != 1 || result.FieldDescriptions[0].DataTypeOID != tc.oid || string(result.Rows[0][0]) != tc.text {
+			t.Fatalf("uncastoid%d result %+v", tc.oid, result)
+		}
+	}
+	for _, oid := range []uint32{oidBool, oidInt2, oidInt4, oidInt8, oidFloat4, oidFloat8, oidJSON, oidJSONB, oidUUID} {
+		v, e := parameterValue(nil, oid)
+		if e != nil || !v.Null || sql.PostgresValueOID(v) != oid || v.PGType != "" {
+			t.Fatalf("typedNULL oid%d %+v %v", oid, v, e)
+		}
+	}
+}

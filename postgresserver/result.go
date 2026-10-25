@@ -354,7 +354,7 @@ func decodeValue(data []byte, oid uint32, binaryFormat bool) (any, error) {
 		if err != nil {
 			return invalid()
 		}
-		return sql.Value{Type: sql.ColInteger, Int: int64(n), PGType: "OID"}, nil
+		return sql.Value{Type: sql.ColInteger, Int: int64(n), SemanticType: sql.TypeObjectID}, nil
 	}
 	if postgresOIDName(oid) != "" {
 		return decodePostgresTypedValue(data, oid, binaryFormat)
@@ -374,7 +374,7 @@ func decodeValue(data []byte, oid uint32, binaryFormat bool) (any, error) {
 			if len(data) != 1 || data[0] > 1 {
 				return invalid()
 			}
-			return sql.Value{Type: sql.ColInteger, Int: int64(data[0]), PGType: "BOOLEAN"}, nil
+			return sql.Value{Type: sql.ColInteger, Int: int64(data[0]), SemanticType: sql.TypeBoolean}, nil
 		case oidInt2:
 			if len(data) != 2 {
 				return invalid()
@@ -468,4 +468,27 @@ func bytesContainZero(data []byte) bool {
 		}
 	}
 	return false
+}
+
+// parameterValue retains semantic identity through the protocol-neutral binder;
+// raw codecs remain independently testable using ordinary Go scalar values.
+func parameterValue(decoded any, oid uint32) (sql.Value, error) {
+	var v sql.Value
+	switch x := decoded.(type) {
+	case nil:
+		v = sql.NewNullValue()
+	case sql.Value:
+		v = x
+	case int64:
+		v = sql.NewIntValue(x)
+	case float64:
+		v = sql.NewRealValue(x)
+	case string:
+		v = sql.NewTextValue(x)
+	case []byte:
+		v = sql.Value{Type: sql.ColBlob, Blob: x}
+	default:
+		return sql.Value{}, &protocolError{"22P02", "unsupported decoded parameter type"}
+	}
+	return v.WithSemanticType(sql.PostgresTypeDefinition(oid).LogicalType().Kind), nil
 }

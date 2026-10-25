@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"slopdb/db"
+	"slopdb/sql"
 )
 
 func TestPostgresDeclaredTypePersistenceAndAssignments(t *testing.T) {
@@ -41,7 +42,7 @@ func TestPostgresDeclaredTypePersistenceAndAssignments(t *testing.T) {
 			t.Fatalf("pass %d: %+v", pass, row)
 		}
 		for _, name := range []string{"id", "b", "n", "t", "d", "u", "small"} {
-			if row[name].PGType == "" {
+			if !row[name].LogicalType().Known() || row[name].SemanticType == sql.TypeUnknown {
 				t.Errorf("lost type of %s", name)
 			}
 		}

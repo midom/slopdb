@@ -200,12 +200,7 @@ func (p *Parser) parseColumnType(col *ColumnDef) error {
 }
 
 func decorateColumnValue(v Value, col ColumnDef) Value {
-	if col.Postgres {
-		v.PGType = col.Declared
-		if col.Unsigned {
-			v.PGType = "NUMERIC"
-		}
-	}
+	v = v.WithSemanticType(col.LogicalType().Kind)
 	v.HexLiteral = false
 	v.Binary = col.Binary
 	if !v.Null && len(col.EnumValues) > 0 {

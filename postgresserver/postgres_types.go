@@ -111,7 +111,7 @@ func decodePostgresTypedValue(data []byte, oid uint32, binaryFormat bool) (any, 
 		if east%60 != 0 {
 			text += fmt.Sprintf(":%02d", east%60)
 		}
-		return sql.Value{Type: sql.ColText, Text: text, PGType: "TIMETZ"}, nil
+		return sql.Value{Type: sql.ColText, Text: text, SemanticType: sql.TypeTimeTZ}, nil
 	}
 	codec, target := postgresCodec(oid)
 	if err := codec.PlanScan(nil, oid, pgtype.BinaryFormatCode, target).Scan(data, target); err != nil {
@@ -120,10 +120,10 @@ func decodePostgresTypedValue(data []byte, oid uint32, binaryFormat bool) (any, 
 	switch val := target.(type) {
 	case *pgtype.UUID:
 		v := sql.NewBlobValue(append([]byte(nil), val.Bytes[:]...))
-		v.PGType = "UUID"
+		v = v.WithSemanticType(sql.TypeUUID)
 		return v, nil
 	case *pgtype.Interval:
-		return sql.Value{Type: sql.ColText, Text: sql.FormatPostgresInterval(val.Months, val.Days, val.Microseconds), PGType: "INTERVAL"}, nil
+		return sql.Value{Type: sql.ColText, Text: sql.FormatPostgresInterval(val.Months, val.Days, val.Microseconds), SemanticType: sql.TypeInterval}, nil
 	}
 	text, err := codec.PlanEncode(nil, oid, pgtype.TextFormatCode, target).Encode(target, nil)
 	if err != nil {

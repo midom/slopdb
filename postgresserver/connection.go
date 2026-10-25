@@ -213,7 +213,11 @@ func (c *client) dispatch(ctx context.Context, message pgproto3.FrontendMessage)
 			if err != nil {
 				return err
 			}
-			values[i] = decoded
+			typed, err := parameterValue(decoded, prepared.params[i])
+			if err != nil {
+				return err
+			}
+			values[i] = typed
 		}
 		args := make([]any, len(prepared.positions))
 		for i, index := range prepared.positions {

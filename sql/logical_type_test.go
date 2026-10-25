@@ -44,6 +44,10 @@ func TestLogicalTypesKeepModifiersAndProtocolNeutralValues(t *testing.T) {
 	if v.PGType != "" || v.LogicalType().Kind != TypeBoolean {
 		t.Fatal(v)
 	}
+	collated := LogicalType{Kind: TypeText, Collation: "NFC_CI", TemporalPrecision: -1}
+	if got := collated.Column().LogicalType(); got != collated {
+		t.Fatalf("collation roundtrip %+v", got)
+	}
 	legacy := Value{Type: ColInteger, Int: 1, PGType: "BOOLEAN"}
 	if legacy.LogicalType().Kind != TypeBoolean {
 		t.Fatal("legacy compatibility")

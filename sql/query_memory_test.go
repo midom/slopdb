@@ -285,7 +285,7 @@ func TestIndexedSpillPreservesValueMetadata(t *testing.T) {
 	expression.NumericExact = "1/3"
 	hexLiteral := NewBlobValue([]byte{'1'})
 	hexLiteral.HexLiteral = true
-	original := map[string]Value{"v": value, "literal": literal, "expression": expression, "hex": hexLiteral}
+	original := map[string]Value{"v": value, "literal": literal, "expression": expression, "hex": hexLiteral, "boolean": NewIntValue(1).WithSemanticType(TypeBoolean), "typed_null": NewNullValue().WithSemanticType(TypeUUID)}
 	if err = h.add("key", original); err != nil {
 		t.Fatal(err)
 	}

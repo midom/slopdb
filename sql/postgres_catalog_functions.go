@@ -9,7 +9,11 @@ import (
 func postgresCatalogFunctions() map[string]FunctionSpec {
 	out := map[string]FunctionSpec{}
 	add := func(name string, min, max int, typ ColumnType, declared string, fn func(*Schema, []Value) (Value, error)) {
-		out[name] = FunctionSpec{Min: min, Max: max, Return: typ, Volatile: true, Metadata: func([]ColumnDef) ColumnDef { return ColumnDef{ColType: typ, Declared: declared, Postgres: true} }, Eval: func(s *Schema, a []Value) (Value, error) { v, e := fn(s, a); v.PGType = declared; return v, e }}
+		out[name] = FunctionSpec{Min: min, Max: max, Return: typ, Volatile: true, Metadata: func([]ColumnDef) ColumnDef { return ColumnDef{ColType: typ, Declared: declared, Postgres: true} }, Eval: func(s *Schema, a []Value) (Value, error) {
+			v, e := fn(s, a)
+			v = v.WithDeclaredType(declared)
+			return v, e
+		}}
 	}
 	add("TO_REGCLASS", 1, 1, ColInteger, "BIGINT", func(s *Schema, a []Value) (Value, error) {
 		if a[0].Null {
@@ -330,13 +334,13 @@ func (s *Schema) CastPostgresCatalogValue(v Value, target string) (Value, bool, 
 		return Value{}, false, nil
 	}
 	if v.Null {
-		v.PGType = target
+		v = v.WithDeclaredType(target)
 		return v, true, nil
 	}
 	name := v.String()
 	if _, e := strconv.ParseUint(name, 10, 32); e == nil {
 		r, e := CastPostgresValue(v, "BIGINT")
-		r.PGType = target
+		r = r.WithDeclaredType(target)
 		return r, true, e
 	}
 	fn := "TO_REGCLASS"
@@ -348,7 +352,7 @@ func (s *Schema) CastPostgresCatalogValue(v Value, target string) (Value, bool, 
 		for _, t := range pgTypes {
 			if name == t.name || name == t.display {
 				r := NewIntValue(int64(t.oid))
-				r.PGType = target
+				r = r.WithDeclaredType(target)
 				return r, true, nil
 			}
 		}
@@ -358,7 +362,7 @@ func (s *Schema) CastPostgresCatalogValue(v Value, target string) (Value, bool, 
 	if e == nil && r.Null {
 		e = fmt.Errorf("relation or schema %q does not exist", name)
 	}
-	r.PGType = target
+	r = r.WithDeclaredType(target)
 	return r, true, e
 }
 

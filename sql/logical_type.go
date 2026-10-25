@@ -320,9 +320,13 @@ func LogicalTypeFromColumn(c ColumnDef) LogicalType {
 		t.Kind = TypeVarchar
 	}
 	t.Precision, t.Scale, t.Length = c.Precision, c.Scale, c.Length
-	if c.TypeModifiers || c.TemporalPrecision > 0 {
-		t.TemporalPrecision = c.TemporalPrecision
+	switch t.Kind {
+	case TypeTime, TypeTimeTZ, TypeTimestamp, TypeTimestampTZ:
+		if c.TypeModifiers || c.TemporalPrecision > 0 {
+			t.TemporalPrecision = c.TemporalPrecision
+		}
 	}
+	t.Collation = c.SemanticCollation
 	if c.Binary {
 		t.Collation = BinaryCollation
 	}
@@ -330,7 +334,10 @@ func LogicalTypeFromColumn(c ColumnDef) LogicalType {
 }
 func (c ColumnDef) LogicalType() LogicalType { return LogicalTypeFromColumn(c) }
 func (t LogicalType) Column() ColumnDef {
-	c := ColumnDef{SemanticType: t.Kind, ColType: ColText, Declared: t.Declaration(), IntegerBits: t.IntegerBits, Unsigned: t.Unsigned, Precision: t.Precision, Scale: t.Scale, Length: t.Length, TemporalPrecision: t.TemporalPrecision, TypeModifiers: t.TemporalPrecision >= 0, Binary: t.Collation == BinaryCollation}
+
+	temporal := t.Kind == TypeTime || t.Kind == TypeTimeTZ || t.Kind == TypeTimestamp || t.Kind == TypeTimestampTZ
+	modifiers := temporal && t.TemporalPrecision >= 0 || t.Kind == TypeDecimal && t.Precision > 0 || (t.Kind == TypeText || t.Kind == TypeVarchar || t.Kind == TypeBinary) && t.Length > 0
+	c := ColumnDef{SemanticCollation: t.Collation, SemanticType: t.Kind, ColType: ColText, Declared: t.Declaration(), IntegerBits: t.IntegerBits, Unsigned: t.Unsigned, Precision: t.Precision, Scale: t.Scale, Length: t.Length, TemporalPrecision: t.TemporalPrecision, TypeModifiers: modifiers, Binary: t.Collation == BinaryCollation}
 	switch t.Kind {
 	case TypeUnknown:
 		c.ColType = ColUnknown
@@ -356,12 +363,17 @@ func LogicalTypeFromValue(v Value) LogicalType {
 		id = LogicalTypeFromDeclaration(v.PGType).Kind
 	}
 	if id != TypeUnknown {
-		return logicalTypeID(id)
+		t := logicalTypeID(id)
+		t.Collation = v.Collation
+		if v.Binary {
+			t.Collation = BinaryCollation
+		}
+		return t
 	}
 	if v.Null {
 		return logicalTypeID(TypeUnknown)
 	}
-	return LogicalTypeFromColumn(ColumnDef{ColType: v.Type})
+	return LogicalTypeFromColumn(ColumnDef{ColType: v.Type, Binary: v.Binary, SemanticCollation: v.Collation})
 }
 func (v Value) LogicalType() LogicalType         { return LogicalTypeFromValue(v) }
 func (v Value) WithSemanticType(id TypeID) Value { v.SemanticType = id; v.PGType = ""; return v }

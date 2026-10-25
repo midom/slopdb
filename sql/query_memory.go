@@ -437,6 +437,9 @@ func (h *diskHash) add(key string, row map[string]Value) error {
 		if value.PGType != "" {
 			flags |= 64
 		}
+		if value.SemanticType != TypeUnknown {
+			flags |= 128
+		}
 		payload = append(payload, flags)
 		if value.EnumValue {
 			payload = binary.AppendVarint(payload, value.EnumOrdinal)
@@ -450,6 +453,9 @@ func (h *diskHash) add(key string, row map[string]Value) error {
 				payload = binary.AppendUvarint(payload, uint64(len(text)))
 				payload = append(payload, text...)
 			}
+		}
+		if value.SemanticType != TypeUnknown {
+			payload = binary.AppendUvarint(payload, uint64(value.SemanticType))
 		}
 	}
 	if err := h.index.Put(encodedKey, payload); err != nil {
@@ -504,11 +510,12 @@ func decodeSpillMap(data []byte) (map[string]Value, error) {
 			return nil, fmt.Errorf("invalid temporary spill value length")
 		}
 		data = data[size:]
-		if len(data) == 0 || data[0] & ^byte(127) != 0 {
+		if len(data) == 0 {
 			return nil, fmt.Errorf("invalid temporary spill value metadata")
 		}
 		value.Binary, value.EnumValue = data[0]&1 != 0, data[0]&2 != 0
 		value.HexLiteral = data[0]&32 != 0
+		hasSemanticType := data[0]&128 != 0
 		hasPGType := data[0]&64 != 0
 		hasCollation := data[0]&4 != 0
 		hasNumericText, hasNumericExact := data[0]&8 != 0, data[0]&16 != 0
@@ -546,6 +553,14 @@ func decodeSpillMap(data []byte) (map[string]Value, error) {
 			} else {
 				value.PGType = text
 			}
+		}
+		if hasSemanticType {
+			id, used := binary.Uvarint(data)
+			if used <= 0 || id == 0 || id > uint64(TypeVarchar) {
+				return nil, fmt.Errorf("invalid temporary spill logical type")
+			}
+			value.SemanticType = TypeID(id)
+			data = data[used:]
 		}
 		row[name] = value
 	}

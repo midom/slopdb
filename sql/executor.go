@@ -6119,7 +6119,7 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 	case *BinaryExpr:
 		value, err := s.evalBinary(e, row)
 		if s.PostgresMode() && postgresBooleanOperator(e.Op) {
-			value.PGType = "BOOLEAN"
+			value = value.WithDeclaredType("BOOLEAN")
 		}
 		return value, err
 	case *UnaryExpr:
@@ -6142,7 +6142,7 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 		}
 		if right.Null {
 			if s.PostgresMode() && e.Op == "NOT" {
-				right.PGType = "BOOLEAN"
+				right = right.WithDeclaredType("BOOLEAN")
 			}
 			return right, nil
 		}
@@ -6200,13 +6200,13 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 	case *InListExpr:
 		value, err := s.evalInList(e, row)
 		if s.PostgresMode() {
-			value.PGType = "BOOLEAN"
+			value = value.WithDeclaredType("BOOLEAN")
 		}
 		return value, err
 	case *BetweenExpr:
 		value, err := s.evalBetween(e, row)
 		if s.PostgresMode() {
-			value.PGType = "BOOLEAN"
+			value = value.WithDeclaredType("BOOLEAN")
 		}
 		return value, err
 	case *CaseExpr:

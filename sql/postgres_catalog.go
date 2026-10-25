@@ -67,7 +67,7 @@ func pgBool(v bool) Value {
 		n = 1
 	}
 	r := NewIntValue(n)
-	r.PGType = "BOOLEAN"
+	r = r.WithDeclaredType("BOOLEAN")
 	return r
 }
 func pgCatalog(spec string) *ResultSet {
@@ -117,7 +117,7 @@ func pgCatalogRow(r *ResultSet, values ...any) {
 				v = x
 			}
 		}
-		v.PGType = c.Declared
+		v = v.WithDeclaredType(c.Declared)
 		row[c.Name] = v
 	}
 	r.Rows = append(r.Rows, row)
