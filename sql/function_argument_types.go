@@ -1,11 +1,71 @@
 package sql
 
+import "fmt"
+
 // Function argument inference is declarative and shared with prepared metadata.
 // Conversion policy stays on the resolved implementation: PG uses strict casts,
 // whereas MySQL evaluators retain their documented numeric-prefix conversions.
 func postgresFunctionArgumentTypes(name string) func([]ColumnDef) ([]ColumnDef, error) {
 	var signature []string
 	switch name {
+	case "ABS", "ROUND", "TRUNC":
+		return func(args []ColumnDef) ([]ColumnDef, error) {
+			out := functionUnknownColumns(len(args))
+			if len(args) == 0 {
+				return out, nil
+			}
+			target := args[0]
+			if target.ColType == ColUnknown {
+				name := "DOUBLE PRECISION"
+				if len(args) > 1 {
+					name = "NUMERIC"
+				}
+				target = functionArgumentColumn(name)
+			}
+			out[0] = target
+			if len(out) > 1 {
+				out[1] = functionArgumentColumn("INTEGER")
+			}
+			return out, nil
+		}
+	case "CEIL", "CEILING", "FLOOR", "SIGN":
+		return func(args []ColumnDef) ([]ColumnDef, error) {
+			out := functionUnknownColumns(len(args))
+			if len(args) == 0 {
+				return out, nil
+			}
+			name := "DOUBLE PRECISION"
+			if args[0].ColType == ColDecimal {
+				name = "NUMERIC"
+			}
+			out[0] = functionArgumentColumn(name)
+			return out, nil
+		}
+	case "GCD", "LCM", "MOD":
+		return func(args []ColumnDef) ([]ColumnDef, error) {
+			out := functionUnknownColumns(len(args))
+			target := ColumnDef{ColType: ColUnknown}
+			for _, a := range args {
+				if a.ColType == ColUnknown {
+					continue
+				}
+				if target.ColType == ColUnknown {
+					target = a
+				} else {
+					target = describeCommon(target, a)
+				}
+			}
+			if target.ColType == ColUnknown {
+				return nil, fmt.Errorf("function %s has ambiguous argument types; add explicit casts", name)
+			}
+			if target.ColType == ColUnsigned {
+				target = functionArgumentColumn("NUMERIC")
+			}
+			for i := range out {
+				out[i] = target
+			}
+			return out, nil
+		}
 	case "CHR":
 		signature = []string{"INTEGER"}
 	case "LEFT", "RIGHT", "REPEAT":
@@ -26,7 +86,7 @@ func postgresFunctionArgumentTypes(name string) func([]ColumnDef) ([]ColumnDef, 
 			}
 			if len(args) > 1 {
 				target := "INTEGER"
-				if args[1].ColType == ColText {
+				if args[1].ColType == ColText || name == "SUBSTRING" && len(args) == 2 && args[0].ColType != ColBlob && args[1].ColType == ColUnknown {
 					target = "TEXT"
 				}
 				types[1] = functionArgumentColumn(target)
@@ -95,7 +155,7 @@ func postgresFunctionArgumentTypes(name string) func([]ColumnDef) ([]ColumnDef, 
 				types[i] = functionArgumentColumn("TEXT")
 			}
 			if len(args) > 3 {
-				if args[3].ColType == ColText {
+				if args[3].ColType == ColText || len(args) == 4 && args[3].ColType == ColUnknown {
 					types[3] = functionArgumentColumn("TEXT")
 				} else {
 					types[3] = functionArgumentColumn("INTEGER")

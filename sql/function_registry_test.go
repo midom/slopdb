@@ -51,3 +51,27 @@ func TestSharedArgumentInferencePreservesPolymorphicPositions(t *testing.T) {
 		t.Fatal(args, e)
 	}
 }
+
+// Captured independently with PostgreSQL 16.15 PREPARE without declared input
+// types and pg_prepared_statements.parameter_types; see the reference docs.
+func TestPostgresPreferredUnknownFunctionSignatures(t *testing.T) {
+	cases := []struct {
+		name string
+		n    int
+		want []string
+	}{{"SUBSTRING", 2, []string{"TEXT", "TEXT"}}, {"SUBSTR", 2, []string{"TEXT", "INTEGER"}}, {"REGEXP_REPLACE", 4, []string{"TEXT", "TEXT", "TEXT", "TEXT"}}, {"ABS", 1, []string{"DOUBLE PRECISION"}}, {"ROUND", 1, []string{"DOUBLE PRECISION"}}, {"ROUND", 2, []string{"NUMERIC", "INTEGER"}}, {"CEIL", 1, []string{"DOUBLE PRECISION"}}}
+	for _, tc := range cases {
+		args, known, e := FunctionArgumentTypes(DialectPostgreSQL, tc.name, functionUnknownColumns(tc.n))
+		if e != nil || !known {
+			t.Fatal(tc, e)
+		}
+		for i, want := range tc.want {
+			if args[i].LogicalType().Kind != LogicalTypeFromDeclaration(want).Kind {
+				t.Fatalf("%s argument%d=%v want%s", tc.name, i, args[i].LogicalType(), want)
+			}
+		}
+	}
+	if _, _, e := FunctionArgumentTypes(DialectPostgreSQL, "GCD", functionUnknownColumns(2)); e == nil {
+		t.Fatal("ambiguous PG overload guessed")
+	}
+}
