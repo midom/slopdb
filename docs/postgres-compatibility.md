@@ -54,7 +54,7 @@ Regex matching uses Go RE2 with supported PostgreSQL flags; unsupported regular
 expression constructs and flags fail. Locale, timezone, collation and formatting
 coverage is a subset. In particular the date template engine does not implement
 all PostgreSQL numeric/interval formatting and normalization rules. Native SQL
-functions outside the PostgreSQL overrides can retain native semantics. The 222
+functions outside the PostgreSQL overrides can retain native semantics. The 254
 checked-in PostgreSQL 16.15 scalar reference cases define the independently
 verified subset;
 this is not a claim of complete PostgreSQL function equivalence. NUMERIC

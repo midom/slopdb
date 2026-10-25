@@ -273,8 +273,8 @@ reports, application files and test databases outside the repository.
 ### PostgreSQL compatibility
 
 `db/postgres_functions_test.go` uses checked-in independent PostgreSQL 16.15
-answers in `db/testdata/postgres_functions.json` (222 cases checked through both
-direct and prepared execution, 444 scalar checks); the adjacent regeneration
+answers in `db/testdata/postgres_functions.json` (254 cases checked through both
+direct and prepared execution, 508 scalar checks); the adjacent regeneration
 script requires a separate PostgreSQL installation and never derives answers
 from SlopDB. Ordinary tests need no external server. `db/postgres_catalog_test.go`
 checks virtual catalogs, index/constraint metadata, namespace resolution,
