@@ -1861,6 +1861,7 @@ func (h *mergeHeap) Pop() interface{} {
 }
 
 type LSMStats struct {
+	WALEnabled                                                                        bool
 	DataBlockReadAttempts, DataBlockReadBytes, DataBlockReadErrors, DecodedBlockBytes int64
 	WALRecords, WALPayloadBytes, WALSyncs, WALWriteErrors, WALSyncErrors              int64
 	Memtable, ImmutableMemtable                                                       MemTableStats
@@ -1959,6 +1960,7 @@ func (l *LSMTree) stats(detailed bool) LSMStats {
 		SeqNum:                    l.seqNum,
 		FileNum:                   l.fileNum,
 		WALActive:                 l.wal != nil,
+		WALEnabled:                !l.opt.DisableWAL,
 		WALSyncDisabled:           l.opt.DisableWALSync && !l.opt.DisableWAL,
 		BloomHits:                 l.bloomHits.Load(),
 		BloomMisses:               l.bloomMisses.Load(),

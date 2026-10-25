@@ -65,7 +65,7 @@ func lsmVariables(s storage.LSMStats) map[string]string {
 	for k, n := range map[string]uint64{"sequence.published": s.PublishedSequence, "sequence.assigned": s.SeqNum, "sequence.sstables": s.TableSequence, "snapshots.oldest_sequence": s.OldestSnapshot, "file.next_number": s.FileNum, "wal.file_number": s.WALFileNumber, "wal.flushing_file_number": s.FlushWALFileNumber} {
 		unsigned(k, n)
 	}
-	for k, b := range map[string]bool{"closed": s.Closed, "wal.enabled": s.WALActive, "wal.fsync": s.WALActive && !s.WALSyncDisabled, "flush.pending": s.FlushPending, "compaction.scheduled": s.CompactionScheduled, "write.parallel_memtable": s.ParallelMemtableWrites} {
+	for k, b := range map[string]bool{"closed": s.Closed, "wal.enabled": s.WALEnabled, "wal.active_writer": s.WALActive, "wal.fsync": s.WALEnabled && !s.WALSyncDisabled, "flush.pending": s.FlushPending, "compaction.scheduled": s.CompactionScheduled, "write.parallel_memtable": s.ParallelMemtableWrites} {
 		boolean(k, b)
 	}
 	var totalFiles, totalBytes int64

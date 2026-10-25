@@ -102,7 +102,7 @@ func (s ServerState) Variables() map[string]string {
 		"slopdb_cdc_enabled": boolState(s.Changefeed.Enabled), "slopdb_cdc_sequence": uintState(s.Changefeed.Sequence), "slopdb_cdc_source_uuid": s.Changefeed.SourceID,
 		"read_only": boolState(s.ReadOnly), "super_read_only": boolState(s.ReadOnly),
 		"slopdb_storage_engine": "LSM", "slopdb_page_size": strconv.FormatInt(s.Storage.PageSize, 10),
-		"slopdb_wal_enabled": boolState(s.Storage.WALActive), "slopdb_wal_fsync": boolState(s.Storage.WALActive && !s.Storage.WALSyncDisabled),
+		"slopdb_wal_enabled": boolState(s.Storage.WALEnabled), "slopdb_wal_fsync": boolState(s.Storage.WALEnabled && !s.Storage.WALSyncDisabled),
 		"slopdb_query_timeout_ms": strconv.FormatInt(s.QueryTimeout.Milliseconds(), 10), "slopdb_lock_wait_timeout_ms": strconv.FormatInt(s.LockTimeout.Milliseconds(), 10),
 		"slopdb_query_memory_bytes": strconv.FormatInt(s.QueryMemoryBytes, 10), "slopdb_deadlock_detection": boolState(s.DeadlockDetection),
 		"slopdb_memtable_bytes": strconv.Itoa(s.Storage.MemSize), "slopdb_immutable_memtable_bytes": strconv.Itoa(s.Storage.ImmSize),
