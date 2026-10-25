@@ -71,6 +71,7 @@ type command struct {
 	Peer     *Peer
 }
 type Node struct {
+	learnerDurable                  *learnerDurableDelivery // workMu protects lifetime and pending notices
 	walProposals                    walProposalQueue
 	durableReads                    durableReadViews
 	position                        atomic.Pointer[string]
@@ -775,6 +776,7 @@ func (n *Node) monitor() {
 		}
 		leader := n.raftNode().State() == raft.Leader
 		if !leader {
+			n.stopStaleLearnerDurable(0)
 			n.writeTerm.Store(0)
 			n.readyTerm.Store(0)
 			if wasLeader {
@@ -785,6 +787,7 @@ func (n *Node) monitor() {
 		}
 		wasLeader = true
 		term := n.raftNode().CurrentTerm()
+		n.stopStaleLearnerDurable(term)
 		if n.readyTerm.Load() == term {
 			if time.Since(lastPromotionScan) >= time.Second {
 				n.resumePromotions()

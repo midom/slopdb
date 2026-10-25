@@ -589,15 +589,7 @@ func (n *Node) sealDurable(ctx context.Context, snapshot, force bool) error {
 		return n.notLeader()
 	}
 	n.advanceDurable(certificate)
-	for _, member := range body.Configuration.Servers {
-		if member.Suffrage == raft.Nonvoter {
-			for _, p := range body.Peers {
-				if p.ID == string(member.ID) {
-					n.notifyLearnerDurable(p, certificate)
-				}
-			}
-		}
-	}
+	n.notifyLearnersDurable(certificate)
 	finalized := make(chan error, len(body.Peers))
 	finalVoters := 0
 	for _, member := range body.Configuration.Servers {

@@ -308,21 +308,6 @@ func (n *Node) makeNextReadBarrier(ctx context.Context) (durableReadBarrierReply
 	return durableReadBarrierReply{Token: DurabilityToken{n.cluster, view.index, view.term}}, nil
 }
 
-func (n *Node) notifyLearnerDurable(p Peer, c *durableCertificate) {
-	n.workMu.Lock()
-	if n.closing.Load() {
-		n.workMu.Unlock()
-		return
-	}
-	n.workers.Add(1)
-	n.workMu.Unlock()
-	go func() {
-		defer n.workers.Done()
-		ctx, cancel := context.WithTimeout(n.ctx, n.config.OperationTimeout)
-		defer cancel()
-		_ = n.postJSON(ctx, p.Control, "/v1/durability/finalize", c, nil)
-	}()
-}
 func (n *Node) durableReadHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("/v1/durability/read-barrier", func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodPost) {
