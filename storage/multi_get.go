@@ -21,9 +21,27 @@ func (l *LSMTree) GetMultiAt(keys [][]byte, snapshot uint64) ([]PointValue, erro
 // with GetAtForReader. Values belong to the caller, including separate copies
 // for duplicate keys; missing/deleted keys retain their input positions.
 func (l *LSMTree) GetMultiAtForReader(keys [][]byte, snapshot, reader uint64) ([]PointValue, error) {
+	values, _, err := l.getMultiAtForReader(keys, snapshot, reader, -1)
+	return values, err
+}
+
+// GetMultiAtForReaderBounded applies a byte budget before copying each value.
+// The budget counts every found value, including duplicate keys. Missing and
+// empty values consume no bytes. If the batch exceeds maxBytes it returns
+// nil, false, nil, without exposing partial results or borrowed storage data.
+// Negative budgets fail; snapshots and ownership match GetMultiAtForReader.
+func (l *LSMTree) GetMultiAtForReaderBounded(keys [][]byte, snapshot, reader uint64, maxBytes int) ([]PointValue, bool, error) {
+	if maxBytes < 0 {
+		return nil, false, fmt.Errorf("multi-get byte budget must not be negative")
+	}
+	return l.getMultiAtForReader(keys, snapshot, reader, maxBytes)
+}
+
+// A negative internal budget selects the original unlimited contract.
+func (l *LSMTree) getMultiAtForReader(keys [][]byte, snapshot, reader uint64, remaining int) ([]PointValue, bool, error) {
 	view, committed, shard := l.acquireViewForReader(reader)
 	if view == nil {
-		return nil, fmt.Errorf("database closed")
+		return nil, false, fmt.Errorf("database closed")
 	}
 	defer view.releaseReader(shard)
 	if snapshot > committed {
@@ -33,13 +51,21 @@ func (l *LSMTree) GetMultiAtForReader(keys [][]byte, snapshot, reader uint64) ([
 	defer releasePointWorkspace(workspace)
 	values := make([]PointValue, len(keys))
 	for i, key := range keys {
-		value, found, _, err := readPointWithWorkspace(view, key, snapshot, 0, false, workspace)
+		value, found, _, err := readPointWithWorkspaceMode(view, key, snapshot, 0, false, workspace, false)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
-		values[i] = PointValue{Value: value, Found: found}
+		if found {
+			if remaining >= 0 {
+				if len(value) > remaining {
+					return nil, false, nil
+				}
+				remaining -= len(value)
+			}
+			values[i] = PointValue{Value: append([]byte(nil), value...), Found: true}
+		}
 	}
-	return values, nil
+	return values, true, nil
 }
 
 func (l *LSMTree) getMulti(keys [][]byte, snapshot uint64, latest bool) ([]PointValue, error) {
