@@ -71,6 +71,7 @@ func (s *Schema) StartStatement() error {
 	s.consistentIndexDeletes = nil
 	s.statementTime = StatementTime(s.ctx)
 	s.mysqlFunctions.generated = false
+	s.mysqlFunctions.calculatedRowsValid = false
 	if s.replicaReadOnly {
 		s.replicaReadOnly = false
 		s.readStateVersion = ^uint64(0)

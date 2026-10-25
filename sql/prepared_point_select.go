@@ -8,6 +8,9 @@ import (
 // Each prepared AST belongs to one execution at a time. Cache only immutable
 // projection metadata, invalidated together with its catalog/plan recipe.
 func (s *Schema) selectPreparedPoint(stmt *SelectStmt, info *TableInfo, dst *ResultSet) (*ResultSet, bool, error) {
+	if stmt.CalcFoundRows {
+		return nil, false, nil
+	}
 	p := stmt.prepared
 	if !p.pointProjectionReady {
 		p.pointProjectionReady = true
@@ -62,7 +65,7 @@ func (s *Schema) selectPreparedPoint(stmt *SelectStmt, info *TableInfo, dst *Res
 			p.pointProjectionReady = false
 			return nil, true, err
 		}
-		if err := validateGrouping(stmt, info, p.pointProjection); err != nil {
+		if err := s.validateGrouping(stmt, info, p.pointProjection); err != nil {
 			p.pointProjection = nil
 			p.pointProjectionReady = false
 			return nil, true, err

@@ -174,7 +174,11 @@ func formatCTEQuery(query Statement) string {
 		tail := &SelectStmt{Limit: q.Limit, Offset: q.Offset, OrderBy: q.OrderBy}
 		formatted := formatSelectSQL(tail)
 		suffix := strings.TrimPrefix(formatted, "SELECT ")
-		return prefix + formatSelectSQL(q.Left) + " " + op + " " + formatCTEQuery(q.Right) + suffix
+		left := *q.Left
+		if q.CalcFoundRows {
+			left.CalcFoundRows = true
+		}
+		return prefix + formatSelectSQL(&left) + " " + op + " " + formatCTEQuery(q.Right) + suffix
 	}
 	panic("not a query")
 }

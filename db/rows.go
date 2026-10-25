@@ -112,12 +112,13 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 	}
 	var binding *sql.BoundQuery
 	var rows *Rows
+	var resultStatement sql.Statement = &sql.SelectStmt{}
 	managedStarted := false
 	successful := false
 	held := s.db.locks.snapshot(s.schema)
 	release := func() {
 		if successful && rows != nil && rows.err == nil {
-			s.schema.RecordMySQLFunctionResult(&sql.SelectStmt{}, 0, rows.delivered)
+			s.schema.RecordMySQLFunctionResult(resultStatement, 0, rows.delivered)
 		}
 		s.schema.EndStatement()
 		if binding != nil {
@@ -225,6 +226,7 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 		release()
 		return nil, err
 	}
+	resultStatement = statements[0]
 	rows = &Rows{ctx: ctx, finish: release}
 	if selectStmt, ok := statements[0].(*sql.SelectStmt); ok {
 		var handled bool

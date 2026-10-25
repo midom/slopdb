@@ -399,7 +399,7 @@ func (s *Schema) coveringPlan(stmt *SelectStmt, table string, info *TableInfo) *
 func (s *Schema) coveringRows(stmt *SelectStmt, plan *coveringReadPlan) ([]map[string]Value, error) {
 	rows := make([]map[string]Value, 0)
 	limit := int64(-1)
-	if plan.ordered && !stmt.Distinct && len(stmt.GroupBy) == 0 && stmt.Having == nil && !hasAggregates(stmt) && rangePredicate(stmt.Where) && stmt.Limit >= 0 && stmt.Offset >= 0 {
+	if !stmt.CalcFoundRows && plan.ordered && !stmt.Distinct && len(stmt.GroupBy) == 0 && stmt.Having == nil && !hasAggregates(stmt) && rangePredicate(stmt.Where) && stmt.Limit >= 0 && stmt.Offset >= 0 {
 		limit = limitWindow(stmt.Limit, stmt.Offset)
 		if stmt.Limit == 0 {
 			return rows, nil

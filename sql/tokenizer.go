@@ -63,7 +63,7 @@ var keywords = map[string]bool{
 	"BY": true, "ASC": true, "DESC": true, "LIMIT": true,
 	"OFFSET": true, "AS": true, "ON": true, "JOIN": true,
 	"LEFT": true, "RIGHT": true, "INNER": true, "OUTER": true,
-	"GROUP": true, "HAVING": true, "DISTINCT": true,
+	"GROUP": true, "HAVING": true, "DISTINCT": true, "SQL_CALC_FOUND_ROWS": true,
 	"LIKE": true, "ILIKE": true, "IN": true, "BETWEEN": true, "IS": true,
 	"GLOB": true, "REGEXP": true,
 	"EXISTS": true, "CASE": true, "WHEN": true, "THEN": true,

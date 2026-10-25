@@ -492,10 +492,10 @@ func (s *Schema) tupleRows(stmt *SelectStmt, plan *tupleReadPlan, trackKeys bool
 	simple := !hasAggregates(stmt) && len(stmt.GroupBy) == 0 && stmt.Having == nil && !stmt.Distinct && !stmt.trackRows
 	ordered := plan.ordered && simple
 	limit := int64(-1)
-	if ordered && tupleSafePredicate(stmt.Where) && stmt.Limit >= 0 && stmt.Offset >= 0 {
+	if !stmt.CalcFoundRows && ordered && tupleSafePredicate(stmt.Where) && stmt.Limit >= 0 && stmt.Offset >= 0 {
 		limit = limitWindow(stmt.Limit, stmt.Offset)
 	}
-	if stmt.Limit == 0 && simple {
+	if !stmt.CalcFoundRows && stmt.Limit == 0 && simple {
 		return nil, nil, ordered, nil
 	}
 	qualified := needsQualifiedRows(stmt)

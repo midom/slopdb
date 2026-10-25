@@ -3054,6 +3054,10 @@ func (s *Schema) Union(stmt *UnionStmt) (*ResultSet, error) {
 			}
 		}
 	}
+	if stmt.CalcFoundRows {
+		s.mysqlFunctions.calculatedRows = uint64(len(left.Rows))
+		s.mysqlFunctions.calculatedRowsValid = true
+	}
 	if len(orders) > 0 {
 		window := int64(-1)
 		if stmt.Limit >= 0 {
@@ -4699,7 +4703,7 @@ func (s *Schema) selectInto(stmt *SelectStmt, dst *ResultSet) (result *ResultSet
 	var duplicateProjection bool
 	rs.Columns, exprCols, duplicateProjection = s.selectProjection(stmt, info)
 	stmt.OrderBy = append([]OrderByClause(nil), stmt.OrderBy...)
-	if err := validateGrouping(stmt, info, rs.Columns); err != nil {
+	if err := s.validateGrouping(stmt, info, rs.Columns); err != nil {
 		return nil, err
 	}
 	// A physical row already contains unaliased, unqualified column values.
@@ -4936,7 +4940,7 @@ func (s *Schema) selectInto(stmt *SelectStmt, dst *ResultSet) (result *ResultSet
 			scanLimit := int64(-1)
 			scanReverse := false
 			if stmt.Lock == nil && stmt.Where == nil && len(stmt.Joins) == 0 && !s.inTx && !stmt.Distinct && len(stmt.GroupBy) == 0 &&
-				!windowed && !hasAggregates(stmt) && stmt.Limit >= 0 {
+				!windowed && !hasAggregates(stmt) && !stmt.CalcFoundRows && stmt.Limit >= 0 {
 				if rev := s.isOrderByNatural(stmt, info); rev >= 0 {
 					scanLimit = limitWindow(stmt.Limit, stmt.Offset)
 					scanReverse = rev == 1
@@ -5085,6 +5089,10 @@ func (s *Schema) selectInto(stmt *SelectStmt, dst *ResultSet) (result *ResultSet
 		}
 	}
 
+	if stmt.CalcFoundRows {
+		s.mysqlFunctions.calculatedRows = uint64(len(rows))
+		s.mysqlFunctions.calculatedRowsValid = true
+	}
 	if len(stmt.OrderBy) > 0 && !orderedIndex {
 		finish := s.ProfileOperator("Sort", tableName)
 		inputRows := int64(len(rows))

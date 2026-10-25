@@ -148,7 +148,7 @@ func validateAggregateExpr(expr Expression, allow bool) error {
 	})
 }
 
-func validateGrouping(stmt *SelectStmt, info *TableInfo, columns []ColumnDef) error {
+func (s *Schema) validateGrouping(stmt *SelectStmt, info *TableInfo, columns []ColumnDef) error {
 	stmt.GroupBy = append([]Expression(nil), stmt.GroupBy...)
 	for i, g := range stmt.GroupBy {
 		if literal, ok := g.(*LiteralExpr); ok && !literal.BoundParameter && !literal.Value.Null && literal.Value.Type == ColInteger {
@@ -232,7 +232,7 @@ func validateGrouping(stmt *SelectStmt, info *TableInfo, columns []ColumnDef) er
 	for _, g := range stmt.GroupBy {
 		grouped[normalize(g)] = true
 	}
-	dependent := info != nil && len(info.PKColumns) > 0 && len(stmt.Joins) == 0
+	dependent := info != nil && len(info.PKColumns) > 0
 	if dependent {
 		for _, pk := range info.PKColumns {
 			dependent = dependent && grouped[normalize(&ColumnRefExpr{Name: pk})]
@@ -253,7 +253,15 @@ func validateGrouping(stmt *SelectStmt, info *TableInfo, columns []ColumnDef) er
 						return a, true, check(alias, false)
 					}
 				}
-				if dependent && coveringColumn(c.Name, stmt.From, stmt.FromAlias) != "" {
+				baseColumn := coveringColumn(c.Name, stmt.From, stmt.FromAlias)
+				baseQualified := len(stmt.Joins) == 0 || strings.Contains(c.Name, ".") || s.unambiguousGroupedBaseColumn(stmt, c.Name)
+				baseExists := false
+				if info != nil {
+					for _, column := range info.Columns {
+						baseExists = baseExists || column.Name == baseColumn
+					}
+				}
+				if dependent && baseQualified && baseExists {
 					return a, true, nil
 				}
 				return nil, true, fmt.Errorf("column %s must appear in GROUP BY or an aggregate", c.Name)
@@ -359,4 +367,24 @@ func walkExpression(expr Expression, visit func(Expression) (bool, error)) error
 		return walk(e.ElseExpr)
 	}
 	return nil
+}
+
+// An unqualified dependent column must belong solely to the base relation.
+// Qualified references remain available for derived or unresolved join inputs.
+func (s *Schema) unambiguousGroupedBaseColumn(stmt *SelectStmt, name string) bool {
+	for _, join := range stmt.Joins {
+		if join.Subquery != nil {
+			return false
+		}
+		info := s.tables[join.Table]
+		if info == nil {
+			return false
+		}
+		for _, column := range info.Columns {
+			if column.Name == name {
+				return false
+			}
+		}
+	}
+	return true
 }

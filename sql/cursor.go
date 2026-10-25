@@ -31,7 +31,7 @@ type RowCursor struct {
 // executor (joins, grouping, sorting, DISTINCT, views or subqueries). No rows
 // are fetched while opening an eligible cursor.
 func (s *Schema) OpenRowCursor(stmt *SelectStmt) (*RowCursor, bool, error) {
-	if s.cteScope != nil || stmt.With != nil || stmt.Compound != nil || stmt.materialized != nil {
+	if stmt.CalcFoundRows || s.cteScope != nil || stmt.With != nil || stmt.Compound != nil || stmt.materialized != nil {
 		return nil, false, nil
 	}
 	if hasWindows(stmt) {

@@ -1218,8 +1218,21 @@ func (p *Parser) parseSelect() (Statement, error) {
 
 	stmt := &SelectStmt{Limit: -1, Offset: 0}
 
-	if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "DISTINCT" {
-		stmt.Distinct = true
+	quantifier := ""
+	for p.cur.Type == TokKeyword && (p.cur.Value == "DISTINCT" || p.cur.Value == "ALL" || p.cur.Value == "SQL_CALC_FOUND_ROWS") {
+		switch p.cur.Value {
+		case "SQL_CALC_FOUND_ROWS":
+			if stmt.CalcFoundRows {
+				return nil, fmt.Errorf("duplicate SQL_CALC_FOUND_ROWS")
+			}
+			stmt.CalcFoundRows = true
+		case "DISTINCT", "ALL":
+			if quantifier != "" {
+				return nil, fmt.Errorf("duplicate or conflicting SELECT quantifier")
+			}
+			quantifier = p.cur.Value
+			stmt.Distinct = quantifier == "DISTINCT"
+		}
 		p.advance()
 	}
 
@@ -1416,7 +1429,8 @@ func (p *Parser) parseSelect() (Statement, error) {
 			if err != nil {
 				return nil, err
 			}
-			union := &UnionStmt{Left: stmt, Right: right, All: all, Op: kw, Limit: -1}
+			union := &UnionStmt{Left: stmt, Right: right, All: all, Op: kw, Limit: -1, CalcFoundRows: stmt.CalcFoundRows}
+			stmt.CalcFoundRows = false
 			switch tail := right.(type) {
 			case *SelectStmt:
 				if tail.Lock != nil {
@@ -2759,6 +2773,9 @@ func formatSelectSQL(s *SelectStmt) string {
 	}
 	var b strings.Builder
 	b.WriteString("SELECT ")
+	if s.CalcFoundRows {
+		b.WriteString("SQL_CALC_FOUND_ROWS ")
+	}
 	if s.Distinct {
 		b.WriteString("DISTINCT ")
 	}

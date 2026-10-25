@@ -20,7 +20,7 @@ func (c *client) streamQuery(query string) (bool, error) {
 		return false, nil
 	}
 	stmt, ok := statements[0].(*sql.SelectStmt)
-	if !ok || stmt.From == "" || stmt.FromExpr != nil || stmt.Compound != nil || stmt.With != nil || len(stmt.Joins) != 0 || stmt.Virtual != nil || stmt.Lock != nil || stmt.Distinct || len(stmt.GroupBy) != 0 || stmt.Having != nil {
+	if !ok || stmt.CalcFoundRows || stmt.From == "" || stmt.FromExpr != nil || stmt.Compound != nil || stmt.With != nil || len(stmt.Joins) != 0 || stmt.Virtual != nil || stmt.Lock != nil || stmt.Distinct || len(stmt.GroupBy) != 0 || stmt.Having != nil {
 		return false, nil
 	}
 	for _, column := range stmt.Columns {

@@ -711,7 +711,7 @@ func (s *Schema) streamSelectScan(stmt *SelectStmt, info *TableInfo) ([]map[stri
 		}
 	}
 	var rows []map[string]Value
-	if stmt.Limit == 0 {
+	if !stmt.CalcFoundRows && stmt.Limit == 0 {
 		return rows, true, nil
 	}
 	err := s.walkFilteredAccess(info, bareNeeded, where, paths, func(row map[string]Value) error {
@@ -728,7 +728,7 @@ func (s *Schema) streamSelectScan(stmt *SelectStmt, info *TableInfo) ([]map[stri
 			}
 		}
 		rows = append(rows, copyRow(row))
-		if len(stmt.OrderBy) == 0 && stmt.Limit >= 0 && int64(len(rows)) >= limitWindow(stmt.Limit, stmt.Offset) {
+		if !stmt.CalcFoundRows && len(stmt.OrderBy) == 0 && stmt.Limit >= 0 && int64(len(rows)) >= limitWindow(stmt.Limit, stmt.Offset) {
 			return errAccessStop
 		}
 		return nil

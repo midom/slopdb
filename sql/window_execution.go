@@ -657,7 +657,7 @@ func (s *Schema) makeJoinPlanIfNoWindows(q *SelectStmt) *joinPlan {
 	return s.makeJoinPlan(q)
 }
 func (s *Schema) streamOrderedSelectIfNoWindows(q *SelectStmt, info *TableInfo, cols []selectExprCol, defs []ColumnDef) ([]map[string]Value, bool, error) {
-	if hasWindows(q) {
+	if q.CalcFoundRows || hasWindows(q) {
 		return nil, false, nil
 	}
 	return s.streamOrderedSelect(q, info, cols, defs)

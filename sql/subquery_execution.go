@@ -327,7 +327,7 @@ func (s *Schema) readExists(q *SelectStmt) (*ResultSet, bool, error) {
 	}
 	// Projection values are unused, but their names/functions still resolve.
 	validation := *q
-	if err := validateGrouping(&validation, info, nil); err != nil {
+	if err := s.validateGrouping(&validation, info, nil); err != nil {
 		return nil, true, err
 	}
 	if s.selectDepth >= 100 {

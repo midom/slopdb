@@ -203,6 +203,7 @@ type InsertStmt struct {
 }
 
 type SelectStmt struct {
+	CalcFoundRows     bool              // SQL_CALC_FOUND_ROWS counts this query before LIMIT/OFFSET
 	definitionDialect DefinitionDialect // originating stored view expression semantics
 	JoinGroup         bool              // internal parenthesized joined table, preserves its qualified namespace
 	Windows           []WindowDefinition
@@ -448,16 +449,17 @@ type AlterTableStmt struct {
 type VacuumStmt struct{}
 
 type UnionStmt struct {
-	With        *WithClause
-	LimitParam  int
-	OffsetParam int
-	Left        *SelectStmt
-	Right       Statement
-	All         bool
-	Op          string // UNION, INTERSECT, EXCEPT
-	OrderBy     []OrderByClause
-	Limit       int64
-	Offset      int64
+	CalcFoundRows bool
+	With          *WithClause
+	LimitParam    int
+	OffsetParam   int
+	Left          *SelectStmt
+	Right         Statement
+	All           bool
+	Op            string // UNION, INTERSECT, EXCEPT
+	OrderBy       []OrderByClause
+	Limit         int64
+	Offset        int64
 }
 
 type Statement interface {

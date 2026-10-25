@@ -5,10 +5,12 @@ import (
 )
 
 type mysqlFunctionSessionState struct {
-	lastID    uint64
-	rowCount  int64
-	foundRows uint64
-	generated bool
+	lastID              uint64
+	rowCount            int64
+	foundRows           uint64
+	calculatedRows      uint64
+	calculatedRowsValid bool
+	generated           bool
 }
 
 // These values belong to one connection and survive transaction rollback, like
@@ -17,8 +19,17 @@ func (s *Schema) RecordMySQLFunctionResult(stmt Statement, changes int64, rows u
 	if !s.MySQLMode() {
 		return
 	}
-	switch stmt.(type) {
-	case *SelectStmt, *UnionStmt:
+	switch query := stmt.(type) {
+	case *SelectStmt:
+		if query.CalcFoundRows && s.mysqlFunctions.calculatedRowsValid {
+			rows = s.mysqlFunctions.calculatedRows
+		}
+		s.mysqlFunctions.rowCount = -1
+		s.mysqlFunctions.foundRows = rows
+	case *UnionStmt:
+		if query.CalcFoundRows && s.mysqlFunctions.calculatedRowsValid {
+			rows = s.mysqlFunctions.calculatedRows
+		}
 		s.mysqlFunctions.rowCount = -1
 		s.mysqlFunctions.foundRows = rows
 	case *ShowStmt, *ExplainStmt, *PragmaStmt:
