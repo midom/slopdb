@@ -335,7 +335,7 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 			}
 			primary := false
 			for _, c := range t.Constraints {
-				primary = primary || c.IndexID == idx.ID && strings.EqualFold(c.Kind, "PRIMARY KEY")
+				primary = primary || c.IndexID == idx.ID && strings.EqualFold(c.Kind, "PRIMARY")
 			}
 			var key []string
 			for _, cn := range idx.columnNames() {
@@ -470,7 +470,7 @@ func (s *Schema) postgresConstraints(name string, tables []string, database stri
 		t := s.tables[n]
 		ns, obj := pgObjectNames(n)
 		for _, c := range t.Constraints {
-			kind := strings.ToUpper(c.Kind)
+			kind := pgConstraintKind(c.Kind)
 			typ := ""
 			switch kind {
 			case "PRIMARY KEY":
@@ -524,7 +524,7 @@ func (s *Schema) postgresConstraints(name string, tables []string, database stri
 				var refname any
 				if ref != nil {
 					for _, candidate := range ref.Constraints {
-						if strings.Join(candidate.Columns, "\x00") == strings.Join(c.RefColumns, "\x00") && (candidate.Kind == "PRIMARY KEY" || candidate.Kind == "UNIQUE") {
+						if strings.Join(candidate.Columns, "\x00") == strings.Join(c.RefColumns, "\x00") && (candidate.Kind == "PRIMARY" || candidate.Kind == "UNIQUE") {
 							refname = candidate.Name
 							break
 						}

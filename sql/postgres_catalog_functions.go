@@ -184,7 +184,7 @@ func pgConstraintSQL(c ConstraintDef) string {
 		}
 		return "(" + strings.Join(q, ", ") + ")"
 	}
-	kind := strings.ToUpper(c.Kind)
+	kind := pgConstraintKind(c.Kind)
 	out := kind
 	switch kind {
 	case "CHECK":
@@ -268,4 +268,14 @@ func (s *Schema) CastPostgresCatalogValue(v Value, target string) (Value, bool, 
 	}
 	r.PGType = target
 	return r, true, e
+}
+
+func pgConstraintKind(kind string) string {
+	switch strings.ToUpper(kind) {
+	case "PRIMARY":
+		return "PRIMARY KEY"
+	case "FOREIGN":
+		return "FOREIGN KEY"
+	}
+	return strings.ToUpper(kind)
 }

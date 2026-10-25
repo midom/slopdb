@@ -431,6 +431,17 @@ func (m *metadata) expression(expr sql.Expression, env map[string]uint32) uint32
 		for _, arg := range e.Args {
 			types = append(types, m.expression(arg, env))
 		}
+
+		args := make([]sql.ColumnDef, len(types))
+		for i, oid := range types {
+			args[i] = sql.PostgresTypeDefinition(oid)
+		}
+		if col, ok := sql.PostgresFunctionMetadata(name, args); ok {
+			if oid := sql.PostgresColumnOID(col); oid != 0 {
+				return oid
+			}
+			return nativeOID(col.ColType)
+		}
 		switch name {
 		case "COUNT", "LENGTH", "INSTR", "CHANGES", "LAST_INSERT_ROWID", "ROW_NUMBER", "RANK", "DENSE_RANK", "NTILE":
 			return oidInt8
