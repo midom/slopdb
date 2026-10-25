@@ -54,6 +54,7 @@ type config struct {
 	Prewarm                                bool
 	ReuseResults                           bool
 	ProfileDir                             string
+	DebugProfiles                          bool
 	JSON                                   string
 }
 
@@ -572,6 +573,7 @@ func main() {
 	flag.BoolVar(&c.Prewarm, "prewarm", true, "checked page-spaced point SELECT warmup before timing (stride 8 rows)")
 	flag.BoolVar(&c.ReuseResults, "reuse-results", false, "reuse worker-private results through ExecPreparedInto")
 	flag.StringVar(&c.ProfileDir, "profile-dir", "", "optional diagnostic profiles (use separate runs)")
+	flag.BoolVar(&c.DebugProfiles, "debug-profiles", false, "enable pprof HTTP handlers on the loopback benchmark stats listener")
 	flag.StringVar(&c.JSON, "json", "", "report destination")
 	flag.Parse()
 	if c.Dir == "" || c.Workers < 1 || c.Duration <= 0 || c.Samples < 1 || c.CacheBytes <= 0 {

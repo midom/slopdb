@@ -137,6 +137,16 @@ go tool pprof -top ~/slopdb-bench/select-profile/cpu.pprof
 go tool pprof -top ~/slopdb-bench/select-profile/mutex.pprof
 ```
 
+For a separate TCP server process, add `-debug-profiles` to the server command.
+This enables standard `/debug/pprof/` handlers on its loopback statistics
+listener, plus sampled mutex and blocking diagnostics. Request a CPU profile
+after the client's checked warmup, for example
+`curl -o server-cpu.pprof 'http://127.0.0.1:33062/debug/pprof/profile?seconds=20'`.
+Capture `/debug/pprof/allocs`, `/debug/pprof/mutex`, and `/debug/pprof/block`
+before and after that window; `go tool pprof -base before.pprof after.pprof`
+subtracts setup activity. These endpoints are disabled unless explicitly
+requested. Profiling runs measure diagnostics, not unprofiled throughput.
+
 Setup, page-spaced warmup, seed validation, compaction and close are outside the
 timed samples. No loading or writes run alongside measurements. Benchmark
 timings are not ordinary test pass/fail thresholds; functionality tests use

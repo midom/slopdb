@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	httppprof "net/http/pprof"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -172,6 +173,13 @@ func serveBenchmark(ctx context.Context, c config) (err error) {
 	}
 	listeners = append(listeners, statsListener)
 	mux := http.NewServeMux()
+	if c.DebugProfiles {
+		previous := runtime.SetMutexProfileFraction(10)
+		runtime.SetBlockProfileRate(1000000)
+		defer runtime.SetMutexProfileFraction(previous)
+		defer runtime.SetBlockProfileRate(0)
+		installBenchmarkProfiles(mux)
+	}
 	mux.HandleFunc("/stats", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.Header().Set("Allow", http.MethodGet)
@@ -190,6 +198,9 @@ func serveBenchmark(ctx context.Context, c config) (err error) {
 		_ = json.NewEncoder(w).Encode(report)
 	})
 	statsServer = &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: 10 * time.Second}
+	if c.DebugProfiles {
+		statsServer.WriteTimeout = 2 * time.Minute
+	}
 	tasks = append(tasks, serveTask{"stats", statsListener, statsServer.Serve})
 	for _, task := range tasks {
 		task := task
@@ -253,4 +264,12 @@ func writeBenchmarkServerReady(path string, ready benchmarkServerReady) (err err
 		return err
 	}
 	return os.Rename(file.Name(), path)
+}
+
+// Only the opt-in benchmark HTTP listener exposes these diagnostics. Its
+// loopback restriction also applies to profiling endpoints. Request CPU/heap
+// profiles after client warmup to keep setup out of the diagnostic window.
+func installBenchmarkProfiles(mux *http.ServeMux) {
+	mux.HandleFunc("/debug/pprof/", httppprof.Index)
+	mux.HandleFunc("/debug/pprof/profile", httppprof.Profile)
 }
