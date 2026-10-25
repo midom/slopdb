@@ -60,9 +60,6 @@ func (c *client) administration(query string) (*db.ExecResult, bool, error) {
 	if kind == "CREATE" && tokenWord(tokens, 1, "DATABASE") {
 		return c.createDatabase(tokens)
 	}
-	if kind == "SHOW" && tokenWord(tokens, 1, "DATABASES") {
-		return c.showDatabases(tokens)
-	}
 	if kind == "SHOW" && tokenWord(tokens, 1, "GRANTS") {
 		return c.showGrants(tokens)
 	}
@@ -294,22 +291,6 @@ func (c *client) grantCommand(kind string, tokens []sql.Token) (*db.ExecResult, 
 	return nil, true, c.server.saveAccountsLocked(c.ctx, next)
 }
 
-func (c *client) showDatabases(tokens []sql.Token) (*db.ExecResult, bool, error) {
-	pattern := "%"
-	if len(tokens) != 2 {
-		if len(tokens) != 4 || !tokenWord(tokens, 2, "LIKE") || tokens[3].Type != sql.TokString {
-			return nil, true, fmt.Errorf("SHOW DATABASES supports LIKE string")
-		}
-		pattern = tokens[3].Value
-	}
-	r := &db.ExecResult{Columns: []sql.ColumnDef{{Name: "Database", ColType: sql.ColText}}}
-	for _, name := range c.availableSchemas() {
-		if variableLike(name, pattern) {
-			r.Rows = append(r.Rows, map[string]sql.Value{"Database": sql.NewTextValue(name)})
-		}
-	}
-	return r, true, nil
-}
 func (c *client) createDatabase(tokens []sql.Token) (*db.ExecResult, bool, error) {
 	// Keep option parsing and transaction semantics in the native catalog path.
 	var query strings.Builder

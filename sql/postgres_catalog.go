@@ -23,8 +23,7 @@ func postgresCatalogName(name string) (string, bool) {
 	if postgresCatalogNames[name] {
 		return name, true
 	}
-	switch name {
-	case "information_schema.schemata", "information_schema.tables", "information_schema.columns", "information_schema.views", "information_schema.table_constraints", "information_schema.key_column_usage", "information_schema.referential_constraints":
+	if _, known := informationSchemaName(name); strings.HasPrefix(name, "information_schema.") && known {
 		return name, true
 	}
 	return "", false
@@ -71,27 +70,9 @@ func pgBool(v bool) Value {
 	return r
 }
 func pgCatalog(spec string) *ResultSet {
-	r := &ResultSet{}
-	for _, part := range strings.Fields(spec) {
-		name, typ, _ := strings.Cut(part, ":")
-		c := ColumnDef{Name: name, ColType: ColText, Declared: "TEXT", Postgres: true}
-		switch typ {
-		case "i":
-			c.ColType = ColInteger
-			c.Declared = "BIGINT"
-		case "o":
-			c.ColType = ColInteger
-			c.Declared = "OID"
-		case "n":
-			c.Declared = "NAME"
-		case "b":
-			c.ColType = ColInteger
-			c.Declared = "BOOLEAN"
-		case "r":
-			c.ColType = ColReal
-			c.Declared = "DOUBLE PRECISION"
-		}
-		r.Columns = append(r.Columns, c)
+	r := catalogResult(spec)
+	for i := range r.Columns {
+		r.Columns[i].Postgres = true
 	}
 	return r
 }
@@ -185,6 +166,9 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 	name, known := postgresCatalogName(name)
 	if !known {
 		return nil, nil
+	}
+	if strings.HasPrefix(name, "information_schema.") {
+		return s.informationSchemaTable(name, catalogFilter{})
 	}
 	opts, _ := PostgresSession(s.ctx)
 	database := opts.Database

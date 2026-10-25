@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"sort"
 
 	"slopdb/storage"
 )
@@ -22,16 +21,20 @@ func (s *Schema) showTableStatus(stmt *ShowStmt) (*ResultSet, error) {
 			return nil, err
 		}
 	}
-	names := append(s.GetTableList(), s.GetViewList()...)
-	sort.Strings(names)
 	namespace := s.SearchPath()[0]
 	if stmt.Database != "" {
 		namespace = s.namespaceAlias(stmt.Database)
 	}
-	for _, name := range names {
-		schema, bare := SplitSchemaName(name)
-		if schema != namespace {
-			continue
+	dataRows, err := s.informationSchemaTable("tables", catalogFilter{Schema: s.catalogNamespace(namespace)})
+	if err != nil {
+		return nil, err
+	}
+	facts := s.catalogFacts()
+	for _, catalogRow := range dataRows.Rows {
+		bare := catalogRow["table_name"].Text
+		name := bare
+		if namespace != "main" {
+			name = namespace + "." + bare
 		}
 		if err := s.checkInterrupt(); err != nil {
 			return nil, err
@@ -44,13 +47,15 @@ func (s *Schema) showTableStatus(stmt *ShowStmt) (*ResultSet, error) {
 		for _, col := range rs.Columns {
 			row[col.Name] = NewNullValue()
 		}
-		row["Name"] = NewTextValue(bare)
-		if _, view := s.views[name]; view {
+		for label, source := range map[string]string{"Name": "table_name", "Engine": "engine", "Version": "version", "Row_format": "row_format", "Rows": "table_rows", "Avg_row_length": "avg_row_length", "Data_length": "data_length", "Max_data_length": "max_data_length", "Index_length": "index_length", "Data_free": "data_free", "Auto_increment": "auto_increment", "Create_time": "create_time", "Update_time": "update_time", "Check_time": "check_time", "Collation": "table_collation", "Checksum": "checksum", "Create_options": "create_options", "Comment": "table_comment"} {
+			row[label] = catalogRow[source]
+		}
+		if catalogRow["table_type"].Text == "VIEW" {
 			row["Comment"] = NewTextValue("VIEW")
 			rs.Rows = append(rs.Rows, row)
 			continue
 		}
-		info := s.tables[name]
+		info := facts.tables[name]
 		data, err := s.estimateStatusRange(info.storagePrefix(name), true)
 		if err != nil {
 			return nil, fmt.Errorf("table %s: %w", name, err)
@@ -58,7 +63,7 @@ func (s *Schema) showTableStatus(stmt *ShowStmt) (*ResultSet, error) {
 		var indexBytes int64
 		// Include every physical secondary index, including automatic constraint
 		// indexes. The clustered primary key is part of Data_length.
-		for _, idx := range s.indexes {
+		for _, idx := range facts.indexes {
 			if idx.Table != name {
 				continue
 			}

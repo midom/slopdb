@@ -39,3 +39,38 @@ func TestMySQLCatalogRespectsConfiguredName(t *testing.T) {
 		t.Fatal("unknown schema accepted")
 	}
 }
+
+func TestInformationSchemaDoesNotEvaluateDefaults(t *testing.T) {
+	s, _ := statisticsSchema(t, t.TempDir())
+	statisticsSQL(t, s, "CREATE TABLE catalog_default(id INTEGER DEFAULT (1 / 0))")
+	s.SetContext(WithMySQLSession(context.Background(), MySQLSessionOptions{Database: "wiki"}))
+	r, e := s.mysqlCatalogTable("information_schema.columns", MySQLSessionOptions{Database: "wiki"})
+	if e != nil || len(r.Rows) != 1 || r.Rows[0]["column_default"].Null {
+		t.Fatalf("default SQL introspection: %+v %v", r, e)
+	}
+	statement, e := Parse("SELECT ordinal_position FROM information_schema.columns WHERE 0")
+	if e != nil {
+		t.Fatal(e)
+	}
+	columns, e := s.Describe(statement[0])
+	if e != nil || len(columns) != 1 || columns[0].ColType != ColInteger {
+		t.Fatalf("typed metadata %+v %v", columns, e)
+	}
+}
+
+func TestInformationSchemaPointQueryAvoidsUnrelatedViewDescription(t *testing.T) {
+	s, _ := statisticsSchema(t, t.TempDir())
+	statisticsSQL(t, s, "CREATE TABLE selected_table(id INTEGER)")
+	// A damaged/unresolvable view must not poison a point lookup for another
+	// relation. No query execution is needed to discover a catalog's schema.
+	s.views["broken_view"] = &ViewInfo{Name: "broken_view", SQL: "SELECT absent FROM missing_table"}
+	s.SetContext(WithMySQLSession(context.Background(), MySQLSessionOptions{Database: "wiki"}))
+	statements, e := Parse("SELECT column_name FROM information_schema.columns WHERE table_schema='wiki' AND table_name='selected_table'")
+	if e != nil {
+		t.Fatal(e)
+	}
+	r, e := s.Select(statements[0].(*SelectStmt))
+	if e != nil || len(r.Rows) != 1 || r.Rows[0]["column_name"].Text != "id" {
+		t.Fatalf("point catalog: %+v %v", r, e)
+	}
+}

@@ -20,6 +20,11 @@ func (s *Schema) ExecuteShow(stmt *ShowStmt) (*ResultSet, error) {
 	if err := s.checkInterrupt(); err != nil {
 		return nil, err
 	}
+	oldView := s.catalogView
+	if s.catalogView == nil {
+		s.catalogView = s.CatalogSnapshot()
+	}
+	defer func() { s.catalogView = oldView }()
 	namespace := s.SearchPath()[0]
 	if stmt.Database != "" {
 		namespace = s.namespaceAlias(stmt.Database)
@@ -35,37 +40,40 @@ func (s *Schema) ExecuteShow(stmt *ShowStmt) (*ResultSet, error) {
 		rs, err = s.showTableStatus(stmt)
 		likeColumn = "Name"
 	case "DATABASES":
+		data, e := s.informationSchemaTable("schemata", catalogFilter{})
+		if e != nil {
+			return nil, e
+		}
 		rs = showResult("Database")
-		for _, name := range s.SchemaNames() {
-			rs.Rows = append(rs.Rows, map[string]Value{"Database": NewTextValue(name)})
-		}
 		likeColumn = "Database"
-	case "TABLES":
-		display := namespace
-		if options, ok := MySQLSession(s.ctx); ok && namespace == "main" && options.RootDatabase != "" {
-			display = options.RootDatabase
+		for _, row := range data.Rows {
+			name := row["schema_name"].Text
+			if name == "information_schema" || name == "mysql" || name == "pg_catalog" {
+				continue
+			}
+			rs.Rows = append(rs.Rows, map[string]Value{"Database": row["schema_name"]})
 		}
+	case "TABLES":
+		display := s.catalogNamespace(namespace)
 		likeColumn = "Tables_in_" + display
 		rs = showResult(likeColumn)
 		if stmt.Full {
 			rs.Columns = append(rs.Columns, ColumnDef{Name: "Table_type", ColType: ColText})
 		}
-		names := append(s.GetTableList(), s.GetViewList()...)
-		sort.Strings(names)
-		for _, name := range names {
-			schema, bare := SplitSchemaName(name)
-			if schema != namespace {
-				continue
-			}
-			row := map[string]Value{likeColumn: NewTextValue(bare)}
+		data, e := s.informationSchemaTable("tables", catalogFilter{Schema: display})
+		if e != nil {
+			return nil, e
+		}
+		for _, row := range data.Rows {
+			projected := map[string]Value{likeColumn: row["table_name"]}
 			if stmt.Full {
-				kind := "BASE TABLE"
-				if _, ok := s.views[name]; ok {
-					kind = "VIEW"
+				kind := row["table_type"]
+				if kind.Text == "LOCAL TEMPORARY" {
+					kind = NewTextValue("BASE TABLE")
 				}
-				row["Table_type"] = NewTextValue(kind)
+				projected["Table_type"] = kind
 			}
-			rs.Rows = append(rs.Rows, row)
+			rs.Rows = append(rs.Rows, projected)
 		}
 	case "COLUMNS":
 		rs, err = s.showColumns(stmt)
@@ -75,7 +83,7 @@ func (s *Schema) ExecuteShow(stmt *ShowStmt) (*ResultSet, error) {
 	case "CREATE TABLE", "CREATE VIEW", "CREATE TRIGGER":
 		return s.showCreate(stmt)
 	case "TRIGGERS":
-		rs = s.showTriggers()
+		rs, err = s.showTriggers(namespace)
 		likeColumn = "Table" // MySQL matches the table name, not the trigger name.
 	default:
 		return nil, fmt.Errorf("unsupported SHOW command: %s", stmt.Kind)
@@ -123,16 +131,17 @@ type showKey struct {
 
 // Include logical PRIMARY/UNIQUE keys even when constraints are enforced by a
 // row key or a scan rather than a separate secondary index.
-func (s *Schema) showKeys(info *TableInfo) []showKey {
+func (s *Schema) showKeys(info *TableInfo) []showKey { return s.catalogFacts().keys(info) }
+func (view *CatalogSnapshot) keys(info *TableInfo) []showKey {
 	var keys []showKey
 	if len(info.PKColumns) > 0 {
 		keys = append(keys, showKey{"PRIMARY", info.PKColumns, true, "LSM"})
 	}
-	for _, idx := range s.indexes {
+	for _, idx := range view.indexes {
 		if idx.Table != info.Name {
 			continue
 		}
-		if len(info.PKColumns) == 1 && s.isAutoIndex(idx) && len(idx.columnNames()) == 1 && idx.Column == info.PKColumns[0] {
+		if len(info.PKColumns) > 0 && idx.Auto && colsEqual(idx.columnNames(), info.PKColumns) {
 			continue // the auto-created primary-key index is represented above
 		}
 		method := "LSM"
@@ -181,119 +190,61 @@ func (s *Schema) showKeys(info *TableInfo) []showKey {
 }
 
 func (s *Schema) showColumns(stmt *ShowStmt) (*ResultSet, error) {
-	info := s.tables[stmt.Object]
-	if info == nil {
-		if view := s.views[stmt.Object]; view != nil {
-			cols, err := s.showViewColumns(view, 0)
-			if err != nil {
-				return nil, err
-			}
-			info = &TableInfo{Name: view.Name, Columns: cols}
-		} else {
-			return nil, fmt.Errorf("table or view %q does not exist", stmt.Object)
-		}
+	if _, ok := s.catalogFacts().relation(stmt.Object); !ok {
+		return nil, fmt.Errorf("table or view %q does not exist", stmt.Object)
+	}
+	ns, name := SplitSchemaName(stmt.Object)
+	data, err := s.informationSchemaTable("columns", catalogFilter{Schema: s.catalogNamespace(ns), Table: name})
+	if err != nil {
+		return nil, err
 	}
 	rs := showResult("Field", "Type", "Null", "Key", "Default", "Extra")
 	if stmt.Full {
 		rs = showResult("Field", "Type", "Collation", "Null", "Key", "Default", "Extra", "Privileges", "Comment")
 	}
-	keys := s.showKeys(info)
-	for _, col := range info.Columns {
-		key := ""
-		for _, k := range keys {
-			for i, name := range k.columns {
-				if name != col.Name {
-					continue
-				}
-				if k.name == "PRIMARY" {
-					key = "PRI"
-				} else if i == 0 && key != "PRI" {
-					if k.unique && len(k.columns) == 1 {
-						key = "UNI"
-					} else if key == "" {
-						key = "MUL"
+	for _, row := range data.Rows {
+		projected := map[string]Value{"Field": row["column_name"], "Type": row["slopdb_declared_type"], "Null": row["is_nullable"], "Key": row["column_key"], "Default": row["column_default"], "Extra": row["extra"]}
+		if s.PostgresMode() { // SHOW preserves its native literal-default presentation.
+			if fact, ok := s.catalogFacts().relation(stmt.Object); ok {
+				for _, col := range fact.Columns {
+					if col.Name == row["column_name"].Text {
+						projected["Default"] = catalogDefault(col, false)
 					}
 				}
 			}
-		}
-		nullable := "YES"
-		if col.NotNull || (key == "PRI" && col.ColType == ColInteger && len(info.PKColumns) == 1) {
-			nullable = "NO"
-		}
-		dflt := NewNullValue()
-		if lit, ok := col.Default.(*LiteralExpr); ok {
-			if !lit.Value.Null {
-				dflt = NewTextValue(lit.Value.String())
-			}
-		} else if col.Default != nil {
-			dflt = NewTextValue(formatExpr(col.Default))
-			if unary, ok := col.Default.(*UnaryExpr); ok && (unary.Op == "-" || unary.Op == "+") {
-				if lit, ok := unary.Right.(*LiteralExpr); ok && (lit.Value.Type == ColInteger || lit.Value.Type == ColReal) {
-					value, err := s.evalExpr(unary, nil)
-					if err != nil {
-						return nil, err
-					}
-					dflt = NewTextValue(value.String())
-				}
-			}
-		}
-		extra := ""
-		if col.AutoIncrement {
-			extra = "auto_increment"
-		}
-		row := map[string]Value{
-			"Field": NewTextValue(col.Name), "Type": NewTextValue(col.DeclaredType()),
-			"Null": NewTextValue(nullable), "Key": NewTextValue(key),
-			"Default": dflt, "Extra": NewTextValue(extra),
 		}
 		if stmt.Full {
-			row["Collation"] = NewNullValue()
-			row["Privileges"] = NewTextValue("select,insert,update,references")
-			row["Comment"] = NewTextValue("")
+			projected["Collation"] = row["collation_name"]
+			projected["Privileges"] = NewNullValue()
+			projected["Comment"] = row["column_comment"]
 		}
-		rs.Rows = append(rs.Rows, row)
+		rs.Rows = append(rs.Rows, projected)
 	}
 	return rs, nil
 }
-
 func (s *Schema) showIndexes(name string) (*ResultSet, error) {
-	info := s.tables[name]
-	if info == nil {
+	fact, ok := s.catalogFacts().relation(name)
+	if !ok || fact.Kind != "table" {
 		return nil, fmt.Errorf("table %q does not exist", name)
 	}
+	data, err := s.informationSchemaTable("statistics", catalogFilter{Schema: s.catalogNamespace(fact.Schema), Table: fact.Name})
+	if err != nil {
+		return nil, err
+	}
 	rs := showResult("Table", "Non_unique", "Key_name", "Seq_in_index", "Column_name", "Collation", "Cardinality", "Sub_part", "Packed", "Null", "Index_type", "Comment", "Index_comment", "Visible", "Expression")
+	fields := map[string]string{"Non_unique": "non_unique", "Key_name": "index_name", "Seq_in_index": "seq_in_index", "Column_name": "column_name", "Collation": "collation", "Cardinality": "cardinality", "Sub_part": "sub_part", "Packed": "packed", "Null": "nullable", "Index_type": "index_type", "Comment": "comment", "Index_comment": "index_comment", "Visible": "is_visible", "Expression": "expression"}
 	for i := range rs.Columns {
 		switch rs.Columns[i].Name {
 		case "Non_unique", "Seq_in_index", "Cardinality", "Sub_part":
 			rs.Columns[i].ColType = ColInteger
 		}
 	}
-	for _, key := range s.showKeys(info) {
-		for i, name := range key.columns {
-			nullable := "YES"
-			for _, col := range info.Columns {
-				if col.Name == name && (col.NotNull || (key.name == "PRIMARY" && len(info.PKColumns) == 1 && col.ColType == ColInteger)) {
-					nullable = ""
-				}
-			}
-			nonUnique := int64(1)
-			if key.unique {
-				nonUnique = 0
-			}
-			subPart := NewNullValue()
-			if idx := s.findTableIndex(info.Name, key.name); idx != nil && i < len(idx.PrefixLengths) && idx.PrefixLengths[i] > 0 {
-				subPart = NewIntValue(idx.PrefixLengths[i])
-			}
-			rs.Rows = append(rs.Rows, map[string]Value{
-				"Table": NewTextValue(info.Name), "Non_unique": NewIntValue(nonUnique),
-				"Key_name": NewTextValue(key.name), "Seq_in_index": NewIntValue(int64(i + 1)),
-				"Column_name": NewTextValue(name), "Collation": NewTextValue("A"),
-				"Cardinality": NewNullValue(), "Sub_part": subPart, "Packed": NewNullValue(),
-				"Null": NewTextValue(nullable), "Index_type": NewTextValue(key.method),
-				"Comment": NewTextValue(""), "Index_comment": NewTextValue(""),
-				"Visible": NewTextValue("YES"), "Expression": NewNullValue(),
-			})
+	for _, row := range data.Rows {
+		projected := map[string]Value{"Table": NewTextValue(name)}
+		for label, source := range fields {
+			projected[label] = row[source]
 		}
+		rs.Rows = append(rs.Rows, projected)
 	}
 	return rs, nil
 }
@@ -339,29 +290,21 @@ func (s *Schema) showCreate(stmt *ShowStmt) (*ResultSet, error) {
 	return rs, nil
 }
 
-func (s *Schema) showTriggers() *ResultSet {
-	rs := showResult("Trigger", "Event", "Table", "Statement", "Timing", "Created", "sql_mode", "Definer", "character_set_client", "collation_connection", "Database Collation")
-	for _, name := range s.GetTriggerList() {
-		t := s.triggers[name]
-		target := t.Table
-		if target == "" {
-			target = t.View
-		}
-		timing := t.Timing
-		if t.InsteadOf {
-			timing = "INSTEAD OF"
-		} else if timing == "" {
-			timing = "AFTER"
-		}
-		row := make(map[string]Value, len(rs.Columns))
-		for _, col := range rs.Columns {
-			row[col.Name] = NewNullValue()
-		}
-		row["Trigger"], row["Event"], row["Table"] = NewTextValue(name), NewTextValue(t.Event), NewTextValue(target)
-		row["Statement"], row["Timing"] = NewTextValue(strings.Join(t.Body, "; ")), NewTextValue(timing)
-		rs.Rows = append(rs.Rows, row)
+func (s *Schema) showTriggers(namespace string) (*ResultSet, error) {
+	data, err := s.informationSchemaTable("triggers", catalogFilter{Schema: s.catalogNamespace(namespace)})
+	if err != nil {
+		return nil, err
 	}
-	return rs
+	rs := showResult("Trigger", "Event", "Table", "Statement", "Timing", "Created", "sql_mode", "Definer", "character_set_client", "collation_connection", "Database Collation")
+	fields := map[string]string{"Trigger": "trigger_name", "Event": "event_manipulation", "Table": "event_object_table", "Statement": "action_statement", "Timing": "action_timing", "Created": "created", "sql_mode": "sql_mode", "Definer": "definer", "character_set_client": "character_set_client", "collation_connection": "collation_connection", "Database Collation": "database_collation"}
+	for _, row := range data.Rows {
+		projected := make(map[string]Value, len(fields))
+		for label, source := range fields {
+			projected[label] = row[source]
+		}
+		rs.Rows = append(rs.Rows, projected)
+	}
+	return rs, nil
 }
 
 // Derive view metadata without executing its SELECT or reading table rows.
