@@ -20,13 +20,14 @@ import (
 
 func TestCLIRaftAsyncCommitAndOfflineRecovery(t *testing.T) {
 	env := newRegressionEnv(t)
+	binary := env.cli()
 	root := t.TempDir()
 	nodeDirectory := filepath.Join(root, "node")
 	socket := filepath.Join(root, ".s.PGSQL.5432")
 	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
 	defer cancel()
 	arguments := []string{"--raft-id=one", "--raft-bootstrap", "--raft-durability=async", "--raft-durability-interval=1h", "--raft-max-durability-lag=2h", "--raft-listen=tcp://127.0.0.1:0", "--raft-control=unix://" + filepath.Join(root, "control.sock"), "--raft-token-env=SLOPDB_TEST_ASYNC_TOKEN", "--postgres-socket=" + socket, nodeDirectory}
-	command := exec.CommandContext(ctx, env.cli(), arguments...)
+	command := exec.CommandContext(ctx, binary, arguments...)
 	command.Env = append(os.Environ(), "SLOPDB_TEST_ASYNC_TOKEN=permanent-async-durability-test-token")
 	if e := command.Start(); e != nil {
 		t.Fatal(e)
@@ -44,8 +45,11 @@ func TestCLIRaftAsyncCommitAndOfflineRecovery(t *testing.T) {
 	}
 	defer client.Close()
 	client.SetMaxOpenConns(1)
+	// Do not retain a session invalidated by initial leader catalog reload.
+	client.SetMaxIdleConns(0)
 	for {
-		if e = client.PingContext(ctx); e == nil {
+		if e = raftSQLWritable(ctx, client); e == nil {
+			client.SetMaxIdleConns(1)
 			break
 		}
 		select {
@@ -80,7 +84,7 @@ func TestCLIRaftAsyncCommitAndOfflineRecovery(t *testing.T) {
 			args = append(args, "--raft-recovery-fenced")
 		}
 		args = append(args, nodeDirectory)
-		child := exec.CommandContext(ctx, env.cli(), args...)
+		child := exec.CommandContext(ctx, binary, args...)
 		child.Env = command.Env
 		return child.CombinedOutput()
 	}

@@ -78,6 +78,9 @@ func (c *client) writeError(err error) error {
 	var explicit *protocolError
 	var parse *sql.ParseError
 	switch {
+	case errors.Is(err, db.ErrSessionClosed):
+		pErr.code = 1053
+		pErr.state = "08S01"
 	case errors.Is(err, db.ErrDurabilityUnconfirmed):
 		pErr.state = "40003"
 	case errors.As(err, &explicit):
@@ -116,7 +119,13 @@ func (c *client) writeError(err error) error {
 	p = append(p, '#')
 	p = append(p, pErr.state...)
 	p = append(p, pErr.message...)
-	return c.writer.write(p)
+	if writeErr := c.writer.write(p); writeErr != nil {
+		return writeErr
+	}
+	if errors.Is(err, db.ErrSessionClosed) {
+		return db.ErrSessionClosed
+	}
+	return nil
 }
 
 const (

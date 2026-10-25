@@ -2,7 +2,6 @@ package regression
 
 import (
 	"math"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -65,7 +64,7 @@ func TestBetweenPreparedReadPlans(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					if len(result.Rows) != len(tc.want) || len(tc.want) > 0 && !reflect.DeepEqual(result.Rows, tc.want) {
+					if !equalBetweenRows(result.Rows, tc.want) {
 						t.Fatalf("got %v, want %v", result.Rows, tc.want)
 					}
 				})
@@ -85,7 +84,7 @@ func TestBetweenPreparedReadPlans(t *testing.T) {
 			}
 			if result, err := database.Exec("SELECT * FROM t WHERE a BETWEEN -2 AND -1 ORDER BY v,a,b"); err != nil {
 				t.Fatal(err)
-			} else if !reflect.DeepEqual(result.Rows, rows[1:4]) {
+			} else if !equalBetweenRows(result.Rows, rows[1:4]) {
 				t.Fatalf("unlimited read: got %v, want %v", result.Rows, rows[1:4])
 			}
 		})
@@ -99,4 +98,42 @@ func TestBetweenPreparedReadPlans(t *testing.T) {
 			}
 		}
 	}
+}
+
+// Compare SQL type and exact payload; declaration/protocol provenance is
+// intentionally richer on decoded columns than on constructor-built fixtures.
+func equalBetweenRows(got, want []map[string]sql.Value) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i, row := range want {
+		if len(got[i]) != len(row) {
+			return false
+		}
+		for name, expected := range row {
+			actual, ok := got[i][name]
+			if !ok || actual.Type != expected.Type || actual.Null != expected.Null {
+				return false
+			}
+			if actual.Null {
+				continue
+			}
+			if actual.LogicalType().Kind != expected.LogicalType().Kind {
+				return false
+			}
+			switch expected.Type {
+			case sql.ColInteger:
+				if actual.Int != expected.Int {
+					return false
+				}
+			case sql.ColText:
+				if actual.Text != expected.Text {
+					return false
+				}
+			default:
+				return false
+			}
+		}
+	}
+	return true
 }

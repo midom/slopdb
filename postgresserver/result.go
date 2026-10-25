@@ -33,6 +33,12 @@ func (c *client) ready() error {
 	return c.send(&pgproto3.ReadyForQuery{TxStatus: state})
 }
 func (c *client) writeError(err error) error {
+	if errors.Is(err, db.ErrSessionClosed) {
+		// The transaction/session state is gone. A fatal protocol response
+		// prevents a pool from retaining this unusable native session.
+		_ = c.fatal("57P01", err.Error())
+		return db.ErrSessionClosed
+	}
 	code := "XX000"
 	var p *protocolError
 	var parse *sql.ParseError

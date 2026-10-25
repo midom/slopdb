@@ -24,6 +24,7 @@ func TestCLIRaftProtocolsAndCrashRecovery(t *testing.T) {
 	for _, protocol := range []string{"mysql", "postgres"} {
 		t.Run(protocol, func(t *testing.T) {
 			env := newRegressionEnv(t)
+			binary := env.cli()
 			root := t.TempDir()
 			nodeDir := filepath.Join(root, "node")
 			socket := filepath.Join(root, "sql.sock")
@@ -40,7 +41,7 @@ func TestCLIRaftProtocolsAndCrashRecovery(t *testing.T) {
 					actual = append(actual, "--raft-bootstrap")
 				}
 				actual = append(actual, nodeDir)
-				command := exec.CommandContext(ctx, env.cli(), actual...)
+				command := exec.CommandContext(ctx, binary, actual...)
 				command.Env = append(os.Environ(), "SLOPDB_TEST_RAFT_TOKEN=permanent-regression-raft-token")
 				stderr, e := command.StderrPipe()
 				if e != nil {
@@ -90,11 +91,15 @@ func TestCLIRaftProtocolsAndCrashRecovery(t *testing.T) {
 					}
 				}
 				client.SetMaxOpenConns(1)
+				// Initial leader catalog reload invalidates early native
+				// sessions. Poll with fresh protocol connections until ready.
+				client.SetMaxIdleConns(0)
 				t.Cleanup(func() { _ = client.Close() })
 				ticker := time.NewTicker(25 * time.Millisecond)
 				defer ticker.Stop()
 				for {
-					if e = client.PingContext(ctx); e == nil {
+					if e = raftSQLWritable(ctx, client); e == nil {
+						client.SetMaxIdleConns(1)
 						return client
 					}
 					select {
@@ -165,4 +170,30 @@ func TestCLIRaftRejectsUnsafeDurability(t *testing.T) {
 			t.Fatalf("%s: %v %s", flag, e, output)
 		}
 	}
+}
+
+// A protocol Ping confirms reachability and remains valid for a follower or a
+// node that is still electing its leader. SQL mutations need the stronger owner
+// state, observed without proposing a write merely to test startup.
+func raftSQLWritable(ctx context.Context, client *gosql.DB) error {
+	rows, err := client.QueryContext(ctx, "SHOW RAFT STATUS")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	state := map[string]string{}
+	for rows.Next() {
+		var key, value string
+		if err = rows.Scan(&key, &value); err != nil {
+			return err
+		}
+		state[key] = value
+	}
+	if err = rows.Err(); err != nil {
+		return err
+	}
+	if strings.EqualFold(state["role"], "Leader") && state["ready"] == "ON" && state["writable"] == "ON" {
+		return nil
+	}
+	return fmt.Errorf("Raft SQL is not writable: role=%s ready=%s writable=%s error=%s", state["role"], state["ready"], state["writable"], state["error"])
 }
