@@ -153,6 +153,95 @@ func roundDecimal(n *big.Int, scale, target int) *big.Int {
 	return q
 }
 
+// literalRational retains source precision only while an expression consists
+// of exact integers/decimals and native REAL literals. Stored REAL values and
+// explicit REAL casts keep their usual approximate semantics.
+func literalRational(v Value) (*big.Rat, bool) {
+	if v.NumericExact != "" {
+		n, ok := new(big.Rat).SetString(v.NumericExact)
+		return n, ok
+	}
+	if v.Type == ColReal && v.NumericText == "" {
+		return nil, false
+	}
+	n, scale, err := valueDecimal(v)
+	if err != nil {
+		return nil, false
+	}
+	return new(big.Rat).SetFrac(n, decimalPower(scale)), true
+}
+
+func realArithmeticProvenance(op string, a, b, result Value) (Value, error) {
+	if a.NumericText == "" && a.NumericExact == "" && b.NumericText == "" && b.NumericExact == "" {
+		return result, nil
+	}
+	left, lok := literalRational(a)
+	right, rok := literalRational(b)
+	if !lok || !rok {
+		return result, nil
+	}
+	n := new(big.Rat)
+	switch op {
+	case "+":
+		n.Add(left, right)
+	case "-":
+		n.Sub(left, right)
+	case "*":
+		n.Mul(left, right)
+	case "/":
+		if right.Sign() == 0 {
+			return NewNullValue(), fmt.Errorf("division by zero")
+		}
+		n.Quo(left, right)
+	default:
+		return result, nil
+	}
+	if len(n.Num().String()) > maxDecimalDigits || len(n.Denom().String()) > maxDecimalDigits {
+		return NewNullValue(), fmt.Errorf("decimal expression out of range")
+	}
+	result.NumericExact = n.RatString()
+	return result, nil
+}
+
+// rationalNumericDecimal preserves terminating decimal expansions. A bare
+// DECIMAL cast of a repeating fraction uses the supported maximum SQL scale.
+func rationalNumericDecimal(r *big.Rat) (Value, error) {
+	den := new(big.Int).Set(r.Denom())
+	two, five := big.NewInt(2), big.NewInt(5)
+	counts := [2]int{}
+	for i, factor := range []*big.Int{two, five} {
+		for new(big.Int).Rem(den, factor).Sign() == 0 {
+			den.Quo(den, factor)
+			counts[i]++
+			if counts[i] > maxDecimalDigits {
+				return NewNullValue(), fmt.Errorf("decimal expression out of range")
+			}
+		}
+	}
+	scale := max(counts[0], counts[1])
+	if den.Cmp(big.NewInt(1)) != 0 {
+		scale = 30
+	}
+	return rationalDecimal(r, scale)
+}
+
+func negateRealValue(v Value) Value {
+	v.Real = -v.Real
+	if v.NumericExact != "" {
+		if n, ok := new(big.Rat).SetString(v.NumericExact); ok {
+			v.NumericExact = n.Neg(n).RatString()
+		}
+	}
+	if v.NumericText != "" {
+		if strings.HasPrefix(v.NumericText, "-") {
+			v.NumericText = v.NumericText[1:]
+		} else {
+			v.NumericText = "-" + strings.TrimPrefix(v.NumericText, "+")
+		}
+	}
+	return v
+}
+
 func valueDecimal(v Value) (*big.Int, int, error) {
 	if v.EnumValue {
 		return big.NewInt(v.EnumOrdinal), 0, nil
@@ -234,7 +323,7 @@ func extendedArithmetic(op string, a, b Value) (Value, error) {
 			if math.IsNaN(result) || math.IsInf(result, 0) {
 				return NewNullValue(), fmt.Errorf("numeric value out of range")
 			}
-			return NewRealValue(result), nil
+			return realArithmeticProvenance(op, a, b, NewRealValue(result))
 		}
 	}
 	an, as, err := valueDecimal(a)
@@ -263,7 +352,7 @@ func extendedArithmetic(op string, a, b Value) (Value, error) {
 			return NewNullValue(), fmt.Errorf("division by zero")
 		}
 		if decimal {
-			target := min(max(as+4, bs), 30)
+			target := min(as+4, 30)
 			numerator := new(big.Int).Mul(an, decimalPower(bs+target))
 			denominator := new(big.Int).Mul(bn, decimalPower(as))
 			q, r := new(big.Int), new(big.Int)
@@ -302,6 +391,17 @@ func extendedArithmetic(op string, a, b Value) (Value, error) {
 }
 
 func normalizeDecimal(v Value, col ColumnDef) (Value, error) {
+	if v.NumericExact != "" {
+		r, ok := new(big.Rat).SetString(v.NumericExact)
+		if !ok {
+			return NewNullValue(), fmt.Errorf("invalid DECIMAL expression for %s", col.Name)
+		}
+		rounded, err := rationalDecimal(r, col.Scale)
+		if err != nil {
+			return NewNullValue(), err
+		}
+		v = rounded
+	}
 	n, s, err := valueDecimal(v)
 	if err != nil {
 		return NewNullValue(), fmt.Errorf("invalid DECIMAL value for %s: %w", col.Name, err)
@@ -314,6 +414,15 @@ func normalizeDecimal(v Value, col ColumnDef) (Value, error) {
 }
 
 func (s *Schema) mysqlIntegerAssignment(v Value, col ColumnDef) (Value, error) {
+	if v.NumericExact != "" {
+		if r, ok := new(big.Rat).SetString(v.NumericExact); ok {
+			var err error
+			v, err = rationalDecimal(r, 0)
+			if err != nil {
+				return NewNullValue(), err
+			}
+		}
+	}
 	if v.Null {
 		return v, nil
 	}

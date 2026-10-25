@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"math"
+	"math/big"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -240,12 +241,33 @@ func castSQLValue(value Value, target string) (Value, error) {
 	}
 	name := strings.ToUpper(target)
 	if name == "DECIMAL" || name == "NUMERIC" {
-		return NewDecimalValue(mysqlStringValue(value))
+		if value.NumericExact != "" {
+			if r, ok := new(big.Rat).SetString(value.NumericExact); ok {
+				return rationalNumericDecimal(r)
+			}
+		}
+		n, scale, err := valueDecimal(value)
+		if err != nil {
+			return NewNullValue(), err
+		}
+		return Value{Type: ColDecimal, Text: decimalText(n, scale)}, nil
 	}
 	if name == "JSON" || name == "JSONB" {
 		return NewJSONValue(mysqlStringValue(value))
 	}
 	if name == "UNSIGNED" || name == "UNSIGNED INTEGER" {
+		if value.NumericExact != "" {
+			if r, ok := new(big.Rat).SetString(value.NumericExact); ok {
+				n := new(big.Int).Quo(r.Num(), r.Denom())
+				if n.Sign() < 0 {
+					return NewUnsignedValue(uint64(n.Int64())), nil
+				}
+				if n.BitLen() > 64 {
+					return NewNullValue(), fmt.Errorf("unsigned integer overflow")
+				}
+				return NewUnsignedValue(n.Uint64()), nil
+			}
+		}
 		n, scale, err := valueDecimal(value)
 		if err != nil {
 			return NewNullValue(), err

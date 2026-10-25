@@ -190,7 +190,7 @@ func (p *typedProgram) eval(slots []Value) (Value, error) {
 							v.Int = -v.Int
 						}
 					} else {
-						v.Real = -v.Real
+						v = negateRealValue(v)
 					}
 				}
 			}
@@ -226,7 +226,7 @@ func (p *typedProgram) eval(slots []Value) (Value, error) {
 				v = NewTextValue(left.String() + right.String())
 			}
 		case "+", "-", "*", "/", "%":
-			v, err = arithmeticValues(i.op, p.registers[i.a], p.registers[i.b], func(a, b float64) float64 {
+			v, err = arithmeticValuesMode(p.mysqlMode, i.op, p.registers[i.a], p.registers[i.b], func(a, b float64) float64 {
 				switch i.op {
 				case "+":
 					return a + b

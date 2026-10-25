@@ -6192,7 +6192,7 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 				}
 				return NewIntValue(-right.Int), nil
 			}
-			return NewRealValue(-toFloat(right)), nil
+			return negateRealValue(right), nil
 		case "~":
 			if right.Type == ColUnsigned {
 				return NewUnsignedValue(^right.Uint), nil
@@ -6950,11 +6950,33 @@ func (s *Schema) evalArithmetic(e *BinaryExpr, row map[string]Value, fn func(flo
 	if err != nil {
 		return NewNullValue(), err
 	}
-	return arithmeticValues(e.Op, lv, rv, fn)
+	return arithmeticValuesMode(s.mysqlMode, e.Op, lv, rv, fn)
 }
 
 // arithmeticValues is shared by interpreted and slot-bound execution so exact
 // integers, NULL propagation and numeric errors cannot diverge.
+func arithmeticValuesMode(mysqlMode bool, op string, lv, rv Value, fn func(float64, float64) float64) (Value, error) {
+	if mysqlMode && op != "%" && (lv.Type == ColReal || rv.Type == ColReal) {
+		if lv.Type == ColDecimal {
+			lv = NewRealValue(toFloatVal(lv))
+		}
+		if rv.Type == ColDecimal {
+			rv = NewRealValue(toFloatVal(rv))
+		}
+	}
+	if mysqlMode && op == "/" && !lv.Null && !rv.Null && isNumeric(lv) && isNumeric(rv) && lv.Type != ColReal && rv.Type != ColReal {
+		if lv.Type != ColDecimal {
+			n, scale, err := valueDecimal(lv)
+			if err != nil {
+				return NewNullValue(), err
+			}
+			lv = Value{Type: ColDecimal, Text: decimalText(n, scale)}
+		}
+		return extendedArithmetic(op, lv, rv)
+	}
+	return arithmeticValues(op, lv, rv, fn)
+}
+
 func arithmeticValues(op string, lv, rv Value, fn func(float64, float64) float64) (Value, error) {
 	if lv.EnumValue {
 		lv = NewIntValue(lv.EnumOrdinal)
@@ -7021,7 +7043,7 @@ func arithmeticValues(op string, lv, rv Value, fn func(float64, float64) float64
 	if math.IsInf(result, 0) || math.IsNaN(result) {
 		return NewNullValue(), fmt.Errorf("numeric value out of range")
 	}
-	return NewRealValue(result), nil
+	return realArithmeticProvenance(op, lv, rv, NewRealValue(result))
 }
 
 func integerValue(v Value) int64 {
@@ -7169,6 +7191,9 @@ func applyAffinity(v Value, typ ColumnType) Value {
 		return v
 	}
 	if typ == ColDecimal {
+		if v.NumericExact != "" {
+			return v
+		}
 		if coefficient, scale, err := valueDecimal(v); err == nil {
 			return Value{Type: ColDecimal, Text: decimalText(coefficient, scale)}
 		}

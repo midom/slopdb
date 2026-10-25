@@ -529,18 +529,19 @@ func (*SubqueryExpr) expr()  {}
 func (*ExistsExpr) expr()    {}
 
 type Value struct {
-	Collation   Collation `json:"-"`
-	Type        ColumnType
-	EnumValue   bool  `json:"-"`
-	EnumOrdinal int64 `json:"-"`
-	Binary      bool  `json:"-"` // expression-level BINARY override; never persisted
-	Int         int64
-	Real        float64
-	Uint        uint64
-	NumericText string `json:"-"` // exact source spelling for decimal conversion of numeric literals
-	Text        string
-	Blob        []byte
-	Null        bool
+	Collation    Collation `json:"-"`
+	Type         ColumnType
+	EnumValue    bool  `json:"-"`
+	EnumOrdinal  int64 `json:"-"`
+	Binary       bool  `json:"-"` // expression-level BINARY override; never persisted
+	Int          int64
+	Real         float64
+	Uint         uint64
+	NumericText  string `json:"-"` // exact source spelling for decimal conversion of numeric literals
+	NumericExact string `json:"-"` // immutable rational provenance for native REAL literal expressions
+	Text         string
+	Blob         []byte
+	Null         bool
 }
 
 func (v Value) MarshalJSON() ([]byte, error) {
