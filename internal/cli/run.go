@@ -111,14 +111,6 @@ func Run() {
 		fmt.Fprintln(os.Stderr, "logs-only replicas cannot serve SQL listeners")
 		os.Exit(1)
 	}
-	if mysqlMode && postgresMode {
-		fmt.Fprintln(os.Stderr, "choose either MySQL or PostgreSQL CLI server mode")
-		os.Exit(1)
-	}
-	if postgresMode && opt.MySQLQuoting {
-		fmt.Fprintln(os.Stderr, "PostgreSQL server requires --mysql-quoting=false")
-		os.Exit(1)
-	}
 	if !postgresMode && (*postgresTLSCert != "" || *postgresTLSKey != "" || *postgresTLSCA != "" || *postgresRequireTLS) {
 		fmt.Fprintln(os.Stderr, "PostgreSQL TLS options require --postgres-tcp or --postgres-socket")
 		os.Exit(1)
@@ -154,7 +146,7 @@ func Run() {
 		fmt.Fprintf(os.Stderr, "MySQL TLS: %v\n", err)
 		os.Exit(1)
 	}
-	if mysqlMode {
+	if mysqlMode && !postgresMode {
 		// Protocol clients expect MySQL string quoting unless explicitly overridden.
 		explicitQuoting := false
 		flags.Visit(func(f *flag.Flag) {
@@ -200,6 +192,26 @@ func Run() {
 			os.Exit(1)
 		}
 	}()
+	if mysqlMode && postgresMode {
+		mysql, err := mysqlserver.New(database, mysqlserver.Config{Username: *mysqlUser, Password: mysqlPassword, Database: *mysqlDatabase, TLSConfig: mysqlTLS, RequireTLS: *mysqlRequireTLS})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "MySQL server: %v\n", err)
+			exitCLI(1)
+			return
+		}
+		postgres, err := postgresserver.New(database, postgresserver.Config{Username: *postgresUser, Password: postgresPassword, Database: *postgresDatabase, TLSConfig: postgresTLS, RequireTLS: *postgresRequireTLS})
+		if err != nil {
+			_ = mysql.Close()
+			fmt.Fprintf(os.Stderr, "PostgreSQL server: %v\n", err)
+			exitCLI(1)
+			return
+		}
+		if err = runWireServers([]wireEndpoint{{mysql, "MySQL", *mysqlTCP, *mysqlSocket, *mysqlDatabase, *mysqlUser}, {postgres, "PostgreSQL", *postgresTCP, *postgresSocket, *postgresDatabase, *postgresUser}}); err != nil {
+			fmt.Fprintf(os.Stderr, "SQL servers: %v\n", err)
+			exitCLI(1)
+		}
+		return
+	}
 	if mysqlMode {
 		err := runMySQLServer(database, *mysqlTCP, *mysqlSocket, mysqlserver.Config{
 			Username: *mysqlUser, Password: mysqlPassword, Database: *mysqlDatabase,
