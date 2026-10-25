@@ -289,11 +289,15 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 		}
 		for _, n := range tables {
 			t := s.tables[n]
-			has := false
+			has := len(t.PKColumns) > 0
 			for _, idx := range s.indexes {
 				has = has || idx.Table == n
 			}
 			add(pgObjectOID(t.ID), n, "r", len(t.Columns), has, s.isTemporaryTable(n))
+			if pgPrimaryOID(t) != 0 {
+				ns, _ := pgObjectNames(n)
+				add(pgPrimaryOID(t), ns+"."+pgPrimaryName(t), "i", len(t.PKColumns), false, s.isTemporaryTable(n))
+			}
 		}
 		for _, n := range indexes {
 			idx := s.indexes[n]
@@ -347,6 +351,22 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 			}
 			pgCatalogRow(r, pgObjectOID(idx.ID), pgObjectOID(t.ID), len(key), len(key), idx.IsUnique, false, primary, false, true, false, true, false, true, true, false, strings.Join(key, " "), nil, nil)
 		}
+
+		for _, n := range tables {
+			t := s.tables[n]
+			if pgPrimaryOID(t) == 0 {
+				continue
+			}
+			var key []string
+			for _, cn := range t.PKColumns {
+				for i, c := range t.Columns {
+					if c.Name == cn {
+						key = append(key, fmt.Sprint(i+1))
+					}
+				}
+			}
+			pgCatalogRow(r, pgPrimaryOID(t), pgObjectOID(t.ID), len(key), len(key), true, false, true, false, true, true, true, false, true, true, false, strings.Join(key, " "), nil, nil)
+		}
 		return r, nil
 	case "pg_tables", "information_schema.tables":
 		r := pgCatalog("schemaname tablename tableowner tablespace hasindexes:b hasrules:b hastriggers:b rowsecurity:b")
@@ -355,7 +375,7 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 		}
 		for _, n := range tables {
 			ns, obj := pgObjectNames(n)
-			has := false
+			has := len(s.tables[n].PKColumns) > 0
 			for _, idx := range s.indexes {
 				has = has || idx.Table == n
 			}
@@ -382,6 +402,14 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 			idx := s.indexes[n]
 			ns, obj := pgObjectNames(idx.Table)
 			pgCatalogRow(r, ns, obj, idx.SQLName(), nil, s.GetIndexSQL(n))
+		}
+
+		for _, n := range tables {
+			t := s.tables[n]
+			if pgPrimaryOID(t) != 0 {
+				ns, obj := pgObjectNames(n)
+				pgCatalogRow(r, ns, obj, pgPrimaryName(t), nil, pgPrimarySQL(t))
+			}
 		}
 		return r, nil
 	case "pg_views", "information_schema.views":
@@ -505,7 +533,11 @@ func (s *Schema) postgresConstraints(name string, tables []string, database stri
 			}
 			switch name {
 			case "pg_constraint":
-				pgCatalogRow(r, oid, c.Name, pgNamespaceOID(ns), typ, c.Deferrable, c.InitiallyDeferred, true, pgObjectOID(t.ID), 0, pgObjectOID(c.IndexID), 0, refid, pgAction(c.OnUpdate), pgAction(c.OnDelete), "s", true, 0, true, keys(c.Columns, t), keys(c.RefColumns, ref), c.CheckSQL)
+				indexOID := pgObjectOID(c.IndexID)
+				if typ == "p" {
+					indexOID = pgPrimaryOID(t)
+				}
+				pgCatalogRow(r, oid, c.Name, pgNamespaceOID(ns), typ, c.Deferrable, c.InitiallyDeferred, true, pgObjectOID(t.ID), 0, indexOID, 0, refid, pgAction(c.OnUpdate), pgAction(c.OnDelete), "s", true, 0, true, keys(c.Columns, t), keys(c.RefColumns, ref), c.CheckSQL)
 			case "information_schema.table_constraints":
 				pgCatalogRow(r, database, ns, c.Name, database, ns, obj, kind, pgYes(c.Deferrable), pgYes(c.InitiallyDeferred), "YES", "YES")
 			case "information_schema.key_column_usage":
@@ -555,4 +587,29 @@ func pgAction(action string) string {
 		return "d"
 	}
 	return "a"
+}
+
+// A clustered primary key is a real maintained LSM index even though it has no
+// separate secondary IndexInfo. Publish it as a logical catalog index too.
+func pgPrimaryOID(t *TableInfo) int64 {
+	if len(t.PKColumns) == 0 {
+		return 0
+	}
+	return pgSyntheticOID(fmt.Sprintf("primary:%d", t.ID))
+}
+func pgPrimaryName(t *TableInfo) string {
+	for _, c := range t.Constraints {
+		if c.Kind == "PRIMARY" {
+			return c.Name
+		}
+	}
+	_, name := pgObjectNames(t.Name)
+	return name + "_pkey"
+}
+func pgPrimarySQL(t *TableInfo) string {
+	cols := make([]string, len(t.PKColumns))
+	for i, c := range t.PKColumns {
+		cols[i] = quoteIdent(c)
+	}
+	return "CREATE UNIQUE INDEX " + quoteIdent(pgPrimaryName(t)) + " ON " + quoteIdent(t.Name) + "(" + strings.Join(cols, ", ") + ")"
 }

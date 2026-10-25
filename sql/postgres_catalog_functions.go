@@ -114,6 +114,24 @@ func postgresCatalogFunctions() map[string]mysqlFunctionSpec {
 		if e != nil {
 			return NewNullValue(), e
 		}
+
+		for _, t := range s.tables {
+			if pgPrimaryOID(t) != 0 && pgPrimaryOID(t) == oid {
+				if len(a) > 1 && !a[1].Null {
+					n, e := pgCatalogInt(a[1])
+					if e != nil {
+						return NewNullValue(), e
+					}
+					if n != 0 {
+						if n < 1 || n > int64(len(t.PKColumns)) {
+							return NewTextValue(""), nil
+						}
+						return NewTextValue(quoteIdent(t.PKColumns[n-1])), nil
+					}
+				}
+				return NewTextValue(pgPrimarySQL(t)), nil
+			}
+		}
 		for n, idx := range s.indexes {
 			if pgObjectOID(idx.ID) != oid {
 				continue
