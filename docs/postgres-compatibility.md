@@ -20,7 +20,9 @@ native automatic-ID allocator. There is no sequence object, nextval/currval,
 independent identity generator or sequence name to return from
 pg_get_serial_sequence. Temporal input is ISO-oriented with years 1 through 9999 and supported infinity
 values; BCE/large years, broad DateStyle/named-timezone input, ISO 8601 interval
-syntax and general interval arithmetic remain open. RowDescription type modifiers
+syntax and general interval arithmetic remain open. INTERVAL/TIMETZ comparisons
+and index ordering currently follow canonical text and can differ from
+PostgreSQL. RowDescription type modifiers
 currently report -1. SQL literal coercion is incomplete; use explicit casts when
 comparing UUID/temporal columns with strings. REGCLASS text output currently uses
 numeric OIDs. Arrays, composites, enums/domains, ranges, spatial,
@@ -52,7 +54,8 @@ expression constructs and flags fail. Locale, timezone, collation and formatting
 coverage is a subset. In particular the date template engine does not implement
 all PostgreSQL numeric/interval formatting and normalization rules. Native SQL
 functions outside the PostgreSQL overrides can retain native semantics. The 222
-checked-in PostgreSQL 16.15 scalar reference cases define the independently verified subset;
+checked-in PostgreSQL 16.15 scalar reference cases define the independently
+verified subset;
 this is not a claim of complete PostgreSQL function equivalence. NUMERIC
 transcendental overloads currently use double precision, RANDOM retains the
 native integer behavior, and SETSEED is unsupported.
@@ -72,7 +75,8 @@ Unqualified system relation names and `pg_catalog.` names are supported. The
 native root schema appears as `public`. Ordinary table/index OIDs derive from
 persisted object IDs; other virtual objects use deterministic synthetic OIDs.
 Primary keys link to their maintained native indexes; native clustered keys
-without a separate index entry have a logical catalog-index projection. Access methods report LSM. These catalogs are read-only
+without a separate index entry have a logical catalog-index projection. Access
+methods report LSM. These catalogs are read-only
 and expose a documented subset of PostgreSQL columns rather than a copy of every
 PostgreSQL internal relation. Index vectors/constraint column lists are textual
 metadata, not general PostgreSQL array/vector values. ACLs remain NULL and no
@@ -83,7 +87,8 @@ pg_get_indexdef, pg_get_constraintdef, pg_get_expr, pg_get_viewdef,
 pg_encoding_to_char, pg_get_userbyid, pg_client_encoding and current_setting for
 supported settings. Expression metadata stores native SQL text, not PostgreSQL
 internal node trees. Name casts and catalog helpers resolve this session's
-namespace view without executing a user query. Live psql schema/table listing (`\dn`, `\dt`) is verified. Full `\d`/ORM introspection,
+namespace view without executing a user query. Live psql schema/table listing
+(`\dn`, `\dt`) is verified. Full `\d`/ORM introspection,
 pg_description/pg_depend/pg_proc and extension catalogs remain open.
 
 ## COPY
