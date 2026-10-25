@@ -41,6 +41,13 @@ type ForeignKeyDef struct {
 }
 
 type ColumnDef struct {
+	Declared            string            `json:"declared_type,omitempty"`
+	Unsigned            bool              `json:"unsigned,omitempty"`
+	IntegerBits         int               `json:"integer_bits,omitempty"`
+	FixedBinary         bool              `json:"fixed_binary,omitempty"`
+	EnumValues          []string          `json:"enum_values,omitempty"`
+	MySQL               bool              `json:"mysql_affinity,omitempty"`
+	MySQLAutoIncrement  bool              `json:"mysql_auto_increment,omitempty"`
 	ConstraintNames     map[string]string `json:"constraint_names,omitempty"`
 	Name                string
 	ColType             ColumnType
@@ -62,6 +69,23 @@ type ColumnDef struct {
 // DeclaredType preserves bounded string declarations for schema introspection.
 // The underlying SQL value remains TEXT or BLOB.
 func (col ColumnDef) DeclaredType() string {
+	if col.Declared != "" && ((col.Declared != "INTEGER" && col.Declared != "INT" && col.Declared != "BIGINT") || col.MySQL || col.Unsigned) {
+		declared := col.Declared
+		if col.FixedBinary {
+			declared = fmt.Sprintf("BINARY(%d)", col.Length)
+		}
+		if len(col.EnumValues) > 0 {
+			parts := make([]string, len(col.EnumValues))
+			for i, value := range col.EnumValues {
+				parts[i] = "'" + strings.ReplaceAll(value, "'", "''") + "'"
+			}
+			declared = "ENUM(" + strings.Join(parts, ",") + ")"
+		}
+		if col.Unsigned {
+			declared += " UNSIGNED"
+		}
+		return declared
+	}
 	if col.Length > 0 {
 		switch col.ColType {
 		case ColText:
@@ -74,6 +98,8 @@ func (col ColumnDef) DeclaredType() string {
 }
 
 type CreateTableStmt struct {
+	Engine        string
+	Charset       string
 	Constraints   []ConstraintDef
 	Table         string
 	Columns       []ColumnDef
@@ -87,10 +113,11 @@ type CreateTableStmt struct {
 }
 
 type IndexDef struct {
-	Name     string
-	Columns  []string
-	Unique   bool
-	Fulltext bool
+	Name          string
+	Columns       []string
+	Unique        bool
+	Fulltext      bool
+	PrefixLengths []int64
 }
 
 type InsertStmt struct {
@@ -102,6 +129,7 @@ type InsertStmt struct {
 	Select        *SelectStmt
 	DefaultValues bool
 	Replace       bool
+	Ignore        bool
 	OnConflict    *OnConflictClause
 	Returning     []SelectColumn
 }
@@ -225,6 +253,7 @@ type CreateTriggerStmt struct {
 }
 
 type CreateIndexStmt struct {
+	PrefixLengths         []int64
 	PublicationAbortAfter *time.Duration
 	Index                 string
 	Table                 string
@@ -442,13 +471,15 @@ func (*SubqueryExpr) expr()  {}
 func (*ExistsExpr) expr()    {}
 
 type Value struct {
-	Type   ColumnType
-	Binary bool `json:"-"` // expression-level BINARY override; never persisted
-	Int    int64
-	Real   float64
-	Text   string
-	Blob   []byte
-	Null   bool
+	Type        ColumnType
+	EnumValue   bool  `json:"-"`
+	EnumOrdinal int64 `json:"-"`
+	Binary      bool  `json:"-"` // expression-level BINARY override; never persisted
+	Int         int64
+	Real        float64
+	Text        string
+	Blob        []byte
+	Null        bool
 }
 
 func (v Value) MarshalJSON() ([]byte, error) {

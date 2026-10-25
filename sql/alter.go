@@ -216,6 +216,7 @@ func (s *Schema) AlterTable(a *AlterTableStmt) error {
 			return fmt.Errorf("duplicate column: %s", a.Column.Name)
 		}
 		col := *a.Column
+		col.MySQL = col.MySQL || s.mysqlMode
 		if col.Default != nil {
 			col.DefaultSQL = formatExpr(col.Default)
 		}
@@ -292,6 +293,8 @@ func (s *Schema) AlterTable(a *AlterTableStmt) error {
 			replacement.PrimaryKey = col.PrimaryKey
 			replacement.Unique = col.Unique || replacement.Unique
 			replacement.AutoIncrement = col.AutoIncrement || replacement.AutoIncrement
+			replacement.MySQLAutoIncrement = col.MySQLAutoIncrement || replacement.MySQLAutoIncrement
+			replacement.MySQL = col.MySQL || replacement.MySQL || s.mysqlMode
 			replacement.Name = a.OldColName
 			// MODIFY/CHANGE supply a new column definition. Retain independent
 			// key constraints, but replace inline checks, references and nullability.
@@ -319,6 +322,7 @@ func (s *Schema) AlterTable(a *AlterTableStmt) error {
 				col.CheckSQL = formatExpr(col.Check)
 			}
 		} else {
+			copyColumnType(col, a.Column)
 			col.ColType = target
 			col.Length = a.Column.Length
 			col.AllowExistingLength = false

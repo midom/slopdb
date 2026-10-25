@@ -180,7 +180,7 @@ func decodePointRowInto(data []byte, info *TableInfo, p *preparedExecutionPlan, 
 			blobBuffer = row[col.Name].Blob
 		}
 		v, n := decodeValueInto(data[offset:], blobBuffer)
-		v.Binary = col.Binary
+		v = decorateColumnValue(v, col)
 		row[col.Name] = v
 		offset += n
 	}

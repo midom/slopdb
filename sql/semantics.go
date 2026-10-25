@@ -50,6 +50,9 @@ func validatePrimaryKey(info *TableInfo, row map[string]Value) error {
 }
 
 func validateColumnValue(table string, col ColumnDef, v Value) error {
+	if err := mysqlColumnRange(col, v); err != nil {
+		return err
+	}
 	if !v.Null && v.Type != col.ColType {
 		return fmt.Errorf("datatype mismatch for column %s.%s: expected %s, got %s", table, col.Name, col.ColType, v.Type)
 	}
@@ -82,6 +85,11 @@ func validateRowTypesPreserving(info *TableInfo, row, original map[string]Value,
 			// supplied value still passes the current length check.
 			col.Length = 0
 		}
+		v, err := normalizeColumnValue(row[col.Name], col)
+		if err != nil {
+			return err
+		}
+		row[col.Name] = v
 		if err := validateColumnValue(info.Name, col, row[col.Name]); err != nil {
 			return err
 		}

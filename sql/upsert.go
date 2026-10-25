@@ -1,6 +1,7 @@
 package sql
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 )
@@ -296,6 +297,7 @@ func (s *Schema) handleInsertConflict(table string, info *TableInfo, attempted m
 			}
 		}
 		updated, err := s.applyRowUpdate(table, info, entry.Key.UserKey, original, clause.Set, evaluation)
+		s.mysqlConflictChanged = err == nil && !bytes.Equal(encodeRow(original, info), encodeRow(updated, info))
 		s.outerRow = previous
 		return true, updated, err
 	}

@@ -244,7 +244,7 @@ func (p *PointUpdate) Run(ctx context.Context) (int64, error) {
 			continue
 		}
 		v, n := decodePointUpdateValue(data[offset:])
-		v.Binary = p.info.Columns[i].Binary
+		v = decorateColumnValue(v, p.info.Columns[i])
 		values[i] = v
 		offset += n
 	}
@@ -285,7 +285,10 @@ func (p *PointUpdate) Run(ctx context.Context) (int64, error) {
 			return 0, e
 		}
 		col := p.info.Columns[p.targets[i]]
-		v = applyAffinity(v, col.ColType)
+		v, e = p.schema.normalizeMySQLValue(v, col)
+		if e != nil {
+			return 0, e
+		}
 
 		if err := validateColumnValue(p.info.Name, col, v); err != nil {
 			return 0, err
@@ -353,6 +356,10 @@ func (p *PointUpdate) Run(ctx context.Context) (int64, error) {
 		}
 		batch = append(batch, storage.Mutation{Key: oldIndexKeys[i], Delete: true}, storage.Mutation{Key: key, Value: p.schema.encodeIndexValue(idx, row)})
 	}
+	changes := int64(1)
+	if p.schema.mysqlMode && !p.schema.mysqlFoundRows() && bytes.Equal(data, encoded) {
+		changes = 0
+	}
 	if p.schema.inTx {
 		for _, w := range batch {
 			if w.Delete {
@@ -361,13 +368,13 @@ func (p *PointUpdate) Run(ctx context.Context) (int64, error) {
 				p.schema.txPut(w.Key, w.Value)
 			}
 		}
-		return 1, nil
+		return changes, nil
 	}
 	if err := p.schema.writeBatchWithOnlineIndexes(batch); err != nil {
 		return 0, err
 	}
 	p.schema.parent.commitVersion.Add(1)
-	return 1, nil
+	return changes, nil
 }
 
 // Point updates keep their input buffer alive through expression evaluation and

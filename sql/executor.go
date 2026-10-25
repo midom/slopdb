@@ -25,6 +25,7 @@ import (
 
 type TableInfo struct {
 	Engine        string          `json:"engine,omitempty"`
+	Charset       string          `json:"charset,omitempty"`
 	collation     Collation       `json:"-"`
 	ID            uint64          `json:"id,omitempty"`
 	Constraints   []ConstraintDef `json:"constraints,omitempty"`
@@ -38,6 +39,7 @@ type TableInfo struct {
 }
 
 type IndexInfo struct {
+	PrefixLengths []int64         `json:"prefix_lengths,omitempty"`
 	collation     Collation       `json:"-"`
 	binaryColumns map[string]bool `json:"-"`
 	ID            uint64          `json:"id,omitempty"`
@@ -97,26 +99,28 @@ type Schema struct {
 
 	indexCleanupPending bool // session hint; survives rollback and cleanup failures
 
-	inTx               bool
-	txWrites           []txWrite
-	txLatest           map[string]int
-	txState            *schemaState
-	statementChanges   int64
-	subqueryMemos      map[*SelectStmt]*subqueryMemo
-	existsMemos        map[*SelectStmt]*subqueryMemo
-	selectValues       map[string]storage.PointValue
-	selectValueBytes   int
-	likePatterns       map[likePatternKey]likePattern
-	fulltextQueries    map[string]*fulltextQuery
-	fulltextBindings   map[*FuncCallExpr]fulltextBinding
-	fulltextQueryBytes int64
-	subquerySets       map[*ResultSet]*subqueryMembership
-	selectDepth        int
-	profile            *QueryProfile
-	preparedPlan       *preparedExecutionPlan
-	triggerDepth       int
-	viewDepth          int
-	savepoints         []savepoint
+	inTx                 bool
+	txWrites             []txWrite
+	txLatest             map[string]int
+	txState              *schemaState
+	statementChanges     int64
+	subqueryMemos        map[*SelectStmt]*subqueryMemo
+	existsMemos          map[*SelectStmt]*subqueryMemo
+	selectValues         map[string]storage.PointValue
+	selectValueBytes     int
+	likePatterns         map[likePatternKey]likePattern
+	fulltextQueries      map[string]*fulltextQuery
+	fulltextBindings     map[*FuncCallExpr]fulltextBinding
+	fulltextQueryBytes   int64
+	subquerySets         map[*ResultSet]*subqueryMembership
+	selectDepth          int
+	profile              *QueryProfile
+	preparedPlan         *preparedExecutionPlan
+	triggerDepth         int
+	viewDepth            int
+	savepoints           []savepoint
+	mysqlMode            bool
+	mysqlConflictChanged bool
 
 	// Sessions share a committed catalog, but keep private transaction state.
 	catalogShared      bool
@@ -470,6 +474,9 @@ func (s *Schema) CreateTable(stmt *CreateTableStmt) error {
 	}
 
 	for i := range stmt.Columns {
+		if s.mysqlMode {
+			stmt.Columns[i].MySQL = true
+		}
 		if stmt.Columns[i].Default != nil {
 			stmt.Columns[i].DefaultSQL = formatExpr(stmt.Columns[i].Default)
 		}
@@ -503,6 +510,8 @@ func (s *Schema) CreateTable(stmt *CreateTableStmt) error {
 		return err
 	}
 	info := &TableInfo{
+		Engine:        stmt.Engine,
+		Charset:       stmt.Charset,
 		collation:     s.collation,
 		ID:            id,
 		Constraints:   stmt.Constraints,
@@ -839,7 +848,11 @@ func (s *Schema) getCreateTableSQL(tableName string, inlineIndexes bool) string 
 		if (col.PrimaryKey || (len(info.PKColumns) == 1 && info.PKColumns[0] == col.Name)) && len(info.PKColumns) <= 1 && primaryInline {
 			b.WriteString(inlineName("PRIMARY", col.Name) + " PRIMARY KEY")
 			if col.AutoIncrement {
-				b.WriteString(" AUTOINCREMENT")
+				if col.MySQLAutoIncrement {
+					b.WriteString(" AUTO_INCREMENT")
+				} else {
+					b.WriteString(" AUTOINCREMENT")
+				}
 			}
 		}
 		if col.Unique {
@@ -887,10 +900,16 @@ func (s *Schema) getCreateTableSQL(tableName string, inlineIndexes bool) string 
 			if idx.Fulltext {
 				b.WriteString("FULLTEXT ")
 			}
-			fmt.Fprintf(&b, "KEY %s (%s)", quoteIdent(idx.Name), quotedNames(idx.columnNames()))
+			fmt.Fprintf(&b, "KEY %s (%s)", quoteIdent(idx.Name), formatIndexColumns(idx))
 		}
 	}
 	b.WriteString(")")
+	if info.Engine != "" {
+		b.WriteString(" ENGINE=" + info.Engine)
+	}
+	if info.Charset != "" {
+		b.WriteString(" DEFAULT CHARSET=" + info.Charset)
+	}
 	return b.String()
 }
 
@@ -1694,6 +1713,7 @@ func (s *Schema) ensureCatalogWritable() {
 		c.Columns = slices.Clone(v.Columns)
 		for i := range c.Columns {
 			c.Columns[i].RefColumns = slices.Clone(v.Columns[i].RefColumns)
+			c.Columns[i].EnumValues = slices.Clone(v.Columns[i].EnumValues)
 			c.Columns[i].ConstraintNames = maps.Clone(v.Columns[i].ConstraintNames)
 		}
 		c.ForeignKeys = slices.Clone(v.ForeignKeys)
@@ -1713,6 +1733,7 @@ func (s *Schema) ensureCatalogWritable() {
 	for k, v := range s.indexes {
 		c := *v
 		c.Columns = slices.Clone(v.Columns)
+		c.PrefixLengths = slices.Clone(v.PrefixLengths)
 		indexes[k] = &c
 	}
 	for k, v := range s.views {
@@ -2328,6 +2349,9 @@ func (s *Schema) GetIndexSQL(name string) string {
 	quoted := make([]string, len(columns))
 	for i, name := range columns {
 		quoted[i] = quoteIdent(name)
+		if i < len(idx.PrefixLengths) && idx.PrefixLengths[i] > 0 {
+			quoted[i] += fmt.Sprintf("(%d)", idx.PrefixLengths[i])
+		}
 	}
 	if idx.Fulltext {
 		unique = "FULLTEXT "
@@ -2368,6 +2392,10 @@ func (s *Schema) CreateIndex(stmt *CreateIndexStmt) error {
 	idx := newIndexInfo(idxName, tableName, columns, stmt.Unique)
 	idx.Fulltext = stmt.Fulltext
 	if err := validateFulltextIndex(info, idx); err != nil {
+		return err
+	}
+	idx.PrefixLengths = append([]int64(nil), stmt.PrefixLengths...)
+	if err := validateIndexPrefixes(info.Columns, idx); err != nil {
 		return err
 	}
 	s.bindIndexCollation(idx)
@@ -2823,7 +2851,7 @@ func (s *Schema) findMatchingRowsViaIndex(where Expression, tableName string) ([
 	if info, ok := s.tables[tableName]; ok {
 		for _, col := range info.Columns {
 			if col.Name == colName {
-				val = applyAffinity(val, col.ColType)
+				val = s.comparisonAffinity(val, col)
 				break
 			}
 		}
@@ -2974,6 +3002,15 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 		}
 	}
 
+	if stmt.Ignore {
+		copy := *stmt
+		copy.Ignore = false
+		if copy.OnConflict == nil {
+			copy.OnConflict = &OnConflictClause{DoNothing: true}
+		}
+		return s.Insert(&copy)
+	}
+
 	if stmt.OnConflict != nil {
 		if viewInsert {
 			return 0, nil, fmt.Errorf("ON CONFLICT is not supported on views")
@@ -3072,9 +3109,12 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 			continue
 		}
 
+		if err := s.normalizeMySQLRow(info, row); err != nil {
+			return 0, nil, err
+		}
 		pkCol := s.getPKColumn(info)
 		var nextID int64
-		if len(info.PKColumns) == 0 || pkCol != nil && pkCol.AutoIncrement && row[pkCol.Name].Null && !suppliedColumn(stmt.ColumnNames, pkCol.Name, stmt.DefaultValues) {
+		if len(info.PKColumns) == 0 || s.autoValueRequested(pkCol, row[pkName(pkCol)], suppliedColumn(stmt.ColumnNames, pkName(pkCol), stmt.DefaultValues)) {
 			var err error
 			nextID, err = s.nextRowID(tableName)
 			if err != nil {
@@ -3091,7 +3131,7 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 
 		if pkCol != nil && pkCol.ColType == ColInteger && len(info.PKColumns) <= 1 {
 			pkVal := row[pkCol.Name]
-			if pkVal.Null && pkCol.AutoIncrement && !suppliedColumn(stmt.ColumnNames, pkCol.Name, stmt.DefaultValues) {
+			if s.autoValueRequested(pkCol, pkVal, suppliedColumn(stmt.ColumnNames, pkCol.Name, stmt.DefaultValues)) {
 				if nextID <= 0 {
 					return 0, nil, fmt.Errorf("integer primary key exhausted")
 				}
@@ -3141,7 +3181,10 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 					}
 				}
 				if updated != nil {
-					s.statementChanges++
+					s.statementChanges += s.mysqlUpsertChanges()
+					if s.mysqlMode && pkCol != nil && pkCol.AutoIncrement && lastID == 0 {
+						lastID = updated[pkCol.Name].Int
+					}
 					returningRows = append(returningRows, updated)
 				}
 				continue
@@ -3188,7 +3231,11 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 			return 0, nil, err
 		}
 		s.statementChanges++
-		lastID = nextID
+		if !s.mysqlMode {
+			lastID = nextID
+		} else if pkCol != nil && pkCol.AutoIncrement && lastID == 0 {
+			lastID = nextID
+		}
 		returningRows = append(returningRows, row)
 	}
 
@@ -3653,7 +3700,11 @@ func (s *Schema) insertFromSelect(stmt *InsertStmt, info *TableInfo) (int64, *Re
 			row[col.Name] = applyAffinity(val, col.ColType)
 		}
 
-		if len(info.PKColumns) == 0 || pkCol != nil && pkCol.AutoIncrement && row[pkCol.Name].Null && !suppliedColumn(stmt.ColumnNames, pkCol.Name, false) {
+		if err := s.normalizeMySQLRow(info, row); err != nil {
+			return 0, nil, err
+		}
+
+		if len(info.PKColumns) == 0 || s.autoValueRequested(pkCol, row[pkName(pkCol)], suppliedColumn(stmt.ColumnNames, pkName(pkCol), false)) {
 			var err error
 			nextID, err = s.nextRowID(tableName)
 			if err != nil {
@@ -3665,7 +3716,7 @@ func (s *Schema) insertFromSelect(stmt *InsertStmt, info *TableInfo) (int64, *Re
 		}
 		if pkCol != nil && pkCol.ColType == ColInteger && len(info.PKColumns) == 1 {
 			pkVal := row[pkCol.Name]
-			if pkVal.Null && pkCol.AutoIncrement && !suppliedColumn(stmt.ColumnNames, pkCol.Name, false) {
+			if s.autoValueRequested(pkCol, pkVal, suppliedColumn(stmt.ColumnNames, pkCol.Name, false)) {
 				if nextID <= 0 {
 					return 0, nil, fmt.Errorf("integer primary key exhausted")
 				}
@@ -3707,7 +3758,10 @@ func (s *Schema) insertFromSelect(stmt *InsertStmt, info *TableInfo) (int64, *Re
 					}
 				}
 				if updated != nil {
-					s.statementChanges++
+					s.statementChanges += s.mysqlUpsertChanges()
+					if s.mysqlMode && pkCol != nil && pkCol.AutoIncrement && lastID == 0 {
+						lastID = updated[pkCol.Name].Int
+					}
 					returningRows = append(returningRows, updated)
 				}
 				continue
@@ -3753,7 +3807,11 @@ func (s *Schema) insertFromSelect(stmt *InsertStmt, info *TableInfo) (int64, *Re
 			return 0, nil, err
 		}
 		s.statementChanges++
-		lastID = nextID
+		if !s.mysqlMode {
+			lastID = nextID
+		} else if pkCol != nil && pkCol.AutoIncrement && lastID == 0 {
+			lastID = nextID
+		}
 		returningRows = append(returningRows, row)
 	}
 
@@ -5570,11 +5628,15 @@ func (s *Schema) Update(stmt *UpdateStmt) (int64, *ResultSet, error) {
 		return 0, nil, err
 	}
 	var returning []map[string]Value
+	var affected int64
 	for _, entry := range entries {
 		original := decodeRow(entry.Value, info)
 		row, err := s.applyRowUpdate(table, info, entry.Key.UserKey, original, stmt.Set, original)
 		if err != nil {
 			return 0, nil, err
+		}
+		if !s.mysqlMode || s.mysqlFoundRows() || !bytes.Equal(encodeRow(original, info), encodeRow(row, info)) {
+			affected++
 		}
 		returning = append(returning, row)
 	}
@@ -5586,7 +5648,7 @@ func (s *Schema) Update(stmt *UpdateStmt) (int64, *ResultSet, error) {
 			return 0, nil, returnErr
 		}
 	}
-	return int64(len(entries)), rs, nil
+	return affected, rs, nil
 }
 
 // applyRowUpdate is shared by UPDATE and UPSERT. Both paths retain identical
@@ -5613,6 +5675,9 @@ func (s *Schema) applyRowUpdate(table string, info *TableInfo, oldKey []byte, or
 			}
 		}
 		row[strings.ToLower(set.Column)] = v
+	}
+	if err := s.normalizeMySQLRow(info, row); err != nil {
+		return nil, err
 	}
 	beforeTriggers := len(s.txWrites)
 	if err := s.fireTriggers(table, "UPDATE", "BEFORE", original, row); err != nil {
@@ -5764,6 +5829,9 @@ func (s *Schema) deleteConflicts(table string, info *TableInfo, row map[string]V
 			}
 			if err := s.remove(entry.Key.UserKey); err != nil {
 				return err
+			}
+			if s.mysqlMode {
+				s.statementChanges++
 			}
 		}
 	}
@@ -6422,7 +6490,18 @@ func (s *Schema) evalBinary(e *BinaryExpr, row map[string]Value) (Value, error) 
 				return NewNullValue(), fmt.Errorf("IN subquery must return one column")
 			}
 			membership := s.membership(rs)
-			if !lv.Null && membership.values[string(s.appendEqualityKey(nil, lv))] {
+			found := membership.values[string(s.appendEqualityKey(nil, lv))]
+			if s.mysqlMode {
+				found = false
+				for _, candidate := range rs.Rows {
+					v := candidate[rs.Columns[0].Name]
+					if !v.Null && s.valueCompare(lv, v) == 0 {
+						found = true
+						break
+					}
+				}
+			}
+			if !lv.Null && found {
 				if e.Op == "NOT IN" {
 					return NewIntValue(0), nil
 				}
@@ -6567,6 +6646,12 @@ func (s *Schema) evalArithmetic(e *BinaryExpr, row map[string]Value, fn func(flo
 // arithmeticValues is shared by interpreted and slot-bound execution so exact
 // integers, NULL propagation and numeric errors cannot diverge.
 func arithmeticValues(op string, lv, rv Value, fn func(float64, float64) float64) (Value, error) {
+	if lv.EnumValue {
+		lv = NewIntValue(lv.EnumOrdinal)
+	}
+	if rv.EnumValue {
+		rv = NewIntValue(rv.EnumOrdinal)
+	}
 	if lv.Null || rv.Null {
 		return NewNullValue(), nil
 	}
@@ -6663,6 +6748,17 @@ func compareSQLValues(lv, rv Value, op string) Value {
 }
 
 func (s *Schema) valueCompare(a, b Value) int {
+	if s.mysqlMode {
+		if cmp, ok := mysqlBinaryCompare(a, b); ok {
+			return cmp
+		}
+	}
+	if a.EnumValue && (b.Type == ColInteger || b.Type == ColReal) {
+		a = NewIntValue(a.EnumOrdinal)
+	}
+	if b.EnumValue && (a.Type == ColInteger || a.Type == ColReal) {
+		b = NewIntValue(b.EnumOrdinal)
+	}
 	if !a.Null && !b.Null && a.Type == ColText && b.Type == ColText {
 		if a.Binary || b.Binary {
 			return strings.Compare(a.Text, b.Text)
@@ -7020,7 +7116,7 @@ func decodeRow(data []byte, info *TableInfo) map[string]Value {
 			continue
 		}
 		v, n := decodeValue(data[offset:])
-		v.Binary = col.Binary
+		v = decorateColumnValue(v, col)
 		row[col.Name] = v
 		offset += n
 	}

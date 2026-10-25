@@ -266,11 +266,15 @@ func (s *Schema) showIndexes(name string) (*ResultSet, error) {
 			if key.unique {
 				nonUnique = 0
 			}
+			subPart := NewNullValue()
+			if idx := s.indexes[key.name]; idx != nil && i < len(idx.PrefixLengths) && idx.PrefixLengths[i] > 0 {
+				subPart = NewIntValue(idx.PrefixLengths[i])
+			}
 			rs.Rows = append(rs.Rows, map[string]Value{
 				"Table": NewTextValue(info.Name), "Non_unique": NewIntValue(nonUnique),
 				"Key_name": NewTextValue(key.name), "Seq_in_index": NewIntValue(int64(i + 1)),
 				"Column_name": NewTextValue(name), "Collation": NewTextValue("A"),
-				"Cardinality": NewNullValue(), "Sub_part": NewNullValue(), "Packed": NewNullValue(),
+				"Cardinality": NewNullValue(), "Sub_part": subPart, "Packed": NewNullValue(),
 				"Null": NewTextValue(nullable), "Index_type": NewTextValue(key.method),
 				"Comment": NewTextValue(""), "Index_comment": NewTextValue(""),
 				"Visible": NewTextValue("YES"), "Expression": NewNullValue(),

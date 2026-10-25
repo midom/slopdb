@@ -120,6 +120,10 @@ func (s *Schema) prepareInlineIndexes(table string, stmt *CreateTableStmt) ([]*I
 		if err := validateFulltextIndex(&TableInfo{Columns: stmt.Columns}, idx); err != nil {
 			return nil, err
 		}
+		idx.PrefixLengths = append([]int64(nil), def.PrefixLengths...)
+		if err := validateIndexPrefixes(stmt.Columns, idx); err != nil {
+			return nil, err
+		}
 		indexes = append(indexes, idx)
 	}
 	return indexes, nil

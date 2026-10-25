@@ -6,6 +6,7 @@ import "context"
 // process globals or retaining a network connection on a persistent Schema.
 // A caller must keep Function safe for the lifetime of the executing call.
 type MySQLSessionOptions struct {
+	FoundRows         bool
 	Database          string
 	Schemas           []string
 	GroupConcatMaxLen int64

@@ -390,6 +390,10 @@ func (p *Parser) parseCreateTable() (Statement, error) {
 		stmt.Columns = append(stmt.Columns, col)
 	}
 
+	if err := p.parseMySQLTableOptions(stmt); err != nil {
+		return nil, err
+	}
+
 	inline := 0
 	for _, col := range stmt.Columns {
 		if col.PrimaryKey {
@@ -403,45 +407,8 @@ func (p *Parser) parseCreateTable() (Statement, error) {
 }
 
 func (p *Parser) parseColumnDef(col *ColumnDef, alteration ...bool) error {
-	if p.cur.Type == TokKeyword || (p.cur.Type == TokIdent && (strings.EqualFold(p.cur.Value, "BIGINT") || strings.EqualFold(p.cur.Value, "DOUBLE"))) {
-		switch strings.ToUpper(p.cur.Value) {
-		case "INTEGER", "INT", "BIGINT":
-			col.ColType = ColInteger
-			p.advance()
-		case "TEXT":
-			col.ColType = ColText
-			p.advance()
-		case "VARCHAR":
-			col.ColType = ColText
-			p.advance()
-			length, err := p.parseStringLength()
-			if err != nil {
-				return err
-			}
-			col.Length = length
-		case "REAL", "DOUBLE":
-			double := strings.EqualFold(p.cur.Value, "DOUBLE")
-			col.ColType = ColReal
-			p.advance()
-			if double && strings.EqualFold(p.cur.Value, "PRECISION") {
-				p.advance()
-			}
-		case "BLOB":
-			col.ColType = ColBlob
-			p.advance()
-		case "VARBINARY":
-			col.ColType = ColBlob
-			p.advance()
-			length, err := p.parseStringLength()
-			if err != nil {
-				return err
-			}
-			col.Length = length
-		default:
-			col.ColType = ColText
-		}
-	} else {
-		col.ColType = ColText
+	if err := p.parseColumnType(col); err != nil {
+		return err
 	}
 
 	pending := ""
@@ -610,9 +577,16 @@ func (p *Parser) parseColumnDef(col *ColumnDef, alteration ...bool) error {
 			continue
 		}
 
-		if p.cur.Type == TokKeyword && kw == "AUTOINCREMENT" {
+		if kw == "AUTOINCREMENT" || kw == "AUTO_INCREMENT" {
+			col.MySQLAutoIncrement = kw == "AUTO_INCREMENT"
 			p.advance()
 			col.AutoIncrement = true
+			continue
+		}
+
+		if kw == "NULL" {
+			col.NotNull = false
+			p.advance()
 			continue
 		}
 
@@ -841,7 +815,7 @@ func (p *Parser) parseCreateIndex() (Statement, error) {
 		return nil, err
 	}
 
-	columns, err := p.parseIndexColumns()
+	columns, prefixes, err := p.parseIndexColumnsDetailed()
 	if err != nil {
 		return nil, err
 	}
@@ -850,7 +824,7 @@ func (p *Parser) parseCreateIndex() (Statement, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &CreateIndexStmt{Index: strings.ToLower(indexName), Table: strings.ToLower(tableName), Column: columns[0], Columns: columns, Unique: unique, Fulltext: fulltext, IfNotExists: ifNotExists, PublicationAbortAfter: abortAfter}, nil
+	return &CreateIndexStmt{Index: strings.ToLower(indexName), Table: strings.ToLower(tableName), Column: columns[0], Columns: columns, PrefixLengths: prefixes, Unique: unique, Fulltext: fulltext, IfNotExists: ifNotExists, PublicationAbortAfter: abortAfter}, nil
 }
 
 // parsePublicationPolicy accepts only quoted Go duration syntax, including an
@@ -1004,6 +978,10 @@ func (p *Parser) parseCreateTrigger() (Statement, error) {
 func (p *Parser) parseInsert() (Statement, error) {
 	replace := p.cur.Value == "REPLACE"
 	p.advance()
+	ignore := !replace && strings.EqualFold(p.cur.Value, "IGNORE")
+	if ignore {
+		p.advance()
+	}
 	if err := p.expectKeyword("INTO"); err != nil {
 		return nil, err
 	}
@@ -1011,7 +989,7 @@ func (p *Parser) parseInsert() (Statement, error) {
 	if err := p.expect(TokIdent); err != nil {
 		return nil, err
 	}
-	stmt := &InsertStmt{Table: strings.ToLower(name), Replace: replace}
+	stmt := &InsertStmt{Table: strings.ToLower(name), Replace: replace, Ignore: ignore}
 	if p.cur.Type == TokLParen {
 		p.advance()
 		for {

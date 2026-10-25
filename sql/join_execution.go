@@ -20,6 +20,9 @@ func (s *Schema) appendEqualityKey(dst []byte, value Value) []byte {
 	if !value.Null && value.Type == ColText && !value.Binary {
 		value.Text = s.collation.Key(value.Text)
 	}
+	if s.mysqlMode && value.Type == ColText && !value.Null {
+		value = NewBlobValue([]byte(value.Text))
+	}
 	return appendEqualityKey(dst, value)
 }
 

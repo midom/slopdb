@@ -154,6 +154,12 @@ func (s *Schema) StartOnlineIndex(stmt *CreateIndexStmt) (*OnlineIndexBuild, err
 		disk.close()
 		return nil, err
 	}
+	idx.PrefixLengths = append([]int64(nil), stmt.PrefixLengths...)
+	if err := validateIndexPrefixes(info.Columns, idx); err != nil {
+		log.Close()
+		disk.close()
+		return nil, err
+	}
 	s.bindIndexCollation(idx)
 	b := &OnlineIndexBuild{root: root, idx: idx, info: info, disk: disk, log: log}
 	// Reserve the ID and a cleanup marker durably before any invisible entries

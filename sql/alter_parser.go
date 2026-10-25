@@ -311,38 +311,15 @@ func (p *Parser) parseAlterPosition(a *AlterTableStmt) error {
 	return nil
 }
 func (p *Parser) parseAlterType(a *AlterTableStmt) error {
-	name := strings.ToUpper(p.cur.Value)
-	p.advance()
+	before := p.cur
 	c := &ColumnDef{Name: a.OldColName}
-	switch name {
-	case "INTEGER", "INT", "BIGINT":
-		c.ColType = ColInteger
-	case "REAL", "DOUBLE", "FLOAT":
-		c.ColType = ColReal
-		if name == "DOUBLE" {
-			p.optionalAlterWord("PRECISION")
-		}
-	case "TEXT":
-		c.ColType = ColText
-	case "VARCHAR":
-		c.ColType = ColText
-		length, err := p.parseStringLength()
-		if err != nil {
-			return err
-		}
-		c.Length = length
-	case "BLOB":
-		c.ColType = ColBlob
-	case "VARBINARY":
-		c.ColType = ColBlob
-		length, err := p.parseStringLength()
-		if err != nil {
-			return err
-		}
-		c.Length = length
-	default:
-		return fmt.Errorf("unsupported column type: %s", name)
+	if err := p.parseColumnType(c); err != nil {
+		return err
 	}
+	if before == p.cur {
+		return fmt.Errorf("unsupported column type: %s", before.Value)
+	}
+
 	a.Column = c
 	if p.optionalAlterWord("COLLATE") {
 		collation, err := p.alterName()

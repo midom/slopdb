@@ -293,6 +293,7 @@ func (p *schemaChangePlanner) alter(st *AlterTableStmt, online bool) error {
 			work, detail = "catalog-only", "Changes the length limit while preserving row and index encoding."
 			scan, rewrite, indexes = false, false, false
 		}
+		copyColumnType(col, st.Column)
 		col.ColType, col.Length = st.Column.ColType, st.Column.Length
 		col.Binary = col.ColType == ColText && (col.Binary || st.Column.Binary)
 	case "SET_COLLATION":
