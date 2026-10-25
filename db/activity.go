@@ -25,6 +25,9 @@ type activityRecord struct {
 func (d *Database) registerActivity(s *sql.Schema) {
 	now := time.Now()
 	r := &activityRecord{value: sql.SessionActivity{ID: d.activityIDs.Add(1), SessionID: d.locks.state(s).id, Dialect: s.Dialect(), StartedAt: now, StateChange: now, State: sql.ActivityIdle}}
+	if path := s.SessionSearchPath(); len(path) > 0 {
+		r.value.Database = path[0]
+	}
 	d.activityRecords.Store(s, r)
 	s.SetActivitySnapshot(d.Activity)
 }
