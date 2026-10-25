@@ -142,8 +142,11 @@ func (db *Database) publicationCommitWon(schema *sql.Schema, ctx context.Context
 }
 
 func (s *Session) finishTransactionAbort(err error) error {
+	if err == nil || !s.transactionHandle {
+		return err
+	}
 	var aborted *TransactionAbortedError
-	if !s.transactionHandle || !errors.As(err, &aborted) {
+	if !errors.As(err, &aborted) {
 		return err
 	}
 	s.abortError.Store(aborted)

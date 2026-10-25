@@ -675,3 +675,16 @@ func (db *Database) waitForLockPolicy(ctx context.Context, owner *sql.Schema, re
 		}
 	}
 }
+
+// Successful statements cannot wait for a lock. Keep the errors.As target out
+// of their stack frame so escape analysis cannot allocate it on every read.
+func statementLockWait(err error) (*lockWait, bool) {
+	if err == nil {
+		return nil, false
+	}
+	var waiting *lockWait
+	if !errors.As(err, &waiting) {
+		return nil, false
+	}
+	return waiting, true
+}

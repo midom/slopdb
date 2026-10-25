@@ -28,7 +28,8 @@ func indexPublicationPolicy(ctx context.Context, schema *sql.Schema, statement s
 	}
 	if policy == nil {
 		if duration, ok := ctx.Value(publicationAbortContextKey{}).(time.Duration); ok {
-			policy = &duration
+			policy = new(time.Duration)
+			*policy = duration
 		}
 	}
 	if policy == nil {

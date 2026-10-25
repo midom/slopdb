@@ -385,8 +385,7 @@ func (db *Database) execAdmittedStatementsInto(ctx context.Context, stmts []sql.
 				db.locks.restore(schema, held)
 			}
 			db.locks.releasePointCatalog(catalog)
-			var waiting *lockWait
-			if errors.As(err, &waiting) {
+			if waiting, waitingForLock := statementLockWait(err); waitingForLock {
 				if lockTimeout == 0 {
 					cleanup()
 					return nil, db.lockDiagnosticError(schema, waiting.request, fmt.Errorf("%w: %w", ErrLockTimeout, context.DeadlineExceeded))
