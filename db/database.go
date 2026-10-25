@@ -206,7 +206,7 @@ func (db *Database) execSQL(ctx context.Context, sqlText string, schema *sql.Sch
 		return nil, err
 	}
 	schema.SetContext(ctx)
-	stmts, err := sql.ParseWithOptions(sqlText, db.ParseOptions())
+	stmts, err := sql.ParseWithOptions(sqlText, schema.Dialect().ParseOptions(db.ParseOptions()))
 	if err != nil {
 		return nil, fmt.Errorf("parse error: %w", err)
 	}
@@ -239,7 +239,7 @@ func (db *Database) execAdmittedStatementsInto(ctx context.Context, stmts []sql.
 	schema.SetContext(ctx)
 	var err error
 	var result *ExecResult
-	executor := &statementExecutor{schema: schema, parseOptions: db.ParseOptions(), resultTarget: dst, selectTarget: selectTarget}
+	executor := &statementExecutor{schema: schema, parseOptions: schema.Dialect().ParseOptions(db.ParseOptions()), resultTarget: dst, selectTarget: selectTarget}
 	var lockDeadline time.Time
 	admitEach := hasReadBarrierSetting(stmts)
 	for _, stmt := range stmts {

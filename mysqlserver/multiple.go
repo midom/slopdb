@@ -50,7 +50,7 @@ func splitCommands(query string, options sql.ParseOptions) []string {
 }
 
 func (c *client) queryResults(query string) error {
-	commands := splitCommands(query, c.currentDatabase().ParseOptions())
+	commands := splitCommands(query, c.parseOptions())
 	if len(commands) > 1 && c.capabilities&clientMultiStatements == 0 {
 		return c.writeError(&protocolError{1064, "42000", "CLIENT_MULTI_STATEMENTS is required"})
 	}

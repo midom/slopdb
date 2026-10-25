@@ -165,7 +165,7 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 	}
 	var statements []sql.Statement
 	if prepared == nil {
-		statements, err = sql.ParseWithOptions(query, s.db.ParseOptions())
+		statements, err = sql.ParseWithOptions(query, s.effectiveParseOptions())
 	} else {
 		binding, err = prepared.bind(s.db, s, bound, args)
 		if err == nil {

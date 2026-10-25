@@ -43,12 +43,12 @@ func accessDenied(privilege string) error {
 }
 
 func (c *client) administration(query string) (*db.ExecResult, bool, error) {
-	first := sql.NewTokenizerWithOptions(query, c.currentDatabase().ParseOptions()).Next()
+	first := sql.NewTokenizerWithOptions(query, c.parseOptions()).Next()
 	kind := strings.ToUpper(first.Value)
 	if kind != "CREATE" && kind != "ALTER" && kind != "DROP" && kind != "GRANT" && kind != "REVOKE" && kind != "SHOW" {
 		return nil, false, nil
 	}
-	tokens := sqlTokens(query, c.currentDatabase().ParseOptions())
+	tokens := sqlTokens(query, c.parseOptions())
 	for _, t := range tokens {
 		if t.Type == sql.TokSemicolon {
 			return nil, false, nil

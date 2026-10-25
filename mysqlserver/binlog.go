@@ -115,7 +115,7 @@ func (s *Server) binlogSnapshot(ctx context.Context) (*binlogSnapshot, error) {
 	return &binlogSnapshot{source: state.source, serverID: state.serverID, entries: state.entries, files: append([]binlogFile(nil), state.files...)}, nil
 }
 func (c *client) binlogControl(query string) (*db.ExecResult, bool, error) {
-	tokens := sqlTokens(query, c.currentDatabase().ParseOptions())
+	tokens := sqlTokens(query, c.parseOptions())
 	if len(tokens) == 0 {
 		return nil, false, nil
 	}

@@ -31,7 +31,7 @@ func (c *client) warningCount() uint16 {
 	return uint16(c.warningTotal)
 }
 func (c *client) beginDiagnostics(query string) {
-	t := sql.NewTokenizerWithOptions(query, c.currentDatabase().ParseOptions())
+	t := sql.NewTokenizerWithOptions(query, c.parseOptions())
 	a, b := t.Next(), t.Next()
 	if strings.EqualFold(a.Value, "SHOW") && (strings.EqualFold(b.Value, "WARNINGS") || strings.EqualFold(b.Value, "COUNT")) {
 		return

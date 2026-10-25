@@ -39,6 +39,10 @@ func (db *Database) Prepare(query string) (*Stmt, error) {
 // operator templates, rebinding parameters and invalidating metadata on schema
 // or statistics changes.
 func (db *Database) PrepareContext(ctx context.Context, query string) (*Stmt, error) {
+	return db.prepareContext(ctx, query, db.ParseOptions())
+}
+
+func (db *Database) prepareContext(ctx context.Context, query string, options sql.ParseOptions) (*Stmt, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -48,7 +52,7 @@ func (db *Database) PrepareContext(ctx context.Context, query string) (*Stmt, er
 	if db.closed.Load() {
 		return nil, errors.New("database closed")
 	}
-	p, err := sql.PrepareWithOptions(query, db.ParseOptions())
+	p, err := sql.PrepareWithOptions(query, options)
 	if err != nil {
 		return nil, fmt.Errorf("prepare: %w", err)
 	}
@@ -66,13 +70,17 @@ func (s *Session) Prepare(query string) (*Stmt, error) {
 }
 
 func (s *Session) PrepareContext(ctx context.Context, query string) (*Stmt, error) {
-	s.db.mu.Lock()
-	closed := s.closed || s.closing.Load()
-	s.db.mu.Unlock()
-	if closed {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := s.gate.LockContext(ctx); err != nil {
+		return nil, err
+	}
+	defer s.gate.Unlock()
+	if s.closed || s.closing.Load() || s.db.closed.Load() {
 		return nil, ErrSessionClosed
 	}
-	p, err := s.db.PrepareContext(ctx, query)
+	p, err := s.db.prepareContext(ctx, query, s.effectiveParseOptions())
 	if err == nil {
 		p.session = s
 	}

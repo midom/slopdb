@@ -116,12 +116,12 @@ func (c *client) variable(name string, global bool) (sql.Value, error) {
 }
 
 func (c *client) compatibilityControl(query string) (*db.ExecResult, bool, error) {
-	first := sql.NewTokenizerWithOptions(query, c.currentDatabase().ParseOptions()).Next()
+	first := sql.NewTokenizerWithOptions(query, c.parseOptions()).Next()
 
 	if !strings.EqualFold(first.Value, "SET") && !strings.EqualFold(first.Value, "SHOW") {
 		return nil, false, nil
 	}
-	tokens := sqlTokens(query, c.currentDatabase().ParseOptions())
+	tokens := sqlTokens(query, c.parseOptions())
 	for _, t := range tokens {
 		if t.Type == sql.TokSemicolon {
 			return nil, false, nil

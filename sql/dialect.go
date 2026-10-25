@@ -63,3 +63,15 @@ func (s *Schema) SetPostgresMode(enabled bool) {
 		_ = s.SetDialect(DialectNative)
 	}
 }
+
+// ParseOptions derives connection syntax without mutating the physical database
+// option. Native callers retain the existing Open-time input preference.
+func (d Dialect) ParseOptions(base ParseOptions) ParseOptions {
+	switch d {
+	case DialectMySQL:
+		base.MySQLQuoting = true
+	case DialectPostgreSQL:
+		base.MySQLQuoting = false
+	}
+	return base
+}

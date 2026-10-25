@@ -137,7 +137,7 @@ func (s *Session) ExecContextWithOptions(ctx context.Context, query string, opti
 		return nil, err
 	}
 	defer s.gate.Unlock()
-	statements, parseErr := sql.ParseWithOptions(query, s.db.ParseOptions())
+	statements, parseErr := sql.ParseWithOptions(query, s.effectiveParseOptions())
 	if parseErr != nil {
 		return nil, fmt.Errorf("parse error: %w", parseErr)
 	}
@@ -286,7 +286,7 @@ func (tx *Tx) ExecContextWithOptions(ctx context.Context, query string, options 
 		return nil, err
 	}
 	defer s.gate.Unlock()
-	statements, err := sql.ParseWithOptions(query, s.db.ParseOptions())
+	statements, err := sql.ParseWithOptions(query, s.effectiveParseOptions())
 	if err != nil {
 		return nil, fmt.Errorf("parse error: %w", err)
 	}

@@ -93,9 +93,6 @@ func New(database *db.Database, config Config) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("PostgreSQL TLS: %w", err)
 	}
-	if database.ParseOptions().MySQLQuoting {
-		return nil, errors.New("PostgreSQL server requires standard SQL quoting")
-	}
 	var auth *scram.Server
 	if config.Password != "" {
 		var salt [16]byte

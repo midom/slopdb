@@ -274,7 +274,7 @@ func (c *client) query(query string, stmt *db.Stmt, args []any) (*db.ExecResult,
 		if result, handled, err := c.control(query); handled {
 			return result, err
 		}
-		statements, err := sql.ParseWithOptions(query, c.currentDatabase().ParseOptions())
+		statements, err := sql.ParseWithOptions(query, c.parseOptions())
 		if err != nil {
 			return nil, err
 		}
@@ -283,7 +283,7 @@ func (c *client) query(query string, stmt *db.Stmt, args []any) (*db.ExecResult,
 		}
 		local = sql.IsLocalInspectionStatement(statements[0])
 	}
-	first := strings.ToUpper(sql.NewTokenizerWithOptions(query, c.currentDatabase().ParseOptions()).Next().Value)
+	first := strings.ToUpper(sql.NewTokenizerWithOptions(query, c.parseOptions()).Next().Value)
 	if !c.autocommit && !c.session.InTransaction() && !local && first != "BEGIN" && first != "START" && first != "COMMIT" && first != "ROLLBACK" && first != "WAIT" {
 		if _, err := c.session.ExecContext(c.ctx, "BEGIN"); err != nil {
 			return nil, err
@@ -319,7 +319,7 @@ func (c *client) controlRaw(query string) (*db.ExecResult, bool, error) {
 	if result, handled, err := c.compatibilityControl(query); handled {
 		return result, true, err
 	}
-	tokenizer := sql.NewTokenizerWithOptions(query, c.currentDatabase().ParseOptions())
+	tokenizer := sql.NewTokenizerWithOptions(query, c.parseOptions())
 	var tokens []sql.Token
 	for tok := tokenizer.Next(); tok.Type != sql.TokEOF; tok = tokenizer.Next() {
 		tokens = append(tokens, tok)
@@ -425,4 +425,8 @@ func (c *client) controlRaw(query string) (*db.ExecResult, bool, error) {
 
 func enableMySQLSession(session *db.Session) error {
 	return session.SetMySQLMode(true)
+}
+
+func (c *client) parseOptions() sql.ParseOptions {
+	return sql.DialectMySQL.ParseOptions(c.currentDatabase().ParseOptions())
 }
