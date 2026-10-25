@@ -164,11 +164,13 @@ func (s *Schema) mysqlJoinedRows(stmt *SelectStmt, tables []*mysqlMutationTable)
 	if err != nil {
 		return nil, err
 	}
-	rows, _, err = s.filterRowsWithKeys(stmt.Where, rows, keys)
+	if stmt.Where != nil {
+		rows, _, err = s.filterRowsWithKeys(stmt.Where, rows, keys)
+	}
 	return rows, err
 }
 
-func (s *Schema) mysqlMutationCandidates(rows []map[string]Value, targets []*mysqlMutationTable, limit, offset int64) ([]mysqlMutationRow, error) {
+func (s *Schema) mysqlMutationCandidates(rows []map[string]Value, targets []*mysqlMutationTable, limit, offset int64, aliasUpdates bool) ([]mysqlMutationRow, error) {
 	if offset > int64(len(rows)) {
 		rows = nil
 	} else if offset > 0 {
@@ -186,10 +188,14 @@ func (s *Schema) mysqlMutationCandidates(rows []map[string]Value, targets []*mys
 				continue
 			} // NULL-extended outer side
 			key := string(keyValue.Blob)
-			if seen[key] {
+			identity := key
+			if aliasUpdates {
+				identity = table.alias + "\x00" + key
+			}
+			if seen[identity] {
 				continue
 			}
-			seen[key] = true
+			seen[identity] = true
 			encoded, found, err := s.schemaGet([]byte(key))
 			if err != nil {
 				return nil, err
@@ -269,17 +275,43 @@ func (s *Schema) updateJoined(stmt *UpdateStmt) (int64, *ResultSet, error) {
 			targets = append(targets, table)
 		}
 	}
-	candidates, err := s.mysqlMutationCandidates(rows, targets, stmt.Limit, stmt.Offset)
+	for _, target := range targets {
+		aliases := 0
+		for _, other := range targets {
+			if other.name == target.name {
+				aliases++
+			}
+		}
+		if aliases > 1 {
+			for _, set := range target.sets {
+				for _, primary := range target.info.PKColumns {
+					if set.Column == primary {
+						return 0, nil, fmt.Errorf("primary key update is not allowed when table %s is updated through multiple aliases", target.name)
+					}
+				}
+			}
+		}
+	}
+	candidates, err := s.mysqlMutationCandidates(rows, targets, stmt.Limit, stmt.Offset, true)
 	if err != nil {
 		return 0, nil, err
 	}
 	var changes int64
 	for _, candidate := range candidates {
-		row, err := s.applyRowUpdate(candidate.table.name, candidate.table.info, candidate.key, candidate.original, candidate.table.sets, candidate.evaluation)
+		key := candidate.key
+		encoded, exists, err := s.schemaGet(key)
 		if err != nil {
 			return 0, nil, err
 		}
-		if !s.mysqlMode || s.mysqlFoundRows() || !bytes.Equal(encodeRow(candidate.original, candidate.table.info), encodeRow(row, candidate.table.info)) {
+		if !exists {
+			continue
+		}
+		original := decodeRow(encoded, candidate.table.info)
+		row, err := s.applyRowUpdate(candidate.table.name, candidate.table.info, key, original, candidate.table.sets, candidate.evaluation)
+		if err != nil {
+			return 0, nil, err
+		}
+		if !s.mysqlMode || s.mysqlFoundRows() || !bytes.Equal(encodeRow(original, candidate.table.info), encodeRow(row, candidate.table.info)) {
 			changes++
 		}
 	}
@@ -327,7 +359,7 @@ func (s *Schema) deleteJoined(stmt *DeleteStmt) (int64, *ResultSet, error) {
 	if err != nil {
 		return 0, nil, err
 	}
-	candidates, err := s.mysqlMutationCandidates(rows, targets, stmt.Limit, stmt.Offset)
+	candidates, err := s.mysqlMutationCandidates(rows, targets, stmt.Limit, stmt.Offset, false)
 	if err != nil {
 		return 0, nil, err
 	}

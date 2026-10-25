@@ -82,6 +82,17 @@ func TestMySQLJoinedMutations(t *testing.T) {
 	if r.Changes != 2 || len(exec("SELECT v FROM hidden").Rows) != 1 {
 		t.Fatal(r)
 	}
+	// A physical row can be an UPDATE target through two aliases. MariaDB's
+	// independent reference applies both target assignments and reports two.
+	exec("CREATE TABLE self_update(id INTEGER PRIMARY KEY,v INTEGER,w INTEGER); INSERT INTO self_update VALUES(1,0,0)")
+	r = exec("UPDATE self_update AS x JOIN self_update AS y ON x.id=y.id SET x.v=1,y.w=2")
+	row := exec("SELECT v,w FROM self_update").Rows[0]
+	if r.Changes != 2 || row["v"].Int != 1 || row["w"].Int != 2 {
+		t.Fatal(r, row)
+	}
+	if _, err := d.Exec("UPDATE self_update AS x JOIN self_update AS y ON x.id=y.id SET x.id=2,y.w=3"); err == nil {
+		t.Fatal("accepted primary key mutation through multiple aliases")
+	}
 	for _, text := range []string{
 		"UPDATE a JOIN b ON a.id=b.aid SET v=1",
 		"UPDATE a AS x JOIN b AS x ON x.id=x.aid SET x.v=1",
