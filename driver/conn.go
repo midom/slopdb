@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 
 	"slopdb/db"
@@ -62,15 +63,10 @@ func (c *conn) prepare(ctx context.Context, query string) (*statement, error) {
 	if e != nil {
 		return nil, c.observed(e)
 	}
-	parsed, e := nativesql.PrepareWithOptions(query, c.session.ParseOptions())
+	selectOnly, e := selectQuery(query, c.session)
 	if e != nil {
 		_ = native.Close()
 		return nil, e
-	}
-	selectOnly := false
-	switch parsed.MetadataStatement().(type) {
-	case *nativesql.SelectStmt, *nativesql.UnionStmt:
-		selectOnly = true
 	}
 	stmt := &statement{connection: c, query: query, native: native, generation: c.generation, inputs: native.NumInput(), selectOnly: selectOnly}
 	c.statements[stmt] = struct{}{}
@@ -265,6 +261,18 @@ func (t *transaction) finish(command string) error {
 	c.transaction = nil
 	c.dirty = true
 	_, e := c.session.ExecContext(context.Background(), command)
+	// database/sql considers the transaction finished even when COMMIT fails.
+	// Discard its private writes before a pinned sql.Conn can be used again.
+	if e != nil && command == "COMMIT" {
+		_, rollbackErr := c.session.ExecContext(context.Background(), "ROLLBACK")
+		if rollbackErr != nil {
+			c.bad = true
+			e = errors.Join(e, rollbackErr)
+		}
+	}
+	if e != nil && command == "ROLLBACK" {
+		c.bad = true
+	}
 	return c.observed(e)
 }
 
@@ -390,3 +398,25 @@ var (
 	_ sqldriver.StmtExecContext    = (*statement)(nil)
 	_ sqldriver.StmtQueryContext   = (*statement)(nil)
 )
+
+// Native Prepare already validates a single statement. SELECT necessarily
+// produces a SelectStmt/UnionStmt, so ordinary direct queries need no second
+// parse or metadata AST clone merely to choose the Rows API.
+func selectQuery(query string, session *db.Session) (bool, error) {
+	first := nativesql.NewTokenizer(query).Next()
+	if first.Type == nativesql.TokKeyword && strings.EqualFold(first.Value, "SELECT") {
+		return true, nil
+	}
+	if first.Type != nativesql.TokLParen && !(first.Type == nativesql.TokKeyword && strings.EqualFold(first.Value, "WITH")) {
+		return false, nil
+	}
+	parsed, e := nativesql.PrepareWithOptions(query, session.ParseOptions())
+	if e != nil {
+		return false, e
+	}
+	switch parsed.MetadataStatement().(type) {
+	case *nativesql.SelectStmt, *nativesql.UnionStmt:
+		return true, nil
+	}
+	return false, nil
+}

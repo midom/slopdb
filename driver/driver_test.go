@@ -402,3 +402,184 @@ func TestDriverConcurrentSessionsAndPreparedStatement(t *testing.T) {
 		t.Error(e)
 	}
 }
+
+func TestDriverFailedCommitRollsBackPinnedConnection(t *testing.T) {
+	_, pool := testPool(t)
+	execute(t, pool, `CREATE TABLE parents(id INTEGER PRIMARY KEY); CREATE TABLE children(id INTEGER PRIMARY KEY,p INTEGER REFERENCES parents(id) DEFERRABLE INITIALLY DEFERRED)`)
+	connection, e := pool.Conn(context.Background())
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer connection.Close()
+	tx, e := connection.BeginTx(context.Background(), nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	execute(t, tx, `INSERT INTO children VALUES(1,99)`)
+	if e = tx.Commit(); e == nil || errors.Is(e, sqldriver.ErrBadConn) {
+		t.Fatal("invalid deferred transaction commit", e)
+	}
+	var count int64
+	if e = connection.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM children`).Scan(&count); e != nil || count != 0 {
+		t.Fatal("failed transaction leaked into pinned connection", count, e)
+	}
+	if _, e = connection.ExecContext(context.Background(), `INSERT INTO parents VALUES(99)`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = connection.ExecContext(context.Background(), `INSERT INTO children VALUES(2,99)`); e != nil {
+		t.Fatal(e)
+	}
+}
+
+func TestDriverQueryClassificationAndReturningExecuteOnce(t *testing.T) {
+	_, pool := testPool(t)
+	execute(t, pool, `CREATE TABLE once_rows(id INTEGER PRIMARY KEY AUTOINCREMENT,v INTEGER)`)
+	for _, query := range []string{`select ?`, "-- comment\nSeLeCt ?", `WITH input AS (SELECT ? AS v) SELECT v FROM input`, `SELECT ? UNION ALL SELECT 99`} {
+		rows, e := pool.Query(query, 17)
+		if e != nil {
+			t.Fatal(query, e)
+		}
+		if !rows.Next() {
+			t.Fatal(rows.Err())
+		}
+		var value int64
+		if e = rows.Scan(&value); e != nil || value != 17 {
+			t.Fatal(query, value, e)
+		}
+		rows.Close()
+	}
+	var value int64
+	if e := pool.QueryRow(`WITH input AS (SELECT ? AS v) INSERT INTO once_rows(v) SELECT v FROM input RETURNING v`, 17).Scan(&value); e != nil || value != 17 {
+		t.Fatal(value, e)
+	}
+	if e := pool.QueryRow(`SELECT COUNT(*) FROM once_rows`).Scan(&value); e != nil || value != 1 {
+		t.Fatal(value, e)
+	}
+}
+
+func TestDriverPathCloseKeepsLiveRowsAndSnapshots(t *testing.T) {
+	directory := filepath.Join(t.TempDir(), "database")
+	pool, e := stdsql.Open("slopdb", directory)
+	if e != nil {
+		t.Fatal(e)
+	}
+	execute(t, pool, `CREATE TABLE items(id INTEGER PRIMARY KEY,v TEXT); INSERT INTO items VALUES(1,'one'),(2,'two')`)
+	rows, e := pool.Query(`SELECT id,v FROM items ORDER BY id`)
+	if e != nil {
+		t.Fatal(e)
+	}
+	done := make(chan error, 1)
+	go func() { done <- pool.Close() }()
+	if !rows.Next() {
+		t.Fatal(rows.Err())
+	}
+	var id int64
+	var value string
+	if e = rows.Scan(&id, &value); e != nil || id != 1 || value != "one" {
+		t.Fatal(id, value, e)
+	}
+	if !rows.Next() {
+		t.Fatal(rows.Err())
+	}
+	if e = rows.Scan(&id, &value); e != nil || id != 2 || value != "two" {
+		t.Fatal(id, value, e)
+	}
+	if e = rows.Close(); e != nil {
+		t.Fatal(e)
+	}
+	select {
+	case e = <-done:
+		if e != nil {
+			t.Fatal(e)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("pool close retained streaming resources")
+	}
+	reopened, e := db.Open(directory, nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer reopened.Close()
+	result, e := reopened.Exec(`SELECT COUNT(*) AS n FROM items`)
+	if e != nil || result.Rows[0]["n"].Int != 2 {
+		t.Fatal(result, e)
+	}
+}
+
+func TestDriverCancellationBeforeMutationAndReturnedByteOwnership(t *testing.T) {
+	_, pool := testPool(t)
+	execute(t, pool, `CREATE TABLE blobs(id INTEGER PRIMARY KEY,b BLOB); INSERT INTO blobs VALUES(1,X'0102'),(2,X'0304')`)
+	statement, e := pool.Prepare(`UPDATE blobs SET b=? WHERE id=? RETURNING b`)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer statement.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, e = statement.ExecContext(ctx, []byte{9}, 1); !errors.Is(e, context.Canceled) {
+		t.Fatal(e)
+	}
+	var owned []byte
+	if e = pool.QueryRow(`SELECT b FROM blobs WHERE id=?`, 1).Scan(&owned); e != nil || !bytes.Equal(owned, []byte{1, 2}) {
+		t.Fatal(owned, e)
+	}
+	var returned []byte
+	if e = statement.QueryRow([]byte{5, 6}, 2).Scan(&returned); e != nil || !bytes.Equal(returned, []byte{5, 6}) {
+		t.Fatal(returned, e)
+	}
+	returned[0] = 99
+	execute(t, pool, `UPDATE blobs SET b=X'0809' WHERE id=1`)
+	if !bytes.Equal(owned, []byte{1, 2}) {
+		t.Fatal("retained scanned BLOB changed")
+	}
+	var stored []byte
+	if e = pool.QueryRow(`SELECT b FROM blobs WHERE id=2`).Scan(&stored); e != nil || !bytes.Equal(stored, []byte{5, 6}) {
+		t.Fatal(stored, e)
+	}
+}
+
+func TestDriverTransactionIsolationAndCanceledTransactionCleanup(t *testing.T) {
+	database, pool := testPool(t)
+	pool.SetMaxOpenConns(1)
+	execute(t, pool, `CREATE TABLE isolated(id INTEGER PRIMARY KEY,v INTEGER); INSERT INTO isolated VALUES(1,17)`)
+	for _, level := range []stdsql.IsolationLevel{stdsql.LevelReadCommitted, stdsql.LevelRepeatableRead} {
+		tx, e := pool.BeginTx(context.Background(), &stdsql.TxOptions{Isolation: level})
+		if e != nil {
+			t.Fatal(e)
+		}
+		var before, after int64
+		if e = tx.QueryRow(`SELECT v FROM isolated WHERE id=1`).Scan(&before); e != nil {
+			t.Fatal(e)
+		}
+		if _, e = database.Exec(`UPDATE isolated SET v=v+17 WHERE id=1`); e != nil {
+			t.Fatal(e)
+		}
+		if e = tx.QueryRow(`SELECT v FROM isolated WHERE id=1`).Scan(&after); e != nil {
+			t.Fatal(e)
+		}
+		want := before + 17
+		if level == stdsql.LevelRepeatableRead {
+			want = before
+		}
+		if after != want {
+			t.Fatalf("%s: before %d after %d want %d", level, before, after, want)
+		}
+		if e = tx.Rollback(); e != nil {
+			t.Fatal(e)
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	tx, e := pool.BeginTx(ctx, nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	execute(t, tx, `UPDATE isolated SET v=999 WHERE id=1`)
+	cancel()
+	_ = tx.Rollback()
+	queryCtx, stop := context.WithTimeout(context.Background(), 3*time.Second)
+	defer stop()
+	var committed int64
+	if e = pool.QueryRowContext(queryCtx, `SELECT v FROM isolated WHERE id=1`).Scan(&committed); e != nil || committed != 51 {
+		t.Fatal("canceled transaction leaked", committed, e)
+	}
+}
