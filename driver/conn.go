@@ -209,6 +209,9 @@ func (c *conn) QueryContext(ctx context.Context, query string, arguments []sqldr
 	if e = c.ready(ctx); e != nil {
 		return nil, e
 	}
+	if len(args) == 0 {
+		return c.queryText(ctx, query)
+	}
 	statement, e := c.prepare(ctx, query)
 	if e != nil {
 		return nil, e
@@ -360,28 +363,13 @@ func (s *statement) queryRows(ctx context.Context, args []any) (*rows, error) {
 	if e := s.ensure(ctx); e != nil {
 		return nil, c.observed(e)
 	}
-	var result *rows
 	if s.selectOnly {
 		native, e := s.native.QueryContext(ctx, args...)
-		if e != nil {
-			c.dirty = true
-			return nil, c.observed(e)
-		}
-		// The native streaming cursor admits only physical relations and safe
-		// expressions. Materialized queries may evaluate session-mutating functions
-		// or stored views in another dialect, so reset them on the next pool borrow.
-		c.dirty = c.dirty || native.Materialized()
-		result = newNativeRows(ctx, c, native)
-	} else {
-		c.dirty = true
-		native, e := c.session.ExecPreparedContext(ctx, s.native, args...)
-		if e != nil {
-			return nil, c.observed(e)
-		}
-		result = newBufferedRows(ctx, c, native)
+		return c.streamingRows(ctx, native, e)
 	}
-	c.active = result
-	return result, nil
+	c.dirty = true
+	native, e := c.session.ExecPreparedContext(ctx, s.native, args...)
+	return c.bufferedRows(ctx, native, e)
 }
 func (s *statement) CheckNamedValue(value *sqldriver.NamedValue) error { return checkNamedValue(value) }
 
@@ -419,4 +407,53 @@ func selectQuery(query string, session *db.Session) (bool, error) {
 		return true, nil
 	}
 	return false, nil
+}
+
+// A plain query must not allocate a PreparedQuery's plan-counter shards or
+// sync.Pool. The native Query API validates SELECTs as one statement itself.
+func (c *conn) queryText(ctx context.Context, query string) (*rows, error) {
+	first := nativesql.NewTokenizer(query).Next()
+	selectOnly := first.Type == nativesql.TokKeyword && strings.EqualFold(first.Value, "SELECT")
+	if !selectOnly {
+		// Exec accepts multiple statements; the Rows API deliberately does not.
+		// This also distinguishes WITH ... SELECT from WITH ... INSERT RETURNING.
+		statements, e := nativesql.ParseWithOptions(query, c.session.ParseOptions())
+		if e != nil {
+			return nil, e
+		}
+		if len(statements) != 1 {
+			return nil, errors.New("slopdb: Query requires exactly one statement")
+		}
+		switch statements[0].(type) {
+		case *nativesql.SelectStmt, *nativesql.UnionStmt:
+			selectOnly = true
+		}
+	}
+	if selectOnly {
+		native, e := c.session.QueryContext(ctx, query)
+		return c.streamingRows(ctx, native, e)
+	}
+	c.dirty = true
+	native, e := c.session.ExecContext(ctx, query)
+	return c.bufferedRows(ctx, native, e)
+}
+func (c *conn) streamingRows(ctx context.Context, native *db.Rows, err error) (*rows, error) {
+	if err != nil {
+		c.dirty = true
+		return nil, c.observed(err)
+	}
+	// Streaming cursors admit physical relations and safe expressions only;
+	// views and session-mutating functions take the conservative dirty fallback.
+	c.dirty = c.dirty || native.Materialized()
+	result := newNativeRows(ctx, c, native)
+	c.active = result
+	return result, nil
+}
+func (c *conn) bufferedRows(ctx context.Context, native *db.ExecResult, err error) (*rows, error) {
+	if err != nil {
+		return nil, c.observed(err)
+	}
+	result := newBufferedRows(ctx, c, native)
+	c.active = result
+	return result, nil
 }
