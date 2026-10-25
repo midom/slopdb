@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	mysql "github.com/go-sql-driver/mysql"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 	"net/url"
@@ -181,22 +182,136 @@ func TestCLIPostgresStartupFailurePreservesSocketPath(t *testing.T) {
 
 func TestCLIPostgresTLSInvalidConfiguration(t *testing.T) {
 	env := newRegressionEnv(t)
+	binary := env.cli()
 	for _, args := range [][]string{
 		{"--postgres-tcp=127.0.0.1:0", "--postgres-require-tls"},
 		{"--postgres-tcp=127.0.0.1:0", "--postgres-tls-ca=missing.pem"},
 		{"--postgres-tcp=127.0.0.1:0", "--postgres-tls-cert=missing.pem"},
 		{"--postgres-tls-cert=missing.pem", "--postgres-tls-key=missing.key"},
-		{"--postgres-tcp=127.0.0.1:0", "--mysql-tcp=127.0.0.1:0"},
-		{"--postgres-tcp=127.0.0.1:0", "--mysql-quoting"},
 	} {
 		path := filepath.Join(t.TempDir(), "database")
-		command := exec.Command(env.cli(), append(args, path)...)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		command := exec.CommandContext(ctx, binary, append(args, path)...)
 		output, err := command.CombinedOutput()
+		timedOut := ctx.Err()
+		cancel()
+		if timedOut != nil {
+			t.Fatalf("invalid TLS flags did not fail promptly: %v %s", args, output)
+		}
 		if err == nil || !strings.Contains(string(output), "PostgreSQL") {
 			t.Fatalf("invalid TLS flags accepted: %v %s", err, output)
 		}
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
 			t.Fatalf("invalid TLS startup created a database: %v", err)
 		}
+	}
+}
+
+func TestCLIDualFrontendsShareDatabaseAndQuoting(t *testing.T) {
+	env := newRegressionEnv(t)
+	binary := env.cli()
+	path := filepath.Join(t.TempDir(), "database")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, binary, "--postgres-tcp=127.0.0.1:0", "--mysql-tcp=127.0.0.1:0", "--mysql-quoting", path)
+	stderr, e := command.StderrPipe()
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = command.Start(); e != nil {
+		t.Fatal(e)
+	}
+	finished := false
+	t.Cleanup(func() {
+		if !finished {
+			_ = command.Process.Kill()
+			_ = command.Wait()
+		}
+	})
+	type endpoint struct{ protocol, address string }
+	addresses := make(chan endpoint, 2)
+	logs := make(chan string, 1)
+	go func() {
+		var output strings.Builder
+		scanner := bufio.NewScanner(stderr)
+		for scanner.Scan() {
+			line := scanner.Text()
+			fmt.Fprintln(&output, line)
+			fields := strings.Fields(line)
+			if len(fields) > 4 && (strings.HasPrefix(line, "MySQL listening on tcp ") || strings.HasPrefix(line, "PostgreSQL listening on tcp ")) {
+				addresses <- endpoint{fields[0], fields[4]}
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			fmt.Fprintln(&output, err)
+		}
+		logs <- output.String()
+	}()
+	endpoints := map[string]string{}
+	for len(endpoints) < 2 {
+		select {
+		case item := <-addresses:
+			endpoints[item.protocol] = item.address
+		case <-ctx.Done():
+			t.Fatal("dual frontend startup timed out")
+		}
+	}
+	pg, e := pgx.Connect(ctx, "postgres://slopdb@"+endpoints["PostgreSQL"]+"/slopdb?sslmode=disable")
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer pg.Close(ctx)
+	configuration := mysql.NewConfig()
+	configuration.User = "slopdb"
+	configuration.DBName = "slopdb"
+	configuration.Net = "tcp"
+	configuration.Addr = endpoints["MySQL"]
+	configuration.Timeout = 3 * time.Second
+	configuration.ReadTimeout = 5 * time.Second
+	connector, e := mysql.NewConnector(configuration)
+	if e != nil {
+		t.Fatal(e)
+	}
+	my := gosql.OpenDB(connector)
+	defer my.Close()
+	if _, e = pg.Exec(ctx, `CREATE TABLE dual_frontend(id BIGINT PRIMARY KEY,msg TEXT);INSERT INTO dual_frontend VALUES(1,'PostgreSQL literal')`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = my.ExecContext(ctx, `INSERT INTO dual_frontend VALUES(2,"MySQL literal")`); e != nil {
+		t.Fatal(e)
+	}
+	var text string
+	if e = my.QueryRowContext(ctx, `SELECT msg FROM dual_frontend WHERE id=1`).Scan(&text); e != nil || text != "PostgreSQL literal" {
+		t.Fatal(text, e)
+	}
+	if e = pg.QueryRow(ctx, `SELECT "msg" FROM dual_frontend WHERE id=2`).Scan(&text); e != nil || text != "MySQL literal" {
+		t.Fatal(text, e)
+	}
+	if e = pg.Close(ctx); e != nil {
+		t.Fatal(e)
+	}
+	if e = my.Close(); e != nil {
+		t.Fatal(e)
+	}
+	if e = command.Process.Signal(syscall.SIGTERM); e != nil {
+		t.Fatal(e)
+	}
+	e = command.Wait()
+	finished = true
+	output := <-logs
+	if e != nil || strings.Contains(output, "DATA RACE") {
+		t.Fatalf("dual frontend shutdown: %v %s", e, output)
+	}
+	reopened, e := env.openDatabase(path, nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	t.Cleanup(func() { reopened.Close() })
+	r, e := reopened.Exec("SELECT id,msg FROM dual_frontend ORDER BY id")
+	if e != nil || len(r.Rows) != 2 || r.Rows[0]["msg"].Text != "PostgreSQL literal" || r.Rows[1]["msg"].Text != "MySQL literal" {
+		t.Fatal(r, e)
+	}
+	if e = reopened.Close(); e != nil {
+		t.Fatal(e)
 	}
 }
