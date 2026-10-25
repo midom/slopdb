@@ -97,7 +97,7 @@ func TestBinlogIndependentMySQLReplicaApply(t *testing.T) {
 	mustExec(t, target, fmt.Sprintf("CHANGE REPLICATION SOURCE TO SOURCE_HOST='127.0.0.1', SOURCE_PORT=%d, SOURCE_USER='slopdb', SOURCE_PASSWORD='', SOURCE_AUTO_POSITION=1", portNumber))
 	mustExec(t, target, "START REPLICA")
 	mustExec(t, pool, "CREATE TABLE replicated(u BIGINT UNSIGNED PRIMARY KEY,d DECIMAL(30,5),j JSON)")
-	mustExec(t, pool, `INSERT INTO replicated VALUES(18446744073709551615,12345678901234567890.12345,'{"u":18446744073709551615,"x":"hello"}')`)
+	mustExec(t, pool, `INSERT INTO replicated VALUES(18446744073709551615,12345678901234567890.12345,'{"u":18446744073709551615,"f":1.2500,"x":"hello"}')`)
 	deadline := time.Now().Add(10 * time.Second)
 	var u, d, j string
 	for {
@@ -110,6 +110,10 @@ func TestBinlogIndependentMySQLReplicaApply(t *testing.T) {
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
+	if !strings.Contains(j, "18446744073709551615") || !strings.Contains(j, "hello") {
+		t.Fatalf("replica JSON changed: %s", j)
+	}
+	waitReplicaScalar(t, target, "SELECT JSON_EXTRACT(j,'$.f') FROM main.replicated", "1.2500")
 	mustExec(t, pool, "UPDATE replicated SET d=42.00100 WHERE u=18446744073709551615")
 	deadline = time.Now().Add(5 * time.Second)
 	for {
@@ -122,7 +126,49 @@ func TestBinlogIndependentMySQLReplicaApply(t *testing.T) {
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
+	mustExec(t, pool, "CREATE TABLE parent_stream(id BIGINT PRIMARY KEY)")
+	mustExec(t, pool, "CREATE TABLE child_stream(id BIGINT PRIMARY KEY,parent BIGINT,CONSTRAINT parent_stream_fk FOREIGN KEY(parent) REFERENCES parent_stream(id) ON UPDATE CASCADE ON DELETE CASCADE)")
+	mustExec(t, pool, "INSERT INTO parent_stream VALUES(1)")
+	mustExec(t, pool, "INSERT INTO child_stream VALUES(10,1)")
+	mustExec(t, pool, "UPDATE parent_stream SET id=2 WHERE id=1")
+	waitReplicaScalar(t, target, "SELECT parent FROM main.child_stream WHERE id=10", "2")
+	mustExec(t, pool, "DELETE FROM parent_stream WHERE id=2")
+	waitReplicaScalar(t, target, "SELECT COUNT(*) FROM main.child_stream", "0")
+	// Both physical PK movement and its explicit child changes must apply once.
+	// Restarting the receiver exercises source-SID filtering alongside the
+	// replica's unrelated local GTIDs from CREATE DATABASE above.
 	mustExec(t, target, "STOP REPLICA")
+	mustExec(t, pool, "INSERT INTO parent_stream VALUES(3)")
+	mustExec(t, pool, "INSERT INTO child_stream VALUES(30,3)")
+	mustExec(t, target, "START REPLICA")
+	waitReplicaScalar(t, target, "SELECT parent FROM main.child_stream WHERE id=30", "3")
+	mustExec(t, pool, "CREATE TABLE long_defaults_stream(id BIGINT PRIMARY KEY,content TEXT DEFAULT 'empty')")
+	mustExec(t, pool, "CREATE INDEX long_prefix_stream ON long_defaults_stream(content(8))")
+	large := strings.Repeat("unicode 🪐 ", 8000)
+	mustExec(t, pool, "INSERT INTO long_defaults_stream VALUES(1,?)", large)
+	mustExec(t, pool, "INSERT INTO long_defaults_stream(id) VALUES(2)")
+	waitReplicaScalar(t, target, "SELECT content FROM main.long_defaults_stream WHERE id=1", large)
+	waitReplicaScalar(t, target, "SELECT content FROM main.long_defaults_stream WHERE id=2", "empty")
+	waitReplicaScalar(t, target, "SELECT SUB_PART FROM information_schema.statistics WHERE TABLE_SCHEMA='main' AND TABLE_NAME='long_defaults_stream' AND INDEX_NAME='long_prefix_stream'", "8")
+	mustExec(t, target, "STOP REPLICA")
+}
+func waitReplicaScalar(t *testing.T, database *gosql.DB, query, want string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		var got string
+		err := database.QueryRow(query).Scan(&got)
+		if err == nil && got == want {
+			return
+		}
+		if time.Now().After(deadline) {
+			if len(got) > 100 {
+				got = got[:100] + "..."
+			}
+			t.Fatalf("replica scalar %s: %q (want length%d), %v\n%s", query, got, len(want), err, replicaDiagnostics(database))
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
 }
 func replicaDiagnostics(database *gosql.DB) string {
 	rows, err := database.Query("SHOW REPLICA STATUS")
