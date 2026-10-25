@@ -116,6 +116,7 @@ func (s *Schema) prepareInlineIndexes(table string, stmt *CreateTableStmt) ([]*I
 		}
 		reserved[name] = true
 		idx := newIndexInfo(name, table, columns, def.Unique)
+		idx.DisplayName = def.DisplayName
 		idx.Fulltext = def.Fulltext
 		if err := validateFulltextIndex(&TableInfo{Columns: stmt.Columns}, idx); err != nil {
 			return nil, err

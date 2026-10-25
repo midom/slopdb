@@ -119,6 +119,7 @@ type CreateTableStmt struct {
 }
 
 type IndexDef struct {
+	DisplayName   string
 	Name          string
 	Columns       []string
 	Unique        bool
@@ -165,6 +166,7 @@ type SelectStmt struct {
 	Having       Expression
 	Lock         *SelectLock
 	trackRows    bool // retain physical row origins when expanding a view
+	mutationRows bool // retain each physical table alias's row identity for joined DML
 }
 
 // SelectLock applies to rows from tables in this SELECT's query block.
@@ -202,6 +204,9 @@ type OrderByClause struct {
 }
 
 type DeleteStmt struct {
+	Alias       string
+	Joins       []JoinClause
+	Targets     []string
 	With        *WithClause
 	From        string
 	Where       Expression
@@ -213,6 +218,8 @@ type DeleteStmt struct {
 }
 
 type UpdateStmt struct {
+	Alias       string
+	Joins       []JoinClause
 	prepared    *preparedExecutionPlan
 	With        *WithClause
 	Table       string
@@ -313,6 +320,7 @@ type ReleaseStmt struct {
 }
 
 type DropIndexStmt struct {
+	Table                 string // optional MySQL ON table qualifier
 	PublicationAbortAfter *time.Duration
 	Index                 string
 }

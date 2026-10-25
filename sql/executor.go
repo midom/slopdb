@@ -39,6 +39,7 @@ type TableInfo struct {
 }
 
 type IndexInfo struct {
+	DisplayName   string          `json:"display_name,omitempty"`
 	PrefixLengths []int64         `json:"prefix_lengths,omitempty"`
 	collation     Collation       `json:"-"`
 	binaryColumns map[string]bool `json:"-"`
@@ -439,6 +440,13 @@ func (s *Schema) schemaGet(key []byte) (value []byte, found bool, err error) {
 }
 
 func (s *Schema) CreateTable(stmt *CreateTableStmt) error {
+	if stmt.Like != "" {
+		var err error
+		stmt, err = s.expandCreateTableLike(stmt)
+		if err != nil {
+			return err
+		}
+	}
 	s.ensureCatalogWritable()
 	name := strings.ToLower(stmt.Table)
 	if _, ok := s.tables[name]; ok {
@@ -901,7 +909,7 @@ func (s *Schema) getCreateTableSQL(tableName string, inlineIndexes bool) string 
 			if idx.Fulltext {
 				b.WriteString("FULLTEXT ")
 			}
-			fmt.Fprintf(&b, "KEY %s (%s)", quoteIdent(idx.Name), formatIndexColumns(idx))
+			fmt.Fprintf(&b, "KEY %s (%s)", quoteIdent(idx.SQLName()), formatIndexColumns(idx))
 		}
 	}
 	b.WriteString(")")
@@ -2360,7 +2368,7 @@ func (s *Schema) GetIndexSQL(name string) string {
 	if idx.Fulltext {
 		unique = "FULLTEXT "
 	}
-	return fmt.Sprintf("CREATE %sINDEX %s ON %s(%s)", unique, quoteIdent(idx.Name), quoteIdent(idx.Table), strings.Join(quoted, ", "))
+	return fmt.Sprintf("CREATE %sINDEX %s ON %s(%s)", unique, quoteIdent(idx.SQLName()), quoteIdent(idx.Table), strings.Join(quoted, ", "))
 }
 
 func tableDataPrefix(tableName string) string {
@@ -2465,6 +2473,13 @@ func (s *Schema) CreateIndex(stmt *CreateIndexStmt) error {
 func (s *Schema) DropIndex(stmt *DropIndexStmt) error {
 	s.ensureCatalogWritable()
 	idxName := strings.ToLower(stmt.Index)
+	if stmt.Table != "" {
+		if idx := s.findTableIndex(stmt.Table, idxName); idx != nil {
+			idxName = idx.Name
+		} else {
+			return fmt.Errorf("index %q does not exist on %s", idxName, stmt.Table)
+		}
+	}
 	if _, ok := s.indexes[idxName]; !ok {
 		return fmt.Errorf("index %q does not exist", idxName)
 	}
@@ -5572,6 +5587,9 @@ func (s *Schema) Delete(stmt *DeleteStmt) (int64, *ResultSet, error) {
 		cp.With = nil
 		return s.Delete(&cp)
 	}
+	if stmt.Alias != "" || len(stmt.Joins) > 0 || len(stmt.Targets) > 0 {
+		return s.deleteJoined(stmt)
+	}
 	table := strings.ToLower(stmt.From)
 	info, ok := s.tables[table]
 	if !ok {
@@ -5630,6 +5648,9 @@ func (s *Schema) Update(stmt *UpdateStmt) (int64, *ResultSet, error) {
 		cp := *stmt
 		cp.With = nil
 		return s.Update(&cp)
+	}
+	if stmt.Alias != "" || len(stmt.Joins) > 0 || mysqlQualifiedAssignments(stmt.Set) {
+		return s.updateJoined(stmt)
 	}
 	if s.inTx && s.lockHandler != nil {
 		if plan := s.PreparePointUpdate(stmt); plan != nil {

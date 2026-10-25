@@ -30,7 +30,7 @@ func (s *Schema) explainSchemaChange(stmt Statement) (*ResultSet, error) {
 	case *CreateIndexStmt:
 		err = p.createIndex(st, !s.InTransaction())
 	case *DropIndexStmt:
-		err = p.dropIndex(st.Index, "", st.PublicationAbortAfter)
+		err = p.dropIndex(st.Index, st.Table, st.PublicationAbortAfter)
 	case *AlterTableStmt:
 		err = p.alter(st, !s.InTransaction())
 	default:
@@ -100,6 +100,14 @@ func (p *schemaChangePlanner) createIndex(st *CreateIndexStmt, online bool) erro
 }
 
 func (p *schemaChangePlanner) dropIndex(name, table string, abortAfter *time.Duration) error {
+	if table != "" {
+		for _, idx := range p.indexes {
+			if idx.Table == table && idx.SQLName() == name {
+				name = idx.Name
+				break
+			}
+		}
+	}
 	if err := p.validatePublicationPolicy(abortAfter, !p.schema.InTransaction()); err != nil {
 		return err
 	}

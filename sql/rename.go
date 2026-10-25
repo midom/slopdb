@@ -156,6 +156,9 @@ func renameOperation(column string) string {
 }
 
 func renameDependencyStatement(stmt Statement, table, newTable, oldCol, newCol string, trigger bool) error {
+	if renameJoinedMutation(stmt, table, newTable, oldCol, newCol, trigger) {
+		return nil
+	}
 	local := false
 	var with *WithClause
 	switch x := stmt.(type) {
@@ -297,7 +300,11 @@ func formatDMLStatement(stmt Statement) (string, error) {
 	sets := func(values []UpdateSet) string {
 		a := make([]string, len(values))
 		for i, e := range values {
-			a[i] = quoteIdent(e.Column) + " = " + formatExpr(e.Value)
+			name := quoteIdent(e.Column)
+			if qualifier, col, ok := strings.Cut(e.Column, "."); ok {
+				name = quoteIdent(qualifier) + "." + quoteIdent(col)
+			}
+			a[i] = name + " = " + formatExpr(e.Value)
 		}
 		return strings.Join(a, ", ")
 	}
@@ -381,10 +388,20 @@ func formatDMLStatement(stmt Statement) (string, error) {
 		}
 		finish(nil, -1, 0, x.Returning)
 	case *UpdateStmt:
-		b.WriteString(formatWithSQL(x.With) + "UPDATE " + quoteIdent(x.Table) + " SET " + sets(x.Set))
+		b.WriteString(formatWithSQL(x.With) + "UPDATE " + mysqlMutationFromSQL(x.Table, x.Alias, x.Joins) + " SET " + sets(x.Set))
 		finish(x.Where, x.Limit, x.Offset, x.Returning)
 	case *DeleteStmt:
-		b.WriteString(formatWithSQL(x.With) + "DELETE FROM " + quoteIdent(x.From))
+		b.WriteString(formatWithSQL(x.With) + "DELETE ")
+		if len(x.Targets) > 0 {
+			for i, target := range x.Targets {
+				if i > 0 {
+					b.WriteString(", ")
+				}
+				b.WriteString(quoteIdent(target))
+			}
+			b.WriteString(" ")
+		}
+		b.WriteString("FROM " + mysqlMutationFromSQL(x.From, x.Alias, x.Joins))
 		finish(x.Where, x.Limit, x.Offset, x.Returning)
 	default:
 		return "", fmt.Errorf("cannot format stored statement %T", stmt)

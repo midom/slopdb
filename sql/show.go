@@ -128,7 +128,7 @@ func (s *Schema) showKeys(info *TableInfo) []showKey {
 		if idx.Auto {
 			method = "CONSTRAINT"
 		}
-		keys = append(keys, showKey{idx.Name, idx.columnNames(), idx.IsUnique, method})
+		keys = append(keys, showKey{idx.SQLName(), idx.columnNames(), idx.IsUnique, method})
 	}
 	for _, col := range info.Columns {
 		if !col.Unique {

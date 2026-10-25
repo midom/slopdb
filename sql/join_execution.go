@@ -256,6 +256,13 @@ func (s *Schema) executeJoins(stmt *SelectStmt, baseRows []map[string]Value, bas
 		if alias == "" {
 			alias = jc.Table
 		}
+		if stmt.mutationRows {
+			for i, row := range joinRows {
+				if i < len(joinKeys) && len(joinKeys[i]) == 1 {
+					row[mysqlMutationKey(alias)] = NewBlobValue([]byte(joinKeys[i][0]))
+				}
+			}
+		}
 		rightNames := make(map[string]bool)
 		for _, c := range columns {
 			rightNames[alias+"."+c.Name] = true
@@ -275,6 +282,11 @@ func (s *Schema) executeJoins(stmt *SelectStmt, baseRows []map[string]Value, bas
 		}
 		pruneJoinRows(joinRows, needed, alias)
 		pairs := joinKeyPairs(stmt, jc, alias, columns, leftNames)
+		if s.mysqlMode && !mysqlJoinHashCompatible(result, joinRows, pairs) {
+			// MySQL converts mixed string/numeric comparisons to numbers. A
+			// string can equal a number without sharing its string hash key.
+			pairs = nil
+		}
 		if s.collation != "" && s.collation != BinaryCollation {
 			// A BINARY column can be compared to a collated column. Their
 			// hash representations then differ even when the raw values match.

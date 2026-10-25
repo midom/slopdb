@@ -1437,14 +1437,8 @@ func (p *Parser) parseSelectColumn() (SelectColumn, error) {
 
 func (p *Parser) parseDelete() (Statement, error) {
 	p.advance()
-
-	if err := p.expectKeyword("FROM"); err != nil {
-		return nil, err
-	}
-
 	stmt := &DeleteStmt{Limit: -1}
-	stmt.From = strings.ToLower(p.cur.Value)
-	if err := p.expect(TokIdent); err != nil {
+	if err := p.parseMySQLDeleteTables(stmt); err != nil {
 		return nil, err
 	}
 
@@ -1484,10 +1478,11 @@ func (p *Parser) parseUpdate() (Statement, error) {
 	p.advance()
 
 	stmt := &UpdateStmt{Limit: -1}
-	stmt.Table = strings.ToLower(p.cur.Value)
-	if err := p.expect(TokIdent); err != nil {
+	from, err := p.parseMySQLMutationTables()
+	if err != nil {
 		return nil, err
 	}
+	stmt.Table, stmt.Alias, stmt.Joins = from.From, from.FromAlias, from.Joins
 
 	if err := p.expectKeyword("SET"); err != nil {
 		return nil, err
@@ -1498,6 +1493,14 @@ func (p *Parser) parseUpdate() (Statement, error) {
 		set.Column = strings.ToLower(p.cur.Value)
 		if err := p.expect(TokIdent); err != nil {
 			return nil, err
+		}
+		if p.cur.Type == TokDot {
+			p.advance()
+			if p.cur.Type != TokIdent {
+				return nil, fmt.Errorf("expected column name after qualifier")
+			}
+			set.Column += "." + strings.ToLower(p.cur.Value)
+			p.advance()
 		}
 		if err := p.expect(TokEq); err != nil {
 			return nil, err
@@ -1600,11 +1603,20 @@ func (p *Parser) parseDrop() (Statement, error) {
 		if p.cur.Type == TokIdent || p.cur.Type == TokKeyword {
 			p.advance()
 		}
+		table := ""
+		if strings.EqualFold(p.cur.Value, "ON") {
+			p.advance()
+			if p.cur.Type != TokIdent {
+				return nil, fmt.Errorf("expected table after DROP INDEX ON")
+			}
+			table = strings.ToLower(p.cur.Value)
+			p.advance()
+		}
 		abortAfter, err := p.parsePublicationPolicy()
 		if err != nil {
 			return nil, err
 		}
-		return &DropIndexStmt{Index: strings.ToLower(idxName), PublicationAbortAfter: abortAfter}, nil
+		return &DropIndexStmt{Index: strings.ToLower(idxName), Table: table, PublicationAbortAfter: abortAfter}, nil
 	}
 	return nil, fmt.Errorf("expected TABLE, VIEW, or INDEX after DROP, got %q", p.cur.Value)
 }

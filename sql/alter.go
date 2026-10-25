@@ -145,7 +145,7 @@ func (s *Schema) AlterTable(a *AlterTableStmt) error {
 		}
 		return s.CreateIndex(&CreateIndexStmt{Table: info.Name, Index: name, Columns: c.Columns, Unique: c.Kind == "UNIQUE_INDEX", Fulltext: c.Fulltext})
 	case "DROP_INDEX":
-		idx := s.indexes[a.NewName]
+		idx := s.findTableIndex(info.Name, a.NewName)
 		if idx == nil {
 			if a.IfExists {
 				return nil
@@ -155,7 +155,7 @@ func (s *Schema) AlterTable(a *AlterTableStmt) error {
 		if idx.Table != info.Name {
 			return fmt.Errorf("index %s does not belong to %s", a.NewName, info.Name)
 		}
-		return s.DropIndex(&DropIndexStmt{Index: a.NewName})
+		return s.DropIndex(&DropIndexStmt{Index: idx.Name})
 	}
 	if a.Operation == "ALTER_TYPE" {
 		col, err := column(a.OldColName)
