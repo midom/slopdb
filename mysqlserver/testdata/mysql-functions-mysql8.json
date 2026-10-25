@@ -1,0 +1,1815 @@
+{
+  "source": {
+    "engine": "Oracle MySQL",
+    "version": "8.0.46-0ubuntu0.24.04.4",
+    "time_zone": "+00:00",
+    "character_set": "utf8mb4",
+    "collation": "utf8mb4_bin",
+    "lc_time_names": "en_US",
+    "sql_mode": "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION",
+    "block_encryption_mode": "aes-128-ecb",
+    "generator": "scripts/regenerate_mysql_function_references.py"
+  },
+  "cases": [
+    {
+      "expression": "ACOS(-2)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "ACOS(1)",
+      "kind": "DOUBLE",
+      "value": "0"
+    },
+    {
+      "expression": "ADDDATE('2024-02-28',2)",
+      "kind": "STRING",
+      "value": "2024-03-01"
+    },
+    {
+      "expression": "ADDTIME('00:00:00.100','00:00:00.120')",
+      "kind": "STRING",
+      "value": "00:00:00.220000"
+    },
+    {
+      "expression": "ADDTIME('2001-01-01 23:59:59.999999','00:00:00.000001')",
+      "kind": "STRING",
+      "value": "2001-01-02 00:00:00"
+    },
+    {
+      "expression": "ASCII('')",
+      "kind": "INTEGER",
+      "value": "0"
+    },
+    {
+      "expression": "ASCII('é')",
+      "kind": "INTEGER",
+      "value": "195"
+    },
+    {
+      "expression": "ASIN(1)",
+      "kind": "DOUBLE",
+      "value": "1.5707963267948966"
+    },
+    {
+      "expression": "ASIN(2)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "ATAN(-2,2)",
+      "kind": "DOUBLE",
+      "value": "-0.7853981633974483"
+    },
+    {
+      "expression": "ATAN(1)",
+      "kind": "DOUBLE",
+      "value": "0.7853981633974483"
+    },
+    {
+      "expression": "ATAN2(PI(),0)",
+      "kind": "DOUBLE",
+      "value": "1.5707963267948966"
+    },
+    {
+      "expression": "BIN(-1)",
+      "kind": "STRING",
+      "value": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "expression": "BIN(1.9)",
+      "kind": "STRING",
+      "value": "1"
+    },
+    {
+      "expression": "BIN_TO_UUID(NULL)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "BIN_TO_UUID(UUID_TO_BIN('6ccd780c-baba-1026-9564-5b8c656024db',1),1)",
+      "kind": "STRING",
+      "value": "6ccd780c-baba-1026-9564-5b8c656024db"
+    },
+    {
+      "expression": "BIT_COUNT(-1)",
+      "kind": "INTEGER",
+      "value": "64"
+    },
+    {
+      "expression": "BIT_COUNT(18446744073709551615)",
+      "kind": "INTEGER",
+      "value": "64"
+    },
+    {
+      "expression": "BIT_COUNT(CAST('64' AS BINARY))",
+      "kind": "INTEGER",
+      "value": "7"
+    },
+    {
+      "expression": "BIT_LENGTH('é🪐')",
+      "kind": "INTEGER",
+      "value": "48"
+    },
+    {
+      "expression": "CEIL(1.23)",
+      "kind": "INTEGER",
+      "value": "2"
+    },
+    {
+      "expression": "CEIL(18446744073709551615)",
+      "kind": "UNSIGNED INTEGER",
+      "value": "18446744073709551615"
+    },
+    {
+      "expression": "CEIL(NULL)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "CEILING(-1.23)",
+      "kind": "INTEGER",
+      "value": "-1"
+    },
+    {
+      "expression": "CEILING(CAST('18446744073709551614.1' AS DECIMAL(21,1)))",
+      "kind": "DECIMAL",
+      "value": "18446744073709551615"
+    },
+    {
+      "expression": "CHARACTER_LENGTH('é🪐')",
+      "kind": "INTEGER",
+      "value": "2"
+    },
+    {
+      "expression": "CHARSET('🪐')",
+      "kind": "STRING",
+      "value": "utf8mb4"
+    },
+    {
+      "expression": "CHARSET(1)",
+      "kind": "STRING",
+      "value": "binary"
+    },
+    {
+      "expression": "CHARSET(NULL)",
+      "kind": "STRING",
+      "value": "binary"
+    },
+    {
+      "expression": "CHAR_LENGTH('é🪐')",
+      "kind": "INTEGER",
+      "value": "2"
+    },
+    {
+      "expression": "CHAR_LENGTH(NULL)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "COLLATION('🪐')",
+      "kind": "STRING",
+      "value": "utf8mb4_bin"
+    },
+    {
+      "expression": "COMPRESS(NULL)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "CONCAT_WS(',', 'a', NULL, '', 'b')",
+      "kind": "STRING",
+      "value": "a,,b"
+    },
+    {
+      "expression": "CONCAT_WS(',',NULL,'a',NULL)",
+      "kind": "STRING",
+      "value": "a"
+    },
+    {
+      "expression": "CONCAT_WS(',',NULL,NULL)",
+      "kind": "STRING",
+      "value": ""
+    },
+    {
+      "expression": "CONCAT_WS(NULL,'a')",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "CONV('-18446744073709551616',10,10)",
+      "kind": "STRING",
+      "value": "0"
+    },
+    {
+      "expression": "CONV('-9223372036854775809',-10,10)",
+      "kind": "STRING",
+      "value": "9223372036854775808"
+    },
+    {
+      "expression": "CONV('1',1,16)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "CONV('18446744073709551616',10,10)",
+      "kind": "STRING",
+      "value": "18446744073709551615"
+    },
+    {
+      "expression": "CONV('6E',18,8)",
+      "kind": "STRING",
+      "value": "172"
+    },
+    {
+      "expression": "CONV('FFFFFFFFFFFFFFFF',-16,10)",
+      "kind": "STRING",
+      "value": "9223372036854775807"
+    },
+    {
+      "expression": "CONV('FFFFFFFFFFFFFFFF',16,-10)",
+      "kind": "STRING",
+      "value": "-1"
+    },
+    {
+      "expression": "CONV('a',16,2)",
+      "kind": "STRING",
+      "value": "1010"
+    },
+    {
+      "expression": "CONV('x',16)",
+      "error": true,
+      "error_code": 1582
+    },
+    {
+      "expression": "CONV('xyz',10,16)",
+      "kind": "STRING",
+      "value": "0"
+    },
+    {
+      "expression": "CONV(-17,10,-18)",
+      "kind": "STRING",
+      "value": "-H"
+    },
+    {
+      "expression": "COS(0)",
+      "kind": "DOUBLE",
+      "value": "1"
+    },
+    {
+      "expression": "COT(0)",
+      "error": true,
+      "error_code": 1690
+    },
+    {
+      "expression": "COT(PI()/4)",
+      "kind": "DOUBLE",
+      "value": "1.0000000000000002"
+    },
+    {
+      "expression": "CRC32('MySQL')",
+      "kind": "UNSIGNED INTEGER",
+      "value": "3259397556"
+    },
+    {
+      "expression": "CRC32(NULL)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "DATEDIFF('2024-03-01 01:00:00','2024-02-28 23:00:00')",
+      "kind": "INTEGER",
+      "value": "2"
+    },
+    {
+      "expression": "DATE_ADD('2020-01-01',INTERVAL '1 2:3:4.5' DAY_MICROSECOND)",
+      "kind": "STRING",
+      "value": "2020-01-02 02:03:04.500000"
+    },
+    {
+      "expression": "DATE_ADD('2020-01-01',INTERVAL '1' SECOND_MICROSECOND)",
+      "kind": "STRING",
+      "value": "2020-01-01 00:00:00.100000"
+    },
+    {
+      "expression": "DATE_ADD('2020-01-01',INTERVAL '1.5' DAY)",
+      "kind": "STRING",
+      "value": "2020-01-02"
+    },
+    {
+      "expression": "DATE_ADD('2020-01-01',INTERVAL '1:2' MINUTE_MICROSECOND)",
+      "kind": "STRING",
+      "value": "2020-01-01 00:00:01.200000"
+    },
+    {
+      "expression": "DATE_ADD('2020-01-01',INTERVAL 1.5 DAY)",
+      "kind": "STRING",
+      "value": "2020-01-03"
+    },
+    {
+      "expression": "DATE_ADD('2020-01-01',INTERVAL CAST(2.5 AS DECIMAL(10,1)) DAY)",
+      "kind": "STRING",
+      "value": "2020-01-04"
+    },
+    {
+      "expression": "DATE_ADD('2020-01-01',INTERVAL CAST(2.5 AS DOUBLE) DAY)",
+      "kind": "STRING",
+      "value": "2020-01-03"
+    },
+    {
+      "expression": "DATE_ADD('2024-01-01',INTERVAL 1 BOGUS)",
+      "error": true,
+      "error_code": 1064
+    },
+    {
+      "expression": "DATE_ADD('2024-01-31',INTERVAL 1 MONTH)",
+      "kind": "STRING",
+      "value": "2024-02-29"
+    },
+    {
+      "expression": "DATE_ADD('2024-02-31',INTERVAL 1 DAY)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "DATE_ADD('9999-12-31',INTERVAL 1 DAY)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "DATE_FORMAT('2016-01-01','%X-%V %x-%v')",
+      "kind": "STRING",
+      "value": "2015-52 2015-53"
+    },
+    {
+      "expression": "DATE_FORMAT('2024-02-29 13:04:05.123456','%W %M %D %Y %j %r %f')",
+      "kind": "STRING",
+      "value": "Thursday February 29th 2024 060 01:04:05 PM 123456"
+    },
+    {
+      "expression": "DATE_FORMAT(NULL,'%Y')",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "DATE_SUB('2024-02-29',INTERVAL 1 YEAR)",
+      "kind": "STRING",
+      "value": "2023-02-28"
+    },
+    {
+      "expression": "DAY('2024-02-29')",
+      "kind": "INTEGER",
+      "value": "29"
+    },
+    {
+      "expression": "DAYNAME('2001-00-00')",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "DAYNAME('2024-02-29')",
+      "kind": "STRING",
+      "value": "Thursday"
+    },
+    {
+      "expression": "DAYOFMONTH('2024-02-29')",
+      "kind": "INTEGER",
+      "value": "29"
+    },
+    {
+      "expression": "DAYOFWEEK('2024-02-29')",
+      "kind": "INTEGER",
+      "value": "5"
+    },
+    {
+      "expression": "DAYOFYEAR('2024-02-29')",
+      "kind": "INTEGER",
+      "value": "60"
+    },
+    {
+      "expression": "DEGREES(PI())",
+      "kind": "DOUBLE",
+      "value": "180"
+    },
+    {
+      "expression": "ELT('1.9','a','b')",
+      "kind": "STRING",
+      "value": "a"
+    },
+    {
+      "expression": "ELT(0,'a')",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "ELT(1.5,'a','b')",
+      "kind": "STRING",
+      "value": "b"
+    },
+    {
+      "expression": "EXP(0)",
+      "kind": "DOUBLE",
+      "value": "1"
+    },
+    {
+      "expression": "EXP(1000)",
+      "error": true,
+      "error_code": 1690
+    },
+    {
+      "expression": "EXP(NULL)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "EXPORT_SET(0,'Y','N','',0)",
+      "kind": "STRING",
+      "value": ""
+    },
+    {
+      "expression": "EXPORT_SET(1,'a',NULL)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "EXPORT_SET(5,'Y','N',',',4)",
+      "kind": "STRING",
+      "value": "Y,N,Y,N"
+    },
+    {
+      "expression": "EXTRACT(BOGUS FROM '2024-01-01')",
+      "error": true,
+      "error_code": 1064
+    },
+    {
+      "expression": "EXTRACT(DAY_MICROSECOND FROM '2024-02-29 12:34:56.123456')",
+      "kind": "INTEGER",
+      "value": "29123456123456"
+    },
+    {
+      "expression": "EXTRACT(HOUR FROM '-32:03:04')",
+      "kind": "INTEGER",
+      "value": "-32"
+    },
+    {
+      "expression": "EXTRACT(YEAR FROM NULL)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "EXTRACT(YEAR_MONTH FROM '2024-02-29')",
+      "kind": "INTEGER",
+      "value": "202402"
+    },
+    {
+      "expression": "FIELD('b','a','b','c')",
+      "kind": "INTEGER",
+      "value": "2"
+    },
+    {
+      "expression": "FIELD(2,'2x','3')",
+      "kind": "INTEGER",
+      "value": "1"
+    },
+    {
+      "expression": "FIELD(NULL,NULL,'')",
+      "kind": "INTEGER",
+      "value": "0"
+    },
+    {
+      "expression": "FIND_IN_SET('','a,')",
+      "kind": "INTEGER",
+      "value": "2"
+    },
+    {
+      "expression": "FIND_IN_SET('b','a,b,c')",
+      "kind": "INTEGER",
+      "value": "2"
+    },
+    {
+      "expression": "FLOOR(-1.23)",
+      "kind": "INTEGER",
+      "value": "-2"
+    },
+    {
+      "expression": "FLOOR(CAST('-18446744073709551614.1' AS DECIMAL(21,1)))",
+      "kind": "DECIMAL",
+      "value": "-18446744073709551615"
+    },
+    {
+      "expression": "FLOOR(NULL)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "FORMAT(-12345.55,1)",
+      "kind": "STRING",
+      "value": "-12,345.6"
+    },
+    {
+      "expression": "FORMAT(12,2,'unknown_LOCALE')",
+      "kind": "STRING",
+      "value": "12.00"
+    },
+    {
+      "expression": "FORMAT(12332.123456,4)",
+      "kind": "STRING",
+      "value": "12,332.1235"
+    },
+    {
+      "expression": "FORMAT(12332.123456,4,'de_DE')",
+      "kind": "STRING",
+      "value": "12.332,1235"
+    },
+    {
+      "expression": "FORMAT(12345.5,-1)",
+      "kind": "STRING",
+      "value": "12,346"
+    },
+    {
+      "expression": "FORMAT(12345.5,100)",
+      "kind": "STRING",
+      "value": "12,345.500000000000000000000000000000"
+    },
+    {
+      "expression": "FORMAT(12345.5,2,'fr_FR')",
+      "kind": "STRING",
+      "value": "12345,50"
+    },
+    {
+      "expression": "FORMAT(12345.5,2,'ru_RU')",
+      "kind": "STRING",
+      "value": "12 345,50"
+    },
+    {
+      "expression": "FORMAT(12345.5,2,NULL)",
+      "kind": "STRING",
+      "value": "12,345.50"
+    },
+    {
+      "expression": "FORMAT(123456789,30)",
+      "kind": "STRING",
+      "value": "123,456,789.000000000000000000000000000000"
+    },
+    {
+      "expression": "FORMAT(123456789.5,2,'en_IN')",
+      "kind": "STRING",
+      "value": "12,34,56,789.50"
+    },
+    {
+      "expression": "FORMAT(CAST('99999999999999999999.995' AS DECIMAL(23,3)),2)",
+      "kind": "STRING",
+      "value": "100,000,000,000,000,000,000.00"
+    },
+    {
+      "expression": "FORMAT(NULL,2)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "FROM_DAYS(3652424)",
+      "kind": "DATE",
+      "value": "9999-12-31"
+    },
+    {
+      "expression": "FROM_DAYS(733321)",
+      "kind": "DATE",
+      "value": "2007-10-07"
+    },
+    {
+      "expression": "FROM_DAYS(NULL)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "FROM_UNIXTIME(1)",
+      "kind": "DATETIME",
+      "value": "1970-01-01 00:00:01"
+    },
+    {
+      "expression": "FROM_UNIXTIME(1.25,'%Y-%m-%d %T.%f')",
+      "kind": "STRING",
+      "value": "1970-01-01 00:00:01.250000"
+    },
+    {
+      "expression": "FROM_UNIXTIME(NULL)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "HEX(AES_DECRYPT(AES_ENCRYPT(X'0001FF','secret'),'secret'))",
+      "kind": "STRING",
+      "value": "0001FF"
+    },
+    {
+      "expression": "HEX(AES_DECRYPT(X'00','key'))",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "HEX(AES_ENCRYPT('hello','key'))",
+      "kind": "STRING",
+      "value": "5E27050B59C889FEE9F953137259BF6B"
+    },
+    {
+      "expression": "HEX(AES_ENCRYPT('hello','key',NULL))",
+      "kind": "STRING",
+      "value": "5E27050B59C889FEE9F953137259BF6B"
+    },
+    {
+      "expression": "HEX(CHAR())",
+      "error": true,
+      "error_code": 1064
+    },
+    {
+      "expression": "HEX(CHAR(18446744073709551615))",
+      "kind": "STRING",
+      "value": "FFFFFFFF"
+    },
+    {
+      "expression": "HEX(CHAR(255 USING utf8mb4))",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "HEX(CHAR(255))",
+      "kind": "STRING",
+      "value": "FF"
+    },
+    {
+      "expression": "HEX(CHAR(256,65536))",
+      "kind": "STRING",
+      "value": "0100010000"
+    },
+    {
+      "expression": "HEX(CHAR(77,121,83,81,'76'))",
+      "kind": "STRING",
+      "value": "4D7953514C"
+    },
+    {
+      "expression": "HEX(CHAR(77.9,'77.9'))",
+      "kind": "STRING",
+      "value": "4E4D"
+    },
+    {
+      "expression": "HEX(CHAR(9223372036854775808))",
+      "kind": "STRING",
+      "value": "00"
+    },
+    {
+      "expression": "HEX(COMPRESS(''))",
+      "kind": "STRING",
+      "value": ""
+    },
+    {
+      "expression": "HEX(CONCAT_WS(X'00','a','b'))",
+      "kind": "STRING",
+      "value": "610062"
+    },
+    {
+      "expression": "HEX(FROM_BASE64(' YW\nJj '))",
+      "kind": "STRING",
+      "value": "616263"
+    },
+    {
+      "expression": "HEX(FROM_BASE64('/w=='))",
+      "kind": "STRING",
+      "value": "FF"
+    },
+    {
+      "expression": "HEX(FROM_BASE64('YQ==Yg=='))",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "HEX(INET6_ATON('10.0.5.9'))",
+      "kind": "STRING",
+      "value": "0A000509"
+    },
+    {
+      "expression": "HEX(INET6_ATON('fdfe::5a55:caff:fefa:9089'))",
+      "kind": "STRING",
+      "value": "FDFE0000000000005A55CAFFFEFA9089"
+    },
+    {
+      "expression": "HEX(INET6_ATON('fe80::1%eth0'))",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "HEX(LEFT(X'00FF',1))",
+      "kind": "STRING",
+      "value": "00"
+    },
+    {
+      "expression": "HEX(NULL)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "HEX(REVERSE(X'00FF'))",
+      "kind": "STRING",
+      "value": "FF00"
+    },
+    {
+      "expression": "HEX(UNCOMPRESS(''))",
+      "kind": "STRING",
+      "value": ""
+    },
+    {
+      "expression": "HEX(UNCOMPRESS(COMPRESS(X'0001FF20')))",
+      "kind": "STRING",
+      "value": "0001FF20"
+    },
+    {
+      "expression": "HEX(UNCOMPRESS(X'02000000789C4B54000000E40082'))",
+      "kind": "STRING",
+      "value": "6120"
+    },
+    {
+      "expression": "HEX(UNHEX('abc'))",
+      "kind": "STRING",
+      "value": "0ABC"
+    },
+    {
+      "expression": "HEX(UNHEX('ff'))",
+      "kind": "STRING",
+      "value": "FF"
+    },
+    {
+      "expression": "HEX(UNHEX('zz'))",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "HEX(UUID_TO_BIN('6ccd780c-baba-1026-9564-5b8c656024db',1))",
+      "kind": "STRING",
+      "value": "1026BABA6CCD780C95645B8C656024DB"
+    },
+    {
+      "expression": "HEX(UUID_TO_BIN(NULL))",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "HOUR('-32:03:04.123456')",
+      "kind": "INTEGER",
+      "value": "32"
+    },
+    {
+      "expression": "INET6_NTOA(INET6_ATON('::10.0.5.9'))",
+      "kind": "STRING",
+      "value": "::10.0.5.9"
+    },
+    {
+      "expression": "INET6_NTOA(INET6_ATON('::ffff:10.0.5.9'))",
+      "kind": "STRING",
+      "value": "::ffff:10.0.5.9"
+    },
+    {
+      "expression": "INET6_NTOA(X'00')",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "INET_ATON('1.2.3.999')",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "INET_ATON('127.1')",
+      "kind": "UNSIGNED INTEGER",
+      "value": "2130706433"
+    },
+    {
+      "expression": "INET_ATON('127.2.3')",
+      "kind": "UNSIGNED INTEGER",
+      "value": "2130837507"
+    },
+    {
+      "expression": "INET_NTOA(-1)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "INET_NTOA(1.5)",
+      "kind": "STRING",
+      "value": "0.0.0.2"
+    },
+    {
+      "expression": "INET_NTOA(INET_ATON('192.168.1.20'))",
+      "kind": "STRING",
+      "value": "192.168.1.20"
+    },
+    {
+      "expression": "INSERT('abcd',2,-1,'x')",
+      "kind": "STRING",
+      "value": "ax"
+    },
+    {
+      "expression": "INSERT('éé',2,1,'x')",
+      "kind": "STRING",
+      "value": "éx"
+    },
+    {
+      "expression": "ISNULL('')",
+      "kind": "BOOLEAN",
+      "value": "0"
+    },
+    {
+      "expression": "ISNULL(NULL)",
+      "kind": "BOOLEAN",
+      "value": "1"
+    },
+    {
+      "expression": "IS_IPV4('127.0.0.1')",
+      "kind": "BOOLEAN",
+      "value": "1"
+    },
+    {
+      "expression": "IS_IPV4('127.1')",
+      "kind": "BOOLEAN",
+      "value": "0"
+    },
+    {
+      "expression": "IS_IPV4_COMPAT(INET6_ATON('::1'))",
+      "kind": "BOOLEAN",
+      "value": "0"
+    },
+    {
+      "expression": "IS_IPV4_COMPAT(INET6_ATON('::10.0.5.9'))",
+      "kind": "BOOLEAN",
+      "value": "1"
+    },
+    {
+      "expression": "IS_IPV4_MAPPED(INET6_ATON('::10.0.5.9'))",
+      "kind": "BOOLEAN",
+      "value": "0"
+    },
+    {
+      "expression": "IS_IPV4_MAPPED(INET6_ATON('::ffff:10.0.5.9'))",
+      "kind": "BOOLEAN",
+      "value": "1"
+    },
+    {
+      "expression": "IS_IPV6('::ffff:127.0.0.1')",
+      "kind": "BOOLEAN",
+      "value": "1"
+    },
+    {
+      "expression": "IS_UUID('6ccd780c-baba-1026-9564-5b8c656024db')",
+      "kind": "BOOLEAN",
+      "value": "1"
+    },
+    {
+      "expression": "IS_UUID('6ccd780c-baba1026-9564-5b8c656024db')",
+      "kind": "BOOLEAN",
+      "value": "0"
+    },
+    {
+      "expression": "IS_UUID('6ccd780cbaba102695645b8c656024db')",
+      "kind": "BOOLEAN",
+      "value": "1"
+    },
+    {
+      "expression": "IS_UUID('{6ccd780c-baba-1026-9564-5b8c656024db}')",
+      "kind": "BOOLEAN",
+      "value": "1"
+    },
+    {
+      "expression": "IS_UUID(NULL)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "IS_UUID(UUID())",
+      "kind": "BOOLEAN",
+      "value": "1"
+    },
+    {
+      "expression": "LAST_DAY('2001-02-00')",
+      "kind": "DATE",
+      "value": "2001-02-28"
+    },
+    {
+      "expression": "LAST_DAY('2024-02-01')",
+      "kind": "DATE",
+      "value": "2024-02-29"
+    },
+    {
+      "expression": "LCASE('ABCé')",
+      "kind": "STRING",
+      "value": "abcé"
+    },
+    {
+      "expression": "LEFT('a')",
+      "error": true,
+      "error_code": 1064
+    },
+    {
+      "expression": "LEFT('abc','1.9')",
+      "kind": "STRING",
+      "value": "a"
+    },
+    {
+      "expression": "LEFT('abc','18446744073709551615')",
+      "kind": "STRING",
+      "value": ""
+    },
+    {
+      "expression": "LEFT('abc',-1)",
+      "kind": "STRING",
+      "value": ""
+    },
+    {
+      "expression": "LEFT('abc',1.5)",
+      "kind": "STRING",
+      "value": "ab"
+    },
+    {
+      "expression": "LEFT('café🪐',4)",
+      "kind": "STRING",
+      "value": "café"
+    },
+    {
+      "expression": "LEFT('x')",
+      "error": true,
+      "error_code": 1064
+    },
+    {
+      "expression": "LEFT(NULL,2)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "LENGTH('café🪐')",
+      "kind": "INTEGER",
+      "value": "9"
+    },
+    {
+      "expression": "LENGTH(SHA2('abc',224))",
+      "kind": "INTEGER",
+      "value": "56"
+    },
+    {
+      "expression": "LENGTH(SHA2('abc',384))",
+      "kind": "INTEGER",
+      "value": "96"
+    },
+    {
+      "expression": "LENGTH(SHA2('abc',512))",
+      "kind": "INTEGER",
+      "value": "128"
+    },
+    {
+      "expression": "LN(-1)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "LN(0)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "LN(1)",
+      "kind": "DOUBLE",
+      "value": "0"
+    },
+    {
+      "expression": "LOCATE('A','a' COLLATE utf8mb4_general_ci)",
+      "kind": "INTEGER",
+      "value": "1"
+    },
+    {
+      "expression": "LOCATE('a ','a' COLLATE utf8mb4_general_ci)",
+      "kind": "INTEGER",
+      "value": "0"
+    },
+    {
+      "expression": "LOCATE('a','b',1,2)",
+      "error": true,
+      "error_code": 1582
+    },
+    {
+      "expression": "LOCATE('a','baab',3)",
+      "kind": "INTEGER",
+      "value": "3"
+    },
+    {
+      "expression": "LOCATE('x',X'C3A978')",
+      "kind": "INTEGER",
+      "value": "3"
+    },
+    {
+      "expression": "LOCATE('é','aéx')",
+      "kind": "INTEGER",
+      "value": "2"
+    },
+    {
+      "expression": "LOCATE(NULL,'a')",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "LOG(-1)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "LOG(-2)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "LOG(1,100)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "LOG(2,65536)",
+      "kind": "DOUBLE",
+      "value": "16"
+    },
+    {
+      "expression": "LOG10(100)",
+      "kind": "DOUBLE",
+      "value": "2"
+    },
+    {
+      "expression": "LOG2(1024)",
+      "kind": "DOUBLE",
+      "value": "10"
+    },
+    {
+      "expression": "LPAD('a',3,'')",
+      "kind": "STRING",
+      "value": ""
+    },
+    {
+      "expression": "LPAD('abcdef',3,'x')",
+      "kind": "STRING",
+      "value": "abc"
+    },
+    {
+      "expression": "LPAD('x',0,'')",
+      "kind": "STRING",
+      "value": ""
+    },
+    {
+      "expression": "LPAD('é',4,'xy')",
+      "kind": "STRING",
+      "value": "xyxé"
+    },
+    {
+      "expression": "MAKEDATE(2024,60)",
+      "kind": "DATE",
+      "value": "2024-02-29"
+    },
+    {
+      "expression": "MAKETIME(-12,34,56.123)",
+      "kind": "TIME",
+      "value": "-12:34:56.123"
+    },
+    {
+      "expression": "MAKETIME(1,60,0)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "MAKE_SET('1.9','a','b')",
+      "kind": "STRING",
+      "value": "a"
+    },
+    {
+      "expression": "MAKE_SET(1.9,'a','b')",
+      "kind": "STRING",
+      "value": "b"
+    },
+    {
+      "expression": "MAKE_SET(5,'a','b','c')",
+      "kind": "STRING",
+      "value": "a,c"
+    },
+    {
+      "expression": "MAKE_SET(5,'a',NULL,NULL)",
+      "kind": "STRING",
+      "value": "a"
+    },
+    {
+      "expression": "MAKE_SET(NULL,'a')",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "MD5('abc')",
+      "kind": "STRING",
+      "value": "900150983cd24fb0d6963f7d28e17f72"
+    },
+    {
+      "expression": "MD5()",
+      "error": true,
+      "error_code": 1582
+    },
+    {
+      "expression": "MD5(NULL)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "MICROSECOND('-32:03:04.123456')",
+      "kind": "INTEGER",
+      "value": "123456"
+    },
+    {
+      "expression": "MID('café' FROM 2 FOR 2)",
+      "kind": "STRING",
+      "value": "af"
+    },
+    {
+      "expression": "MID('café',-2,1)",
+      "kind": "STRING",
+      "value": "f"
+    },
+    {
+      "expression": "MINUTE('-32:03:04.123456')",
+      "kind": "INTEGER",
+      "value": "3"
+    },
+    {
+      "expression": "MOD(-34.5,3)",
+      "kind": "DECIMAL",
+      "value": "-1.5"
+    },
+    {
+      "expression": "MOD(-9223372036854775808,-1)",
+      "kind": "INTEGER",
+      "value": "0"
+    },
+    {
+      "expression": "MOD(1,0)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "MOD(10,0)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "MOD(18446744073709551615,17)",
+      "kind": "UNSIGNED INTEGER",
+      "value": "0"
+    },
+    {
+      "expression": "MOD(34.5,3)",
+      "kind": "DECIMAL",
+      "value": "1.5"
+    },
+    {
+      "expression": "MONTH('2024-02-29')",
+      "kind": "INTEGER",
+      "value": "2"
+    },
+    {
+      "expression": "MONTHNAME('2024-02-29')",
+      "kind": "STRING",
+      "value": "February"
+    },
+    {
+      "expression": "OCT(12)",
+      "kind": "STRING",
+      "value": "14"
+    },
+    {
+      "expression": "OCTET_LENGTH('é🪐')",
+      "kind": "INTEGER",
+      "value": "6"
+    },
+    {
+      "expression": "ORD('é')",
+      "kind": "INTEGER",
+      "value": "50089"
+    },
+    {
+      "expression": "ORD(CAST('é' AS BINARY))",
+      "kind": "INTEGER",
+      "value": "195"
+    },
+    {
+      "expression": "PERIOD_ADD(200801,2)",
+      "kind": "INTEGER",
+      "value": "200803"
+    },
+    {
+      "expression": "PERIOD_ADD(NULL,1)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "PERIOD_DIFF(200802,200703)",
+      "kind": "INTEGER",
+      "value": "11"
+    },
+    {
+      "expression": "PI()",
+      "kind": "DOUBLE",
+      "value": "3.141592653589793"
+    },
+    {
+      "expression": "POSITION('x' 'y')",
+      "error": true,
+      "error_code": 1064
+    },
+    {
+      "expression": "POSITION('é' IN 'aéx')",
+      "kind": "INTEGER",
+      "value": "2"
+    },
+    {
+      "expression": "POW(NULL,2)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "POWER(0,-1)",
+      "error": true,
+      "error_code": 1690
+    },
+    {
+      "expression": "POWER(2,-2)",
+      "kind": "DOUBLE",
+      "value": "0.25"
+    },
+    {
+      "expression": "QUARTER('2024-11-01')",
+      "kind": "INTEGER",
+      "value": "4"
+    },
+    {
+      "expression": "RADIANS(90)",
+      "kind": "DOUBLE",
+      "value": "1.5707963267948966"
+    },
+    {
+      "expression": "RAND(0)",
+      "kind": "DOUBLE",
+      "value": "0.15522042769493574"
+    },
+    {
+      "expression": "RAND(1)",
+      "kind": "DOUBLE",
+      "value": "0.40540353712197724"
+    },
+    {
+      "expression": "RAND(3)",
+      "kind": "DOUBLE",
+      "value": "0.9057697559760601"
+    },
+    {
+      "expression": "REPEAT('a','1.9')",
+      "kind": "STRING",
+      "value": "a"
+    },
+    {
+      "expression": "REPEAT('ab',1.5)",
+      "kind": "STRING",
+      "value": "abab"
+    },
+    {
+      "expression": "REPEAT(NULL,2)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "REVERSE('café🪐')",
+      "kind": "STRING",
+      "value": "🪐éfac"
+    },
+    {
+      "expression": "RIGHT('abc',18446744073709551615)",
+      "kind": "STRING",
+      "value": "abc"
+    },
+    {
+      "expression": "RIGHT('café🪐',2)",
+      "kind": "STRING",
+      "value": "é🪐"
+    },
+    {
+      "expression": "ROUND(-2.5)",
+      "kind": "DECIMAL",
+      "value": "-3"
+    },
+    {
+      "expression": "ROUND(-2.5e0)",
+      "kind": "DOUBLE",
+      "value": "-2"
+    },
+    {
+      "expression": "ROUND(12345678901234567890.12345,3)",
+      "kind": "DECIMAL",
+      "value": "12345678901234567890.123"
+    },
+    {
+      "expression": "ROUND(2.5)",
+      "kind": "DECIMAL",
+      "value": "3"
+    },
+    {
+      "expression": "ROUND(2.5e0)",
+      "kind": "DOUBLE",
+      "value": "2"
+    },
+    {
+      "expression": "RPAD('é',4,'xy')",
+      "kind": "STRING",
+      "value": "éxyx"
+    },
+    {
+      "expression": "SECOND('-32:03:04.123456')",
+      "kind": "INTEGER",
+      "value": "4"
+    },
+    {
+      "expression": "SEC_TO_TIME('1.23')",
+      "kind": "TIME",
+      "value": "00:00:01.230000"
+    },
+    {
+      "expression": "SEC_TO_TIME(1.9999999)",
+      "kind": "TIME",
+      "value": "00:00:02.000000"
+    },
+    {
+      "expression": "SEC_TO_TIME(10000000.123)",
+      "kind": "TIME",
+      "value": "838:59:59.000"
+    },
+    {
+      "expression": "SEC_TO_TIME(3661)",
+      "kind": "TIME",
+      "value": "01:01:01"
+    },
+    {
+      "expression": "SEC_TO_TIME(3661.25)",
+      "kind": "TIME",
+      "value": "01:01:01.25"
+    },
+    {
+      "expression": "SEC_TO_TIME(NULL)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "SHA('abc')",
+      "kind": "STRING",
+      "value": "a9993e364706816aba3e25717850c26c9cd0d89d"
+    },
+    {
+      "expression": "SHA1('abc')",
+      "kind": "STRING",
+      "value": "a9993e364706816aba3e25717850c26c9cd0d89d"
+    },
+    {
+      "expression": "SHA2('abc',0)=SHA2('abc',256)",
+      "kind": "BOOLEAN",
+      "value": "1"
+    },
+    {
+      "expression": "SHA2('abc',123)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "SHA2('abc',256)",
+      "kind": "STRING",
+      "value": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    },
+    {
+      "expression": "SHA2('x')",
+      "error": true,
+      "error_code": 1582
+    },
+    {
+      "expression": "SHA2(NULL,256)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "SIGN('17suffix')",
+      "kind": "INTEGER",
+      "value": "1"
+    },
+    {
+      "expression": "SIGN('junk')",
+      "kind": "INTEGER",
+      "value": "0"
+    },
+    {
+      "expression": "SIGN(-0.000001)",
+      "kind": "INTEGER",
+      "value": "-1"
+    },
+    {
+      "expression": "SIGN(NULL)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "SIN(PI()/2)",
+      "kind": "DOUBLE",
+      "value": "1"
+    },
+    {
+      "expression": "SLEEP(0)",
+      "kind": "INTEGER",
+      "value": "0"
+    },
+    {
+      "expression": "SOUNDEX('123')",
+      "kind": "STRING",
+      "value": ""
+    },
+    {
+      "expression": "SOUNDEX('Ashcraft')",
+      "kind": "STRING",
+      "value": "A2613"
+    },
+    {
+      "expression": "SOUNDEX('Pfister')",
+      "kind": "STRING",
+      "value": "P236"
+    },
+    {
+      "expression": "SOUNDEX('hello')",
+      "kind": "STRING",
+      "value": "H400"
+    },
+    {
+      "expression": "SOUNDEX('éàb')",
+      "kind": "STRING",
+      "value": "é100"
+    },
+    {
+      "expression": "SPACE(3)",
+      "kind": "STRING",
+      "value": "   "
+    },
+    {
+      "expression": "SQRT(-1)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "SQRT(9)",
+      "kind": "DOUBLE",
+      "value": "3"
+    },
+    {
+      "expression": "STRCMP('a','a ' COLLATE utf8mb4_bin)",
+      "kind": "BOOLEAN",
+      "value": "0"
+    },
+    {
+      "expression": "STRCMP('a','a')",
+      "kind": "BOOLEAN",
+      "value": "0"
+    },
+    {
+      "expression": "STRCMP('a','b')",
+      "kind": "BOOLEAN",
+      "value": "-1"
+    },
+    {
+      "expression": "STR_TO_DATE('12:01:02','%h:%i:%s')",
+      "kind": "TIME",
+      "value": "00:01:02"
+    },
+    {
+      "expression": "STR_TO_DATE('200442 Monday','%X%V %W')",
+      "kind": "DATE",
+      "value": "2004-10-18"
+    },
+    {
+      "expression": "STR_TO_DATE('2024-01-00','%Y-%m-%d')",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "STR_TO_DATE('2024-02-30','%Y-%m-%d')",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "STR_TO_DATE('2024-060','%Y-%j')",
+      "kind": "DATE",
+      "value": "2024-02-29"
+    },
+    {
+      "expression": "STR_TO_DATE('February 29, 2024 01:04:05 PM','%M %d, %Y %r')",
+      "kind": "DATETIME",
+      "value": "2024-02-29 13:04:05"
+    },
+    {
+      "expression": "SUBDATE('2024-03-01',2)",
+      "kind": "STRING",
+      "value": "2024-02-28"
+    },
+    {
+      "expression": "SUBSTRING('café' FROM 2 FOR 2)",
+      "kind": "STRING",
+      "value": "af"
+    },
+    {
+      "expression": "SUBSTRING(UUID(),15,1)",
+      "kind": "STRING",
+      "value": "1"
+    },
+    {
+      "expression": "SUBSTRING_INDEX('a.b.c','.',-2)",
+      "kind": "STRING",
+      "value": "b.c"
+    },
+    {
+      "expression": "SUBSTRING_INDEX('a.b.c','.',2)",
+      "kind": "STRING",
+      "value": "a.b"
+    },
+    {
+      "expression": "SUBSTRING_INDEX('abc','.',-2)",
+      "kind": "STRING",
+      "value": "abc"
+    },
+    {
+      "expression": "SUBTIME('01:00:00.1','00:00:00.1')",
+      "kind": "STRING",
+      "value": "01:00:00"
+    },
+    {
+      "expression": "SUBTIME('02:00:00','03:00:00')",
+      "kind": "STRING",
+      "value": "-01:00:00"
+    },
+    {
+      "expression": "TAN(0)",
+      "kind": "DOUBLE",
+      "value": "0"
+    },
+    {
+      "expression": "TIMEDIFF('00:00:01.123','00:00:00.1')",
+      "kind": "TIME",
+      "value": "00:00:01.023"
+    },
+    {
+      "expression": "TIMEDIFF('2001-01-02 00:00:00','2001-01-01 00:00:00')",
+      "kind": "TIME",
+      "value": "24:00:00"
+    },
+    {
+      "expression": "TIMESTAMPADD(QUARTER,1,'2024-01-31')",
+      "kind": "STRING",
+      "value": "2024-04-30"
+    },
+    {
+      "expression": "TIMESTAMPDIFF(DAY,NULL,'2024-01-01')",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "TIMESTAMPDIFF(MICROSECOND,'2024-01-01 23:59:59.999999','2024-01-02 00:00:00')",
+      "kind": "INTEGER",
+      "value": "1"
+    },
+    {
+      "expression": "TIMESTAMPDIFF(MONTH,'2024-01-31','2024-02-29')",
+      "kind": "INTEGER",
+      "value": "0"
+    },
+    {
+      "expression": "TIMESTAMPDIFF(YEAR,'2002-05-01','2001-01-01')",
+      "kind": "INTEGER",
+      "value": "-1"
+    },
+    {
+      "expression": "TIME_FORMAT('-01:02:03','%i %H %s %p')",
+      "kind": "STRING",
+      "value": "-02 01 03 AM"
+    },
+    {
+      "expression": "TIME_FORMAT('12:30:00','%W')",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "TIME_FORMAT('12:30:00','%Y-%m-%d %y %c %e')",
+      "kind": "STRING",
+      "value": "0000-00-00 00 0 0"
+    },
+    {
+      "expression": "TIME_TO_SEC('01:02:03.12')",
+      "kind": "INTEGER",
+      "value": "3723"
+    },
+    {
+      "expression": "TIME_TO_SEC(NULL)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "TO_BASE64('abc')",
+      "kind": "STRING",
+      "value": "YWJj"
+    },
+    {
+      "expression": "TO_DAYS('2007-10-07')",
+      "kind": "INTEGER",
+      "value": "733321"
+    },
+    {
+      "expression": "TO_SECONDS('2009-11-29 13:43:32')",
+      "kind": "INTEGER",
+      "value": "63426721412"
+    },
+    {
+      "expression": "TRIM(BOTH 'xy' FROM 'xyxyabxy')",
+      "kind": "STRING",
+      "value": "ab"
+    },
+    {
+      "expression": "TRIM(LEADING 'x')",
+      "error": true,
+      "error_code": 1064
+    },
+    {
+      "expression": "TRIM(LEADING 'xy' FROM 'xyabxy')",
+      "kind": "STRING",
+      "value": "abxy"
+    },
+    {
+      "expression": "TRIM(NULL FROM 'abc')",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "TRIM(TRAILING FROM ' a  ')",
+      "kind": "STRING",
+      "value": " a"
+    },
+    {
+      "expression": "TRUNCATE(-1.999,1)",
+      "kind": "DECIMAL",
+      "value": "-1.9"
+    },
+    {
+      "expression": "TRUNCATE(1,NULL)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "TRUNCATE(1.23,10)",
+      "kind": "DECIMAL",
+      "value": "1.23"
+    },
+    {
+      "expression": "TRUNCATE(1.999,1)",
+      "kind": "DECIMAL",
+      "value": "1.9"
+    },
+    {
+      "expression": "TRUNCATE(123,-9223372036854775808)",
+      "kind": "INTEGER",
+      "value": "0"
+    },
+    {
+      "expression": "TRUNCATE(12345,-2)",
+      "kind": "INTEGER",
+      "value": "12300"
+    },
+    {
+      "expression": "TRUNCATE(12345678901234567890.12345,3)",
+      "kind": "DECIMAL",
+      "value": "12345678901234567890.123"
+    },
+    {
+      "expression": "TRUNCATE(18446744073709551615,-1)",
+      "kind": "UNSIGNED INTEGER",
+      "value": "18446744073709551610"
+    },
+    {
+      "expression": "TRUNCATE(CAST('9999999999999999999999999.99999' AS DECIMAL(30,5)),2)",
+      "kind": "DECIMAL",
+      "value": "9999999999999999999999999.99"
+    },
+    {
+      "expression": "UCASE('abcé')",
+      "kind": "STRING",
+      "value": "ABCÉ"
+    },
+    {
+      "expression": "UNCOMPRESS('invalid')",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "UNCOMPRESSED_LENGTH('abcde')",
+      "kind": "INTEGER",
+      "value": "610493025"
+    },
+    {
+      "expression": "UNCOMPRESSED_LENGTH(COMPRESS('hello'))",
+      "kind": "INTEGER",
+      "value": "5"
+    },
+    {
+      "expression": "UUID()=UUID()",
+      "kind": "BOOLEAN",
+      "value": "0"
+    },
+    {
+      "expression": "WEEK('2016-01-01',0)",
+      "kind": "INTEGER",
+      "value": "0"
+    },
+    {
+      "expression": "WEEK('2016-01-01',1)",
+      "kind": "INTEGER",
+      "value": "0"
+    },
+    {
+      "expression": "WEEK('2016-01-01',2)",
+      "kind": "INTEGER",
+      "value": "52"
+    },
+    {
+      "expression": "WEEK('2016-01-01',3)",
+      "kind": "INTEGER",
+      "value": "53"
+    },
+    {
+      "expression": "WEEK('2016-01-01',4)",
+      "kind": "INTEGER",
+      "value": "0"
+    },
+    {
+      "expression": "WEEK('2016-01-01',5)",
+      "kind": "INTEGER",
+      "value": "0"
+    },
+    {
+      "expression": "WEEK('2016-01-01',6)",
+      "kind": "INTEGER",
+      "value": "52"
+    },
+    {
+      "expression": "WEEK('2016-01-01',7)",
+      "kind": "INTEGER",
+      "value": "52"
+    },
+    {
+      "expression": "WEEKDAY('2024-02-29')",
+      "kind": "INTEGER",
+      "value": "3"
+    },
+    {
+      "expression": "WEEKOFYEAR('2016-01-01')",
+      "kind": "INTEGER",
+      "value": "53"
+    },
+    {
+      "expression": "YEAR('0000-00-00')",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "YEAR('2024-02-29 12:34:56.123456')",
+      "kind": "INTEGER",
+      "value": "2024"
+    },
+    {
+      "expression": "YEAR('2026-02-31')",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "YEAR('bad')",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "YEAR()",
+      "error": true,
+      "error_code": 1064
+    },
+    {
+      "expression": "YEAR(NULL)",
+      "kind": "NULL",
+      "value": null
+    },
+    {
+      "expression": "YEARWEEK('2016-01-01',3)",
+      "kind": "INTEGER",
+      "value": "201553"
+    }
+  ]
+}
