@@ -134,3 +134,18 @@ func TestMySQLScientificLiteralsRemainApproximate(t *testing.T) {
 		t.Fatal(r.Rows)
 	}
 }
+
+func TestMySQLUtilityHexNumericArguments(t *testing.T) {
+	d, err := db.Open(t.TempDir(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	s := mysqlTypeSession(t, d)
+	for _, tc := range []struct{ expr, want string }{{"LENGTH(SHA2('abc',X'0100'))", "64"}, {"LENGTH(RANDOM_BYTES(X'02'))", "2"}, {"LAST_INSERT_ID(X'FFFF')", "65535"}} {
+		r := mysqlTypeExec(t, s, "SELECT "+tc.expr+" AS v")
+		if r.Rows[0]["v"].String() != tc.want {
+			t.Fatal(tc.expr, r.Rows)
+		}
+	}
+}

@@ -382,6 +382,9 @@ func mysqlUtilityFunctions() map[string]mysqlFunctionSpec {
 }
 
 func mysqlUtilityUint(v Value) uint64 {
+	if v.HexLiteral {
+		return mysqlHexNumber(v).Uint
+	}
 	if v.Type == ColUnsigned {
 		return v.Uint
 	}
