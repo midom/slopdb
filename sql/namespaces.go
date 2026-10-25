@@ -217,7 +217,7 @@ func (s *Schema) namespaceName(name string, create bool, scope map[string]bool) 
 		return "", nil
 	}
 	name = strings.ToLower(name)
-	if s.postgresMode && !scope[name] {
+	if s.PostgresMode() && !scope[name] {
 		if _, known := postgresCatalogName(name); known {
 			if create {
 				return "", fmt.Errorf("system catalog %q is read only", name)
@@ -259,7 +259,7 @@ func (s *Schema) ResolveNamespaces(stmt Statement) (Statement, error) {
 		namespaceVisit(reflect.ValueOf(stmt), func(value any) {
 			switch st := value.(type) {
 			case *FuncCallExpr:
-				needed = needed || st.PostgresBare && !s.postgresMode
+				needed = needed || st.PostgresBare && !s.PostgresMode()
 			case *SelectStmt:
 				needed = needed || strings.Contains(st.From, ".")
 			case JoinClause:
@@ -291,7 +291,7 @@ func (s *Schema) ResolveNamespaces(stmt Statement) (Statement, error) {
 		return stmt, nil
 	}
 	copy := (&BoundQuery{}).clone(reflect.ValueOf(stmt)).Interface().(Statement)
-	if !s.postgresMode {
+	if !s.PostgresMode() {
 		resolveNativeBareExpressions(reflect.ValueOf(copy))
 	}
 	namespaceVisit(reflect.ValueOf(copy), func(value any) {

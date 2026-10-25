@@ -43,7 +43,7 @@ func validPostgresFunction(name string, n int) (bool, bool) {
 	return valid, ok
 }
 func (s *Schema) evalPostgresFunc(e *FuncCallExpr, row map[string]Value) (Value, bool, error) {
-	if !s.postgresMode {
+	if !s.PostgresMode() {
 		return Value{}, false, nil
 	}
 	name := strings.ToUpper(e.Name)
@@ -107,13 +107,13 @@ func (s *Schema) postgresBooleanValue(b bool) Value {
 	if b {
 		v.Int = 1
 	}
-	if s.postgresMode {
+	if s.PostgresMode() {
 		v.PGType = "BOOLEAN"
 	}
 	return v
 }
 func (s *Schema) booleanColumn() ColumnDef {
-	if s.postgresMode {
+	if s.PostgresMode() {
 		return ColumnDef{ColType: ColInteger, Declared: "BOOLEAN", Postgres: true}
 	}
 	return ColumnDef{ColType: ColInteger}

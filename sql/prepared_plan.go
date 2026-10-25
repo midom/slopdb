@@ -45,6 +45,8 @@ type preparedExecutionPlan struct {
 	info                               *TableInfo
 	distribution                       *tableStatistics
 	catalogVersion, stateVersion       uint64
+	dialect                            Dialect
+	dialectEpoch                       uint64
 	initialized, validated             bool
 	equalities                         []preparedEquality
 	pointPossible                      bool
@@ -109,9 +111,9 @@ func (s *Schema) usePreparedPlan(p *preparedExecutionPlan, info *TableInfo) *pre
 		catalog, state = s.catalogVersion, s.stateVersion
 	}
 	distribution := s.distributions[info.Name]
-	if !p.initialized || p.info != info || p.distribution != distribution || p.catalogVersion != catalog || p.stateVersion != state {
+	if !p.initialized || p.dialect != s.dialect || p.dialectEpoch != s.dialectEpoch || p.info != info || p.distribution != distribution || p.catalogVersion != catalog || p.stateVersion != state {
 		owner, counter, where, alias := p.owner, p.counter, p.where, p.fromAlias
-		*p = preparedExecutionPlan{owner: owner, counter: counter, where: where, fromAlias: alias, info: info, distribution: distribution, catalogVersion: catalog, stateVersion: state, initialized: true}
+		*p = preparedExecutionPlan{owner: owner, counter: counter, where: where, fromAlias: alias, info: info, distribution: distribution, catalogVersion: catalog, stateVersion: state, initialized: true, dialect: s.dialect, dialectEpoch: s.dialectEpoch}
 		p.compilePointBindings()
 		p.compileRangeTerms(info.Name)
 		counter.builds.Add(1)

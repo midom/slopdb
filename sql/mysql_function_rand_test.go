@@ -6,7 +6,7 @@ import (
 )
 
 func TestMySQLRandSeedSequenceAndLifecycle(t *testing.T) {
-	s := &Schema{mysqlMode: true}
+	s := &Schema{dialect: DialectMySQL}
 	expression := parseTestExpression(t, "RAND(3)")
 	want := []float64{0.9057697559760601, 0.37307905813034536, 0.14808605345719125}
 	for _, expected := range want {

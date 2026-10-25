@@ -311,7 +311,7 @@ func (s *Schema) updateJoined(stmt *UpdateStmt) (int64, *ResultSet, error) {
 		if err != nil {
 			return 0, nil, err
 		}
-		if !s.mysqlMode || s.mysqlFoundRows() || !bytes.Equal(encodeRow(original, candidate.table.info), encodeRow(row, candidate.table.info)) {
+		if !s.MySQLMode() || s.mysqlFoundRows() || !bytes.Equal(encodeRow(original, candidate.table.info), encodeRow(row, candidate.table.info)) {
 			changes++
 		}
 	}

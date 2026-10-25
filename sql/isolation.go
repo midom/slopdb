@@ -26,6 +26,9 @@ func ParseIsolationLevel(name string) (IsolationLevel, error) {
 
 func (s *Schema) IsolationLevel() IsolationLevel {
 	if s.isolation == "" {
+		if s.MySQLMode() {
+			return RepeatableRead
+		}
 		return ReadCommitted
 	}
 	return s.isolation

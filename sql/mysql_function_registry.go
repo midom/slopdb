@@ -54,7 +54,7 @@ func (s *Schema) evalRegisteredMySQLFunction(name string, args []Value) (Value, 
 
 func (s *Schema) describeRegisteredMySQLFunction(name string, args []ColumnDef) (ColumnDef, bool) {
 	spec, ok := mysqlFunctionRegistry[name]
-	if !ok || spec.MySQLOnly && !s.mysqlMode {
+	if !ok || spec.MySQLOnly && !s.MySQLMode() {
 		return ColumnDef{}, false
 	}
 	if spec.Metadata != nil {

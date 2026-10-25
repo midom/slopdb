@@ -281,7 +281,7 @@ func (s *Schema) handleInsertConflict(table string, info *TableInfo, attempted m
 			return false, nil, err
 		}
 		if clause.DoNothing {
-			if s.mysqlMode && s.ctx != nil && s.ctx.Value(mysqlIgnoreKey{}) == true {
+			if s.MySQLMode() && s.ctx != nil && s.ctx.Value(mysqlIgnoreKey{}) == true {
 				s.mysqlWarning(1062, "Duplicate entry for key on table "+table)
 			}
 			return true, nil, nil

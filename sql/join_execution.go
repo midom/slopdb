@@ -20,7 +20,7 @@ func (s *Schema) appendEqualityKey(dst []byte, value Value) []byte {
 	if !value.Null && value.Type == ColText && (!value.Binary || value.Collation != "") {
 		value.Text = valueTextKey(value, s.collation)
 	}
-	if s.mysqlMode && value.Type == ColText && !value.Null {
+	if s.MySQLMode() && value.Type == ColText && !value.Null {
 		value = NewBlobValue([]byte(value.Text))
 	}
 	return appendEqualityKey(dst, value)
@@ -288,7 +288,7 @@ func (s *Schema) executeJoins(stmt *SelectStmt, baseRows []map[string]Value, bas
 		}
 		pruneJoinRows(joinRows, needed, alias)
 		pairs := joinKeyPairs(stmt, jc, alias, columns, leftNames)
-		if s.mysqlMode && !mysqlJoinHashCompatible(result, joinRows, pairs) {
+		if s.MySQLMode() && !mysqlJoinHashCompatible(result, joinRows, pairs) {
 			// MySQL converts mixed string/numeric comparisons to numbers. A
 			// string can equal a number without sharing its string hash key.
 			pairs = nil

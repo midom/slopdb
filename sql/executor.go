@@ -146,8 +146,8 @@ type Schema struct {
 	triggerDepth         int
 	viewDepth            int
 	savepoints           []savepoint
-	mysqlMode            bool
-	postgresMode         bool
+	dialect              Dialect
+	dialectEpoch         uint64
 	mysqlFunctions       mysqlFunctionSessionState
 	mysqlConflictChanged bool
 	temporary            *temporaryCatalog
@@ -496,12 +496,12 @@ func (s *Schema) schemaGet(key []byte) (value []byte, found bool, err error) {
 }
 
 func (s *Schema) CreateTable(stmt *CreateTableStmt) error {
-	if s.postgresMode {
+	if s.PostgresMode() {
 		if _, known := postgresCatalogName(stmt.Table); known {
 			return fmt.Errorf("system catalog %q is read only", stmt.Table)
 		}
 	}
-	if s.postgresMode {
+	if s.PostgresMode() {
 		copy := *stmt
 		copy.Columns = append([]ColumnDef(nil), stmt.Columns...)
 		for i := range copy.Columns {
@@ -555,7 +555,7 @@ func (s *Schema) CreateTable(stmt *CreateTableStmt) error {
 	}
 
 	for i := range stmt.Columns {
-		if s.mysqlMode {
+		if s.MySQLMode() {
 			stmt.Columns[i].MySQL = true
 		}
 		if stmt.Columns[i].Default != nil {
@@ -3245,7 +3245,7 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 	}
 
 	if stmt.Ignore {
-		if s.mysqlMode {
+		if s.MySQLMode() {
 			previous := s.ctx
 			s.ctx = mysqlIgnoreContext(s.ctx)
 			defer func() { s.ctx = previous }()
@@ -3437,7 +3437,7 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 				}
 				if updated != nil {
 					s.statementChanges += s.mysqlUpsertChanges()
-					if s.mysqlMode && pkCol != nil && pkCol.AutoIncrement && lastID == 0 {
+					if s.MySQLMode() && pkCol != nil && pkCol.AutoIncrement && lastID == 0 {
 						lastID = updated[pkCol.Name].Int
 					}
 					returningRows = append(returningRows, updated)
@@ -3489,10 +3489,10 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 		if generatedAuto {
 			s.noteMySQLGeneratedID(row[pkCol.Name])
 		}
-		if pkCol != nil && row[pkCol.Name].Type == ColUnsigned && (!s.mysqlMode || pkCol.AutoIncrement) && lastUnsigned == 0 && (!s.mysqlMode || lastID == 0) {
+		if pkCol != nil && row[pkCol.Name].Type == ColUnsigned && (!s.MySQLMode() || pkCol.AutoIncrement) && lastUnsigned == 0 && (!s.MySQLMode() || lastID == 0) {
 			lastUnsigned = row[pkCol.Name].Uint
 		}
-		if !s.mysqlMode {
+		if !s.MySQLMode() {
 			lastID = nextID
 		} else if pkCol != nil && pkCol.AutoIncrement && lastID == 0 {
 			lastID = nextID
@@ -4051,7 +4051,7 @@ func (s *Schema) insertFromSelect(stmt *InsertStmt, info *TableInfo) (int64, *Re
 				}
 				if updated != nil {
 					s.statementChanges += s.mysqlUpsertChanges()
-					if s.mysqlMode && pkCol != nil && pkCol.AutoIncrement && lastID == 0 {
+					if s.MySQLMode() && pkCol != nil && pkCol.AutoIncrement && lastID == 0 {
 						lastID = updated[pkCol.Name].Int
 					}
 					returningRows = append(returningRows, updated)
@@ -4102,10 +4102,10 @@ func (s *Schema) insertFromSelect(stmt *InsertStmt, info *TableInfo) (int64, *Re
 		if generatedAuto {
 			s.noteMySQLGeneratedID(row[pkCol.Name])
 		}
-		if pkCol != nil && row[pkCol.Name].Type == ColUnsigned && (!s.mysqlMode || pkCol.AutoIncrement) && lastUnsigned == 0 && (!s.mysqlMode || lastID == 0) {
+		if pkCol != nil && row[pkCol.Name].Type == ColUnsigned && (!s.MySQLMode() || pkCol.AutoIncrement) && lastUnsigned == 0 && (!s.MySQLMode() || lastID == 0) {
 			lastUnsigned = row[pkCol.Name].Uint
 		}
-		if !s.mysqlMode {
+		if !s.MySQLMode() {
 			lastID = nextID
 		} else if pkCol != nil && pkCol.AutoIncrement && lastID == 0 {
 			lastID = nextID
@@ -4272,7 +4272,7 @@ func (s *Schema) validateQueryUncached(stmt *SelectStmt, info *TableInfo) error 
 			return validate(e.Right, allowAlias)
 		case *FuncCallExpr:
 			if !isAggregate(e) && e.Window == nil {
-				if s.postgresMode {
+				if s.PostgresMode() {
 					if valid, known := validPostgresFunction(strings.ToUpper(e.Name), len(e.Args)); known && !valid {
 						return fmt.Errorf("wrong number of arguments to %s", e.Name)
 					}
@@ -5821,7 +5821,7 @@ func (s *Schema) Update(stmt *UpdateStmt) (int64, *ResultSet, error) {
 		if err != nil {
 			return 0, nil, err
 		}
-		if !s.mysqlMode || s.mysqlFoundRows() || !bytes.Equal(encodeRow(original, info), encodeRow(row, info)) {
+		if !s.MySQLMode() || s.mysqlFoundRows() || !bytes.Equal(encodeRow(original, info), encodeRow(row, info)) {
 			affected++
 		}
 		returning = append(returning, row)
@@ -6016,7 +6016,7 @@ func (s *Schema) deleteConflicts(table string, info *TableInfo, row map[string]V
 			if err := s.deletePhysicalRow(table, info, entry.Key.UserKey, old); err != nil {
 				return err
 			}
-			if s.mysqlMode {
+			if s.MySQLMode() {
 				s.statementChanges++
 			}
 		}
@@ -6027,7 +6027,7 @@ func (s *Schema) deleteConflicts(table string, info *TableInfo, row map[string]V
 func truthValue(v Value) bool { return !v.Null && toFloat(v) != 0 }
 func (s *Schema) evalCondition(expr Expression, row map[string]Value) (bool, error) {
 	v, err := s.evalExpr(expr, row)
-	if s.mysqlMode && v.HexLiteral {
+	if s.MySQLMode() && v.HexLiteral {
 		v = mysqlHexNumber(v)
 	}
 	return truthValue(v), err
@@ -6041,7 +6041,7 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 			v.Blob = copyBytes(v.Blob)
 			return v, nil
 		}
-		if (s.mysqlMode || s.postgresMode) && e.Value.NumericText != "" && !strings.ContainsAny(e.Value.NumericText, "eE") {
+		if (s.MySQLMode() || s.PostgresMode()) && e.Value.NumericText != "" && !strings.ContainsAny(e.Value.NumericText, "eE") {
 			return NewDecimalValue(e.Value.NumericText)
 		}
 		return e.Value, nil
@@ -6069,7 +6069,7 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 		return NewNullValue(), fmt.Errorf("no such column: %s", e.Name)
 	case *BinaryExpr:
 		value, err := s.evalBinary(e, row)
-		if s.postgresMode && postgresBooleanOperator(e.Op) {
+		if s.PostgresMode() && postgresBooleanOperator(e.Op) {
 			value.PGType = "BOOLEAN"
 		}
 		return value, err
@@ -6092,12 +6092,12 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 			return right, nil
 		}
 		if right.Null {
-			if s.postgresMode && e.Op == "NOT" {
+			if s.PostgresMode() && e.Op == "NOT" {
 				right.PGType = "BOOLEAN"
 			}
 			return right, nil
 		}
-		if s.mysqlMode && right.HexLiteral {
+		if s.MySQLMode() && right.HexLiteral {
 			right = mysqlHexNumber(right)
 		}
 		if right.EnumValue && (e.Op == "+" || e.Op == "-" || e.Op == "~") {
@@ -6150,13 +6150,13 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 		return s.evalFunc(e, row)
 	case *InListExpr:
 		value, err := s.evalInList(e, row)
-		if s.postgresMode {
+		if s.PostgresMode() {
 			value.PGType = "BOOLEAN"
 		}
 		return value, err
 	case *BetweenExpr:
 		value, err := s.evalBetween(e, row)
-		if s.postgresMode {
+		if s.PostgresMode() {
 			value.PGType = "BOOLEAN"
 		}
 		return value, err
@@ -6197,7 +6197,7 @@ func (s *Schema) evalFuncResult(e *FuncCallExpr, row map[string]Value) (Value, e
 		return s.evalFulltext(e, row)
 	}
 	name := strings.ToUpper(e.Name)
-	if err := validateScalarFunctionDialect(e, s.postgresMode); err != nil {
+	if err := validateScalarFunctionDialect(e, s.PostgresMode()); err != nil {
 		return NewNullValue(), err
 	}
 	if value, handled, err := s.evalMySQLFunc(e, row); handled || err != nil {
@@ -6246,7 +6246,7 @@ func (s *Schema) evalFuncResult(e *FuncCallExpr, row map[string]Value) (Value, e
 		if v.Type == ColBlob {
 			return NewIntValue(int64(len(v.Blob))), nil
 		}
-		if s.mysqlMode {
+		if s.MySQLMode() {
 			return NewIntValue(int64(len(v.String()))), nil
 		}
 		return NewIntValue(int64(utf8.RuneCountInString(v.String()))), nil
@@ -6509,19 +6509,19 @@ func (s *Schema) evalFuncResult(e *FuncCallExpr, row map[string]Value) (Value, e
 		if err != nil {
 			return NewNullValue(), err
 		}
-		if s.postgresMode {
+		if s.PostgresMode() {
 			if r, handled, e := s.CastPostgresCatalogValue(v, t.Text); handled {
 				return r, e
 			}
 			return CastPostgresValue(v, t.Text)
 		}
-		if s.mysqlMode && v.HexLiteral {
+		if s.MySQLMode() && v.HexLiteral {
 			target := strings.ToUpper(mysqlCastTarget(t.Text))
 			if target == "INTEGER" || target == "INT" || target == "BIGINT" || target == "UNSIGNED" || target == "UNSIGNED INTEGER" || target == "REAL" || target == "DOUBLE" || target == "FLOAT" || strings.HasPrefix(target, "DECIMAL") || strings.HasPrefix(target, "NUMERIC") {
 				v = mysqlHexNumber(v)
 			}
 		}
-		if s.mysqlMode && (strings.EqualFold(t.Text, "DECIMAL") || strings.EqualFold(t.Text, "NUMERIC")) {
+		if s.MySQLMode() && (strings.EqualFold(t.Text, "DECIMAL") || strings.EqualFold(t.Text, "NUMERIC")) {
 			return normalizeDecimal(v, ColumnDef{Name: "CAST", ColType: ColDecimal, Precision: 10, Scale: 0})
 		}
 		return castSQLValue(v, t.Text)
@@ -6532,7 +6532,7 @@ func (s *Schema) evalFuncResult(e *FuncCallExpr, row map[string]Value) (Value, e
 			return NewNullValue(), err
 		}
 		if v.Null {
-			if s.mysqlMode {
+			if s.MySQLMode() {
 				return NewNullValue(), nil
 			}
 			return NewTextValue(""), nil
@@ -6773,7 +6773,7 @@ func (s *Schema) evalBinary(e *BinaryExpr, row map[string]Value) (Value, error) 
 			}
 			membership := s.membership(rs)
 			found := membership.values[string(s.appendEqualityKey(nil, lv))]
-			if s.mysqlMode {
+			if s.MySQLMode() {
 				found = false
 				for _, candidate := range rs.Rows {
 					v := candidate[rs.Columns[0].Name]
@@ -6922,7 +6922,7 @@ func (s *Schema) evalArithmetic(e *BinaryExpr, row map[string]Value, fn func(flo
 	if err != nil {
 		return NewNullValue(), err
 	}
-	return arithmeticValuesMode(s.mysqlMode, e.Op, lv, rv, fn)
+	return arithmeticValuesMode(s.MySQLMode(), e.Op, lv, rv, fn)
 }
 
 // arithmeticValues is shared by interpreted and slot-bound execution so exact
@@ -7109,7 +7109,7 @@ func compareSQLValues(lv, rv Value, op string) Value {
 }
 
 func (s *Schema) valueCompare(a, b Value) int {
-	if s.mysqlMode {
+	if s.MySQLMode() {
 		if cmp, ok := mysqlMixedNumericCompare(a, b); ok {
 			return cmp
 		}

@@ -11,7 +11,12 @@ func (s *Session) SetPostgresMode(enabled bool) error {
 	if s.closed || s.closing.Load() || s.db.closed.Load() {
 		return ErrSessionClosed
 	}
-	s.schema.SetPostgresMode(enabled)
+	if enabled {
+		return s.schema.SetDialect(sql.DialectPostgreSQL)
+	}
+	if s.schema.Dialect() == sql.DialectPostgreSQL {
+		return s.schema.SetDialect(sql.DialectNative)
+	}
 	return nil
 }
 

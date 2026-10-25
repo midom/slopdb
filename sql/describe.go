@@ -64,7 +64,7 @@ func (s *Schema) describeTable(name string, scope map[string][]ColumnDef, depth 
 		}
 		return cols, nil
 	}
-	if s.postgresMode {
+	if s.PostgresMode() {
 		if data, err := s.PostgresCatalogTable(name); data != nil || err != nil {
 			if err != nil {
 				return nil, err
@@ -286,7 +286,7 @@ func (s *Schema) describeStatement(stmt Statement, outer map[string][]ColumnDef,
 		if _, err := s.describeStatement(st.Stmt, scope, depth+1); err != nil {
 			return nil, err
 		}
-		if s.mysqlMode {
+		if s.MySQLMode() {
 			return describeColumns("id", "select_type", "table", "partitions", "type", "possible_keys", "key", "key_len", "ref", "rows", "filtered", "Extra"), nil
 		}
 		return describeColumns("plan"), nil
@@ -393,7 +393,7 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 		if e.BoundParameter || e.Value.Null {
 			return text, nil
 		}
-		if (s.mysqlMode || s.postgresMode) && (e.Value.NumericText != "" && !strings.ContainsAny(e.Value.NumericText, "eE") || e.Value.Type == ColDecimal) {
+		if (s.MySQLMode() || s.PostgresMode()) && (e.Value.NumericText != "" && !strings.ContainsAny(e.Value.NumericText, "eE") || e.Value.Type == ColDecimal) {
 			value := e.Value
 			if value.NumericText != "" {
 				var err error
@@ -413,7 +413,7 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 			return ColumnDef{ColType: ColDecimal, Precision: max(digits, scale), Scale: scale, NotNull: true}, nil
 		}
 		col := ColumnDef{ColType: e.Value.Type, NotNull: true}
-		if s.postgresMode {
+		if s.PostgresMode() {
 			col.Declared, col.Postgres = e.Value.PGType, e.Value.PGType != ""
 		}
 		return col, nil
@@ -468,7 +468,7 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 		if err != nil {
 			return text, err
 		}
-		if s.mysqlMode {
+		if s.MySQLMode() {
 			if mysqlNumericHexExpression(e.Left) {
 				a = ColumnDef{ColType: ColUnsigned, Unsigned: true}
 			}
@@ -478,7 +478,7 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 		}
 		switch strings.ToUpper(e.Op) {
 		case "=", "!=", "<>", "<", ">", "<=", ">=", "AND", "OR", "IS", "IS NOT", "LIKE", "NOT LIKE", "REGEXP", "GLOB":
-			if s.postgresMode {
+			if s.PostgresMode() {
 				return ColumnDef{ColType: ColInteger, Declared: "BOOLEAN", Postgres: true}, nil
 			}
 			return integer, nil
@@ -490,7 +490,7 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 		if a.ColType == ColReal || b.ColType == ColReal {
 			return real, nil
 		}
-		if e.Op == "/" && (s.mysqlMode || a.ColType == ColDecimal || b.ColType == ColDecimal) {
+		if e.Op == "/" && (s.MySQLMode() || a.ColType == ColDecimal || b.ColType == ColDecimal) {
 			return ColumnDef{ColType: ColDecimal, Declared: "DECIMAL", Precision: 65, Scale: min(30, a.Scale+4)}, nil
 		}
 		if a.ColType == ColText || b.ColType == ColText {
@@ -524,7 +524,7 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 		}
 		return result, nil
 	case *FuncCallExpr:
-		if s.postgresMode {
+		if s.PostgresMode() {
 			if column, ok, err := s.describePostgresFunction(e, env, scope, depth); ok || err != nil {
 				return column, err
 			}
@@ -536,11 +536,11 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 		if name == "CAST" && len(e.Args) == 2 {
 			if target, ok := e.Args[1].(*LiteralExpr); ok {
 				name := strings.ToUpper(mysqlCastTarget(target.Value.Text))
-				if !s.mysqlMode && (name == "DECIMAL" || name == "NUMERIC") {
+				if !s.MySQLMode() && (name == "DECIMAL" || name == "NUMERIC") {
 					return ColumnDef{ColType: ColDecimal, Declared: name}, nil
 				}
 				c := describeType(name)
-				if s.postgresMode {
+				if s.PostgresMode() {
 					c = postgresDescribeType(name)
 				}
 				return c, nil
@@ -553,7 +553,7 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 				return text, err
 			}
 			args = append(args, c)
-			if s.mysqlMode && mysqlNumericMetadataFunction(name) {
+			if s.MySQLMode() && mysqlNumericMetadataFunction(name) {
 				if mysqlNumericHexExpression(a) {
 					args[len(args)-1] = ColumnDef{ColType: ColUnsigned, Unsigned: true}
 				}

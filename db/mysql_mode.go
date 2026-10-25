@@ -13,7 +13,12 @@ func (s *Session) SetMySQLMode(enabled bool) error {
 	if s.closed || s.closing.Load() || s.db.closed.Load() {
 		return ErrSessionClosed
 	}
-	s.schema.SetMySQLMode(enabled)
+	if enabled {
+		return s.schema.SetDialect(sql.DialectMySQL)
+	}
+	if s.schema.Dialect() == sql.DialectMySQL {
+		return s.schema.SetDialect(sql.DialectNative)
+	}
 	return nil
 }
 

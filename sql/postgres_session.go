@@ -22,5 +22,3 @@ func PostgresSession(ctx context.Context) (PostgresSessionOptions, bool) {
 	options, ok := ctx.Value(postgresSessionKey{}).(PostgresSessionOptions)
 	return options, ok
 }
-func (s *Schema) SetPostgresMode(enabled bool) { s.postgresMode = enabled }
-func (s *Schema) PostgresMode() bool           { return s.postgresMode }

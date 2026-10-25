@@ -14,7 +14,7 @@ type mysqlFunctionSessionState struct {
 // These values belong to one connection and survive transaction rollback, like
 // MySQL's informational functions. They never become catalog or WAL metadata.
 func (s *Schema) RecordMySQLFunctionResult(stmt Statement, changes int64, rows uint64) {
-	if !s.mysqlMode {
+	if !s.MySQLMode() {
 		return
 	}
 	switch stmt.(type) {
@@ -31,7 +31,7 @@ func (s *Schema) RecordMySQLFunctionResult(stmt Statement, changes int64, rows u
 }
 
 func (s *Schema) noteMySQLGeneratedID(v Value) {
-	if !s.mysqlMode || s.triggerDepth != 0 || s.mysqlFunctions.generated {
+	if !s.MySQLMode() || s.triggerDepth != 0 || s.mysqlFunctions.generated {
 		return
 	}
 	if v.Type == ColUnsigned {

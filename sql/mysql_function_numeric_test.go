@@ -11,7 +11,7 @@ import (
 // Fixed answers are mathematical identities and Oracle MySQL 8.0.46 results,
 // including signed base conversion and locale grouping edge cases.
 func TestMySQLNumericFunctionsExactAndDomains(t *testing.T) {
-	s := &Schema{mysqlMode: true}
+	s := &Schema{dialect: DialectMySQL}
 	for _, tc := range []struct{ expression, want string }{
 		{"CEIL(1.23)", "2"}, {"CEILING(-1.23)", "-1"}, {"FLOOR(-1.23)", "-2"},
 		{"CEIL(18446744073709551615)", "18446744073709551615"},
@@ -77,7 +77,7 @@ func TestMySQLNumericFunctionsExactAndDomains(t *testing.T) {
 }
 
 func TestMySQLNumericWarningsAndOutputBudget(t *testing.T) {
-	s := &Schema{mysqlMode: true}
+	s := &Schema{dialect: DialectMySQL}
 	var codes []uint16
 	s.ctx = WithMySQLSession(context.Background(), MySQLSessionOptions{Warning: func(code uint16, _ string) { codes = append(codes, code) }})
 	for _, expression := range []string{"MOD(1,0)", "LN(-1)", "FORMAT(12,2,'unknown_LOCALE')"} {
@@ -95,7 +95,7 @@ func TestMySQLNumericWarningsAndOutputBudget(t *testing.T) {
 }
 
 func TestMySQLRoundingTypesAndNativeFallback(t *testing.T) {
-	s := &Schema{mysqlMode: true}
+	s := &Schema{dialect: DialectMySQL}
 	for _, tc := range []struct {
 		expression, want string
 		typ              ColumnType
@@ -149,7 +149,7 @@ func TestMySQLFormatAllDocumentedLocales(t *testing.T) {
 	if err = json.Unmarshal(data, &reference); err != nil {
 		t.Fatal(err)
 	}
-	s := &Schema{mysqlMode: true}
+	s := &Schema{dialect: DialectMySQL}
 	for _, tc := range reference {
 		expr := "FORMAT(123456789.5,2,'" + tc.Locale + "')"
 		value, err := s.evalExpr(parseTestExpression(t, expr), nil)

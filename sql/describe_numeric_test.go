@@ -4,7 +4,8 @@ import "testing"
 
 func TestDescribeDecimalCastDialect(t *testing.T) {
 	for _, mysql := range []bool{false, true} {
-		s := &Schema{mysqlMode: mysql}
+		s := &Schema{}
+		s.SetMySQLMode(mysql)
 		statements, e := Parse("SELECT CAST(1.25 AS DECIMAL) AS d,CAST(1.25 AS DECIMAL(20,4)) AS fixed")
 		if e != nil {
 			t.Fatal(e)
@@ -25,7 +26,8 @@ func TestDescribeDecimalCastDialect(t *testing.T) {
 
 func TestDescribeMySQLExactLiteral(t *testing.T) {
 	for _, mysql := range []bool{false, true} {
-		s := &Schema{mysqlMode: mysql}
+		s := &Schema{}
+		s.SetMySQLMode(mysql)
 		stmts, e := Parse("SELECT 12345678901234567890.123456789 AS d,0.0001 AS tiny,1e10 AS approximate")
 		if e != nil {
 			t.Fatal(e)

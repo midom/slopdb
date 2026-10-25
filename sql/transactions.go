@@ -42,8 +42,8 @@ func (s *Schema) NewSession() *Schema {
 	child.queryMemoryBytes, child.queryTempDir = s.queryMemoryBytes, s.queryTempDir
 	child.disableAutoIncrementPersistence = s.disableAutoIncrementPersistence
 	child.enableAutoIncrementGroupCommit = s.enableAutoIncrementGroupCommit
-	child.mysqlMode = s.mysqlMode
-	child.postgresMode = s.postgresMode
+	child.dialect = s.dialect
+	child.dialectEpoch = s.dialectEpoch
 	child.isolation = s.isolation
 	child.restoreState(s.captureState())
 	child.rowIDCount = make(map[string]int64)

@@ -179,7 +179,7 @@ func pgYes(v bool) string {
 	return "NO"
 }
 func (s *Schema) resolvePostgresTables(stmt *SelectStmt) (*SelectStmt, error) {
-	if !s.postgresMode {
+	if !s.PostgresMode() {
 		return stmt, nil
 	}
 	cp := *stmt

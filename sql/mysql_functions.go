@@ -27,7 +27,7 @@ func (s *Schema) evalMySQLFunc(e *FuncCallExpr, row map[string]Value) (Value, bo
 	if name == "RAND" {
 		return s.evalMySQLRand(e, row)
 	}
-	if spec, registered := mysqlFunctionRegistry[name]; registered && (!spec.MySQLOnly || s.mysqlMode) {
+	if spec, registered := mysqlFunctionRegistry[name]; registered && (!spec.MySQLOnly || s.MySQLMode()) {
 		args := make([]Value, len(e.Args))
 		for i, expr := range e.Args {
 			value, err := s.evalExpr(expr, row)

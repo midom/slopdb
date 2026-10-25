@@ -9,16 +9,6 @@ import (
 	"time"
 )
 
-// MySQLMode controls connection-local value affinity and result-count behavior.
-// Catalog type declarations remain persistent and independent of session state.
-func (s *Schema) SetMySQLMode(enabled bool) {
-	if enabled && !s.mysqlMode && s.isolation == "" {
-		s.isolation = RepeatableRead
-	}
-	s.mysqlMode = enabled
-}
-func (s *Schema) MySQLMode() bool { return s.mysqlMode }
-
 // parseColumnType consumes only the type portion, leaving constraints to the
 // shared parser. Unknown words are deliberately left for its useful error.
 func (p *Parser) parseColumnType(col *ColumnDef) error {
@@ -422,7 +412,7 @@ func (s *Schema) autoValueRequested(col *ColumnDef, v Value, supplied bool) bool
 	if options, ok := MySQLSession(s.ctx); ok && strings.Contains(strings.ToUpper(options.SQLMode), "NO_AUTO_VALUE_ON_ZERO") {
 		zero = false
 	}
-	return v.Null && !supplied || s.mysqlMode && col.MySQLAutoIncrement && (v.Null || zero)
+	return v.Null && !supplied || s.MySQLMode() && col.MySQLAutoIncrement && (v.Null || zero)
 }
 
 func pkName(col *ColumnDef) string {
@@ -437,7 +427,7 @@ func (s *Schema) mysqlFoundRows() bool {
 	return !ok || options.FoundRows
 }
 func (s *Schema) mysqlUpsertChanges() int64 {
-	if !s.mysqlMode {
+	if !s.MySQLMode() {
 		return 1
 	}
 	if s.mysqlConflictChanged {
@@ -450,7 +440,7 @@ func (s *Schema) mysqlUpsertChanges() int64 {
 }
 
 func (s *Schema) normalizeMySQLValue(v Value, col ColumnDef) (Value, error) {
-	if s.mysqlMode {
+	if s.MySQLMode() {
 		if v.HexLiteral && (col.ColType == ColInteger || col.ColType == ColReal || col.ColType == ColDecimal) {
 			v = mysqlHexNumber(v)
 		}
@@ -474,10 +464,10 @@ func (s *Schema) normalizeMySQLRow(info *TableInfo, row map[string]Value) error 
 	return nil
 }
 func (s *Schema) comparisonAffinity(v Value, col ColumnDef) Value {
-	if s.mysqlMode && v.HexLiteral && (col.ColType == ColInteger || col.ColType == ColReal || col.ColType == ColDecimal) {
+	if s.MySQLMode() && v.HexLiteral && (col.ColType == ColInteger || col.ColType == ColReal || col.ColType == ColDecimal) {
 		v = mysqlHexNumber(v)
 	}
-	if s.mysqlMode && col.ColType == ColBlob && v.Type == ColText && !v.Null {
+	if s.MySQLMode() && col.ColType == ColBlob && v.Type == ColText && !v.Null {
 		return NewBlobValue([]byte(v.Text))
 	}
 	return applyAffinity(v, col.ColType)

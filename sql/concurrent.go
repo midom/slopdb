@@ -360,7 +360,7 @@ func (p *PointUpdate) Run(ctx context.Context) (int64, error) {
 		batch = append(batch, storage.Mutation{Key: oldIndexKeys[i], Delete: true}, storage.Mutation{Key: key, Value: p.schema.encodeIndexValue(idx, row)})
 	}
 	changes := int64(1)
-	if p.schema.mysqlMode && !p.schema.mysqlFoundRows() && bytes.Equal(data, encoded) {
+	if p.schema.MySQLMode() && !p.schema.mysqlFoundRows() && bytes.Equal(data, encoded) {
 		changes = 0
 	}
 	if p.schema.inTx {
