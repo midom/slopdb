@@ -394,10 +394,12 @@ func (p *Parser) parseMySQLTableOptions(stmt *CreateTableStmt) error {
 			if p.cur.Type == TokEq {
 				p.advance()
 			}
-			if !strings.EqualFold(p.cur.Value, "InnoDB") && !strings.EqualFold(p.cur.Value, "MyISAM") {
-				return fmt.Errorf("unsupported storage engine: %s", p.cur.Value)
+			if p.cur.Type != TokIdent && p.cur.Type != TokKeyword && p.cur.Type != TokString {
+				return fmt.Errorf("expected storage engine name")
 			}
-			stmt.Engine = p.cur.Value
+			// ENGINE is accepted as a compatibility option. Every table uses
+			// SlopDB's LSM engine, independently of the requested name.
+			stmt.Engine = ""
 			p.advance()
 		case "CHARSET", "CHARACTER":
 			p.advance()

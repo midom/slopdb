@@ -134,3 +134,17 @@ func TestMySQLModeIsIndependentAndAutoZeroOption(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestMySQLEngineOptionIsIgnored(t *testing.T) {
+	d, err := db.Open(t.TempDir(), storage.DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	s := mysqlTypeSession(t, d)
+	for _, engine := range []string{"InnoDB", "MyISAM", "AnythingElse", "'unrecognized-engine'"} {
+		mysqlTypeExec(t, s, "CREATE TABLE engine_test(id INTEGER PRIMARY KEY) ENGINE="+engine)
+		mysqlTypeExec(t, s, "INSERT INTO engine_test VALUES(1)")
+		mysqlTypeExec(t, s, "DROP TABLE engine_test")
+	}
+}
