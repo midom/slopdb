@@ -433,6 +433,7 @@ func (s *Schema) endTransaction() {
 		s.rowIDCount = make(map[string]int64)
 	}
 	s.inTx = false
+	s.postgresTransactionTime = time.Time{}
 	s.txWrites = nil
 	s.txLatest = nil
 	s.txState = nil

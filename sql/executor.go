@@ -84,6 +84,7 @@ type Schema struct {
 	statementConsistent      bool
 	consistentIndexDeletes   map[string]bool
 	statementTime            time.Time
+	postgresTransactionTime  time.Time
 	mysqlRand                map[*FuncCallExpr]*mysqlRandState
 	onlineIndexMu            catalogGate
 	onlineIndexBuilds        map[*OnlineIndexBuild]struct{}
@@ -1895,6 +1896,10 @@ func (s *Schema) BeginWithOptions(stmt *BeginStmt) error {
 	s.txIsolation = level
 	s.txState = s.captureState()
 	s.inTx = true
+	s.postgresTransactionTime = s.statementTime
+	if s.postgresTransactionTime.IsZero() {
+		s.postgresTransactionTime = time.Now().UTC()
+	}
 	s.txWrites = nil
 	s.txLatest = nil
 	s.savepoints = nil

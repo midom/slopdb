@@ -15,7 +15,13 @@ func postgresStringFunctions() map[string]mysqlFunctionSpec {
 	out := map[string]mysqlFunctionSpec{}
 	add := func(names string, min, max int, typ ColumnType, eval func(*Schema, []Value) (Value, error)) {
 		for _, n := range strings.Fields(names) {
-			out[n] = mysqlFunctionSpec{Min: min, Max: max, Return: typ, Eval: eval}
+			spec := mysqlFunctionSpec{Min: min, Max: max, Return: typ, Eval: eval}
+			if typ == ColInteger {
+				spec.Metadata = func([]ColumnDef) ColumnDef {
+					return ColumnDef{ColType: ColInteger, Declared: "INTEGER", Postgres: true}
+				}
+			}
+			out[n] = spec
 		}
 	}
 	add("CONCAT CONCAT_WS", 1, -1, ColText, nil)

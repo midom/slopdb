@@ -494,6 +494,98 @@
       "float": true
     },
     {
+      "sql": "to_timestamp(0)",
+      "value": "1970-01-01 00:00:00+00"
+    },
+    {
+      "sql": "to_timestamp(-0.5)",
+      "value": "1969-12-31 23:59:59.5+00"
+    },
+    {
+      "sql": "to_timestamp(946684800.123456)",
+      "value": "2000-01-01 00:00:00.123456+00"
+    },
+    {
+      "sql": "to_date('05 Dec 2000','DD Mon YYYY')",
+      "value": "2000-12-05"
+    },
+    {
+      "sql": "to_timestamp('2024-02-29 13:02:03.123456','YYYY-MM-DD HH24:MI:SS.US')",
+      "value": "2024-02-29 13:02:03.123456+00"
+    },
+    {
+      "sql": "to_char(CAST('2024-02-29 13:02:03.123456' AS TIMESTAMP),'YYYY-MM-DD HH24:MI:SS.US')",
+      "value": "2024-02-29 13:02:03.123456"
+    },
+    {
+      "sql": "to_char(CAST('2024-02-29' AS DATE),'Day, DD Month YYYY')",
+      "value": "Thursday , 29 February  2024"
+    },
+    {
+      "sql": "to_char(CAST('2024-02-29' AS DATE),'FMDay DDth FMMonth YYYY Q IW IYYY D ID DDD')",
+      "value": "Thursday 29th February 2024 1 09 2024 5 4 060"
+    },
+    {
+      "sql": "make_date(2024,2,29)",
+      "value": "2024-02-29"
+    },
+    {
+      "sql": "make_time(13,2,3.123456)",
+      "value": "13:02:03.123456"
+    },
+    {
+      "sql": "make_timestamp(2024,2,29,13,2,3.123456)",
+      "value": "2024-02-29 13:02:03.123456"
+    },
+    {
+      "sql": "date_trunc('month',CAST('2024-02-29 13:02:03' AS TIMESTAMP))",
+      "value": "2024-02-01 00:00:00"
+    },
+    {
+      "sql": "date_trunc('week',CAST('2024-02-29 13:02:03' AS TIMESTAMP))",
+      "value": "2024-02-26 00:00:00"
+    },
+    {
+      "sql": "date_trunc('century',CAST('2000-02-29 13:02:03' AS TIMESTAMP))",
+      "value": "1901-01-01 00:00:00"
+    },
+    {
+      "sql": "date_trunc('hour',CAST('2024-02-29 13:02:03+00' AS TIMESTAMPTZ))",
+      "value": "2024-02-29 13:00:00+00"
+    },
+    {
+      "sql": "date_trunc('day',CAST('2024-02-29 13:02:03+00' AS TIMESTAMPTZ),'America/New_York')",
+      "value": "2024-02-29 05:00:00+00"
+    },
+    {
+      "sql": "date_part('year',CAST('2024-02-29 13:02:03' AS TIMESTAMP))",
+      "value": "2024",
+      "float": true
+    },
+    {
+      "sql": "date_part('isodow',CAST('2024-02-29' AS DATE))",
+      "value": "4",
+      "float": true
+    },
+    {
+      "sql": "date_part('isoyear',CAST('2023-01-01' AS DATE))",
+      "value": "2022",
+      "float": true
+    },
+    {
+      "sql": "date_part('microseconds',CAST('2024-02-29 13:02:03.123456' AS TIMESTAMP))",
+      "value": "3123456",
+      "float": true
+    },
+    {
+      "sql": "to_char(CAST(NULL AS TIMESTAMP),'YYYY')",
+      "value": null
+    },
+    {
+      "sql": "date_trunc(NULL,CAST('2024-02-29' AS DATE))",
+      "value": null
+    },
+    {
       "sql": "concat()",
       "error": true
     },
@@ -599,6 +691,30 @@
     },
     {
       "sql": "width_bucket(1,0,10,0)",
+      "error": true
+    },
+    {
+      "sql": "make_date(2023,2,29)",
+      "error": true
+    },
+    {
+      "sql": "make_time(25,0,0)",
+      "error": true
+    },
+    {
+      "sql": "make_timestamp(2024,2,30,0,0,0)",
+      "error": true
+    },
+    {
+      "sql": "date_trunc('invalid',CAST('2024-02-29' AS DATE))",
+      "error": true
+    },
+    {
+      "sql": "date_part('invalid',CAST('2024-02-29' AS DATE))",
+      "error": true
+    },
+    {
+      "sql": "to_date('2024-02-30','YYYY-MM-DD')",
       "error": true
     }
   ]

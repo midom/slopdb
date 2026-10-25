@@ -59,6 +59,13 @@ func (s *Schema) evalPostgresFunc(e *FuncCallExpr, row map[string]Value) (Value,
 		args[i] = v
 	}
 	v, err := spec.Eval(s, args)
+	if err == nil && v.PGType == "" && spec.Metadata != nil {
+		columns := make([]ColumnDef, len(args))
+		for i, arg := range args {
+			columns[i] = ColumnDef{ColType: arg.Type, Declared: arg.PGType, Postgres: true}
+		}
+		v.PGType = spec.Metadata(columns).Declared
+	}
 	return v, true, err
 }
 

@@ -1,8 +1,10 @@
 package db_test
 
 import (
+	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"math"
 	"os"
 	"reflect"
@@ -10,6 +12,7 @@ import (
 	"slopdb/sql"
 	"strconv"
 	"testing"
+	"time"
 )
 
 func TestPostgresFunctionReference(t *testing.T) {
@@ -84,4 +87,48 @@ func TestPostgresFunctionReference(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPostgresClockSnapshotsAndCancellation(t *testing.T) {
+	d, err := db.Open(t.TempDir(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	s, err := d.NewSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	s.SetPostgresMode(true)
+	exec := func(q string) *db.ExecResult {
+		t.Helper()
+		r, e := s.Exec(q)
+		if e != nil {
+			t.Fatal(e)
+		}
+		return r
+	}
+	exec("BEGIN")
+	r := exec("SELECT now() AS n, transaction_timestamp() AS t, statement_timestamp() AS s, clock_timestamp() AS c")
+	initial := r.Rows[0]["n"].Text
+	if initial == "" || r.Rows[0]["t"].Text != initial {
+		t.Fatal(r.Rows)
+	}
+	exec("SELECT pg_sleep(0.001)")
+	r = exec("SELECT now() AS n,statement_timestamp() AS s")
+	if r.Rows[0]["n"].Text != initial || r.Rows[0]["s"].Text <= initial {
+		t.Fatal(r.Rows)
+	}
+	exec("ROLLBACK")
+	r = exec("SELECT now() AS n,statement_timestamp() AS s")
+	if r.Rows[0]["n"].Text == initial || r.Rows[0]["n"].Text != r.Rows[0]["s"].Text {
+		t.Fatal(r.Rows)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	if _, e := s.ExecContext(ctx, "SELECT pg_sleep(10)"); !errors.Is(e, context.DeadlineExceeded) {
+		t.Fatal(e)
+	}
+	exec("SELECT 1")
 }
