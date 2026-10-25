@@ -185,6 +185,31 @@ func needsQualifiedRows(stmt *SelectStmt) bool {
 	return needs(stmt.Where) || needs(stmt.Having)
 }
 
+// schemaMultiGetBounded refuses an oversized result before retaining a batch of
+// large values. Overlay/temporary reads keep their existing visibility rules.
+func (s *Schema) schemaMultiGetBounded(keys [][]byte, maxBytes int) ([]storage.PointValue, bool, error) {
+	if !s.hasTemporaryTables() && (!s.inTx || len(s.txLatest) == 0) {
+		snapshot := ^uint64(0)
+		if s.statementActive {
+			snapshot = s.statementSnapshot
+		}
+		return s.lsm.GetMultiAtForReaderBounded(keys, snapshot, s.snapshotReader, maxBytes)
+	}
+	values := make([]storage.PointValue, len(keys))
+	for i, key := range keys {
+		value, found, err := s.schemaGet(key)
+		if err != nil {
+			return nil, false, err
+		}
+		if len(value) > maxBytes {
+			return nil, false, nil
+		}
+		maxBytes -= len(value)
+		values[i] = storage.PointValue{Value: value, Found: found}
+	}
+	return values, true, nil
+}
+
 // Reuse one immutable storage view for a SQL key batch, then apply the private
 // transaction overlay. Shadowed keys do not read committed data at all.
 func (s *Schema) schemaMultiGet(keys [][]byte) (results []storage.PointValue, err error) {
@@ -218,7 +243,7 @@ func (s *Schema) schemaMultiGet(keys [][]byte) (results []storage.PointValue, er
 	}
 	read := func(ks [][]byte) ([]storage.PointValue, error) {
 		if s.statementActive {
-			return s.lsm.GetMultiAt(ks, s.statementSnapshot)
+			return s.lsm.GetMultiAtForReader(ks, s.statementSnapshot, s.snapshotReader)
 		}
 		return s.lsm.GetMulti(ks)
 	}

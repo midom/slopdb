@@ -71,4 +71,10 @@ func TestMySQLPreparedResponseRetentionIsBounded(t *testing.T) {
 	if retainPreparedResult(large) {
 		t.Fatal("empty point answer retained an oversized hidden row buffer")
 	}
+	hidden := &db.ExecResult{Rows: make([]map[string]sql.Value, 8)}
+	hidden.Rows[5] = map[string]sql.Value{"b": sql.NewBlobValue(make([]byte, maxRetainedResponseBytes+1))}
+	hidden.Rows = hidden.Rows[:1]
+	if retainPreparedResult(hidden) {
+		t.Fatal("shorter bounded result retained an oversized later row slot")
+	}
 }

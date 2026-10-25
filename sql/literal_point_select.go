@@ -6,7 +6,15 @@ import "strings"
 // validation. The engine must still prove that the equality covers a primary
 // key before choosing point execution instead of a potentially multi-row scan.
 func LiteralPointSelectEligible(stmt *SelectStmt) bool {
-	if stmt == nil || stmt.prepared != nil || stmt.From == "" || stmt.FromExpr != nil || stmt.With != nil || stmt.Compound != nil || stmt.Virtual != nil || stmt.materialized != nil || stmt.JoinGroup || len(stmt.Joins) != 0 || len(stmt.Windows) != 0 || stmt.Lock != nil || stmt.trackRows || stmt.CalcFoundRows || stmt.Distinct || len(stmt.GroupBy) != 0 || stmt.Having != nil || len(stmt.OrderBy) != 0 || stmt.definitionDialect != 0 {
+	if !literalReadProjectionEligible(stmt) || len(stmt.OrderBy) != 0 {
+		return false
+	}
+	_, _, ok := literalPointEquality(stmt.Where)
+	return ok
+}
+
+func literalReadProjectionEligible(stmt *SelectStmt) bool {
+	if stmt == nil || stmt.prepared != nil || stmt.From == "" || stmt.FromExpr != nil || stmt.With != nil || stmt.Compound != nil || stmt.Virtual != nil || stmt.materialized != nil || stmt.JoinGroup || len(stmt.Joins) != 0 || len(stmt.Windows) != 0 || stmt.Lock != nil || stmt.trackRows || stmt.mutationRows || stmt.CalcFoundRows || stmt.Distinct || len(stmt.GroupBy) != 0 || stmt.Having != nil || stmt.definitionDialect != 0 {
 		return false
 	}
 	if stmt.SelectAll {
@@ -24,8 +32,7 @@ func LiteralPointSelectEligible(stmt *SelectStmt) bool {
 			}
 		}
 	}
-	_, _, ok := literalPointEquality(stmt.Where)
-	return ok
+	return true
 }
 
 func literalPointEquality(where Expression) (*ColumnRefExpr, *LiteralExpr, bool) {

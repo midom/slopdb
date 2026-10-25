@@ -8,108 +8,14 @@ import (
 // Each prepared AST belongs to one execution at a time. Cache only immutable
 // projection metadata, invalidated together with its catalog/plan recipe.
 func (s *Schema) selectPoint(stmt *SelectStmt, info *TableInfo, p *preparedExecutionPlan, dst *ResultSet) (*ResultSet, bool, error) {
-	if stmt.CalcFoundRows {
+	if stmt.CalcFoundRows || len(stmt.OrderBy) != 0 || !p.pointComplete() {
 		return nil, false, nil
 	}
-	if !p.pointProjectionReady {
-		p.pointProjectionReady = true
-		if !p.pointComplete() || stmt.FromExpr != nil || stmt.With != nil || stmt.Compound != nil || stmt.Virtual != nil || stmt.materialized != nil || len(stmt.Joins) != 0 || len(stmt.Windows) != 0 || stmt.Lock != nil || stmt.trackRows || stmt.Distinct || len(stmt.GroupBy) != 0 || stmt.Having != nil || len(stmt.OrderBy) != 0 || needsQualifiedRows(stmt) {
-			return nil, false, nil
-		}
-		if stmt.SelectAll {
-			if len(stmt.Columns) > 1 || (len(stmt.Columns) == 1 && !stmt.Columns[0].Star) {
-				return nil, false, nil
-			}
-			p.pointProjection = append([]ColumnDef(nil), info.Columns...)
-			for i := range p.pointProjection {
-				c := &p.pointProjection[i]
-				c.SemanticType = c.LogicalType().Kind
-				c.Default, c.Check = nil, nil
-			}
-		} else {
-			if len(stmt.Columns) == 0 || len(stmt.Columns) > 8 {
-				return nil, false, nil
-			}
-			columns := make([]ColumnDef, 0, len(stmt.Columns))
-			for _, col := range stmt.Columns {
-				ref, ok := col.Expr.(*ColumnRefExpr)
-				if !ok || col.Alias != "" || col.Star {
-					return nil, false, nil
-				}
-				found := false
-				var typed ColumnDef
-				for _, physical := range info.Columns {
-					if physical.Name == ref.Name {
-						typed = physical
-						typed.SemanticType = physical.LogicalType().Kind
-						typed.Default, typed.Check = nil, nil
-						found = true
-						break
-					}
-				}
-				if !found {
-					return nil, false, nil
-				}
-				columns = append(columns, typed)
-			}
-			if uniqueResultColumns(columns, nil) {
-				return nil, false, nil
-			}
-			p.pointProjection = columns
-		}
-		// WHERE can still contain an invalid aggregate alongside the PK equality.
-		// Preserve the general executor's grouping validation, including empty data.
-		if err := s.validateQuery(stmt, info); err != nil {
-			p.pointProjection = nil
-			p.pointProjectionReady = false
-			return nil, true, err
-		}
-		if err := s.validateGrouping(stmt, info, p.pointProjection); err != nil {
-			p.pointProjection = nil
-			p.pointProjectionReady = false
-			return nil, true, err
-		}
-		p.pointDecodeColumns = make([]bool, len(info.Columns))
-		mark := func(name string) {
-			if _, rest, qualified := strings.Cut(name, "."); qualified {
-				name = rest
-			}
-			for i, col := range info.Columns {
-				if col.Name == name && !p.pointDecodeColumns[i] {
-					p.pointDecodeColumns[i] = true
-					p.pointDecodeCount++
-				}
-			}
-		}
-		for _, col := range p.pointProjection {
-			mark(col.Name)
-		}
-		_ = walkExpression(stmt.Where, func(e Expression) (bool, error) {
-			if col, ok := e.(*ColumnRefExpr); ok {
-				mark(col.Name)
-			}
-			return false, nil
-		})
-		p.pointDecodeMetadata = make([]pointDecodeMetadata, len(info.Columns))
-		for i, col := range info.Columns {
-			m := &p.pointDecodeMetadata[i]
-			m.name = col.Name
-			m.decode = p.pointDecodeColumns[i]
-			if m.decode {
-				m.kind = col.LogicalType().Kind
-				m.binary = col.Binary
-				m.collation = col.Collation
-				m.enums = col.EnumValues
-			}
-			for _, projected := range p.pointProjection {
-				if projected.Name == col.Name {
-					m.project = true
-					break
-				}
-			}
-		}
+	ready, err := s.preparePhysicalReadProjection(stmt, info, p)
+	if err != nil {
+		return nil, true, err
 	}
-	if len(p.pointProjection) == 0 || s.profile != nil {
+	if !ready || s.profile != nil {
 		return nil, false, nil
 	}
 	key, ok := p.primaryKey(info.Name, info)
@@ -129,7 +35,6 @@ func (s *Schema) selectPoint(stmt *SelectStmt, info *TableInfo, p *preparedExecu
 	result.Rows = result.Rows[:0]
 	var data []byte
 	var found bool
-	var err error
 	if !s.inTx && s.statementActive && !s.temporaryKey(key) {
 		data, found, err = s.lsm.GetAtForReaderInto(key, s.statementSnapshot, s.snapshotReader, p.pointValueScratch)
 		p.pointValueScratch = data
@@ -312,4 +217,108 @@ type pointDecodeMetadata struct {
 	binary, decode, project bool
 	collation               Collation
 	enums                   []string
+}
+
+// preparePhysicalReadProjection is shared by point and bounded primary reads.
+// Its owner checks access/order eligibility; metadata never retains parameters.
+func (s *Schema) preparePhysicalReadProjection(stmt *SelectStmt, info *TableInfo, p *preparedExecutionPlan) (bool, error) {
+	if !p.pointProjectionReady {
+		p.pointProjectionReady = true
+		if stmt.FromExpr != nil || stmt.With != nil || stmt.Compound != nil || stmt.Virtual != nil || stmt.materialized != nil || len(stmt.Joins) != 0 || len(stmt.Windows) != 0 || stmt.Lock != nil || stmt.trackRows || stmt.Distinct || len(stmt.GroupBy) != 0 || stmt.Having != nil || needsQualifiedRows(stmt) {
+			return false, nil
+		}
+		if stmt.SelectAll {
+			if len(stmt.Columns) > 1 || (len(stmt.Columns) == 1 && !stmt.Columns[0].Star) {
+				return false, nil
+			}
+			p.pointProjection = append([]ColumnDef(nil), info.Columns...)
+			for i := range p.pointProjection {
+				c := &p.pointProjection[i]
+				c.SemanticType = c.LogicalType().Kind
+				c.Default, c.Check = nil, nil
+			}
+		} else {
+			if len(stmt.Columns) == 0 || len(stmt.Columns) > 8 {
+				return false, nil
+			}
+			columns := make([]ColumnDef, 0, len(stmt.Columns))
+			for _, col := range stmt.Columns {
+				ref, ok := col.Expr.(*ColumnRefExpr)
+				if !ok || col.Alias != "" || col.Star {
+					return false, nil
+				}
+				found := false
+				var typed ColumnDef
+				for _, physical := range info.Columns {
+					if physical.Name == ref.Name {
+						typed = physical
+						typed.SemanticType = physical.LogicalType().Kind
+						typed.Default, typed.Check = nil, nil
+						found = true
+						break
+					}
+				}
+				if !found {
+					return false, nil
+				}
+				columns = append(columns, typed)
+			}
+			if uniqueResultColumns(columns, nil) {
+				return false, nil
+			}
+			p.pointProjection = columns
+		}
+		// WHERE can still contain an invalid aggregate alongside the PK equality.
+		// Preserve the general executor's grouping validation, including empty data.
+		if err := s.validateQuery(stmt, info); err != nil {
+			p.pointProjection = nil
+			p.pointProjectionReady = false
+			return true, err
+		}
+		if err := s.validateGrouping(stmt, info, p.pointProjection); err != nil {
+			p.pointProjection = nil
+			p.pointProjectionReady = false
+			return true, err
+		}
+		p.pointDecodeColumns = make([]bool, len(info.Columns))
+		mark := func(name string) {
+			if _, rest, qualified := strings.Cut(name, "."); qualified {
+				name = rest
+			}
+			for i, col := range info.Columns {
+				if col.Name == name && !p.pointDecodeColumns[i] {
+					p.pointDecodeColumns[i] = true
+					p.pointDecodeCount++
+				}
+			}
+		}
+		for _, col := range p.pointProjection {
+			mark(col.Name)
+		}
+		_ = walkExpression(stmt.Where, func(e Expression) (bool, error) {
+			if col, ok := e.(*ColumnRefExpr); ok {
+				mark(col.Name)
+			}
+			return false, nil
+		})
+		p.pointDecodeMetadata = make([]pointDecodeMetadata, len(info.Columns))
+		for i, col := range info.Columns {
+			m := &p.pointDecodeMetadata[i]
+			m.name = col.Name
+			m.decode = p.pointDecodeColumns[i]
+			if m.decode {
+				m.kind = col.LogicalType().Kind
+				m.binary = col.Binary
+				m.collation = col.Collation
+				m.enums = col.EnumValues
+			}
+			for _, projected := range p.pointProjection {
+				if projected.Name == col.Name {
+					m.project = true
+					break
+				}
+			}
+		}
+	}
+	return len(p.pointProjection) != 0, nil
 }

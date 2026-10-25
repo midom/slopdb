@@ -269,7 +269,7 @@ func (s *Schema) ResolveNamespaces(stmt Statement) (Statement, error) {
 	// A literal equality and bare physical column projection cannot contain
 	// namespace-sensitive expressions. Avoid a reflective AST walk for this
 	// common unprepared shape; non-root paths still resolve against the catalog.
-	if st, ok := stmt.(*SelectStmt); ok && rootPath && !strings.Contains(st.From, ".") && LiteralPointSelectEligible(st) && !catalogRelationName(st.From) {
+	if st, ok := stmt.(*SelectStmt); ok && rootPath && !strings.Contains(st.From, ".") && (LiteralPointSelectEligible(st) || literalBoundedSelectEligible(st)) && !catalogRelationName(st.From) {
 		return stmt, nil
 	}
 	requirements, compiled := preparedNamespaceRequirements(stmt)

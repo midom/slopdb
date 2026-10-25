@@ -154,6 +154,7 @@ type Schema struct {
 	profile              *QueryProfile
 	preparedPlan         *preparedExecutionPlan
 	directPointPlan      *preparedExecutionPlan // session-private metadata for literal point reads
+	directBoundedPlan    *preparedExecutionPlan // bounded IN/range projection and decode metadata
 	triggerDepth         int
 	viewDepth            int
 	savepoints           []savepoint
@@ -4647,6 +4648,9 @@ func (s *Schema) selectInto(stmt *SelectStmt, dst *ResultSet) (result *ResultSet
 	if !planUsed {
 		if info := s.tables[strings.ToLower(stmt.From)]; info != nil {
 			if rs, used, err := s.selectLiteralPoint(stmt, info, dst); used || err != nil {
+				return rs, err
+			}
+			if rs, used, err := s.selectLiteralBounded(stmt, info, dst); used || err != nil {
 				return rs, err
 			}
 		}

@@ -167,11 +167,8 @@ func retainPreparedResult(result *db.ExecResult) bool {
 		return false
 	}
 	bytes := 0
-	rows := result.Rows
-	if len(rows) == 0 && cap(rows) > 0 {
-		// Empty point answers can still own a reusable filtered/limited row.
-		rows = rows[:1]
-	}
+	// Bounded reads retain row slots across smaller/empty subsequent results.
+	rows := result.Rows[:cap(result.Rows)]
 	for _, row := range rows {
 		for _, v := range row {
 			bytes += len(v.Text) + cap(v.Blob)

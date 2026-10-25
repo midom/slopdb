@@ -77,8 +77,9 @@ func (s *Session) QueryParsedContext(ctx context.Context, query string, statemen
 }
 
 // QueryParsedContextInto executes a parsed SELECT with one admission, timeout
-// and snapshot. A catalog-proven point lookup returns result == dst and nil Rows;
-// other queries return nil result and streaming Rows, leaving dst unchanged.
+// and snapshot. A small catalog-proven primary-key read returns result == dst
+// and nil Rows; other queries return nil result and streaming Rows, leaving dst
+// unchanged.
 // Close returned Rows. query supplies activity text only. The caller exclusively
 // owns statement until completion/Rows.Close; dst follows ExecPreparedInto's
 // ownership rules. No query answer or SQL text is cached.
@@ -89,15 +90,15 @@ func (s *Session) QueryParsedContextInto(ctx context.Context, dst *ExecResult, q
 	if statement == nil {
 		return nil, nil, errors.New("nil parsed statement")
 	}
-	input := parsedRead{statement: statement, pointDestination: dst}
+	input := parsedRead{statement: statement, destination: dst}
 	rows, err := s.queryRowsParsed(ctx, query, nil, nil, false, false, &input)
-	return input.pointResult, rows, err
+	return input.result, rows, err
 }
 
 type parsedRead struct {
-	statement        sql.Statement
-	pointDestination *ExecResult
-	pointResult      *ExecResult
+	statement   sql.Statement
+	destination *ExecResult
+	result      *ExecResult
 }
 
 func (tx *Tx) Query(query string) (*Rows, error) { return tx.QueryContext(context.Background(), query) }
@@ -278,13 +279,13 @@ func (s *Session) queryRowsParsed(ctx context.Context, query string, prepared *S
 		return nil, err
 	}
 	resultStatement = statements[0]
-	if input != nil && input.pointDestination != nil {
-		dst := input.pointDestination
+	if input != nil && input.destination != nil {
+		dst := input.destination
 		s.selectTarget = sql.ResultSet{Columns: dst.Columns, Rows: dst.Rows}
 		defer func() { s.selectTarget = sql.ResultSet{} }()
-		result, handled, pointErr := s.schema.TrySelectPointInto(statements[0].(*sql.SelectStmt), &s.selectTarget)
-		if pointErr != nil {
-			err = pointErr
+		result, handled, readErr := s.schema.TrySelectReadInto(statements[0].(*sql.SelectStmt), &s.selectTarget)
+		if readErr != nil {
+			err = readErr
 			release()
 			return nil, err
 		}
@@ -298,7 +299,7 @@ func (s *Session) queryRowsParsed(ctx context.Context, query string, prepared *S
 			successful = true
 			release()
 			if err == nil {
-				input.pointResult = dst
+				input.result = dst
 			}
 			return nil, err
 		}
