@@ -10,6 +10,10 @@ import (
 
 const maxFrame = 1<<24 - 1
 
+// Bound response buffering independently of packet/result size. Large packets
+// bypass this buffer after flushing earlier packets, preserving backpressure.
+const responseBatchBytes = 64 << 10
+
 var errMalformed = errors.New("malformed MySQL packet")
 
 // Each logical packet may span multiple 16 MiB frames, including a final
@@ -43,21 +47,72 @@ func readPacket(r io.Reader, sequence byte, limit int) ([]byte, byte, error) {
 type packetWriter struct {
 	conn     net.Conn
 	sequence byte
+	batched  bool
+	pending  []byte
+	err      error
+}
+
+// Handshakes, replication and standalone packet users remain immediate unless
+// the command loop explicitly starts a batch. Only the dispatch owner accesses
+// writer state; the separate command reader never flushes a response.
+func (w *packetWriter) beginBatch() { w.batched = true }
+
+func (w *packetWriter) flush() error {
+	if w.err != nil {
+		return w.err
+	}
+	if len(w.pending) == 0 {
+		return nil
+	}
+	data := w.pending
+	w.pending = w.pending[:0]
+	w.err = writeAll(w.conn, data)
+	return w.err
+}
+
+func (w *packetWriter) endBatch() error {
+	err := w.flush()
+	w.batched = false
+	return err
 }
 
 func (w *packetWriter) write(data []byte) error {
+	if w.err != nil {
+		return w.err
+	}
 	for {
 		size := len(data)
 		if size > maxFrame {
 			size = maxFrame
 		}
-		header := []byte{byte(size), byte(size >> 8), byte(size >> 16), w.sequence}
+		header := [4]byte{byte(size), byte(size >> 8), byte(size >> 16), w.sequence}
 		w.sequence++
-		if err := writeAll(w.conn, header); err != nil {
-			return err
-		}
-		if err := writeAll(w.conn, data[:size]); err != nil {
-			return err
+		if w.batched && size+len(header) <= responseBatchBytes {
+			if len(w.pending)+len(header)+size > responseBatchBytes {
+				if err := w.flush(); err != nil {
+					return err
+				}
+			}
+			if w.pending == nil {
+				w.pending = make([]byte, 0, responseBatchBytes)
+			}
+			w.pending = append(w.pending, header[:]...)
+			w.pending = append(w.pending, data[:size]...)
+			if len(w.pending) == responseBatchBytes {
+				if err := w.flush(); err != nil {
+					return err
+				}
+			}
+		} else {
+			if err := w.flush(); err != nil {
+				return err
+			}
+			if w.err = writeAll(w.conn, header[:]); w.err != nil {
+				return w.err
+			}
+			if w.err = writeAll(w.conn, data[:size]); w.err != nil {
+				return w.err
+			}
 		}
 		data = data[size:]
 		if size < maxFrame {

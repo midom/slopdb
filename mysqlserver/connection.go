@@ -135,8 +135,13 @@ func (c *client) run() {
 		if compressed, ok := c.conn.(*compressedConn); ok {
 			compressed.writeSequence = cmd.compressedSequence
 		}
+		// Replication commands are long-lived streams whose events and heartbeats
+		// must reach the replica immediately, even without another command.
+		if len(cmd.data) == 0 || (cmd.data[0] != 18 && cmd.data[0] != 30) {
+			c.writer.beginBatch()
+		}
 		if len(cmd.data) == 0 {
-			if c.writeError(errMalformed) != nil {
+			if c.writeError(errMalformed) != nil || c.writer.endBatch() != nil {
 				return
 			}
 			continue
@@ -148,6 +153,12 @@ func (c *client) run() {
 		c.infileAwaiting = c.isLocalCommand(cmd.data)
 		c.infileNegotiated = false
 		err := c.dispatch(cmd.data)
+		// A fatal SQL/session error can deliberately return after encoding its
+		// final error packet. Flush that packet before closing; a sticky transport
+		// failure makes endBatch harmless and never retries partial output.
+		if flushErr := c.writer.endBatch(); err == nil {
+			err = flushErr
+		}
 		if c.infileAwaiting && !c.infileNegotiated {
 			select {
 			case c.infileDecision <- infileRequest{}:

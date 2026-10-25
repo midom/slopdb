@@ -207,6 +207,12 @@ func (c *client) loadData(query string) (*db.ExecResult, bool, error) {
 	}
 	// Advertise only the exact client-provided stream name; the server never opens
 	// a path or executes a program. The client retains its own file/reader policy.
+	// Upload starts only after the request is on the wire. Keep the request in
+	// immediate mode, also preserving the existing compressed upload sequence
+	// calculation (separate inner-header and payload compression frames).
+	if e = c.writer.endBatch(); e != nil {
+		return nil, true, e
+	}
 	c.infileNegotiated = true
 	inputSequence := c.writer.sequence + 1
 	if compressed, ok := c.conn.(*compressedConn); ok {
