@@ -21,6 +21,17 @@ func mysqlStringValue(value Value) string {
 // IF is lazy and session/clock functions are never marked deterministic.
 func (s *Schema) evalMySQLFunc(e *FuncCallExpr, row map[string]Value) (Value, bool, error) {
 	name := strings.ToUpper(e.Name)
+	if _, registered := mysqlFunctionRegistry[name]; registered {
+		args := make([]Value, len(e.Args))
+		for i, expr := range e.Args {
+			value, err := s.evalExpr(expr, row)
+			if err != nil {
+				return NewNullValue(), true, err
+			}
+			args[i] = value
+		}
+		return s.evalRegisteredMySQLFunction(name, args)
+	}
 	if name == "IF" {
 		condition, err := s.evalCondition(e.Args[0], row)
 		if err != nil {
@@ -227,6 +238,9 @@ func mysqlCastTarget(target string) string {
 }
 
 func validMySQLFunction(name string, n int) (bool, bool) {
+	if valid, known := validRegisteredMySQLFunction(name, n); known {
+		return valid, true
+	}
 	switch name {
 	case "IF":
 		return n == 3, true

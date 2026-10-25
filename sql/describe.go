@@ -521,6 +521,9 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 			}
 			args = append(args, c)
 		}
+		if column, ok := describeRegisteredMySQLFunction(name, args); ok {
+			return column, nil
+		}
 		common := text
 		if len(args) > 0 {
 			common = args[0]

@@ -42,6 +42,9 @@ func andTerms(expr Expression) []Expression {
 }
 
 func deterministicFunction(name string) bool {
+	if spec, ok := mysqlFunctionRegistry[strings.ToUpper(name)]; ok {
+		return !spec.Volatile
+	}
 	switch strings.ToUpper(name) {
 	case fulltextFunction, "COUNT", "SUM", "AVG", "MIN", "MAX", "TOTAL", "GROUP_CONCAT", "COALESCE", "IFNULL", "NULLIF", "LENGTH", "UPPER", "LOWER", "ABS", "ROUND", "IIF", "IF", "GREATEST", "LEAST", "CONCAT", "__MYSQL_CONVERT", "CAST", "SUBSTR", "SUBSTRING", "REPLACE", "TRIM", "LTRIM", "RTRIM", "TYPEOF", "HEX", "UNICODE", "CHAR", "INSTR":
 		return true
