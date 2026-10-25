@@ -12,6 +12,7 @@ import (
 type prepared struct {
 	stmt    *db.Stmt
 	query   string
+	columns []sql.ColumnDef
 	types   []uint16
 	long    map[uint16][]byte
 	longErr error
@@ -30,17 +31,25 @@ func (c *client) prepare(query string) error {
 		_ = stmt.Close()
 		return c.writeError(&protocolError{1390, "HY000", "too many placeholders"})
 	}
+	columns, err := c.session.DescribePrepared(c.mysqlContext(), stmt)
+	if err != nil {
+		_ = stmt.Close()
+		return c.writeError(err)
+	}
+	if len(columns) > math.MaxUint16 {
+		_ = stmt.Close()
+		return c.writeError(fmt.Errorf("too many result columns"))
+	}
 	for {
 		c.nextStmt++
 		if c.nextStmt != 0 && c.statements[c.nextStmt] == nil {
 			break
 		}
 	}
-	c.statements[c.nextStmt] = &prepared{stmt: stmt, query: query}
-	// Result metadata is deferred until execution, when current schema and bound
-	// expression types are known. Preparing never executes user SQL.
+	c.statements[c.nextStmt] = &prepared{stmt: stmt, query: query, columns: columns}
+	// Catalog and AST metadata is available before execution; no user SQL ran.
 	p := append32([]byte{0}, c.nextStmt)
-	p = append16(p, 0)
+	p = append16(p, uint16(len(columns)))
 	p = append16(p, uint16(stmt.NumInput()))
 	p = append(p, 0, 0, 0)
 	if err := c.writer.write(p); err != nil {
@@ -52,6 +61,16 @@ func (c *client) prepare(query string) error {
 		}
 	}
 	if stmt.NumInput() > 0 {
+		if err := c.eof(); err != nil {
+			return err
+		}
+	}
+	for _, col := range columns {
+		if err := c.writer.write(columnPacket(col, c.selected)); err != nil {
+			return err
+		}
+	}
+	if len(columns) > 0 {
 		return c.eof()
 	}
 	return nil

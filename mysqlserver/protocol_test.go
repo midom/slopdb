@@ -128,9 +128,24 @@ func rawPrepare(t *testing.T, c *rawClient, q string) uint32 {
 		seq = next
 	}
 	if n > 0 {
-		eof, _, err := readPacket(c.conn, seq, 1<<20)
+		eof, next, err := readPacket(c.conn, seq, 1<<20)
+		seq = next
 		if err != nil || eof[0] != 0xfe {
 			t.Fatalf("prepare EOF %x %v", eof, err)
+		}
+	}
+	columns := binary.LittleEndian.Uint16(p[5:])
+	for i := 0; i < int(columns); i++ {
+		_, next, err := readPacket(c.conn, seq, 1<<20)
+		if err != nil {
+			t.Fatal(err)
+		}
+		seq = next
+	}
+	if columns > 0 {
+		eof, _, err := readPacket(c.conn, seq, 1<<20)
+		if err != nil || len(eof) == 0 || eof[0] != 0xfe {
+			t.Fatalf("prepare columns EOF %x %v", eof, err)
 		}
 	}
 	return binary.LittleEndian.Uint32(p[1:])
