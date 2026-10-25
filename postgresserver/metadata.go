@@ -30,6 +30,21 @@ func (m *metadata) table(name string, scope map[string][]field, depth int) ([]fi
 	if depth > 64 {
 		return nil, &protocolError{"54001", "metadata nesting limit exceeded"}
 	}
+	if data, err := m.client.session.PostgresCatalog(sql.WithPostgresSession(m.ctx, sql.PostgresSessionOptions{Database: m.client.server.config.Database, User: m.client.server.config.Username}), name); data != nil || err != nil {
+		if err != nil {
+			return nil, err
+		}
+		var fields []field
+		for _, col := range data.Columns {
+			oid := sql.PostgresColumnOID(col)
+			if oid == 0 {
+				oid = nativeOID(col.ColType)
+			}
+			fields = append(fields, field{col.Name, oid})
+		}
+		m.tables[name] = fields
+		return fields, nil
+	}
 	// This reads catalog metadata only; user SELECTs and DML never run at Parse,
 	// Bind or Describe, including volatile expressions and locking reads.
 	result, err := m.client.session.ExecContext(m.ctx, "PRAGMA table_info("+quote(name)+")")

@@ -217,6 +217,14 @@ func (s *Schema) namespaceName(name string, create bool, scope map[string]bool) 
 		return "", nil
 	}
 	name = strings.ToLower(name)
+	if s.postgresMode && !scope[name] {
+		if _, known := postgresCatalogName(name); known {
+			if create {
+				return "", fmt.Errorf("system catalog %q is read only", name)
+			}
+			return name, nil
+		}
+	}
 	if scope[name] || name == "sqlite_master" || name == "sqlite_stat1" || strings.HasPrefix(name, "information_schema.") || name == "mysql.user" {
 		return name, nil
 	}

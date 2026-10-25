@@ -496,6 +496,11 @@ func (s *Schema) schemaGet(key []byte) (value []byte, found bool, err error) {
 
 func (s *Schema) CreateTable(stmt *CreateTableStmt) error {
 	if s.postgresMode {
+		if _, known := postgresCatalogName(stmt.Table); known {
+			return fmt.Errorf("system catalog %q is read only", stmt.Table)
+		}
+	}
+	if s.postgresMode {
 		copy := *stmt
 		copy.Columns = append([]ColumnDef(nil), stmt.Columns...)
 		for i := range copy.Columns {
@@ -4381,6 +4386,10 @@ func (s *Schema) selectInto(stmt *SelectStmt, dst *ResultSet) (result *ResultSet
 	}
 	if stmt.Compound != nil {
 		return s.Union(stmt.Compound)
+	}
+	stmt, err = s.resolvePostgresTables(stmt)
+	if err != nil {
+		return nil, err
 	}
 	stmt, err = s.resolveMySQLTables(stmt)
 	if err != nil {

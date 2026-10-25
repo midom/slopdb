@@ -11,7 +11,7 @@ var postgresFunctionRegistry map[string]mysqlFunctionSpec
 func init() { postgresFunctionRegistry = postgresFunctions() }
 func postgresFunctions() map[string]mysqlFunctionSpec {
 	out := map[string]mysqlFunctionSpec{}
-	for _, group := range []map[string]mysqlFunctionSpec{postgresStringFunctions(), postgresJSONFunctions(), postgresMathFunctions(), postgresClockFunctions()} {
+	for _, group := range []map[string]mysqlFunctionSpec{postgresStringFunctions(), postgresJSONFunctions(), postgresMathFunctions(), postgresClockFunctions(), postgresCatalogFunctions()} {
 		for name, spec := range group {
 			if _, ok := out[name]; ok {
 				panic("duplicate PostgreSQL function " + name)
