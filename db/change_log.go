@@ -15,10 +15,13 @@ import (
 )
 
 type CDCTable struct {
-	ID      uint64
-	Schema  string
-	Name    string
-	Columns []sql.ColumnDef
+	ID         uint64
+	Schema     string
+	Name       string
+	Columns    []sql.ColumnDef
+	Definition *sql.TableInfo
+	Indexes    []*sql.IndexInfo
+	CreateSQL  string // MySQL definition, without a schema qualifier on this table
 }
 type CDCRow struct {
 	TableID uint64
@@ -31,12 +34,14 @@ type CDCSchemaChange struct {
 	After  *CDCTable
 }
 type CDCTransaction struct {
-	Sequence      uint64
-	Time          int64 // UTC Unix nanoseconds, assigned before replication
-	Tables        []CDCTable
-	Changes       []CDCRow
-	SchemaChanges []CDCSchemaChange
-	Namespaces    []string // non-nil when the namespace registry changes
+	Sequence          uint64
+	Time              int64 // UTC Unix nanoseconds, assigned before replication
+	Tables            []CDCTable
+	Changes           []CDCRow
+	SchemaChanges     []CDCSchemaChange
+	Namespaces        []string // non-nil when the namespace registry changes
+	CreatedNamespaces []string
+	DroppedNamespaces []string
 }
 type CDCMetadata struct {
 	SourceID      string
@@ -120,6 +125,12 @@ func cdcCatalog(catalog map[string][]byte) (map[uint64]CDCTable, error) {
 			return nil, fmt.Errorf("CDC catalog: %w", err)
 		}
 	}
+	var indexes map[string]*sql.IndexInfo
+	if data := catalog["\x00__schema_indexes__"]; len(data) > 0 {
+		if err := json.Unmarshal(data, &indexes); err != nil {
+			return nil, err
+		}
+	}
 	tables := make(map[uint64]CDCTable, len(info))
 	for name, table := range info {
 		schema, base, qualified := strings.Cut(name, ".")
@@ -127,7 +138,23 @@ func cdcCatalog(catalog map[string][]byte) (map[uint64]CDCTable, error) {
 			schema, base = "main", name
 		}
 		columns := append([]sql.ColumnDef(nil), table.Columns...)
-		tables[table.ID] = CDCTable{ID: table.ID, Schema: schema, Name: base, Columns: columns}
+		for i := range table.Constraints {
+			constraint := &table.Constraints[i]
+			if constraint.Kind == "FOREIGN" && len(constraint.RefColumns) == 0 {
+				if parent := info[constraint.RefTable]; parent != nil {
+					constraint.RefColumns = append([]string(nil), parent.PKColumns...)
+				}
+			}
+		}
+		definition := CDCTable{ID: table.ID, Schema: schema, Name: base, Columns: columns, Definition: table}
+		for _, index := range indexes {
+			if index.Table == name {
+				definition.Indexes = append(definition.Indexes, index)
+			}
+		}
+		sort.Slice(definition.Indexes, func(i, j int) bool { return definition.Indexes[i].SQLName() < definition.Indexes[j].SQLName() })
+		definition.CreateSQL = CDCMySQLCreate(definition, "")
+		tables[table.ID] = definition
 	}
 	return tables, nil
 }
@@ -185,6 +212,18 @@ func (d *Database) NewCDCReader(ctx context.Context, after uint64) (*CDCReader, 
 }
 
 func cloneCDCTable(table CDCTable) CDCTable {
+	// Definitions originate from persisted JSON, so reparsing a copy also gives
+	// callers independent constraint/index slices without sharing expression ASTs.
+	if table.Definition != nil {
+		data, _ := json.Marshal(table.Definition)
+		var definition sql.TableInfo
+		_ = json.Unmarshal(data, &definition)
+		table.Definition = &definition
+	}
+	if table.Indexes != nil {
+		data, _ := json.Marshal(table.Indexes)
+		_ = json.Unmarshal(data, &table.Indexes)
+	}
 	table.Columns = append([]sql.ColumnDef(nil), table.Columns...)
 	for i := range table.Columns {
 		column := &table.Columns[i]
@@ -256,6 +295,12 @@ func (r *CDCReader) decode(record storage.ChangeRecord) (CDCTransaction, error) 
 				r.catalog[string(mutation.Key)] = mutation.After
 			}
 			if string(mutation.Key) == "\x00__namespaces_v1__" {
+				previous := map[string]bool{"main": true}
+				if mutation.BeforeExists {
+					if err := json.Unmarshal(mutation.Before, &previous); err != nil {
+						return transaction, err
+					}
+				}
 				var namespaces map[string]bool
 				if !mutation.Delete {
 					if err := json.Unmarshal(mutation.After, &namespaces); err != nil {
@@ -267,6 +312,18 @@ func (r *CDCReader) decode(record storage.ChangeRecord) (CDCTransaction, error) 
 					transaction.Namespaces = append(transaction.Namespaces, name)
 				}
 				sort.Strings(transaction.Namespaces)
+				for name := range namespaces {
+					if !previous[name] {
+						transaction.CreatedNamespaces = append(transaction.CreatedNamespaces, name)
+					}
+				}
+				for name := range previous {
+					if !namespaces[name] {
+						transaction.DroppedNamespaces = append(transaction.DroppedNamespaces, name)
+					}
+				}
+				sort.Strings(transaction.CreatedNamespaces)
+				sort.Strings(transaction.DroppedNamespaces)
 			}
 		}
 	}
