@@ -281,6 +281,9 @@ func run(c config) (r report, err error) {
 	if c.API != "native" {
 		r.ResourceScope = "client and server in one process"
 	}
+	if c.API == "embedded" {
+		r.ResourceScope = "embedded database/sql and engine in one process"
+	}
 	if c.Endpoint != "" {
 		r.ResourceScope = "client process only; external server resources recorded separately"
 	}
@@ -330,6 +333,8 @@ func run(c config) (r report, err error) {
 	var backend *benchmarkBackend
 	if c.API == "native" {
 		backend, err = newNativeBackend(c, d)
+	} else if c.API == "embedded" {
+		backend, err = newEmbeddedBackend(c, d)
 	} else {
 		backend, err = newWireBackend(c, d)
 	}
