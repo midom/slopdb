@@ -347,7 +347,7 @@ func mysqlUtilityFunctions() map[string]FunctionSpec {
 		}
 		spec := out[name]
 		spec.Eval = func(s *Schema, a []Value) (Value, error) {
-			if value, ok, err := MySQLFunction(s.ctx, function, a); ok || err != nil {
+			if value, ok, err := CallSessionFunction(s.ctx, function, a); ok || err != nil {
 				return value, err
 			}
 			if function == "DATABASE" {

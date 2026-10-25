@@ -22,7 +22,7 @@ func defaultSessionVariables() sessionVariables {
 }
 
 func (c *client) mysqlContext() context.Context {
-	ctx := sql.WithMySQLSession(c.ctx, sql.MySQLSessionOptions{Database: c.selectedDatabaseName(), RootDatabase: c.server.config.Database, GroupConcatMaxLen: c.variables.groupConcatMaxLen, SQLMode: c.variables.sqlMode, Function: c.mysqlFunction, SystemTable: c.accountTable, FoundRows: c.capabilities&clientFoundRows != 0, Warning: c.addWarning})
+	ctx := sql.WithMySQLSession(c.ctx, sql.MySQLSessionOptions{Database: c.selectedDatabaseName(), RootDatabase: c.server.config.Database, User: c.username, BackendID: uint64(c.id), GroupConcatMaxLen: c.variables.groupConcatMaxLen, SQLMode: c.variables.sqlMode, Function: c.mysqlFunction, SystemTable: c.accountTable, FoundRows: c.capabilities&clientFoundRows != 0, Warning: c.addWarning})
 	if len(c.preparedPath) > 0 {
 		ctx = sql.WithNamespaceSearchPath(ctx, c.preparedPath)
 	}

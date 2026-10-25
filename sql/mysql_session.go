@@ -7,6 +7,8 @@ import "context"
 // A caller must keep Function safe for the lifetime of the executing call.
 type MySQLSessionOptions struct {
 	Database          string
+	User              string
+	BackendID         uint64
 	RootDatabase      string
 	Schemas           []string
 	SchemaNames       func() []string
@@ -25,28 +27,25 @@ func WithMySQLSession(ctx context.Context, options MySQLSessionOptions) context.
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	ctx = WithSessionContext(ctx, SessionContext{Dialect: DialectMySQL, Database: options.Database, User: options.User, BackendID: options.BackendID, Function: options.Function})
 	return context.WithValue(ctx, mysqlSessionKey{}, options)
 }
 
 func MySQLFunction(ctx context.Context, name string, args []Value) (Value, bool, error) {
-	if ctx != nil {
-		if options, ok := ctx.Value(mysqlSessionKey{}).(MySQLSessionOptions); ok && options.Function != nil {
-			return options.Function(ctx, name, args)
-		}
-	}
-	return Value{}, false, nil
+	return CallSessionFunction(ctx, name, args)
 }
 
 func MySQLGroupConcatMaxLen(ctx context.Context) int64 {
-	if ctx != nil {
-		if options, ok := ctx.Value(mysqlSessionKey{}).(MySQLSessionOptions); ok {
-			return options.GroupConcatMaxLen
-		}
+	if options, ok := MySQLSession(ctx); ok {
+		return options.GroupConcatMaxLen
 	}
 	return 0
 }
 
 func MySQLSession(ctx context.Context) (MySQLSessionOptions, bool) {
+	if common, ok := SessionContextFrom(ctx); ok && common.Dialect != DialectMySQL {
+		return MySQLSessionOptions{}, false
+	}
 	if ctx == nil {
 		return MySQLSessionOptions{}, false
 	}

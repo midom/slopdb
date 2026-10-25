@@ -64,10 +64,16 @@ func init() {
 	for d := DialectNative; d <= DialectPostgreSQL; d++ {
 		registry := make(map[string]FunctionSpec, len(base)+len(mysqlFunctionRegistry))
 		for name, spec := range base {
+			if spec.Arguments == nil {
+				spec.Arguments = sharedFunctionArgumentTypes(name)
+			}
 			registry[name] = spec
 		}
 		for name, spec := range mysqlFunctionRegistry {
 			if spec.supports(d) {
+				if spec.Arguments == nil {
+					spec.Arguments = sharedFunctionArgumentTypes(name)
+				}
 				registry[name] = spec
 			}
 		}
@@ -87,6 +93,9 @@ func init() {
 				}
 				spec.Arguments = postgresFunctionArgumentTypes(name)
 				spec.StrictArguments = spec.Arguments != nil
+				if spec.Arguments == nil {
+					spec.Arguments = sharedFunctionArgumentTypes(name)
+				}
 				registry[name] = spec
 			}
 		}

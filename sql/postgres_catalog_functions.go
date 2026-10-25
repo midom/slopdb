@@ -229,10 +229,8 @@ func postgresCatalogFunctions() map[string]FunctionSpec {
 			}
 			value = strings.Join(path, ", ")
 		default:
-			if opts, ok := PostgresSession(s.ctx); ok && opts.Function != nil {
-				if v, handled, e := opts.Function(s.ctx, "CURRENT_SETTING", a); handled || e != nil {
-					return v, e
-				}
+			if v, handled, e := CallSessionFunction(s.ctx, "CURRENT_SETTING", a); handled || e != nil {
+				return v, e
 			}
 			missing := false
 			if len(a) > 1 && !a[1].Null {
@@ -259,7 +257,7 @@ func postgresCatalogFunctions() map[string]FunctionSpec {
 			return NewNullValue(), e
 		}
 		if id == 10 {
-			opts, _ := PostgresSession(s.ctx)
+			opts, _ := SessionContextFrom(s.ctx)
 			name := opts.User
 			if name == "" {
 				name = "slopdb"

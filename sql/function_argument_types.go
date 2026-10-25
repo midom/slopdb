@@ -192,3 +192,75 @@ func functionDeclaredResult(v Value, column ColumnDef) Value {
 	}
 	return v
 }
+
+// These common constraints are used by inference only. Runtime conversion
+// remains the resolved descriptor's policy, so MySQL prefix affinity is intact.
+func sharedFunctionArgumentTypes(name string) func([]ColumnDef) ([]ColumnDef, error) {
+	switch name {
+	case "IF", "IIF", "COALESCE", "IFNULL", "NULLIF", "GREATEST", "LEAST", "MIN", "MAX", "SUM", "AVG", "TOTAL", "ABS", "ROUND", "TRUNC", "TRUNCATE":
+		return func(args []ColumnDef) ([]ColumnDef, error) {
+			out := functionUnknownColumns(len(args))
+			start := 0
+			if name == "IF" || name == "IIF" {
+				start = 1
+				if len(out) > 0 {
+					out[0] = functionArgumentColumn("BIGINT")
+				}
+			}
+			end := len(args)
+			if (name == "ROUND" || name == "TRUNC" || name == "TRUNCATE") && end > 1 {
+				end = 1
+				out[1] = functionArgumentColumn("INTEGER")
+			}
+			common := ColumnDef{ColType: ColUnknown}
+			for i := start; i < end; i++ {
+				if args[i].ColType == ColUnknown {
+					continue
+				}
+				if common.ColType == ColUnknown {
+					common = args[i]
+				} else {
+					common = describeCommon(common, args[i])
+				}
+			}
+			if common.ColType == ColUnknown {
+				switch name {
+				case "SUM", "AVG", "TOTAL", "ABS", "ROUND", "TRUNC", "TRUNCATE":
+					common = functionArgumentColumn("NUMERIC")
+				}
+			}
+			for i := start; i < end; i++ {
+				out[i] = common
+			}
+			return out, nil
+		}
+	case "LENGTH", "CHAR_LENGTH", "CHARACTER_LENGTH", "OCTET_LENGTH", "BIT_LENGTH", "UPPER", "LOWER", "ASCII", "TRIM", "LTRIM", "RTRIM", "BTRIM", "CONCAT", "CONCAT_WS", "REPLACE", "INSTR", "STRPOS":
+		return func(args []ColumnDef) ([]ColumnDef, error) {
+			out := functionUnknownColumns(len(args))
+			for i := range out {
+				out[i] = functionStringArgument(args[i])
+			}
+			return out, nil
+		}
+	case "CEIL", "CEILING", "FLOOR", "SIGN", "GCD", "LCM", "MOD", "DIV", "WIDTH_BUCKET", "SCALE", "MIN_SCALE", "TRIM_SCALE", "FACTORIAL":
+		return func(args []ColumnDef) ([]ColumnDef, error) {
+			out := functionUnknownColumns(len(args))
+			for i := range out {
+				out[i] = functionArgumentColumn("NUMERIC")
+			}
+			if name == "WIDTH_BUCKET" && len(out) == 4 {
+				out[3] = functionArgumentColumn("INTEGER")
+			}
+			return out, nil
+		}
+	case "SQRT", "CBRT", "EXP", "LN", "LOG", "LOG10", "POWER", "POW", "SIN", "COS", "TAN", "ASIN", "ACOS", "ATAN", "ATAN2", "COT", "SINH", "COSH", "TANH", "ASINH", "ACOSH", "ATANH", "DEGREES", "RADIANS":
+		return func(args []ColumnDef) ([]ColumnDef, error) {
+			out := functionUnknownColumns(len(args))
+			for i := range out {
+				out[i] = functionArgumentColumn("DOUBLE PRECISION")
+			}
+			return out, nil
+		}
+	}
+	return nil
+}

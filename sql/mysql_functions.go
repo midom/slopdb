@@ -53,7 +53,7 @@ func (s *Schema) evalMySQLFunc(e *FuncCallExpr, row map[string]Value) (Value, bo
 			return NewNullValue(), true, err
 		}
 	}
-	if value, handled, err := MySQLFunction(s.ctx, name, args); handled || err != nil {
+	if value, handled, err := CallSessionFunction(s.ctx, name, args); handled || err != nil {
 		return value, true, err
 	}
 	switch name {

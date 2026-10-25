@@ -66,7 +66,7 @@ func mysqlSessionFunctions() map[string]FunctionSpec {
 			spec.Min, spec.Max = 0, 0
 		}
 		spec.Eval = func(s *Schema, a []Value) (Value, error) {
-			if value, ok, err := MySQLFunction(s.ctx, name, a); ok || err != nil {
+			if value, ok, err := CallSessionFunction(s.ctx, name, a); ok || err != nil {
 				return value, err
 			}
 			return NewNullValue(), fmt.Errorf("%s requires a MySQL connection", name)

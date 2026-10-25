@@ -101,7 +101,7 @@ func postgresClockFunctions() map[string]FunctionSpec {
 			decl = "INTEGER"
 		}
 		add(name, 0, 0, typ, decl, true, func(s *Schema, a []Value) (Value, error) {
-			session, _ := PostgresSession(s.ctx)
+			session, _ := SessionContextFrom(s.ctx)
 			switch name {
 			case "CURRENT_DATABASE":
 				return NewTextValue(session.Database), nil
@@ -118,7 +118,7 @@ func postgresClockFunctions() map[string]FunctionSpec {
 			case "CURRENT_USER", "SESSION_USER", "USER":
 				return NewTextValue(session.User), nil
 			case "PG_BACKEND_PID":
-				return NewIntValue(int64(session.BackendPID)), nil
+				return NewIntValue(int64(session.BackendID)), nil
 			case "PG_CLIENT_ENCODING":
 				return NewTextValue("UTF8"), nil
 			default:
