@@ -215,7 +215,11 @@ func postgresCatalogFunctions() map[string]mysqlFunctionSpec {
 		case "integer_datetimes":
 			value = "on"
 		case "transaction_isolation", "default_transaction_isolation":
-			value = strings.ToLower(string(s.IsolationLevel()))
+			level := s.IsolationLevel()
+			if name == "transaction_isolation" && s.inTx && s.txIsolation != "" {
+				level = s.txIsolation
+			}
+			value = strings.ToLower(string(level))
 		case "search_path":
 			path := s.SessionSearchPath()
 			for i := range path {

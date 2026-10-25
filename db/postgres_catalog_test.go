@@ -89,3 +89,29 @@ func TestPostgresNativeCatalogs(t *testing.T) {
 	defer d.Close()
 	run(true)
 }
+
+func TestDropTableIfExistsMissing(t *testing.T) {
+	d, e := db.Open(t.TempDir(), nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer d.Close()
+	for _, postgres := range []bool{false, true} {
+		s, e := d.NewSession()
+		if e != nil {
+			t.Fatal(e)
+		}
+		if e = s.SetPostgresMode(postgres); e != nil {
+			t.Fatal(e)
+		}
+		for _, q := range []string{"DROP TABLE IF EXISTS missing", "BEGIN", "DROP TABLE IF EXISTS missing", "COMMIT"} {
+			if _, e = s.Exec(q); e != nil {
+				t.Fatalf("%s pg=%v: %v", q, postgres, e)
+			}
+		}
+		if _, e = s.Exec("DROP TABLE missing"); e == nil {
+			t.Fatal("DROP missing without IF EXISTS succeeded")
+		}
+		s.Close()
+	}
+}

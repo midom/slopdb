@@ -661,6 +661,9 @@ func (s *Schema) DropTable(stmt *DropTableStmt) error {
 	}
 	name := strings.ToLower(stmt.Table)
 	if _, ok := s.tables[name]; !ok {
+		if stmt.IfExists {
+			return nil
+		}
 		return fmt.Errorf("table %q does not exist", name)
 	}
 
