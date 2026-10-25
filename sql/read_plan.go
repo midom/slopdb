@@ -315,6 +315,19 @@ func (s *Schema) newRangeIterator(lower, upper []byte, reverse bool) storage.Ite
 	return s.profileReader(storage.BoundIterator(it, lower, upper), "RangeScan")
 }
 
+// Cursor consumers decode the current value before advancing, so they can use
+// borrowed storage buffers. Transaction overlays and profiled readers retain
+// their ordinary iterator path and its ownership/measurement contracts.
+func (s *Schema) newCursorRangeIterator(lower, upper []byte, reverse bool) storage.Iterator {
+	if s.profile != nil || s.inTx && len(s.txWrites) > 0 {
+		return s.newRangeIterator(lower, upper, reverse)
+	}
+	if s.statementActive && !s.temporaryKey(lower) {
+		return s.lsm.NewIteratorAtRangeReusable(s.statementSnapshot, lower, upper, reverse)
+	}
+	return s.lsm.NewIteratorRangeReusable(lower, upper, reverse)
+}
+
 func coveredRangePredicate(e Expression, column, table, alias string) bool {
 	if e == nil {
 		return true

@@ -21,6 +21,7 @@ type rows struct {
 	columns    []nativesql.ColumnDef
 	names      []string
 	buffered   []map[string]nativesql.Value
+	values     []nativesql.Value
 	position   int
 	closed     bool
 	temporary  *statement
@@ -55,6 +56,7 @@ func (r *rows) close() error {
 		r.native = nil
 	}
 	r.buffered = nil
+	r.values = nil
 	c := r.connection
 	c.mu.Lock()
 	if c.active == r {
@@ -93,7 +95,7 @@ func (r *rows) Next(destination []sqldriver.Value) error {
 			}
 			return io.EOF
 		}
-		values, e := r.native.Values()
+		values, e := r.native.ValuesInto(r.values)
 		if e != nil {
 			_ = r.close()
 			if r.ctx.Err() != nil {
@@ -101,6 +103,7 @@ func (r *rows) Next(destination []sqldriver.Value) error {
 			}
 			return e
 		}
+		r.values = values
 		for i, value := range values {
 			destination[i], e = resultValue(value)
 			if e != nil {

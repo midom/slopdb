@@ -390,7 +390,9 @@ func (r *Rows) Next() bool {
 	var row map[string]sql.Value
 	var ok bool
 	if r.cursor != nil {
-		row, ok, r.err = r.cursor.Next()
+		// current is private to Rows; Values/ValuesInto/Scan copy BLOBs before
+		// exposing them, so the cursor can reuse this map and its value buffers.
+		row, ok, r.err = r.cursor.NextInto(r.current)
 	} else if r.position < len(r.buffered) {
 		row = r.buffered[r.position]
 		r.buffered[r.position] = nil

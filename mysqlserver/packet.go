@@ -46,6 +46,7 @@ func readPacket(r io.Reader, sequence byte, limit int) ([]byte, byte, error) {
 
 type packetWriter struct {
 	conn     net.Conn
+	header   [4]byte
 	sequence byte
 	batched  bool
 	pending  []byte
@@ -85,7 +86,10 @@ func (w *packetWriter) write(data []byte) error {
 		if size > maxFrame {
 			size = maxFrame
 		}
-		header := [4]byte{byte(size), byte(size >> 8), byte(size >> 16), w.sequence}
+		// Keep the header in the writer: passing a local array to the immediate
+		// io.Writer path otherwise allocates it even for buffered packets.
+		w.header = [4]byte{byte(size), byte(size >> 8), byte(size >> 16), w.sequence}
+		header := w.header[:]
 		w.sequence++
 		if w.batched && size+len(header) <= responseBatchBytes {
 			if len(w.pending)+len(header)+size > responseBatchBytes {
@@ -96,7 +100,7 @@ func (w *packetWriter) write(data []byte) error {
 			if w.pending == nil {
 				w.pending = make([]byte, 0, responseBatchBytes)
 			}
-			w.pending = append(w.pending, header[:]...)
+			w.pending = append(w.pending, header...)
 			w.pending = append(w.pending, data[:size]...)
 			if len(w.pending) == responseBatchBytes {
 				if err := w.flush(); err != nil {
@@ -107,7 +111,7 @@ func (w *packetWriter) write(data []byte) error {
 			if err := w.flush(); err != nil {
 				return err
 			}
-			if w.err = writeAll(w.conn, header[:]); w.err != nil {
+			if w.err = writeAll(w.conn, header); w.err != nil {
 				return w.err
 			}
 			if w.err = writeAll(w.conn, data[:size]); w.err != nil {

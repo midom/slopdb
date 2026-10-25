@@ -302,8 +302,10 @@ func (c *client) runCopy(ctx context.Context, command *copyCommand) (count int64
 				return 0, err
 			}
 		}
+		var values []sql.Value
 		for rows.Next() {
-			values, e := rows.Values()
+			var e error
+			values, e = rows.ValuesInto(values)
 			if e != nil {
 				return 0, e
 			}

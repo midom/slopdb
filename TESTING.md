@@ -288,6 +288,18 @@ prepared/materialized/streaming SELECT, RETURNING, UNION, joins, aggregates and
 windows. PostgreSQL/MySQL protocol and CLI output tests preserve duplicate
 labels while retaining each result slot.
 
+`sql/cursor_reuse_test.go` and `db/stream_reuse_public_test.go` retain 1,000-row
+results across cursor movement, SSTable page changes, Close and transaction
+overlays. They cover independently owned `Next`, alternating `NextInto`
+destinations, duplicate/aliased/function BLOB projections, NULL/empty BLOBs,
+native/MySQL/PostgreSQL sessions and embedded `database/sql` scanning.
+`storage/reusable_iterator_test.go` checks ordinary iterator ownership alongside
+borrowed range iterators, snapshots, reverse direction changes, range deletes,
+heap/mmap caches, compaction and bounded scratch retention. Allocation benchmarks
+include `BenchmarkStreamingRangeResultStorage`, `BenchmarkReusableRangeIterator`
+and `BenchmarkPacketWriterReuse`; setup stays outside timing and results are
+checked without machine-dependent performance assertions.
+
 `postgresserver/copy_test.go` exercises pgx.CopyFrom, lib/pq.CopyIn, text/CSV/binary
 streams, typed values, protocol fragmentation, cancellation, failure recovery
 and transaction atomicity. All databases and protocol test artifacts use

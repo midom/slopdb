@@ -57,6 +57,12 @@ returns an error while rows remain open. Queries on other connections continue.
 Cancellation releases native streaming resources, and returned/scanned BLOBs do
 not alias storage pages or later results.
 
+Native streaming rows reuse their private row maps and BLOB decoding buffers
+between calls. The driver inherits this reuse while preserving the ownership
+and lifetime rules of values returned through `database/sql`. Scanning BLOBs
+into `[]byte` or `any` returns independent bytes. `database/sql.RawBytes` follows
+its standard borrowed lifetime, ending at the next `Next`, `Scan` or `Close`.
+
 `BeginTx` supports default, READ COMMITTED, and native REPEATABLE READ isolation.
 Read-only and other isolation options fail explicitly. Commit and rollback use
 the same connection/session as their statements. Errors after execution are

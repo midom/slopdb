@@ -57,6 +57,14 @@ to those destination buffers; use `Values()` when retaining independent rows.
 NULL clears the destination value, while an empty non-NULL BLOB remains an empty
 byte slice. The returned values remain valid after closing the result.
 
+Streaming cursors reuse private decoded row maps and BLOB buffers. Simple
+physical projections decode directly into those buffers; expressions keep
+source and output buffers separate. This applies to native, prepared,
+`database/sql`, MySQL streaming reads and PostgreSQL COPY. Public `Values`, `Scan`
+and ordinary execution results remain independently owned. Lower-level SQL
+consumers can opt into `RowCursor.NextInto(dst)` with an exclusively owned
+destination; `RowCursor.Next()` continues to return independent rows.
+
 ## Atomic bulk insertion
 
 `Database.BulkInsert(ctx, table, columns, source)` consumes a `db.BulkSource`

@@ -22,6 +22,11 @@ type RowCursor struct {
 	info             *TableInfo
 	columns          []ColumnDef
 	expressions      []selectExprCol
+	physical         *preparedExecutionPlan
+	sourcePlan       *preparedExecutionPlan
+	source           map[string]Value
+	condition        map[string]Value
+	qualified        bool
 	iterator         storage.Iterator
 	intervals        []coveringInterval
 	position         int
@@ -80,6 +85,27 @@ func (s *Schema) OpenRowCursor(stmt *SelectStmt) (*RowCursor, bool, error) {
 	c := &RowCursor{schema: s, stmt: stmt, info: info, reverse: reverse}
 	c.columns, c.expressions, _ = s.selectProjection(stmt, info)
 	c.columnsComplete = cursorCatalogProjection(stmt, info, c.columns)
+	c.qualified = needsQualifiedRows(stmt)
+	// Compile decoding metadata once. Simple physical projections can decode
+	// straight into the caller's output buffers, keeping WHERE-only fields in
+	// a private map. Expressions use a separate, reusable source row instead.
+	physical := &preparedExecutionPlan{}
+	if ok, err := s.preparePhysicalReadProjection(stmt, info, physical); err != nil {
+		return nil, true, err
+	} else if ok {
+		c.physical = physical
+		if physical.pointDecodeCount != len(physical.pointProjection) {
+			c.condition = make(map[string]Value, physical.pointDecodeCount)
+		}
+	} else {
+		c.sourcePlan = &preparedExecutionPlan{pointDecodeCount: len(info.Columns)}
+		for _, col := range info.Columns {
+			c.sourcePlan.pointDecodeMetadata = append(c.sourcePlan.pointDecodeMetadata, pointDecodeMetadata{
+				name: col.Name, kind: col.LogicalType().Kind, binary: col.Binary,
+				decode: true, collation: col.Collation, enums: col.EnumValues,
+			})
+		}
+	}
 	if hasFulltextCondition(stmt.Where) {
 		c.fulltext = true
 		return c, true, nil
@@ -133,12 +159,12 @@ func cursorOrderColumn(stmt *SelectStmt, name string) string {
 	return coveringColumn(name, stmt.From, stmt.FromAlias)
 }
 
-func (c *RowCursor) nextSourceRow() (map[string]Value, bool, error) {
+func (c *RowCursor) nextSourceRow(dst map[string]Value) (row, out map[string]Value, found bool, err error) {
 	if c.fulltext && !c.fulltextOpened {
 		c.fulltextOpened = true
 		keys, used, err := c.schema.fulltextCandidates(c.stmt.Where, c.info)
 		if err != nil {
-			return nil, false, err
+			return nil, dst, false, err
 		}
 		if used {
 			for key := range keys {
@@ -154,7 +180,7 @@ func (c *RowCursor) nextSourceRow() (map[string]Value, bool, error) {
 	for {
 		if c.iterator == nil {
 			if c.position >= len(c.intervals) {
-				return nil, false, nil
+				return nil, dst, false, nil
 			}
 			position := c.position
 			if c.reverse {
@@ -162,22 +188,36 @@ func (c *RowCursor) nextSourceRow() (map[string]Value, bool, error) {
 			}
 			interval := c.intervals[position]
 			c.position++
-			c.iterator = c.schema.newRangeIterator(interval.lower, interval.upper, c.reverse)
+			c.iterator = c.schema.newCursorRangeIterator(interval.lower, interval.upper, c.reverse)
 		}
 		if c.iterator.Valid() {
-			row := decodeRow(c.iterator.Value(), c.info)
+			// Decode before moving: streaming storage iterators may lend their
+			// encoded value only until Next/Prev. Decoded values own their bytes.
+			data := c.iterator.Value()
+			if c.physical != nil {
+				if c.condition == nil {
+					out = decodePointRowInto(data, c.info, c.physical, dst)
+					row = out
+				} else {
+					out = decodePointProjectionInto(data, c.info, c.physical, dst, c.condition)
+					row = c.condition
+				}
+			} else {
+				c.source = decodePointRowInto(data, c.info, c.sourcePlan, c.source)
+				row, out = c.source, dst
+			}
 			if c.reverse {
 				c.iterator.Prev()
 			} else {
 				c.iterator.Next()
 			}
-			return row, true, nil
+			return row, out, true, nil
 		}
 		err := storage.IteratorError(c.iterator)
 		c.iterator.Close()
 		c.iterator = nil
 		if err != nil {
-			return nil, false, err
+			return nil, dst, false, err
 		}
 	}
 }
@@ -256,7 +296,19 @@ func cursorCatalogPredicate(expression Expression, info *TableInfo, depth int) b
 	return false
 }
 
+// Next returns an independently owned row whose map and BLOBs remain valid
+// after cursor movement and Close.
 func (c *RowCursor) Next() (map[string]Value, bool, error) {
+	return c.NextInto(nil)
+}
+
+// NextInto reads a row using dst and its BLOB buffers as exclusive scratch.
+// The caller relinquishes all previous contents and aliases of dst. Pass nil,
+// or use Next, to retain independently owned rows across calls. Returned values
+// never alias storage pages or the cursor's private source and condition rows.
+// Each BLOB buffer in dst must be independently owned, without aliases to
+// another destination field.
+func (c *RowCursor) NextInto(dst map[string]Value) (map[string]Value, bool, error) {
 	if c.closed {
 		return nil, false, nil
 	}
@@ -268,17 +320,21 @@ func (c *RowCursor) Next() (map[string]Value, bool, error) {
 		c.Close()
 		return nil, false, nil
 	}
+	out := dst
 	for {
 		if err := c.schema.checkInterrupt(); err != nil {
 			c.Close()
 			return nil, false, err
 		}
-		row, found, err := c.nextSourceRow()
+		var row map[string]Value
+		var found bool
+		var err error
+		row, out, found, err = c.nextSourceRow(out)
 		if err != nil || !found {
 			c.Close()
 			return nil, false, err
 		}
-		if needsQualifiedRows(c.stmt) {
+		if c.qualified {
 			qualifyAccessRow(row, c.stmt.From, c.stmt.FromAlias)
 		}
 		if c.stmt.Where != nil {
@@ -295,17 +351,42 @@ func (c *RowCursor) Next() (map[string]Value, bool, error) {
 			c.skipped++
 			continue
 		}
-		out := make(map[string]Value, len(c.columns))
-		for _, col := range c.columns {
-			out[col.Name] = row[col.Name]
-		}
-		for _, expr := range c.expressions {
-			value, err := c.schema.evalExpr(expr.expr, row)
-			if err != nil {
-				c.Close()
-				return nil, false, err
+		if c.physical == nil {
+			if out == nil {
+				out = make(map[string]Value, len(c.columns))
 			}
-			out[expr.name] = value
+			for name := range out {
+				if !slices.ContainsFunc(c.columns, func(col ColumnDef) bool { return col.Name == name }) {
+					delete(out, name)
+				}
+			}
+			for i, col := range c.columns {
+				value := row[col.Name]
+				if i < len(c.expressions) {
+					value, err = c.schema.evalExpr(c.expressions[i].expr, row)
+					if err != nil {
+						c.Close()
+						return nil, false, err
+					}
+				}
+				if !value.Null && value.Type == ColBlob {
+					buffer := out[col.Name].Blob
+					value.Blob = append(buffer[:0], value.Blob...)
+					if value.Blob == nil {
+						value.Blob = []byte{}
+					}
+				}
+				out[col.Name] = value
+			}
+		}
+		// Selected fields belong to the caller, including when the caller
+		// switches destinations on its next call. Retain only private fields.
+		if c.condition != nil {
+			for _, col := range c.physical.pointDecodeMetadata {
+				if col.project {
+					delete(c.condition, col.name)
+				}
+			}
 		}
 		c.emitted++
 		return out, true, nil
@@ -316,7 +397,9 @@ func (c *RowCursor) Close() {
 		c.closed = true
 		if c.iterator != nil {
 			c.iterator.Close()
+			c.iterator = nil
 		}
+		c.source, c.condition = nil, nil
 		c.schema.clearSelectCaches()
 	}
 }
