@@ -1,6 +1,7 @@
 package mysqlserver
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha1"
 	"crypto/subtle"
@@ -30,7 +31,9 @@ type administrativeState struct {
 }
 type serverAccounts struct {
 	mu        sync.Mutex
+	writeMu   sync.Mutex
 	state     administrativeState
+	persisted []byte
 	databases map[string]*db.Database
 }
 
@@ -42,6 +45,7 @@ func (s *Server) initAccounts() error {
 		return err
 	}
 	a := &s.accounts
+	a.persisted = append([]byte(nil), data...)
 	a.state = administrativeState{Version: 1, Accounts: make(map[string]mysqlAccount)}
 	a.databases = map[string]*db.Database{s.config.Database: s.database}
 	if len(data) > 0 {
@@ -77,12 +81,65 @@ func (s *Server) saveAccountsLocked(ctx context.Context, next administrativeStat
 	if err != nil {
 		return err
 	}
-	if err = s.database.SetMySQLServerState(ctx, data); err != nil {
+	// SQL catalog readers can consult accounts while holding the execution gate.
+	// Never hold the account mutex while waiting for that gate. writeMu serializes
+	// administration handlers across this persistence/publication interval.
+	s.accounts.mu.Unlock()
+	err = s.database.SetMySQLServerState(ctx, data)
+	s.accounts.mu.Lock()
+	if err != nil {
 		return err
 	}
 	s.accounts.state = next
+	s.accounts.persisted = append([]byte(nil), data...)
 	return nil
 }
+
+// Refresh before SQL starts, never from a virtual-table callback while a
+// session already holds the execution gate. Replication applies administration
+// records through the same LSM hook as ordinary writes, including after failover.
+func (s *Server) refreshAccounts(ctx context.Context) error {
+	a := &s.accounts
+	for {
+		a.mu.Lock()
+		previous := append([]byte(nil), a.persisted...)
+		a.mu.Unlock()
+		data, err := s.database.MySQLServerStateContext(ctx)
+		if err != nil {
+			return err
+		}
+		a.mu.Lock()
+		if !bytes.Equal(previous, a.persisted) {
+			a.mu.Unlock()
+			continue
+		}
+		if bytes.Equal(data, a.persisted) {
+			a.mu.Unlock()
+			return nil
+		}
+		next := administrativeState{Version: 1, Accounts: make(map[string]mysqlAccount)}
+		if len(data) > 0 {
+			if err = json.Unmarshal(data, &next); err != nil {
+				a.mu.Unlock()
+				return fmt.Errorf("MySQL account metadata: %w", err)
+			}
+			if next.Version != 1 {
+				a.mu.Unlock()
+				return fmt.Errorf("unsupported MySQL account metadata version")
+			}
+		}
+		if next.Accounts == nil {
+			next.Accounts = make(map[string]mysqlAccount)
+		}
+		// Additional database directories are owned/opened by this Server and are
+		// standalone-only; refreshing replicated metadata changes credentials/grants.
+		a.state.Accounts = next.Accounts
+		a.persisted = append([]byte(nil), data...)
+		a.mu.Unlock()
+		return nil
+	}
+}
+
 func cloneAdministrativeState(state administrativeState) administrativeState {
 	next := administrativeState{Version: 1, Databases: append([]string(nil), state.Databases...), Accounts: make(map[string]mysqlAccount, len(state.Accounts))}
 	for key, a := range state.Accounts {

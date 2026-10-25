@@ -1,9 +1,11 @@
 package mysqlserver
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
+	"net"
 	"reflect"
 	"strings"
 	"testing"
@@ -59,12 +61,25 @@ func TestMySQLNamedLockWaitCancellation(t *testing.T) {
 	if err = owner.QueryRowContext(context.Background(), "SELECT GET_LOCK('cancel',0)").Scan(&got); err != nil || got != 1 {
 		t.Fatal(got, err)
 	}
+	waiter, err := pool.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer waiter.Close()
+	if err = waiter.QueryRowContext(context.Background(), "SELECT GET_LOCK('waiter_owned',0)").Scan(&got); err != nil || got != 1 {
+		t.Fatal(got, err)
+	}
 	deadline, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	if err = pool.QueryRowContext(deadline, "SELECT GET_LOCK('cancel',30)").Scan(&got); err == nil {
+	if err = waiter.QueryRowContext(deadline, "SELECT GET_LOCK('cancel',30)").Scan(&got); err == nil {
 		t.Fatal("lock wait ignored cancellation")
 	}
-	// Server shutdown cancels the disconnected wait and must finish promptly.
+	// A cancelled driver call disconnects its wire connection. Its own locks
+	// must be released even though it was waiting on someone else's lock.
+	if err = owner.QueryRowContext(context.Background(), "SELECT GET_LOCK('waiter_owned',2)").Scan(&got); err != nil || got != 1 {
+		t.Fatal("disconnected waiter retained ownership", got, err)
+	}
+	// Server shutdown cancels disconnected work and must finish promptly.
 	done := make(chan error, 1)
 	go func() { done <- s.server.Close() }()
 	select {
@@ -158,5 +173,33 @@ func TestMySQLPreparedColumnMetadataAndBinaryEncoding(t *testing.T) {
 	}
 	if rows.Next() || rows.Err() != nil {
 		t.Fatal("unexpected rows", rows.Err())
+	}
+}
+
+func TestMySQLCompatibilityVersion(t *testing.T) {
+	s := startTestServer(t, "tcp", Config{})
+	connection, err := net.Dial("tcp", s.address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+	if err = connection.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	packet, _, err := readPacket(connection, 0, 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	end := bytes.IndexByte(packet[1:], 0)
+	if end < 0 || string(packet[1:1+end]) != "5.7.44-SlopDB" {
+		t.Fatalf("handshake %q", packet)
+	}
+	pool := s.open(t, "slopdb", "", "slopdb")
+	var version, session, global string
+	if err = pool.QueryRow("SELECT VERSION(),@@version,@@GLOBAL.version").Scan(&version, &session, &global); err != nil {
+		t.Fatal(err)
+	}
+	if version != "5.7.44-SlopDB" || session != version || global != version {
+		t.Fatal(version, session, global)
 	}
 }

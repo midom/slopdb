@@ -76,6 +76,8 @@ func (c *client) administration(query string) (*db.ExecResult, bool, error) {
 }
 
 func (c *client) accountCommand(kind string, tokens []sql.Token) (*db.ExecResult, bool, error) {
+	c.server.accounts.writeMu.Lock()
+	defer c.server.accounts.writeMu.Unlock()
 	if !c.hasPrivilege("*", "CREATE USER", false) {
 		return nil, true, accessDenied("CREATE USER")
 	}
@@ -183,6 +185,8 @@ func (c *client) accountCommand(kind string, tokens []sql.Token) (*db.ExecResult
 }
 
 func (c *client) grantCommand(kind string, tokens []sql.Token) (*db.ExecResult, bool, error) {
+	c.server.accounts.writeMu.Lock()
+	defer c.server.accounts.writeMu.Unlock()
 	on := -1
 	for i := 1; i < len(tokens); i++ {
 		if tokenWord(tokens, i, "ON") {
@@ -307,6 +311,8 @@ func (c *client) showDatabases(tokens []sql.Token) (*db.ExecResult, bool, error)
 	return r, true, nil
 }
 func (c *client) createDatabase(tokens []sql.Token) (*db.ExecResult, bool, error) {
+	c.server.accounts.writeMu.Lock()
+	defer c.server.accounts.writeMu.Unlock()
 	i := 2
 	conditional := false
 	if tokenWord(tokens, i, "IF") {
@@ -372,7 +378,9 @@ func (c *client) createDatabase(tokens []sql.Token) (*db.ExecResult, bool, error
 		}
 		return nil, true, &protocolError{1007, "HY000", "database already exists"}
 	}
+	a.mu.Unlock()
 	database, err := c.server.database.OpenMySQLDatabase(c.ctx, name, true)
+	a.mu.Lock()
 	if err != nil {
 		return nil, true, err
 	}

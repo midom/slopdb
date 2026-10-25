@@ -27,7 +27,14 @@ func (c *client) authorize(statement sql.Statement) error {
 	case *sql.DeleteStmt:
 		required["DELETE"] = true
 	case *sql.CreateTableStmt:
-		required["CREATE"] = true
+		if stmt.Temporary {
+			required["CREATE TEMPORARY TABLES"] = true
+		} else {
+			required["CREATE"] = true
+		}
+		if stmt.Like != "" {
+			required["SELECT"] = true
+		}
 	case *sql.DropTableStmt:
 		required["DROP"] = true
 	case *sql.AlterTableStmt:
@@ -93,6 +100,9 @@ func (c *client) authorize(statement sql.Statement) error {
 }
 
 func (c *client) switchDatabase(name string) error {
+	if err := c.server.refreshAccounts(c.ctx); err != nil {
+		return err
+	}
 	a := &c.server.accounts
 	a.mu.Lock()
 	database := a.databases[name]

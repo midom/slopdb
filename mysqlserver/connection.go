@@ -177,6 +177,9 @@ func scalar(name string, value sql.Value) *db.ExecResult {
 }
 
 func (c *client) query(query string, stmt *db.Stmt, args []any) (*db.ExecResult, error) {
+	if err := c.server.refreshAccounts(c.ctx); err != nil {
+		return nil, err
+	}
 	c.beginDiagnostics(query)
 	if stmt == nil {
 		if result, handled, err := c.control(query); handled {

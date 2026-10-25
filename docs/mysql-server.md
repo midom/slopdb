@@ -49,6 +49,8 @@ WAL durability. The bootstrap account remains configured by startup flags and
 cannot be changed through SQL. Supported account hosts are exact addresses,
 `localhost` (including loopback TCP), and `%`; authentication uses
 `mysql_native_password`. TLS and client certificate checks apply to all accounts.
+The protocol reports MySQL compatibility version `5.7.44-SlopDB`, including the
+handshake, `VERSION()`, and session/global version variables.
 
 Server mode enables [MySQL quoting](sql-quoting.md) by default. Pass
 `--mysql-quoting=false` to use SlopDB's ordinary quoting rules. Other CLI storage,

@@ -2,6 +2,7 @@ package mysqlserver
 
 import (
 	"context"
+	"encoding/json"
 	"net"
 	"testing"
 
@@ -173,4 +174,77 @@ func TestMySQLInsertConflictPrivilegeChecks(t *testing.T) {
 	mustExec(t, owner, "GRANT UPDATE,DELETE ON wiki.* TO 'inserter'@'localhost'")
 	mustExec(t, inserter, "REPLACE INTO guarded VALUES(1,'allowed')")
 	mustExec(t, inserter, "INSERT INTO guarded VALUES(1,'value') ON DUPLICATE KEY UPDATE v='updated'")
+}
+
+func TestMySQLTemporaryAndLikePrivileges(t *testing.T) {
+	s := accountServer(t, t.TempDir())
+	owner := s.open(t, "owner", "owner-password", "wiki")
+	mustExec(t, owner, "CREATE TABLE source(id INT PRIMARY KEY)")
+	mustExec(t, owner, "CREATE USER 'temporary'@'localhost' IDENTIFIED BY 'password'")
+	mustExec(t, owner, "GRANT CREATE TEMPORARY TABLES ON wiki.* TO 'temporary'@'localhost'")
+	user := s.open(t, "temporary", "password", "wiki")
+	connection, err := user.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+	if _, err = connection.ExecContext(context.Background(), "CREATE TEMPORARY TABLE scratch(id INT)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = connection.ExecContext(context.Background(), "CREATE TABLE durable(id INT)"); err == nil {
+		t.Fatal("temporary privilege allowed persistent creation")
+	}
+	if _, err = connection.ExecContext(context.Background(), "CREATE TEMPORARY TABLE copy LIKE source"); err == nil {
+		t.Fatal("LIKE read source without SELECT")
+	}
+	mustExec(t, owner, "GRANT SELECT ON wiki.* TO 'temporary'@'localhost'")
+	if _, err = connection.ExecContext(context.Background(), "CREATE TEMPORARY TABLE copy LIKE source"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMySQLAccountsRefreshAppliedMetadata(t *testing.T) {
+	s := accountServer(t, t.TempDir())
+	owner := s.open(t, "owner", "owner-password", "wiki")
+	mustExec(t, owner, "CREATE TABLE guarded(id INT PRIMARY KEY)")
+	mustExec(t, owner, "INSERT INTO guarded VALUES(1)")
+	mustExec(t, owner, "CREATE USER 'reader'@'localhost' IDENTIFIED BY 'password'")
+	mustExec(t, owner, "GRANT SELECT ON wiki.* TO 'reader'@'localhost'")
+	reader := s.open(t, "reader", "password", "wiki")
+	var id int
+	if err := reader.QueryRow("SELECT id FROM guarded").Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a metadata record applied through replication by another leader.
+	data, err := s.database.MySQLServerState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state administrativeState
+	if err = json.Unmarshal(data, &state); err != nil {
+		t.Fatal(err)
+	}
+	key := accountKey("reader", "localhost")
+	account := state.Accounts[key]
+	account.PasswordHash = passwordHash("changed")
+	account.Grants = map[string]map[string]bool{}
+	state.Accounts[key] = account
+	data, err = json.Marshal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.database.SetMySQLServerState(context.Background(), data); err != nil {
+		t.Fatal(err)
+	}
+	if err = reader.QueryRow("SELECT id FROM guarded").Scan(&id); err == nil {
+		t.Fatal("applied revoke ignored on existing connection")
+	}
+	stale := s.open(t, "reader", "password", "")
+	if err = stale.Ping(); err == nil {
+		t.Fatal("applied password ignored")
+	}
+	changed := s.open(t, "reader", "changed", "")
+	if err = changed.Ping(); err != nil {
+		t.Fatal(err)
+	}
 }

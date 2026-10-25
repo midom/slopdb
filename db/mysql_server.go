@@ -33,7 +33,11 @@ var mysqlServerStateKey = []byte("\x00mysql_server_state_v1")
 // MySQLServerState is protocol administration metadata. It shares ordinary
 // storage durability and backup, but is never exposed as a user SQL table.
 func (d *Database) MySQLServerState() ([]byte, error) {
-	if err := d.execution.RLockContext(context.Background()); err != nil {
+	return d.MySQLServerStateContext(context.Background())
+}
+
+func (d *Database) MySQLServerStateContext(ctx context.Context) ([]byte, error) {
+	if err := d.execution.RLockContext(ctx); err != nil {
 		return nil, err
 	}
 	defer d.execution.RUnlock()

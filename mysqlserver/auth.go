@@ -24,7 +24,7 @@ const (
 	clientSessionTrack     uint32 = 1 << 23
 	capabilities                  = clientLongPassword | clientFoundRows | clientLongFlag | clientConnectDB | clientProtocol41 | clientTransactions | clientSecureConnection | clientPluginAuth | clientConnectAttrs | clientPluginAuthLenenc | clientSessionTrack
 	authPlugin                    = "mysql_native_password"
-	serverVersion                 = "5.7.0-SlopDB"
+	serverVersion                 = "5.7.44-SlopDB"
 )
 
 func (c *client) handshake() error {
@@ -154,6 +154,9 @@ func (c *client) handshake() error {
 			return err
 		}
 		c.writer.sequence = next
+	}
+	if err := c.server.refreshAccounts(c.ctx); err != nil {
+		return c.fail(1045, "28000", err.Error())
 	}
 	account, authenticated := c.server.authenticate(username, clientHost(c.conn), salt[:], auth)
 	if !authenticated {
