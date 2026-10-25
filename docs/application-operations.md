@@ -1,5 +1,9 @@
 # Query iteration, bulk loading, backup and integrity
 
+Application compatibility runs: [MediaWiki](mediawiki.md) and
+[WordPress](wordpress.md). Live engine layout and counters are available through
+[`SHOW LSM STATUS`](diagnostics.md#lsm-storage-status).
+
 `Database.Query`, `Session.Query`, `Tx.Query` and `Stmt.Query` return `*db.Rows`.
 Each has a `QueryContext` variant. A database query owns an independent session;
 a session or transaction query sees its own private writes and serializes other

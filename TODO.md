@@ -181,8 +181,12 @@ reverse seeks. `VACUUM` flushes writes and compacts SSTables.
 
 See [Raft replication](docs/replication.md) for operational limits.
 
+## Shared SQL frontends
+
 - [x] Shared logical types, function descriptors, prepared inference, session dialect/lexing and common one-statement bulk/streaming execution
 - [x] Typed MySQL user variables and passive shared global/Raft/LSM inspection
 - [x] Shared typed information_schema facts and SHOW/pg_catalog projections; see docs/catalogs.md
 - [x] Concurrent MySQL/PostgreSQL CLI listeners over one physical database
 - [x] PostgreSQL transactional temporary definitions and ON COMMIT actions
+- [x] Stock WordPress installer, HTTP/REST, media, cron, restart and integrity checks; see [WordPress compatibility](docs/wordpress.md)
+- [x] Qualified stars/labels, table-local MySQL index names, one-execution pagination counts and primary-key-dependent grouping
