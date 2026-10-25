@@ -269,6 +269,7 @@ func (c *client) query(query string, stmt *db.Stmt, args []any) (*db.ExecResult,
 	c.observation = &stateObservation{}
 	defer func() { c.observation = oldObservation }()
 	c.beginDiagnostics(query)
+	local := stmt != nil && stmt.LocalInspection()
 	if stmt == nil {
 		if result, handled, err := c.control(query); handled {
 			return result, err
@@ -280,9 +281,10 @@ func (c *client) query(query string, stmt *db.Stmt, args []any) (*db.ExecResult,
 		if len(statements) != 1 {
 			return nil, &protocolError{1064, "42000", "exactly one SQL statement is required"}
 		}
+		local = sql.IsLocalInspectionStatement(statements[0])
 	}
 	first := strings.ToUpper(sql.NewTokenizerWithOptions(query, c.currentDatabase().ParseOptions()).Next().Value)
-	if !c.autocommit && !c.session.InTransaction() && first != "BEGIN" && first != "START" && first != "COMMIT" && first != "ROLLBACK" && first != "WAIT" {
+	if !c.autocommit && !c.session.InTransaction() && !local && first != "BEGIN" && first != "START" && first != "COMMIT" && first != "ROLLBACK" && first != "WAIT" {
 		if _, err := c.session.ExecContext(c.ctx, "BEGIN"); err != nil {
 			return nil, err
 		}

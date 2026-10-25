@@ -13,6 +13,10 @@ import (
 
 var ErrStmtClosed = errors.New("prepared statement closed")
 
+// LocalInspection identifies statements that do not establish a data
+// transaction, even when a protocol has disabled autocommit.
+func (s *Stmt) LocalInspection() bool { return s != nil && s.query.LocalInspection() }
+
 // Stmt is a parsed, parameterized SQL statement with reusable execution plans. Database statements can be
 // shared by concurrent sessions and transactions on that database. Prepare on
 // a Session or Tx instead to bind the statement to that execution context.

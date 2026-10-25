@@ -42,6 +42,26 @@ func TestLiveGlobalVariablesAndRaftInspection(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer c.Close()
+	for _, query := range []string{"SET autocommit=0", "SET @observed=(SELECT @@read_only)"} {
+		if _, e = c.ExecContext(ctx, query); e != nil {
+			t.Fatal(query, e)
+		}
+	}
+	var observed int64
+	if e = c.QueryRowContext(ctx, "SELECT @observed").Scan(&observed); e != nil || observed != 1 {
+		t.Fatal(observed, e)
+	}
+	prepared, e := c.PrepareContext(ctx, "SET @observed=?")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = prepared.ExecContext(ctx, 2); e != nil {
+		t.Fatal(e)
+	}
+	prepared.Close()
+	if e = c.QueryRowContext(ctx, "SELECT @observed").Scan(&observed); e != nil || observed != 2 {
+		t.Fatal(observed, e)
+	}
 	var readOnly, super, raft, term, log int64
 	var role, engine string
 	q := "SELECT @@read_only,@@super_read_only,@@global.slopdb_raft_enabled,@@global.slopdb_raft_term,@@global.slopdb_raft_role,@@global.slopdb_storage_engine,@@log_bin"
