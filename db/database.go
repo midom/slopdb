@@ -776,6 +776,10 @@ func formatValue(v sql.Value) string {
 		return "NULL"
 	}
 	switch v.Type {
+	case sql.ColUnsigned, sql.ColDecimal:
+		return v.String()
+	case sql.ColJSON:
+		return "CAST(" + sqlQuote(v.Text) + " AS JSON)"
 	case sql.ColInteger:
 		return fmt.Sprintf("%d", v.Int)
 	case sql.ColReal:

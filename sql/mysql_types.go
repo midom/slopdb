@@ -57,6 +57,19 @@ func (p *Parser) parseColumnType(col *ColumnDef) error {
 		}
 		col.Declared = word
 		col.IntegerBits = bits
+	case "DECIMAL", "NUMERIC":
+		col.ColType = ColDecimal
+		col.Declared = "DECIMAL"
+		p.advance()
+		var err error
+		col.Precision, col.Scale, err = p.parseDecimalParameters()
+		if err != nil {
+			return err
+		}
+	case "JSON", "JSONB":
+		col.ColType = ColJSON
+		col.Declared = "JSON"
+		p.advance()
 	case "REAL", "DOUBLE", "FLOAT":
 		col.ColType = ColReal
 		p.advance()
@@ -166,7 +179,7 @@ func (p *Parser) parseColumnType(col *ColumnDef) error {
 		return nil
 	}
 	if strings.EqualFold(p.cur.Value, "UNSIGNED") {
-		if col.ColType != ColInteger && col.ColType != ColReal {
+		if col.ColType != ColInteger && col.ColType != ColReal && col.ColType != ColDecimal {
 			return fmt.Errorf("UNSIGNED requires a numeric column")
 		}
 		col.Unsigned = true
@@ -215,6 +228,9 @@ func mysqlNumericComparisonValue(v Value) Value {
 	}
 	text = strings.TrimSpace(text)
 	prefix := mysqlNumericPrefix.FindString(text)
+	if u, err := strconv.ParseUint(prefix, 10, 64); err == nil && u > math.MaxInt64 {
+		return NewUnsignedValue(u)
+	}
 	if i, err := strconv.ParseInt(prefix, 10, 64); err == nil {
 		return NewIntValue(i)
 	}
@@ -228,7 +244,7 @@ func mysqlMixedNumericCompare(a, b Value) (int, bool) {
 	if a.Null || b.Null {
 		return 0, false
 	}
-	numeric := func(v Value) bool { return v.Type == ColInteger || v.Type == ColReal }
+	numeric := isNumeric
 	stringValue := func(v Value) bool { return v.Type == ColText || v.Type == ColBlob }
 	if numeric(a) && stringValue(b) || numeric(b) && stringValue(a) {
 		return ValueCompare(mysqlNumericComparisonValue(a), mysqlNumericComparisonValue(b)), true
@@ -241,6 +257,25 @@ func mysqlMixedNumericCompare(a, b Value) (int, bool) {
 func normalizeColumnValue(v Value, col ColumnDef) (Value, error) {
 	if v.Null {
 		return v, nil
+	}
+	if col.ColType == ColDecimal {
+		return normalizeDecimal(v, col)
+	}
+	if col.ColType == ColJSON {
+		if v.Type == ColBlob {
+			return NewJSONValue(string(v.Blob))
+		}
+		return NewJSONValue(v.String())
+	}
+	if col.ColType == ColInteger && col.Unsigned {
+		if v.Type == ColText || v.Type == ColBlob {
+			if n, err := strconv.ParseUint(strings.TrimSpace(mysqlStringValue(v)), 10, 64); err == nil {
+				v = NewUnsignedValue(n)
+			}
+		}
+		if v.Type == ColUnsigned && v.Uint <= math.MaxInt64 {
+			v = NewIntValue(int64(v.Uint))
+		}
 	}
 	if len(col.EnumValues) > 0 && v.Type == ColInteger {
 		if v.Int < 1 || v.Int > int64(len(col.EnumValues)) {
@@ -319,6 +354,12 @@ func normalizeColumnValue(v Value, col ColumnDef) (Value, error) {
 
 func mysqlColumnRange(col ColumnDef, v Value) error {
 	if v.Null {
+		return nil
+	}
+	if v.Type == ColUnsigned {
+		if !col.Unsigned || col.ColType != ColInteger || col.IntegerBits > 0 && col.IntegerBits < 64 && v.Uint > ((uint64(1)<<col.IntegerBits)-1) {
+			return fmt.Errorf("integer value out of range for %s", col.Name)
+		}
 		return nil
 	}
 	if col.Unsigned && ((v.Type == ColInteger && v.Int < 0) || (v.Type == ColReal && v.Real < 0)) {
@@ -442,6 +483,7 @@ func formatIndexColumns(idx *IndexInfo) string {
 }
 func copyColumnType(dst, src *ColumnDef) {
 	dst.Declared = src.Declared
+	dst.Precision, dst.Scale = src.Precision, src.Scale
 	dst.Unsigned = src.Unsigned
 	dst.IntegerBits = src.IntegerBits
 	dst.FixedBinary = src.FixedBinary

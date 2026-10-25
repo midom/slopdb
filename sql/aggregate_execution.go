@@ -5,11 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/big"
 	"sort"
 	"strings"
 )
 
 type aggregateState struct {
+	exact        *big.Rat
+	integerWide  *big.Int
+	exactScale   int
+	hasReal      bool
 	owner        *Schema
 	distinctDisk *diskHash
 	seenBytes    int64
@@ -86,17 +91,40 @@ func addAggregateValue(a *aggregateState, f *FuncCallExpr, v Value) error {
 		if v.EnumValue {
 			v = NewIntValue(v.EnumOrdinal)
 		}
-		if v.Type != ColInteger && v.Type != ColReal {
+		if !isNumeric(v) {
 			return fmt.Errorf("%s requires numeric arguments", name)
+		}
+		if v.Type == ColReal {
+			a.hasReal = true
+		}
+		if v.Type == ColUnsigned || v.Type == ColDecimal {
+			if a.exact == nil {
+				a.exact = new(big.Rat)
+				if a.integerWide != nil {
+					a.exact.SetInt(a.integerWide)
+				} else {
+					a.exact.SetInt64(a.integer)
+				}
+			}
+			_, scale, _ := valueDecimal(v)
+			a.exactScale = max(a.exactScale, scale)
+		}
+		if a.exact != nil {
+			a.exact.Add(a.exact, valueRational(v))
 		}
 		a.total += toFloat(v)
 		if v.Type != ColInteger {
 			a.allInt = false
 		} else {
 			next := a.integer + v.Int
-			if v.Int > 0 && next < a.integer || v.Int < 0 && next > a.integer {
-				a.overflow = true
+			overflow := v.Int > 0 && next < a.integer || v.Int < 0 && next > a.integer
+			if overflow && a.integerWide == nil {
+				a.integerWide = big.NewInt(a.integer)
 			}
+			if a.integerWide != nil {
+				a.integerWide.Add(a.integerWide, big.NewInt(v.Int))
+			}
+			a.overflow = a.overflow || overflow
 			a.integer = next
 		}
 	}
@@ -113,6 +141,15 @@ func aggregateValue(a *aggregateState, f *FuncCallExpr) (Value, error) {
 			return NewRealValue(0), nil
 		}
 		return NewNullValue(), nil
+	}
+	if a.exact != nil && !a.hasReal && (name == "SUM" || name == "AVG") {
+		sum := new(big.Rat).Set(a.exact)
+		scale := a.exactScale
+		if name == "AVG" {
+			sum.Quo(sum, new(big.Rat).SetInt64(a.count))
+			scale = min(scale+4, 30)
+		}
+		return rationalDecimal(sum, scale)
 	}
 	switch name {
 	case "MIN", "MAX":
@@ -175,13 +212,13 @@ func decodeScanRow(data []byte, columns []scanColumn, row map[string]Value) {
 			continue
 		}
 		switch data[offset] {
-		case binTypeInt64, binTypeFloat64:
+		case binTypeInt64, binTypeFloat64, binTypeUint64:
 			if len(data)-offset >= 9 {
 				offset += 9
 			} else {
 				offset++
 			}
-		case binTypeText, binTypeBlob:
+		case binTypeText, binTypeBlob, binTypeDecimal, binTypeJSON:
 			length, n := binary.Uvarint(data[offset+1:])
 			if n > 0 && length <= uint64(len(data)-offset-1-n) {
 				offset += 1 + n + int(length)

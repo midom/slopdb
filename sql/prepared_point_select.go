@@ -191,11 +191,11 @@ func decodePointRowInto(data []byte, info *TableInfo, p *preparedExecutionPlan, 
 // text or BLOB. The normal decoder still handles every field used by WHERE.
 func skipPointValue(data []byte) int {
 	switch data[0] {
-	case binTypeInt64, binTypeFloat64:
+	case binTypeInt64, binTypeFloat64, binTypeUint64:
 		if len(data) >= 9 {
 			return 9
 		}
-	case binTypeText, binTypeBlob:
+	case binTypeText, binTypeBlob, binTypeDecimal, binTypeJSON:
 		length, n := binary.Uvarint(data[1:])
 		if n <= 0 || length > uint64(len(data)-1-n) {
 			return 1 + n

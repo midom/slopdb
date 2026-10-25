@@ -355,6 +355,10 @@ func scanValue(dest any, v sql.Value) error {
 		switch v.Type {
 		case sql.ColInteger:
 			primitive = v.Int
+		case sql.ColUnsigned:
+			primitive = v.Uint
+		case sql.ColDecimal, sql.ColJSON:
+			primitive = v.Text
 		case sql.ColReal:
 			primitive = v.Real
 		case sql.ColText:
@@ -391,6 +395,17 @@ func scanValue(dest any, v sql.Value) error {
 			*d = append([]byte{}, v.Blob...)
 			return nil
 		}
+	case *uint64:
+		if d != nil && !v.Null {
+			if v.Type == sql.ColUnsigned {
+				*d = v.Uint
+				return nil
+			}
+			if v.Type == sql.ColInteger && v.Int >= 0 {
+				*d = uint64(v.Int)
+				return nil
+			}
+		}
 	case *int64:
 		if d != nil && !v.Null && v.Type == sql.ColInteger {
 			*d = v.Int
@@ -413,7 +428,7 @@ func scanValue(dest any, v sql.Value) error {
 			}
 		}
 	case *string:
-		if d != nil && !v.Null && v.Type == sql.ColText {
+		if d != nil && !v.Null && (v.Type == sql.ColText || v.Type == sql.ColDecimal || v.Type == sql.ColJSON) {
 			*d = v.Text
 			return nil
 		}

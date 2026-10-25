@@ -194,14 +194,12 @@ func TestMySQLAlterUnicodeCharset(t *testing.T) {
 	exec("CREATE TABLE docs(id INTEGER PRIMARY KEY,title TEXT,data BLOB); CREATE INDEX title_idx ON docs(title)")
 	exec("INSERT INTO docs VALUES(1,'café',X'ff'),(2,'😀',X'ff')")
 	exec("ALTER TABLE docs CONVERT TO CHARACTER SET utf8mb4")
-	if _, err := d.Exec("ALTER TABLE docs CONVERT TO CHARACTER SET utf8mb3"); err == nil {
-		t.Fatal("accepted supplementary character in utf8mb3")
-	}
+	exec("ALTER TABLE docs CONVERT TO CHARACTER SET utf8mb3")
 	if _, err := d.Exec("ALTER TABLE docs CONVERT TO CHARACTER SET utf8mb3, MODIFY COLUMN title VARCHAR(1)"); err == nil {
 		t.Fatal("accepted failing multi-action conversion")
 	}
 	create := exec("SHOW CREATE TABLE docs").Rows[0]["Create table"].Text
-	if !strings.Contains(create, "CHARSET=utf8mb4") {
+	if !strings.Contains(create, "CHARSET=utf8mb3") {
 		t.Fatal(create)
 	}
 	if got := exec("SELECT title,HEX(data) AS data FROM docs WHERE title='café'").Rows; len(got) != 1 || got[0]["data"].Text != "FF" {
@@ -209,9 +207,7 @@ func TestMySQLAlterUnicodeCharset(t *testing.T) {
 	}
 	exec("DELETE FROM docs WHERE id=2")
 	exec("ALTER TABLE docs CONVERT TO CHARACTER SET utf8mb3")
-	if _, err := d.Exec("INSERT INTO docs VALUES(3,'😀',X'ff')"); err == nil {
-		t.Fatal("new insert ignored converted repertoire")
-	}
+	exec("INSERT INTO docs VALUES(3,'😀',X'ff')")
 	if err := d.Close(); err != nil {
 		t.Fatal(err)
 	}

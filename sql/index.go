@@ -51,7 +51,7 @@ func validateIndexColumns(columns []ColumnDef, names []string) error {
 // Validate after normal column affinity has been applied; NULL remains subject
 // to the column's NOT NULL/PRIMARY KEY constraints.
 func checkIndexedColumnType(table string, column ColumnDef, value Value) error {
-	if !value.Null && value.Type != column.ColType {
+	if !value.Null && value.Type != column.ColType && !(column.ColType == ColInteger && column.Unsigned && value.Type == ColUnsigned) {
 		return fmt.Errorf("datatype mismatch for indexed column %s.%s: expected %s, got %s", table, column.Name, column.ColType, value.Type)
 	}
 	return nil

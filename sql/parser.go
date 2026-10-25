@@ -2041,6 +2041,24 @@ func (p *Parser) parseUnary() (Expression, error) {
 	if err != nil {
 		return nil, err
 	}
+	for p.cur.Type == TokJSONArrow || p.cur.Type == TokJSONArrowText || p.cur.Type == TokJSONPath || p.cur.Type == TokJSONPathText {
+		operator := p.cur.Type
+		p.advance()
+		right, err := p.parsePrimary()
+		if err != nil {
+			return nil, err
+		}
+		name := "__JSON_GET"
+		switch operator {
+		case TokJSONArrowText:
+			name = "__JSON_GET_TEXT"
+		case TokJSONPath:
+			name = "__JSON_PATH"
+		case TokJSONPathText:
+			name = "__JSON_PATH_TEXT"
+		}
+		expr = &FuncCallExpr{Name: name, Args: []Expression{expr, right}}
+	}
 	for p.cur.Type == TokKeyword && strings.EqualFold(p.cur.Value, "COLLATE") {
 		p.advance()
 		if p.cur.Type != TokIdent && p.cur.Type != TokKeyword {
@@ -2132,6 +2150,15 @@ func (p *Parser) parsePrimary() (Expression, error) {
 		text := p.cur.Value
 		n, err := strconv.ParseInt(text, 10, 64)
 		if err != nil {
+			if n, parseErr := strconv.ParseUint(text, 10, 64); parseErr == nil {
+				p.advance()
+				return &LiteralExpr{Value: NewUnsignedValue(n)}, nil
+			}
+			value, parseErr := NewDecimalValue(text)
+			if parseErr == nil {
+				p.advance()
+				return &LiteralExpr{Value: value}, nil
+			}
 			f, err := strconv.ParseFloat(text, 64)
 			if err != nil {
 				return nil, err
@@ -2144,12 +2171,17 @@ func (p *Parser) parsePrimary() (Expression, error) {
 	}
 
 	if p.cur.Type == TokFloat {
+		raw := p.cur.Value
 		f, err := strconv.ParseFloat(p.cur.Value, 64)
 		if err != nil {
 			return nil, err
 		}
 		p.advance()
-		return &LiteralExpr{Value: NewRealValue(f)}, nil
+		value := NewRealValue(f)
+		if !strings.ContainsAny(raw, "eE") {
+			value.NumericText = raw
+		}
+		return &LiteralExpr{Value: value}, nil
 	}
 
 	if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "CASE" {
@@ -2173,6 +2205,12 @@ func (p *Parser) parsePrimary() (Expression, error) {
 		if typeName == "DOUBLE" && strings.EqualFold(p.cur.Value, "PRECISION") {
 			typeName = "DOUBLE PRECISION"
 			p.advance()
+		} else if typeName == "DECIMAL" || typeName == "NUMERIC" {
+			precision, scale, err := p.parseDecimalParameters()
+			if err != nil {
+				return nil, err
+			}
+			typeName = fmt.Sprintf("DECIMAL(%d,%d)", precision, scale)
 		} else if typeName == "BINARY" && p.cur.Type == TokLParen {
 			typeName, err = p.parseBinaryCastLength()
 			if err != nil {
@@ -2724,7 +2762,12 @@ func formatExpr(e Expression) string {
 			return "'" + strings.ReplaceAll(v.Text, "'", "''") + "'"
 		case ColBlob:
 			return "X'" + hex.EncodeToString(v.Blob) + "'"
+		case ColJSON:
+			return "CAST('" + strings.ReplaceAll(v.Text, "'", "''") + "' AS JSON)"
 		default:
+			if v.NumericText != "" {
+				return v.NumericText
+			}
 			return v.String()
 		}
 	case *ColumnRefExpr:

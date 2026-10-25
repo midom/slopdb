@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"math/big"
 	"math/rand"
 	"reflect"
 	"regexp"
@@ -2915,6 +2916,9 @@ func encodeIndexKey(indexName string, val Value, rowKey []byte) []byte {
 }
 
 func valueToSortableKey(v Value) string {
+	if v.Type == ColUnsigned || v.Type == ColDecimal || v.Type == ColJSON {
+		return string(appendClusteredValue(nil, v))
+	}
 	if v.Null {
 		return "\x00"
 	}
@@ -3285,7 +3289,7 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 				}
 				row[pkCol.Name] = NewIntValue(nextID)
 			} else {
-				if pkVal.Type != ColInteger {
+				if pkVal.Type != ColInteger && !(pkCol.Unsigned && pkVal.Type == ColUnsigned) {
 					return 0, nil, fmt.Errorf("datatype mismatch for INTEGER PRIMARY KEY")
 				}
 				val := pkVal.Int
@@ -3295,7 +3299,7 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 			}
 		}
 
-		if pkCol != nil && pkCol.ColType == ColInteger && len(info.PKColumns) == 1 {
+		if pkCol != nil && pkCol.ColType == ColInteger && len(info.PKColumns) == 1 && row[pkCol.Name].Type == ColInteger {
 			nextID = row[pkCol.Name].Int
 			if pkCol.AutoIncrement && nextID >= s.rowIDCount[s.rowCounterKey(tableName)] {
 				s.rowIDCount[s.rowCounterKey(tableName)] = nextID + 1
@@ -3486,7 +3490,7 @@ func (s *Schema) checkUniqueConstraintsOriginal(tableName string, info *TableInf
 	if pkCol != nil && len(info.PKColumns) <= 1 {
 		if pkCol.ColType == ColInteger {
 			v := row[pkCol.Name]
-			if v.Null || v.Type != ColInteger {
+			if v.Null || v.Type != ColInteger && !(pkCol.Unsigned && v.Type == ColUnsigned) {
 				return fmt.Errorf("datatype mismatch for INTEGER PRIMARY KEY")
 			}
 		}
@@ -3878,7 +3882,7 @@ func (s *Schema) insertFromSelect(stmt *InsertStmt, info *TableInfo) (int64, *Re
 			}
 		}
 
-		if pkCol != nil && pkCol.ColType == ColInteger && len(info.PKColumns) == 1 {
+		if pkCol != nil && pkCol.ColType == ColInteger && len(info.PKColumns) == 1 && row[pkCol.Name].Type == ColInteger {
 			nextID = row[pkCol.Name].Int
 			if pkCol.AutoIncrement && nextID >= s.rowIDCount[s.rowCounterKey(tableName)] {
 				s.rowIDCount[s.rowCounterKey(tableName)] = nextID + 1
@@ -5135,40 +5139,15 @@ func (s *Schema) evalAggregate(fc *FuncCallExpr, rows []map[string]Value) (Value
 		}
 		return NewTextValue(strings.Join(parts, separator)), nil
 	case "SUM", "TOTAL", "AVG":
-		for i, v := range values {
-			if v.EnumValue {
-				values[i] = NewIntValue(v.EnumOrdinal)
-			}
-		}
-		allInt := true
-		var isum int64
-		var total float64
+		state := &aggregateState{}
+		copy := *fc
+		copy.Distinct = false
 		for _, v := range values {
-			if v.Type != ColInteger && v.Type != ColReal {
-				return NewNullValue(), fmt.Errorf("%s requires numeric arguments", name)
-			}
-			total += toFloat(v)
-			if v.Type != ColInteger {
-				allInt = false
+			if err := addAggregateValue(state, &copy, v); err != nil {
+				return NewNullValue(), err
 			}
 		}
-		if name == "SUM" && allInt {
-			for _, v := range values {
-				next := isum + v.Int
-				if v.Int > 0 && next < isum || v.Int < 0 && next > isum {
-					return NewNullValue(), fmt.Errorf("integer overflow")
-				}
-				isum = next
-			}
-			return NewIntValue(isum), nil
-		}
-		if name == "AVG" {
-			total /= float64(len(values))
-		}
-		if math.IsNaN(total) || math.IsInf(total, 0) {
-			return NewNullValue(), fmt.Errorf("numeric value out of range")
-		}
-		return NewRealValue(total), nil
+		return aggregateValue(state, &copy)
 	}
 	return NewNullValue(), fmt.Errorf("unknown aggregate: %s", name)
 }
@@ -6050,6 +6029,9 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 			v.Blob = copyBytes(v.Blob)
 			return v, nil
 		}
+		if s.mysqlMode && e.Value.NumericText != "" {
+			return NewDecimalValue(e.Value.NumericText)
+		}
 		return e.Value, nil
 	case *ColumnRefExpr:
 		if e.Name == "*" {
@@ -6099,15 +6081,18 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 			}
 			return NewIntValue(0), nil
 		case "+":
-			if right.Type != ColInteger && right.Type != ColReal {
+			if !isNumeric(right) {
 				return NewNullValue(), fmt.Errorf("unary sign requires a numeric operand")
 			}
 			return right, nil
 		case "-":
-			if right.Type != ColInteger && right.Type != ColReal {
+			if !isNumeric(right) {
 				return NewNullValue(), fmt.Errorf("unary sign requires a numeric operand")
 			}
 
+			if right.Type == ColDecimal || right.Type == ColUnsigned {
+				return negateExactValue(right)
+			}
 			if right.Type == ColInteger {
 				if right.Int == math.MinInt64 {
 					return NewNullValue(), fmt.Errorf("integer overflow")
@@ -6158,6 +6143,9 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 }
 
 func (s *Schema) evalFunc(e *FuncCallExpr, row map[string]Value) (Value, error) {
+	if value, handled, err := s.evalJSONFunc(e, row); handled {
+		return value, err
+	}
 	if e.Name == fulltextFunction {
 		return s.evalFulltext(e, row)
 	}
@@ -6247,8 +6235,16 @@ func (s *Schema) evalFunc(e *FuncCallExpr, row map[string]Value) (Value, error) 
 		if v.Null {
 			return v, nil
 		}
-		if v.Type != ColInteger && v.Type != ColReal {
+		if !isNumeric(v) {
 			return NewNullValue(), fmt.Errorf("ABS requires a numeric argument")
+		}
+		if v.Type == ColUnsigned {
+			return v, nil
+		}
+		if v.Type == ColDecimal {
+			n, scale, _ := valueDecimal(v)
+			n.Abs(n)
+			return Value{Type: ColDecimal, Text: decimalText(n, scale)}, nil
 		}
 		if v.Type == ColInteger {
 			if v.Int == math.MinInt64 {
@@ -6272,7 +6268,7 @@ func (s *Schema) evalFunc(e *FuncCallExpr, row map[string]Value) (Value, error) 
 		if err != nil || v.Null {
 			return NewNullValue(), err
 		}
-		if v.Type != ColInteger && v.Type != ColReal {
+		if !isNumeric(v) {
 			return NewNullValue(), fmt.Errorf("ROUND requires a numeric argument")
 		}
 		digits := 0
@@ -6288,6 +6284,11 @@ func (s *Schema) evalFunc(e *FuncCallExpr, row map[string]Value) (Value, error) 
 			if digits > 30 {
 				digits = 30
 			}
+		}
+		if v.Type == ColDecimal || v.Type == ColUnsigned {
+			n, scale, _ := valueDecimal(v)
+			n = roundDecimal(n, scale, digits)
+			return Value{Type: ColDecimal, Text: decimalText(n, digits)}, nil
 		}
 		scale := math.Pow10(digits)
 		return NewRealValue(math.Round(toFloat(v)*scale) / scale), nil
@@ -6868,8 +6869,11 @@ func arithmeticValues(op string, lv, rv Value, fn func(float64, float64) float64
 	if lv.Null || rv.Null {
 		return NewNullValue(), nil
 	}
-	if (lv.Type != ColInteger && lv.Type != ColReal) || (rv.Type != ColInteger && rv.Type != ColReal) {
+	if !isNumeric(lv) || !isNumeric(rv) {
 		return NewNullValue(), fmt.Errorf("arithmetic requires numeric operands")
+	}
+	if lv.Type == ColUnsigned || rv.Type == ColUnsigned || lv.Type == ColDecimal || rv.Type == ColDecimal {
+		return extendedArithmetic(op, lv, rv)
 	}
 	if (op == "/" || op == "%") && toFloat(rv) == 0 {
 		return NewNullValue(), fmt.Errorf("division by zero")
@@ -7022,16 +7026,53 @@ func applyAffinity(v Value, typ ColumnType) Value {
 	if v.Null || v.Type == ColBlob {
 		return v
 	}
+	if typ == ColDecimal {
+		if n, err := NewDecimalValue(v.String()); err == nil {
+			return n
+		}
+		return v
+	}
+	if typ == ColJSON {
+		if n, err := NewJSONValue(v.String()); err == nil {
+			return n
+		}
+		return v
+	}
+	if typ == ColUnsigned {
+		if n, err := strconv.ParseUint(v.String(), 10, 64); err == nil {
+			return NewUnsignedValue(n)
+		}
+		return v
+	}
 	switch typ {
 	case ColInteger, ColReal:
 		if v.Type == ColText {
 			text := strings.TrimSpace(v.Text)
 			if n, err := strconv.ParseInt(text, 10, 64); err == nil {
 				v = NewIntValue(n)
+			} else if u, err := strconv.ParseUint(text, 10, 64); err == nil {
+				v = NewUnsignedValue(u)
 			} else if f, err := strconv.ParseFloat(text, 64); err == nil {
 				v = NewRealValue(f)
 			} else {
 				return v
+			}
+		}
+		if typ == ColReal && (v.Type == ColUnsigned || v.Type == ColDecimal) {
+			return NewRealValue(toFloatVal(v))
+		}
+		if typ == ColInteger && v.Type == ColUnsigned && v.Uint <= math.MaxInt64 {
+			return NewIntValue(int64(v.Uint))
+		}
+		if typ == ColInteger && v.Type == ColDecimal {
+			if n, scale, err := valueDecimal(v); err == nil {
+				factor := decimalPower(scale)
+				if new(big.Int).Rem(n, factor).Sign() == 0 {
+					n.Quo(n, factor)
+					if n.IsInt64() {
+						return NewIntValue(n.Int64())
+					}
+				}
 			}
 		}
 		if typ == ColReal && v.Type == ColInteger {
@@ -7059,6 +7100,30 @@ func (s *Schema) appendValueIdentity(buf []byte, v Value) []byte {
 }
 
 func appendValueIdentity(buf []byte, v Value) []byte {
+	if v.Type == ColUnsigned && v.Uint <= math.MaxInt64 {
+		v = NewIntValue(int64(v.Uint))
+	}
+	if v.Type == ColDecimal {
+		n, scale, err := valueDecimal(v)
+		if err == nil {
+			for scale > 0 {
+				q, r := new(big.Int), new(big.Int)
+				q.QuoRem(n, big.NewInt(10), r)
+				if r.Sign() != 0 {
+					break
+				}
+				n = q
+				scale--
+			}
+			if scale == 0 && n.IsInt64() {
+				v = NewIntValue(n.Int64())
+			} else if scale == 0 && n.Sign() >= 0 && n.BitLen() <= 64 {
+				v = NewUnsignedValue(n.Uint64())
+			} else {
+				v.Text = decimalText(n, scale)
+			}
+		}
+	}
 	if !v.Null && v.Type == ColReal && v.Real >= math.MinInt64 && v.Real < 9223372036854775808.0 && v.Real == math.Trunc(v.Real) {
 		v = NewIntValue(int64(v.Real))
 	}
@@ -7070,6 +7135,8 @@ func toFloat(v Value) float64 {
 		return float64(v.EnumOrdinal)
 	}
 	switch v.Type {
+	case ColUnsigned, ColDecimal:
+		return toFloatVal(v)
 	case ColInteger:
 		return float64(v.Int)
 	case ColReal:
@@ -7320,6 +7387,9 @@ const (
 	binTypeFloat64 byte = 2
 	binTypeText    byte = 3
 	binTypeBlob    byte = 4
+	binTypeUint64  byte = 5
+	binTypeDecimal byte = 6
+	binTypeJSON    byte = 7
 )
 
 func encodeRow(row map[string]Value, info *TableInfo) []byte {
@@ -7353,6 +7423,17 @@ func appendValue(buf []byte, v Value) []byte {
 		return append(buf, binTypeNull)
 	}
 	switch v.Type {
+	case ColUnsigned:
+		buf = append(buf, binTypeUint64)
+		return binary.LittleEndian.AppendUint64(buf, v.Uint)
+	case ColDecimal, ColJSON:
+		tag := binTypeDecimal
+		if v.Type == ColJSON {
+			tag = binTypeJSON
+		}
+		buf = append(buf, tag)
+		buf = binary.AppendUvarint(buf, uint64(len(v.Text)))
+		return append(buf, v.Text...)
 	case ColInteger:
 		buf = append(buf, binTypeInt64)
 		return binary.LittleEndian.AppendUint64(buf, uint64(v.Int))
@@ -7381,6 +7462,21 @@ func decodeValueInto(data, blobBuffer []byte) (Value, int) {
 		return NewNullValue(), 0
 	}
 	switch data[0] {
+	case binTypeUint64:
+		if len(data) < 9 {
+			return NewNullValue(), 1
+		}
+		return NewUnsignedValue(binary.LittleEndian.Uint64(data[1:9])), 9
+	case binTypeDecimal, binTypeJSON:
+		length, n := binary.Uvarint(data[1:])
+		if n <= 0 || length > uint64(len(data)-1-n) {
+			return NewNullValue(), 1
+		}
+		typ := ColDecimal
+		if data[0] == binTypeJSON {
+			typ = ColJSON
+		}
+		return Value{Type: typ, Text: string(data[1+n : 1+n+int(length)])}, 1 + n + int(length)
 	case binTypeNull:
 		return NewNullValue(), 1
 	case binTypeInt64:

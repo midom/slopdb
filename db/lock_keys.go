@@ -19,6 +19,8 @@ func lockValueKey(values []sql.Value) (string, bool) {
 			continue
 		}
 		switch v.Type {
+		case sql.ColDecimal, sql.ColUnsigned, sql.ColJSON:
+			return "", false // exact SQL comparison is authoritative for extended domains
 		case sql.ColInteger:
 			b = append(b, 1)
 			b = binary.LittleEndian.AppendUint64(b, uint64(v.Int))

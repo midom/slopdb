@@ -279,8 +279,12 @@ func argumentValue(arg any) (sql.Value, error) {
 			return sql.NewNullValue(), nil
 		}
 		switch v.Type {
-		case sql.ColInteger, sql.ColText:
+		case sql.ColInteger, sql.ColUnsigned, sql.ColText:
 			return v, nil
+		case sql.ColDecimal:
+			return sql.NewDecimalValue(v.Text)
+		case sql.ColJSON:
+			return sql.NewJSONValue(v.Text)
 		case sql.ColReal:
 			if !math.IsNaN(v.Real) && !math.IsInf(v.Real, 0) {
 				return v, nil
@@ -304,6 +308,7 @@ func argumentValue(arg any) (sql.Value, error) {
 		if v.Uint() <= math.MaxInt64 {
 			return sql.NewIntValue(int64(v.Uint())), nil
 		}
+		return sql.NewUnsignedValue(v.Uint()), nil
 	case reflect.Float32, reflect.Float64:
 		f := v.Float()
 		if !math.IsNaN(f) && !math.IsInf(f, 0) {

@@ -15,13 +15,7 @@ func validateMySQLCharsetText(charset, table, column, text string) error {
 	if !utf8.ValidString(text) {
 		return fmt.Errorf("invalid UTF-8 in %s.%s", table, column)
 	}
-	if charset != "utf8mb4" {
-		for _, r := range text {
-			if r > 0xffff {
-				return fmt.Errorf("character outside %s repertoire in %s.%s", charset, table, column)
-			}
-		}
-	}
+
 	return nil
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"math/big"
 	"regexp"
 	"strconv"
 	"strings"
@@ -49,6 +50,8 @@ func (s *Schema) mysqlAssignmentValue(v Value, col ColumnDef) (Value, error) {
 			v = NewIntValue(0)
 		case ColReal:
 			v = NewRealValue(0)
+		case ColDecimal:
+			v = NewIntValue(0)
 		case ColBlob:
 			v = NewBlobValue(nil)
 		default:
@@ -57,6 +60,27 @@ func (s *Schema) mysqlAssignmentValue(v Value, col ColumnDef) (Value, error) {
 				v = NewTextValue(col.EnumValues[0])
 			}
 		}
+	}
+	if col.ColType == ColInteger {
+		return s.mysqlIntegerAssignment(v, col)
+	}
+	if col.ColType == ColDecimal {
+		result, err := normalizeDecimal(v, col)
+		if err != nil && s.mysqlNonStrict() {
+			s.mysqlWarning(1264, "Out of range or incorrect DECIMAL value for column "+col.Name)
+			n, _, parseErr := valueDecimal(v)
+			if parseErr != nil {
+				return normalizeDecimal(NewIntValue(0), col)
+			}
+			limit := new(big.Int).Sub(decimalPower(col.Precision), big.NewInt(1))
+			if n.Sign() < 0 && !col.Unsigned {
+				limit.Neg(limit)
+			} else if n.Sign() < 0 {
+				limit.SetInt64(0)
+			}
+			return Value{Type: ColDecimal, Text: decimalText(limit, col.Scale)}, nil
+		}
+		return result, err
 	}
 	nonstrict := s.mysqlNonStrict()
 	warn := func(code uint16, message string) { s.mysqlWarning(code, message+" for column "+col.Name) }

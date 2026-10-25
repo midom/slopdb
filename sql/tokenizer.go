@@ -36,6 +36,10 @@ const (
 	TokInvalid
 	TokPercent
 	TokParameter
+	TokJSONArrow
+	TokJSONArrowText
+	TokJSONPath
+	TokJSONPathText
 )
 
 type Token struct {
@@ -190,7 +194,26 @@ func (t *Tokenizer) Next() (tok Token) {
 		return Token{Type: TokPlus, Value: "+"}
 	case '-':
 		t.pos++
+		if t.pos < len(t.input) && t.input[t.pos] == '>' {
+			t.pos++
+			if t.pos < len(t.input) && t.input[t.pos] == '>' {
+				t.pos++
+				return Token{Type: TokJSONArrowText, Value: "->>"}
+			}
+			return Token{Type: TokJSONArrow, Value: "->"}
+		}
 		return Token{Type: TokMinus, Value: "-"}
+	case '#':
+		t.pos++
+		if t.pos < len(t.input) && t.input[t.pos] == '>' {
+			t.pos++
+			if t.pos < len(t.input) && t.input[t.pos] == '>' {
+				t.pos++
+				return Token{Type: TokJSONPathText, Value: "#>>"}
+			}
+			return Token{Type: TokJSONPath, Value: "#>"}
+		}
+		return Token{Type: TokInvalid, Value: "#"}
 	case '*':
 		t.pos++
 		return Token{Type: TokStar, Value: "*"}

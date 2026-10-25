@@ -24,6 +24,7 @@ type typedInstruction struct {
 }
 
 type typedProgram struct {
+	mysqlMode bool
 	code      []typedInstruction
 	registers []Value
 	result    int
@@ -146,6 +147,9 @@ func (p *typedProgram) eval(slots []Value) (Value, error) {
 			v = i.value
 			if i.literal != nil {
 				v = i.literal.Value
+				if p.mysqlMode && v.NumericText != "" {
+					v, err = NewDecimalValue(v.NumericText)
+				}
 			}
 			if !v.Null && v.Type == ColBlob {
 				v.Blob = copyBytes(v.Blob)
@@ -174,10 +178,12 @@ func (p *typedProgram) eval(slots []Value) (Value, error) {
 					} else {
 						v = NewIntValue(1)
 					}
-				} else if v.Type != ColInteger && v.Type != ColReal {
+				} else if !isNumeric(v) {
 					err = fmt.Errorf("unary sign requires a numeric operand")
 				} else if i.op == "unary-" {
-					if v.Type == ColInteger {
+					if v.Type == ColUnsigned || v.Type == ColDecimal {
+						v, err = negateExactValue(v)
+					} else if v.Type == ColInteger {
 						if v.Int == math.MinInt64 {
 							err = fmt.Errorf("integer overflow")
 						} else {
@@ -341,6 +347,18 @@ func compileTypedAggregate(info *TableInfo, table, alias string, where Expressio
 const typedBatchRows = 128
 
 func (s *Schema) walkTypedAggregate(t *typedAggregate, info *TableInfo, needed map[string]bool, paths []*accessPath, groups map[string]*aggregateGroup, newGroup func() *aggregateGroup) error {
+	if t.where != nil {
+		t.where.mysqlMode = s.mysqlMode
+	}
+	for _, p := range t.group {
+		p.mysqlMode = s.mysqlMode
+	}
+	for _, p := range t.args {
+		if p != nil {
+			p.mysqlMode = s.mysqlMode
+		}
+	}
+
 	batch := make([]Value, typedBatchRows*t.width)
 	rows := 0
 	var groupMemory int64
@@ -461,13 +479,13 @@ func decodeTypedRow(data []byte, layout []int, row []Value) {
 			continue
 		}
 		switch data[offset] {
-		case binTypeInt64, binTypeFloat64:
+		case binTypeInt64, binTypeFloat64, binTypeUint64:
 			if len(data)-offset >= 9 {
 				offset += 9
 			} else {
 				offset++
 			}
-		case binTypeText, binTypeBlob:
+		case binTypeText, binTypeBlob, binTypeDecimal, binTypeJSON:
 			length, n := binary.Uvarint(data[offset+1:])
 			if n > 0 && length <= uint64(len(data)-offset-1-n) {
 				offset += 1 + n + int(length)

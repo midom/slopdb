@@ -467,9 +467,9 @@ func decodeSpillMap(data []byte) (map[string]Value, error) {
 		size := 1
 		switch data[0] {
 		case binTypeNull:
-		case binTypeInt64, binTypeFloat64:
+		case binTypeInt64, binTypeFloat64, binTypeUint64:
 			size = 9
-		case binTypeText, binTypeBlob:
+		case binTypeText, binTypeBlob, binTypeDecimal, binTypeJSON:
 			length, n := binary.Uvarint(data[1:])
 			if n <= 0 || length > uint64(len(data)-1-n) {
 				return nil, fmt.Errorf("invalid temporary spill value")

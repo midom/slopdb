@@ -53,7 +53,7 @@ func validateColumnValue(table string, col ColumnDef, v Value) error {
 	if err := mysqlColumnRange(col, v); err != nil {
 		return err
 	}
-	if !v.Null && v.Type != col.ColType {
+	if !v.Null && v.Type != col.ColType && !(col.ColType == ColInteger && col.Unsigned && v.Type == ColUnsigned) {
 		return fmt.Errorf("datatype mismatch for column %s.%s: expected %s, got %s", table, col.Name, col.ColType, v.Type)
 	}
 	if !v.Null && col.Length > 0 {
@@ -167,6 +167,12 @@ func validateScalarFunction(f *FuncCallExpr) error {
 	}
 	name := strings.ToUpper(f.Name)
 	n := len(f.Args)
+	if valid, known := validJSONFunction(name, n); known {
+		if !valid {
+			return fmt.Errorf("wrong number of arguments to %s", name)
+		}
+		return nil
+	}
 	if valid, known := validMySQLFunction(name, n); known {
 		if !valid {
 			return fmt.Errorf("wrong number of arguments to %s", name)
@@ -180,9 +186,9 @@ func validateScalarFunction(f *FuncCallExpr) error {
 		if name == "CAST" {
 			if literal, ok := f.Args[1].(*LiteralExpr); ok {
 				switch strings.ToUpper(mysqlCastTarget(literal.Value.Text)) {
-				case "INT", "INTEGER", "BIGINT", "REAL", "FLOAT", "DOUBLE", "DOUBLE PRECISION", "TEXT", "BLOB":
+				case "INT", "INTEGER", "BIGINT", "REAL", "FLOAT", "DOUBLE", "DOUBLE PRECISION", "TEXT", "BLOB", "JSON", "JSONB", "UNSIGNED", "UNSIGNED INTEGER":
 				default:
-					if _, _, ok := varyingCastType(literal.Value.Text); !ok {
+					if _, _, ok := varyingCastType(literal.Value.Text); !ok && !strings.HasPrefix(strings.ToUpper(literal.Value.Text), "DECIMAL(") && !strings.HasPrefix(strings.ToUpper(literal.Value.Text), "NUMERIC(") {
 						return fmt.Errorf("unsupported cast type: %s", literal.Value.Text)
 					}
 				}
@@ -233,8 +239,38 @@ func castSQLValue(value Value, target string) (Value, error) {
 		return NewNullValue(), nil
 	}
 	name := strings.ToUpper(target)
+	if name == "DECIMAL" || name == "NUMERIC" {
+		return NewDecimalValue(mysqlStringValue(value))
+	}
+	if name == "JSON" || name == "JSONB" {
+		return NewJSONValue(mysqlStringValue(value))
+	}
+	if name == "UNSIGNED" || name == "UNSIGNED INTEGER" {
+		n, scale, err := valueDecimal(value)
+		if err != nil {
+			return NewNullValue(), err
+		}
+		n.Quo(n, decimalPower(scale))
+		if n.Sign() < 0 {
+			return NewUnsignedValue(uint64(n.Int64())), nil
+		}
+		if n.BitLen() > 64 {
+			return NewNullValue(), fmt.Errorf("unsigned integer overflow")
+		}
+		return NewUnsignedValue(n.Uint64()), nil
+	}
+	if strings.HasPrefix(name, "DECIMAL(") || strings.HasPrefix(name, "NUMERIC(") {
+		var precision, scale int
+		if _, err := fmt.Sscanf(name[strings.IndexByte(name, '(')+1:], "%d,%d)", &precision, &scale); err != nil {
+			return NewNullValue(), fmt.Errorf("invalid DECIMAL cast")
+		}
+		return normalizeDecimal(value, ColumnDef{Name: "CAST", ColType: ColDecimal, Precision: precision, Scale: scale})
+	}
 	if v, handled, err := mysqlBinaryCast(value, name); handled {
 		return v, err
+	}
+	if name == "SIGNED" && value.Type == ColUnsigned {
+		return NewIntValue(int64(value.Uint)), nil
 	}
 	name = mysqlCastTarget(name)
 	if columnType, length, ok := varyingCastType(name); ok {
@@ -263,6 +299,20 @@ func castSQLValue(value Value, target string) (Value, error) {
 			} else {
 				return NewNullValue(), fmt.Errorf("invalid input for %s: %q", name, text)
 			}
+		}
+		if v.Type == ColDecimal || v.Type == ColUnsigned {
+			if name == "INT" || name == "INTEGER" || name == "BIGINT" {
+				n, scale, err := valueDecimal(v)
+				if err != nil {
+					return NewNullValue(), err
+				}
+				n.Quo(n, decimalPower(scale))
+				if !n.IsInt64() {
+					return NewNullValue(), fmt.Errorf("integer overflow")
+				}
+				return NewIntValue(n.Int64()), nil
+			}
+			return NewRealValue(toFloatVal(v)), nil
 		}
 		if v.Type != ColInteger && v.Type != ColReal {
 			return NewNullValue(), fmt.Errorf("invalid cast to %s", name)

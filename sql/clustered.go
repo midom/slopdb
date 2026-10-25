@@ -34,6 +34,18 @@ func appendClusteredValue(key []byte, value Value) []byte {
 		return append(key, 0)
 	}
 	switch value.Type {
+	case ColUnsigned:
+		if value.Uint <= math.MaxInt64 {
+			return appendClusteredValue(key, NewIntValue(int64(value.Uint)))
+		}
+		key = append(key, 5)
+		return binary.BigEndian.AppendUint64(key, value.Uint)
+	case ColDecimal:
+		key = append(key, 6)
+		return appendEscapedClustered(key, decimalSortKey(value.Text))
+	case ColJSON:
+		key = append(key, 7)
+		return appendEscapedClustered(key, []byte(value.Text))
 	case ColInteger:
 		key = append(key, 1)
 		return binary.BigEndian.AppendUint64(key, uint64(value.Int)^(1<<63))
@@ -73,4 +85,14 @@ func (s *Schema) isClusteredIndex(idx *IndexInfo) bool {
 	info := s.tables[idx.Table]
 	return info != nil && len(info.PKColumns) == 1 &&
 		len(idx.columnNames()) == 1 && idx.Column == info.PKColumns[0] && s.isAutoIndex(idx)
+}
+
+func appendEscapedClustered(key, data []byte) []byte {
+	for _, b := range data {
+		key = append(key, b)
+		if b == 0 {
+			key = append(key, 255)
+		}
+	}
+	return append(key, 0, 0)
 }

@@ -15,6 +15,55 @@ const maxDecimalDigits = 4096
 // copying a Value never shares a mutable arbitrary-precision accumulator.
 func NewUnsignedValue(n uint64) Value { return Value{Type: ColUnsigned, Uint: n} }
 
+func negateExactValue(v Value) (Value, error) {
+	if v.Type == ColUnsigned {
+		if v.Uint > uint64(math.MaxInt64)+1 {
+			return NewNullValue(), fmt.Errorf("integer overflow")
+		}
+		return NewIntValue(-int64(v.Uint)), nil
+	}
+	n, s, err := valueDecimal(v)
+	if err != nil {
+		return NewNullValue(), err
+	}
+	n.Neg(n)
+	return Value{Type: ColDecimal, Text: decimalText(n, s)}, nil
+}
+
+func (p *Parser) parseDecimalParameters() (precision, scale int, err error) {
+	precision = 10
+	if p.cur.Type != TokLParen {
+		return
+	}
+	p.advance()
+	if p.cur.Type != TokInt {
+		return 0, 0, fmt.Errorf("expected DECIMAL precision")
+	}
+	precision, err = strconv.Atoi(p.cur.Value)
+	if err != nil {
+		return
+	}
+	p.advance()
+	if p.cur.Type == TokComma {
+		p.advance()
+		if p.cur.Type != TokInt {
+			return 0, 0, fmt.Errorf("expected DECIMAL scale")
+		}
+		scale, err = strconv.Atoi(p.cur.Value)
+		if err != nil {
+			return
+		}
+		p.advance()
+	}
+	if err = p.expect(TokRParen); err != nil {
+		return
+	}
+	if precision < 1 || precision > 65 || scale < 0 || scale > 30 || scale > precision {
+		err = fmt.Errorf("DECIMAL requires precision 1..65 and scale 0..min(30,precision)")
+	}
+	return
+}
+
 func NewDecimalValue(text string) (Value, error) {
 	n, scale, err := parseDecimal(text)
 	if err != nil {
@@ -142,6 +191,23 @@ func valueRational(v Value) *big.Rat {
 
 func exactNumericCompare(a, b Value) int { return valueRational(a).Cmp(valueRational(b)) }
 
+func rationalDecimal(value *big.Rat, scale int) (Value, error) {
+	numerator := new(big.Int).Mul(value.Num(), decimalPower(scale))
+	q, r := new(big.Int), new(big.Int)
+	q.QuoRem(numerator, value.Denom(), r)
+	if new(big.Int).Lsh(new(big.Int).Abs(r), 1).Cmp(value.Denom()) >= 0 {
+		if numerator.Sign() < 0 {
+			q.Sub(q, big.NewInt(1))
+		} else {
+			q.Add(q, big.NewInt(1))
+		}
+	}
+	if len(q.String()) > maxDecimalDigits {
+		return NewNullValue(), fmt.Errorf("decimal value out of range")
+	}
+	return Value{Type: ColDecimal, Text: decimalText(q, scale)}, nil
+}
+
 func extendedArithmetic(op string, a, b Value) (Value, error) {
 	if a.Type == ColReal || b.Type == ColReal {
 		if a.Type != ColDecimal && b.Type != ColDecimal {
@@ -245,6 +311,57 @@ func normalizeDecimal(v Value, col ColumnDef) (Value, error) {
 		return NewNullValue(), fmt.Errorf("DECIMAL value out of range for %s", col.Name)
 	}
 	return Value{Type: ColDecimal, Text: decimalText(n, col.Scale)}, nil
+}
+
+func (s *Schema) mysqlIntegerAssignment(v Value, col ColumnDef) (Value, error) {
+	if v.Null {
+		return v, nil
+	}
+	if v.Type == ColBlob {
+		v = NewTextValue(string(v.Blob))
+	}
+	n, scale, err := valueDecimal(v)
+	if err != nil {
+		if !s.mysqlNonStrict() {
+			return v, fmt.Errorf("invalid integer value for %s", col.Name)
+		}
+		prefix := mysqlNumericPrefix.FindString(strings.TrimSpace(mysqlStringValue(v)))
+		if prefix == "" {
+			prefix = "0"
+		}
+		n, scale, err = parseDecimal(prefix)
+		if err != nil {
+			return v, err
+		}
+		s.mysqlWarning(1366, "Incorrect integer value for column "+col.Name)
+	}
+	n = roundDecimal(n, scale, 0)
+	bits := col.IntegerBits
+	if bits == 0 {
+		bits = 64
+	}
+	low, high := new(big.Int), new(big.Int)
+	if col.Unsigned {
+		high.Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1))
+	} else {
+		high.Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits-1)), big.NewInt(1))
+		low.Neg(new(big.Int).Lsh(big.NewInt(1), uint(bits-1)))
+	}
+	if n.Cmp(low) < 0 || n.Cmp(high) > 0 {
+		if !s.mysqlNonStrict() {
+			return v, fmt.Errorf("integer value out of range for %s", col.Name)
+		}
+		if n.Cmp(low) < 0 {
+			n = low
+		} else {
+			n = high
+		}
+		s.mysqlWarning(1264, "Out of range value for column "+col.Name)
+	}
+	if n.IsInt64() {
+		return NewIntValue(n.Int64()), nil
+	}
+	return NewUnsignedValue(n.Uint64()), nil
 }
 
 // Decimal sortable bytes use sign, a biased scientific exponent and significant
