@@ -133,3 +133,35 @@ func TestPostgresPreparedTextEncodingValidation(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+
+func TestPostgresMultiwordAndChainedParameterCasts(t *testing.T) {
+	s := startTestServer(t, "tcp", Config{})
+	ctx := context.Background()
+	c, e := pgx.Connect(ctx, s.dsn("slopdb", "", "slopdb"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer c.Close(ctx)
+	for _, tc := range []struct {
+		query         string
+		param, result uint32
+	}{
+		{`SELECT $1::timestamp with time zone`, oidTimestamptz, oidTimestamptz},
+		{`SELECT $1::time(3) with time zone`, oidTimetz, oidTimetz},
+		{`SELECT $1::int4::text`, oidInt4, oidText},
+		{`SELECT CAST(CAST($1 AS smallint) AS text)`, oidInt2, oidText},
+		{`SELECT $1::pg_catalog.uuid::text`, oidUUID, oidText},
+	} {
+		description, e := c.Prepare(ctx, tc.query, tc.query)
+		if e != nil {
+			t.Fatal(tc.query, e)
+		}
+		if len(description.ParamOIDs) != 1 || description.ParamOIDs[0] != tc.param || len(description.Fields) != 1 || description.Fields[0].DataTypeOID != tc.result {
+			t.Fatalf("%s: %+v", tc.query, description)
+		}
+	}
+	var got string
+	if e = c.QueryRow(ctx, `SELECT $1::int4::text`, int32(42)).Scan(&got); e != nil || got != "42" {
+		t.Fatal(got, e)
+	}
+}

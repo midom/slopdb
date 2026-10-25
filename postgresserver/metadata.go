@@ -431,6 +431,8 @@ func (m *metadata) expression(expr sql.Expression, env map[string]uint32) uint32
 	case *sql.FuncCallExpr:
 		name := strings.ToUpper(e.Name)
 		if name == "CAST" && len(e.Args) == 2 {
+			// Descend first so the closest cast determines a chained parameter type.
+			m.expression(e.Args[0], env)
 			if typ, ok := e.Args[1].(*sql.LiteralExpr); ok {
 				_, oid := typeName(typ.Value.Text)
 				if oid != 0 {

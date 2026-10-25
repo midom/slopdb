@@ -93,14 +93,6 @@ func translate(query string) (string, []int, map[int]uint32, error) {
 			return "", nil, nil, &protocolError{"54000", "invalid or excessive PostgreSQL parameters"}
 		}
 		replacement := "?"
-		if strings.HasPrefix(strings.TrimSpace(query[end:]), "::") {
-			look := sql.NewTokenizer(strings.TrimSpace(query[end:])[2:])
-			typ := look.Next()
-			_, oid := typeName(typ.Value)
-			if oid != 0 && hints[int(n)-1] == 0 {
-				hints[int(n)-1] = oid
-			}
-		}
 		out.WriteString(query[last:start])
 		out.WriteString(replacement)
 		last = end
