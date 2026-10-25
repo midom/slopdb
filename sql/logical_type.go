@@ -254,9 +254,9 @@ func LogicalTypeFromColumn(c ColumnDef) LogicalType {
 	if c.ColType == ColUnknown {
 		return logicalTypeID(TypeUnknown)
 	}
-	t := LogicalTypeFromDeclaration(c.Declared)
-	if c.SemanticType != TypeUnknown {
-		t = logicalTypeID(c.SemanticType)
+	t := logicalTypeID(c.SemanticType)
+	if c.SemanticType == TypeUnknown {
+		t = LogicalTypeFromDeclaration(c.Declared)
 	}
 	// Legacy/native INTEGER and REAL use native widths, regardless of spelling.
 	if !c.Postgres && c.SemanticType == TypeUnknown {

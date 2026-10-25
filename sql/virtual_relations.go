@@ -41,10 +41,17 @@ func (s *Schema) virtualRelationColumns(name string) ([]ColumnDef, bool, error) 
 	return nil, false, nil
 }
 func (s *Schema) resolveCatalogTables(stmt *SelectStmt) (*SelectStmt, error) {
-	mysql, _ := MySQLSession(s.ctx)
 	pg := s.expressionPostgres()
-	cp := *stmt
-	cp.Joins = append([]JoinClause(nil), stmt.Joins...)
+	cp := stmt
+	// Ordinary physical relations do not need a private AST. Clone lazily only
+	// when substitution or qualified native namespace resolution changes it.
+	copyStatement := func() {
+		if cp == stmt {
+			copy := *stmt
+			copy.Joins = append([]JoinClause(nil), stmt.Joins...)
+			cp = &copy
+		}
+	}
 	old := s.catalogView
 	defer func() { s.catalogView = old }()
 	var activities []SessionActivity
@@ -92,6 +99,7 @@ func (s *Schema) resolveCatalogTables(stmt *SelectStmt) (*SelectStmt, error) {
 			} else if pg {
 				data, err = s.PostgresCatalogTable(name)
 			} else {
+				mysql, _ := MySQLSession(s.ctx)
 				data, err = s.mysqlCatalogTable(strings.ToLower(name), mysql)
 			}
 			if err != nil {
@@ -105,31 +113,36 @@ func (s *Schema) resolveCatalogTables(stmt *SelectStmt) (*SelectStmt, error) {
 		}
 		return name, nil, nil
 	}
-	var sub *SelectStmt
-	var err error
-	if cp.From != "" {
-		cp.From, sub, err = resolve(cp.From, cp.FromAlias)
+	if stmt.From != "" {
+		name, sub, err := resolve(stmt.From, stmt.FromAlias)
 		if err != nil {
 			return nil, err
 		}
-		if sub != nil {
-			cp.FromExpr = &SubqueryExpr{Stmt: sub}
+		if name != stmt.From || sub != nil {
+			copyStatement()
+			cp.From = name
+			if sub != nil {
+				cp.FromExpr = &SubqueryExpr{Stmt: sub}
+			}
 		}
 	}
-	for i := range cp.Joins {
-		j := &cp.Joins[i]
+	for i, j := range stmt.Joins {
 		if j.Table == "" {
 			continue
 		}
-		j.Table, sub, err = resolve(j.Table, j.Alias)
+		name, sub, err := resolve(j.Table, j.Alias)
 		if err != nil {
 			return nil, err
 		}
-		if sub != nil {
-			j.Subquery = sub
+		if name != j.Table || sub != nil {
+			copyStatement()
+			cp.Joins[i].Table = name
+			if sub != nil {
+				cp.Joins[i].Subquery = sub
+			}
 		}
 	}
-	return &cp, nil
+	return cp, nil
 }
 
 // Only independent equality conjuncts may reduce catalog enumeration. OR,

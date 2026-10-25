@@ -200,16 +200,20 @@ func (p *Parser) parseColumnType(col *ColumnDef) error {
 }
 
 func decorateColumnValue(v Value, col ColumnDef) Value {
-	v = v.WithSemanticType(col.LogicalType().Kind)
+	return decorateTypedValue(v, col.LogicalType().Kind, col.Binary, col.Collation, col.EnumValues)
+}
+
+func decorateTypedValue(v Value, kind TypeID, binary bool, collation Collation, enums []string) Value {
+	v = v.WithSemanticType(kind)
 	v.HexLiteral = false
-	v.Binary = col.Binary
+	v.Binary = binary
 	if v.Type == ColText {
-		v.Collation = col.Collation
+		v.Collation = collation
 	}
-	if !v.Null && len(col.EnumValues) > 0 {
+	if !v.Null && len(enums) > 0 {
 		v.EnumValue = true
 		v.EnumOrdinal = 0
-		for i, x := range col.EnumValues {
+		for i, x := range enums {
 			if v.Text == x {
 				v.EnumValue = true
 				v.EnumOrdinal = int64(i + 1)

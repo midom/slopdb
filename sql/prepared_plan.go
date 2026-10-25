@@ -67,6 +67,8 @@ type preparedExecutionPlan struct {
 	pointProjection                    []ColumnDef
 	pointDecodeColumns                 []bool
 	pointDecodeCount                   int
+	pointSelectScratch                 map[string]Value
+	pointDecodeMetadata                []pointDecodeMetadata
 }
 
 func preparedSelectEligible(stmt *SelectStmt) bool {
@@ -341,6 +343,20 @@ func (p *preparedExecutionPlan) tupleCoverage(s *Schema, stmt *SelectStmt, idx *
 	return p.coverage[idx]
 }
 func (p *preparedExecutionPlan) releaseValues() {
+	// Only private, nonprojected row values may survive between executions.
+	// Bound the pooled scratch; it must never retain a caller's result BLOB.
+	retained := 0
+	for _, v := range p.pointSelectScratch {
+		retained += len(v.Blob) + len(v.Text)
+		if retained > 64<<10 {
+			clear(p.pointSelectScratch)
+			break
+		}
+	}
+	if len(p.pointSelectScratch) > 128 {
+		p.pointSelectScratch = nil
+	}
+
 	if len(p.pointRowScratch) > 128 {
 		p.pointRowScratch = nil
 	} else {

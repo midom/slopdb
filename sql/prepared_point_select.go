@@ -91,6 +91,24 @@ func (s *Schema) selectPreparedPoint(stmt *SelectStmt, info *TableInfo, dst *Res
 			}
 			return false, nil
 		})
+		p.pointDecodeMetadata = make([]pointDecodeMetadata, len(info.Columns))
+		for i, col := range info.Columns {
+			m := &p.pointDecodeMetadata[i]
+			m.name = col.Name
+			m.decode = p.pointDecodeColumns[i]
+			if m.decode {
+				m.kind = col.LogicalType().Kind
+				m.binary = col.Binary
+				m.collation = col.Collation
+				m.enums = col.EnumValues
+			}
+			for _, projected := range p.pointProjection {
+				if projected.Name == col.Name {
+					m.project = true
+					break
+				}
+			}
+		}
 	}
 	if len(p.pointProjection) == 0 || s.profile != nil {
 		return nil, false, nil
@@ -125,31 +143,32 @@ func (s *Schema) selectPreparedPoint(stmt *SelectStmt, info *TableInfo, dst *Res
 	if !found {
 		return result, true, nil
 	}
-	if dst == nil {
-		row = decodePointRowInto(data, info, p, nil)
+	conditionRow := row
+	if p.pointDecodeCount > len(p.pointProjection) {
+		if p.pointSelectScratch == nil {
+			p.pointSelectScratch = make(map[string]Value, p.pointDecodeCount)
+		}
+		conditionRow = p.pointSelectScratch
+		row = decodePointProjectionInto(data, info, p, row, conditionRow)
 	} else {
 		row = decodePointRowInto(data, info, p, row)
+		conditionRow = row
 	}
-	matches, err := s.evalCondition(stmt.Where, row)
+	// An empty/filter-mismatched Into result still owns its reusable row map.
+	if dst != nil && cap(result.Rows) == 0 {
+		result.Rows = append(result.Rows, row)[:0]
+	}
+	matches, err := s.evalCondition(stmt.Where, conditionRow)
+	if conditionRow != nil && p.pointDecodeCount > len(p.pointProjection) {
+		for _, col := range p.pointProjection {
+			conditionRow[col.Name] = NewNullValue()
+		}
+	}
 	if err != nil {
 		return nil, true, err
 	}
 	if !matches || stmt.Limit == 0 || stmt.Offset > 0 {
 		return result, true, nil
-	}
-	if !stmt.SelectAll {
-		for name := range row {
-			selected := false
-			for _, col := range p.pointProjection {
-				if col.Name == name {
-					selected = true
-					break
-				}
-			}
-			if !selected {
-				delete(row, name)
-			}
-		}
 	}
 	if err := s.checkInterrupt(); err != nil {
 		return nil, true, err
@@ -168,8 +187,8 @@ func decodePointRowInto(data []byte, info *TableInfo, p *preparedExecutionPlan, 
 	// The destination can have come from another query or an earlier catalog.
 	for name := range row {
 		found := false
-		for i, col := range info.Columns {
-			if col.Name == name && p.pointDecodeColumns[i] {
+		for _, col := range p.pointDecodeMetadata {
+			if col.name == name && col.decode {
 				found = true
 				break
 			}
@@ -179,24 +198,24 @@ func decodePointRowInto(data []byte, info *TableInfo, p *preparedExecutionPlan, 
 		}
 	}
 	offset := 0
-	for i, col := range info.Columns {
-		if !p.pointDecodeColumns[i] {
+	for _, col := range p.pointDecodeMetadata {
+		if !col.decode {
 			if offset < len(data) {
 				offset += skipPointValue(data[offset:])
 			}
 			continue
 		}
 		if offset >= len(data) {
-			row[col.Name] = NewNullValue()
+			row[col.name] = NewNullValue()
 			continue
 		}
-		var blobBuffer []byte
+		var previous Value
 		if reuse {
-			blobBuffer = row[col.Name].Blob
+			previous = row[col.name]
 		}
-		v, n := decodeValueInto(data[offset:], blobBuffer)
-		v = decorateColumnValue(v, col)
-		row[col.Name] = v
+		v, n := decodePointValueInto(data[offset:], previous)
+		v = decorateTypedValue(v, col.kind, col.binary, col.collation, col.enums)
+		row[col.name] = v
 		offset += n
 	}
 	return row
@@ -218,4 +237,77 @@ func skipPointValue(data []byte) int {
 		return 1 + n + int(length)
 	}
 	return 1
+}
+
+// Keep WHERE-only values private instead of repeatedly inserting/removing them
+// in the result map. Selected BLOB buffers always come from the current caller.
+func decodePointProjectionInto(data []byte, info *TableInfo, p *preparedExecutionPlan, row, condition map[string]Value) map[string]Value {
+	if row == nil {
+		row = make(map[string]Value, len(p.pointProjection))
+	}
+	for name := range row {
+		selected := false
+		for _, col := range p.pointProjection {
+			if col.Name == name {
+				selected = true
+				break
+			}
+		}
+		if !selected {
+			delete(row, name)
+		}
+	}
+	offset := 0
+	for _, col := range p.pointDecodeMetadata {
+		if !col.decode {
+			if offset < len(data) {
+				offset += skipPointValue(data[offset:])
+			}
+			continue
+		}
+		selected := col.project
+		previous := condition[col.name]
+		if selected {
+			previous = row[col.name]
+		}
+		value := NewNullValue()
+		if offset < len(data) {
+			var n int
+			value, n = decodePointValueInto(data[offset:], previous)
+			offset += n
+		}
+		value = decorateTypedValue(value, col.kind, col.binary, col.collation, col.enums)
+		condition[col.name] = value
+		if selected {
+			row[col.name] = value
+		}
+	}
+	return row
+}
+
+func decodePointValueInto(data []byte, previous Value) (Value, int) {
+	if len(data) > 0 {
+		typ := ColText
+		switch data[0] {
+		case binTypeDecimal:
+			typ = ColDecimal
+		case binTypeJSON:
+			typ = ColJSON
+		}
+		if data[0] == binTypeText || data[0] == binTypeDecimal || data[0] == binTypeJSON {
+			length, n := binary.Uvarint(data[1:])
+			if n > 0 && length <= uint64(len(data)-1-n) && previous.Type == typ && !previous.Null && length == uint64(len(previous.Text)) && string(data[1+n:1+n+int(length)]) == previous.Text {
+				return Value{Type: typ, Text: previous.Text}, 1 + n + int(length)
+			}
+		}
+	}
+	return decodeValueInto(data, previous.Blob)
+}
+
+type pointDecodeMetadata struct {
+	name                    string
+	kind                    TypeID
+	binary, decode, project bool
+	collation               Collation
+	enums                   []string
 }
