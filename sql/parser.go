@@ -2876,6 +2876,12 @@ func formatExpr(e Expression) string {
 	}
 	switch x := e.(type) {
 	case *LiteralExpr:
+		if x.Value.SemanticType == TypeBoolean && !x.Value.Null {
+			if x.Value.Int != 0 {
+				return "TRUE"
+			}
+			return "FALSE"
+		}
 		v := x.Value
 		if v.Null {
 			return "NULL"

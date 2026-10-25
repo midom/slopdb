@@ -190,7 +190,7 @@ func validateFunctionSyntax(f *FuncCallExpr) error {
 	return nil
 }
 func (s *Schema) evalResolvedFunction(f *FuncCallExpr, row map[string]Value) (Value, error) {
-	spec, known := LookupFunction(s.Dialect(), f.Name)
+	spec, known := LookupFunction(s.ExpressionDialect(), f.Name)
 	if !known {
 		return NewNullValue(), fmt.Errorf("unknown function: %s", strings.ToUpper(f.Name))
 	}
@@ -239,7 +239,7 @@ func (s *Schema) evalResolvedFunction(f *FuncCallExpr, row map[string]Value) (Va
 		column := spec.result(functionValueColumns(args))
 		if column.SemanticType != TypeUnknown {
 			value = value.WithSemanticType(column.SemanticType)
-		} else if s.PostgresMode() && column.Declared != "" {
+		} else if s.expressionPostgres() && column.Declared != "" {
 			value = value.WithDeclaredType(column.Declared)
 		}
 	}
@@ -264,5 +264,5 @@ func FunctionDeterministic(d Dialect, name string) bool {
 	return known && !spec.Volatile
 }
 func (s *Schema) deterministicFunction(name string) bool {
-	return FunctionDeterministic(s.Dialect(), name)
+	return FunctionDeterministic(s.ExpressionDialect(), name)
 }

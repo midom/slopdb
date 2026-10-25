@@ -749,6 +749,7 @@ func (s *Schema) alterView(a *AlterTableStmt) error {
 			return err
 		}
 		v.SQL = a.ViewSQL
+		v.DefinitionDialect = definitionDialect(s.ExpressionDialect())
 		v.Parsed = selectQuery(parsed[0])
 		v.Columns = slices.Clone(a.ViewColumns)
 	} else {

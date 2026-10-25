@@ -61,13 +61,15 @@ type IndexInfo struct {
 }
 
 type ViewInfo struct {
-	Name    string      `json:"name"`
-	SQL     string      `json:"sql"`
-	Columns []string    `json:"columns,omitempty"`
-	Parsed  *SelectStmt `json:"-"`
+	DefinitionDialect DefinitionDialect `json:"definition_dialect,omitempty"`
+	Name              string            `json:"name"`
+	SQL               string            `json:"sql"`
+	Columns           []string          `json:"columns,omitempty"`
+	Parsed            *SelectStmt       `json:"-"`
 }
 
 type Schema struct {
+	expressionDialect        DefinitionDialect
 	catalogView              *CatalogSnapshot
 	describeTypes            *preparedTypeInference
 	foreignChanges           []foreignChange
@@ -215,15 +217,16 @@ type savepoint struct {
 }
 
 type TriggerInfo struct {
-	Name       string   `json:"name"`
-	InsteadOf  bool     `json:"insteadof"`
-	Event      string   `json:"event"`
-	Timing     string   `json:"timing"`
-	Table      string   `json:"table"`
-	View       string   `json:"view"`
-	When       string   `json:"when"`
-	Body       []string `json:"body"`
-	ForEachRow bool     `json:"foreachrow"`
+	DefinitionDialect DefinitionDialect `json:"definition_dialect,omitempty"`
+	Name              string            `json:"name"`
+	InsteadOf         bool              `json:"insteadof"`
+	Event             string            `json:"event"`
+	Timing            string            `json:"timing"`
+	Table             string            `json:"table"`
+	View              string            `json:"view"`
+	When              string            `json:"when"`
+	Body              []string          `json:"body"`
+	ForEachRow        bool              `json:"foreachrow"`
 }
 
 const (
@@ -1628,6 +1631,9 @@ func (s *Schema) loadViews() error {
 		return err
 	}
 	for _, vi := range s.views {
+		if !vi.DefinitionDialect.valid() {
+			return fmt.Errorf("invalid definition dialect for view %q", vi.Name)
+		}
 		if vi.SQL != "" && vi.Parsed == nil {
 			stmts, err := Parse(vi.SQL)
 			if err != nil || len(stmts) != 1 {
@@ -1664,7 +1670,15 @@ func (s *Schema) loadTriggers() error {
 	if !ok {
 		return nil
 	}
-	return json.Unmarshal(data, &s.triggers)
+	if err := json.Unmarshal(data, &s.triggers); err != nil {
+		return err
+	}
+	for _, tr := range s.triggers {
+		if !tr.DefinitionDialect.valid() {
+			return fmt.Errorf("invalid definition dialect for trigger %q", tr.Name)
+		}
+	}
+	return nil
 }
 
 func (s *Schema) saveTriggers() error {
@@ -1688,7 +1702,7 @@ func (s *Schema) CreateView(stmt *CreateViewStmt) error {
 	if _, ok := s.views[name]; ok {
 		return fmt.Errorf("view %q already exists", name)
 	}
-	s.views[name] = &ViewInfo{Name: name, SQL: stmt.SQL, Columns: stmt.Columns, Parsed: stmt.Select}
+	s.views[name] = &ViewInfo{DefinitionDialect: definitionDialect(s.ExpressionDialect()), Name: name, SQL: stmt.SQL, Columns: stmt.Columns, Parsed: stmt.Select}
 	return s.saveViews()
 }
 
@@ -1731,7 +1745,7 @@ func (s *Schema) CreateTrigger(stmt *CreateTriggerStmt) error {
 	if stmt.When != nil {
 		when = formatExpr(stmt.When)
 	}
-	s.triggers[name] = &TriggerInfo{Name: name, Table: target, View: target, Timing: stmt.Timing, InsteadOf: stmt.InsteadOf, Event: stmt.Event, When: when, Body: stmt.BodySQL, ForEachRow: stmt.ForEachRow}
+	s.triggers[name] = &TriggerInfo{DefinitionDialect: definitionDialect(s.ExpressionDialect()), Name: name, Table: target, View: target, Timing: stmt.Timing, InsteadOf: stmt.InsteadOf, Event: stmt.Event, When: when, Body: stmt.BodySQL, ForEachRow: stmt.ForEachRow}
 	return s.saveTriggers()
 }
 func (s *Schema) DropTrigger(stmt *DropTriggerStmt) error {
@@ -1778,41 +1792,47 @@ func (s *Schema) fireTriggers(table, event, timing string, old, new map[string]V
 	defer func() { s.statementChanges = changes }()
 	for _, name := range names {
 		tr := s.triggers[name]
-		if tr.When != "" {
-			expr, err := parseExpr(tr.When)
-			if err != nil {
-				return err
-			}
-			match, err := s.evalCondition(expr, nil)
-			if err != nil {
-				return err
-			}
-			if !match {
-				continue
-			}
-		}
-		for _, body := range tr.Body {
-			stmts, err := Parse(body)
-			if err != nil {
-				return err
-			}
-			for _, stmt := range stmts {
-				switch st := stmt.(type) {
-				case *InsertStmt:
-					_, _, err = s.Insert(st)
-				case *UpdateStmt:
-					_, _, err = s.Update(st)
-				case *DeleteStmt:
-					_, _, err = s.Delete(st)
-				case *SelectStmt:
-					_, err = s.Select(st)
-				default:
-					err = fmt.Errorf("unsupported trigger statement")
-				}
+		if err := func() error {
+			defer s.enterDefinitionDialect(tr.DefinitionDialect)()
+			if tr.When != "" {
+				expr, err := parseExpr(tr.When)
 				if err != nil {
 					return err
 				}
+				match, err := s.evalCondition(expr, nil)
+				if err != nil {
+					return err
+				}
+				if !match {
+					return nil
+				}
 			}
+			for _, body := range tr.Body {
+				stmts, err := Parse(body)
+				if err != nil {
+					return err
+				}
+				for _, stmt := range stmts {
+					switch st := stmt.(type) {
+					case *InsertStmt:
+						_, _, err = s.Insert(st)
+					case *UpdateStmt:
+						_, _, err = s.Update(st)
+					case *DeleteStmt:
+						_, _, err = s.Delete(st)
+					case *SelectStmt:
+						_, err = s.Select(st)
+					default:
+						err = fmt.Errorf("unsupported trigger statement")
+					}
+					if err != nil {
+						return err
+					}
+				}
+			}
+			return nil
+		}(); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -4392,7 +4412,7 @@ func (s *Schema) validateQueryUncached(stmt *SelectStmt, info *TableInfo) error 
 			return validate(e.Right, allowAlias)
 		case *FuncCallExpr:
 			if !isAggregate(e) && e.Window == nil {
-				if err := validateResolvedFunction(s.Dialect(), e); err != nil {
+				if err := validateResolvedFunction(s.ExpressionDialect(), e); err != nil {
 					return err
 				}
 			}
@@ -4492,6 +4512,9 @@ func (s *Schema) SelectInto(stmt *SelectStmt, dst *ResultSet) (*ResultSet, error
 }
 
 func (s *Schema) selectInto(stmt *SelectStmt, dst *ResultSet) (result *ResultSet, err error) {
+	if stmt.definitionDialect != 0 {
+		defer s.enterDefinitionDialect(stmt.definitionDialect)()
+	}
 	restoreReadView, err := s.selectReadView(stmt)
 	if err != nil {
 		return nil, err
@@ -4603,6 +4626,7 @@ func (s *Schema) selectInto(stmt *SelectStmt, dst *ResultSet) (result *ResultSet
 			subCols := s.viewColumnDefs(vi)
 			info = &TableInfo{Name: tableName, Columns: subCols}
 			viewSelect := *vi.Parsed
+			viewSelect.definitionDialect = vi.DefinitionDialect
 			viewSelect.trackRows = trackKeys
 			stmt.FromExpr = &SubqueryExpr{Stmt: &viewSelect}
 			stmt.From = ""
@@ -6139,7 +6163,7 @@ func (s *Schema) deleteConflicts(table string, info *TableInfo, row map[string]V
 func truthValue(v Value) bool { return !v.Null && toFloat(v) != 0 }
 func (s *Schema) evalCondition(expr Expression, row map[string]Value) (bool, error) {
 	v, err := s.evalExpr(expr, row)
-	if s.MySQLMode() && v.HexLiteral {
+	if s.expressionMySQL() && v.HexLiteral {
 		v = mysqlHexNumber(v)
 	}
 	return truthValue(v), err
@@ -6153,7 +6177,7 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 			v.Blob = copyBytes(v.Blob)
 			return v, nil
 		}
-		if (s.MySQLMode() || s.PostgresMode()) && e.Value.NumericText != "" && !strings.ContainsAny(e.Value.NumericText, "eE") {
+		if (s.expressionMySQL() || s.expressionPostgres()) && e.Value.NumericText != "" && !strings.ContainsAny(e.Value.NumericText, "eE") {
 			return NewDecimalValue(e.Value.NumericText)
 		}
 		return e.Value, nil
@@ -6181,7 +6205,7 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 		return NewNullValue(), fmt.Errorf("no such column: %s", e.Name)
 	case *BinaryExpr:
 		value, err := s.evalBinary(e, row)
-		if s.PostgresMode() && postgresBooleanOperator(e.Op) {
+		if s.expressionPostgres() && postgresBooleanOperator(e.Op) {
 			value = value.WithDeclaredType("BOOLEAN")
 		}
 		return value, err
@@ -6204,12 +6228,12 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 			return right, nil
 		}
 		if right.Null {
-			if s.PostgresMode() && e.Op == "NOT" {
+			if s.expressionPostgres() && e.Op == "NOT" {
 				right = right.WithDeclaredType("BOOLEAN")
 			}
 			return right, nil
 		}
-		if s.MySQLMode() && right.HexLiteral {
+		if s.expressionMySQL() && right.HexLiteral {
 			right = mysqlHexNumber(right)
 		}
 		if right.EnumValue && (e.Op == "+" || e.Op == "-" || e.Op == "~") {
@@ -6262,13 +6286,13 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 		return s.evalFunc(e, row)
 	case *InListExpr:
 		value, err := s.evalInList(e, row)
-		if s.PostgresMode() {
+		if s.expressionPostgres() {
 			value = value.WithDeclaredType("BOOLEAN")
 		}
 		return value, err
 	case *BetweenExpr:
 		value, err := s.evalBetween(e, row)
-		if s.PostgresMode() {
+		if s.expressionPostgres() {
 			value = value.WithDeclaredType("BOOLEAN")
 		}
 		return value, err
@@ -6348,7 +6372,7 @@ func (s *Schema) evalCoreFunction(e *FuncCallExpr, row map[string]Value) (Value,
 		if v.Type == ColBlob {
 			return NewIntValue(int64(len(v.Blob))), nil
 		}
-		if s.MySQLMode() {
+		if s.expressionMySQL() {
 			return NewIntValue(int64(len(v.String()))), nil
 		}
 		return NewIntValue(int64(utf8.RuneCountInString(v.String()))), nil
@@ -6611,19 +6635,19 @@ func (s *Schema) evalCoreFunction(e *FuncCallExpr, row map[string]Value) (Value,
 		if err != nil {
 			return NewNullValue(), err
 		}
-		if s.PostgresMode() {
+		if s.expressionPostgres() {
 			if r, handled, e := s.CastPostgresCatalogValue(v, t.Text); handled {
 				return r, e
 			}
 			return CastPostgresValue(v, t.Text)
 		}
-		if s.MySQLMode() && v.HexLiteral {
+		if s.expressionMySQL() && v.HexLiteral {
 			target := strings.ToUpper(mysqlCastTarget(t.Text))
 			if target == "INTEGER" || target == "INT" || target == "BIGINT" || target == "UNSIGNED" || target == "UNSIGNED INTEGER" || target == "REAL" || target == "DOUBLE" || target == "FLOAT" || strings.HasPrefix(target, "DECIMAL") || strings.HasPrefix(target, "NUMERIC") {
 				v = mysqlHexNumber(v)
 			}
 		}
-		if s.MySQLMode() && (strings.EqualFold(t.Text, "DECIMAL") || strings.EqualFold(t.Text, "NUMERIC")) {
+		if s.expressionMySQL() && (strings.EqualFold(t.Text, "DECIMAL") || strings.EqualFold(t.Text, "NUMERIC")) {
 			return normalizeDecimal(v, ColumnDef{Name: "CAST", ColType: ColDecimal, Precision: 10, Scale: 0})
 		}
 		return castSQLValue(v, t.Text)
@@ -6634,7 +6658,7 @@ func (s *Schema) evalCoreFunction(e *FuncCallExpr, row map[string]Value) (Value,
 			return NewNullValue(), err
 		}
 		if v.Null {
-			if s.MySQLMode() {
+			if s.expressionMySQL() {
 				return NewNullValue(), nil
 			}
 			return NewTextValue(""), nil
@@ -6875,7 +6899,7 @@ func (s *Schema) evalBinary(e *BinaryExpr, row map[string]Value) (Value, error) 
 			}
 			membership := s.membership(rs)
 			found := membership.values[string(s.appendEqualityKey(nil, lv))]
-			if s.MySQLMode() {
+			if s.expressionMySQL() {
 				found = false
 				for _, candidate := range rs.Rows {
 					v := candidate[rs.Columns[0].Name]
@@ -7024,7 +7048,7 @@ func (s *Schema) evalArithmetic(e *BinaryExpr, row map[string]Value, fn func(flo
 	if err != nil {
 		return NewNullValue(), err
 	}
-	return arithmeticValuesMode(s.MySQLMode(), e.Op, lv, rv, fn)
+	return arithmeticValuesMode(s.expressionMySQL(), e.Op, lv, rv, fn)
 }
 
 // arithmeticValues is shared by interpreted and slot-bound execution so exact
@@ -7211,7 +7235,7 @@ func compareSQLValues(lv, rv Value, op string) Value {
 }
 
 func (s *Schema) valueCompare(a, b Value) int {
-	if s.MySQLMode() {
+	if s.expressionMySQL() {
 		if cmp, ok := mysqlMixedNumericCompare(a, b); ok {
 			return cmp
 		}
@@ -7768,6 +7792,7 @@ type ResultSet struct {
 }
 
 func (s *Schema) viewColumnDefs(vi *ViewInfo) []ColumnDef {
+	defer s.enterDefinitionDialect(vi.DefinitionDialect)()
 	s.viewDepth++
 	defer func() { s.viewDepth-- }()
 	if s.viewDepth > 100 {

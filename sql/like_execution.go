@@ -148,7 +148,7 @@ func (s *Schema) matchLikeKind(input, pattern string, escape byte, sensitive, bi
 
 func (s *Schema) matchLikeValues(input, pattern Value, escape byte) bool {
 	left, right := input.String(), pattern.String()
-	if s.MySQLMode() {
+	if s.expressionMySQL() {
 		left, right = mysqlStringValue(input), mysqlStringValue(pattern)
 	}
 	collation := explicitValueCollation(input, pattern)
@@ -156,7 +156,7 @@ func (s *Schema) matchLikeValues(input, pattern Value, escape byte) bool {
 		collation = s.collation
 	}
 	sensitive := false
-	binary := s.MySQLMode() && (input.Type == ColBlob || pattern.Type == ColBlob)
+	binary := s.expressionMySQL() && (input.Type == ColBlob || pattern.Type == ColBlob)
 	if binary && collation == "" {
 		return s.matchLikeKind(left, right, escape, true, true)
 	}

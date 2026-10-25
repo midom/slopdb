@@ -352,14 +352,14 @@ const typedBatchRows = 128
 
 func (s *Schema) walkTypedAggregate(t *typedAggregate, info *TableInfo, needed map[string]bool, paths []*accessPath, groups map[string]*aggregateGroup, newGroup func() *aggregateGroup) error {
 	if t.where != nil {
-		t.where.mysqlMode = s.MySQLMode()
+		t.where.mysqlMode = s.expressionMySQL()
 	}
 	for _, p := range t.group {
-		p.mysqlMode = s.MySQLMode()
+		p.mysqlMode = s.expressionMySQL()
 	}
 	for _, p := range t.args {
 		if p != nil {
-			p.mysqlMode = s.MySQLMode()
+			p.mysqlMode = s.expressionMySQL()
 		}
 	}
 

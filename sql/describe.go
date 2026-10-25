@@ -50,6 +50,7 @@ func (s *Schema) describeTable(name string, scope map[string][]ColumnDef, depth 
 		return append([]ColumnDef(nil), t.Columns...), nil
 	}
 	if v := s.views[name]; v != nil {
+		defer s.enterDefinitionDialect(v.DefinitionDialect)()
 		cols, err := s.describeStatement(v.Parsed, scope, depth+1)
 		if err != nil {
 			return nil, err
@@ -85,6 +86,9 @@ func describeEnv(cols []ColumnDef, table, alias string, env map[string]ColumnDef
 	}
 }
 func (s *Schema) describeStatement(stmt Statement, outer map[string][]ColumnDef, depth int) ([]ColumnDef, error) {
+	if st, ok := stmt.(*SelectStmt); ok && st.definitionDialect != 0 {
+		defer s.enterDefinitionDialect(st.definitionDialect)()
+	}
 	if depth > 64 {
 		return nil, fmt.Errorf("metadata nesting limit exceeded")
 	}
@@ -466,7 +470,7 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 			}
 			return ColumnDef{ColType: ColUnknown}, nil
 		}
-		if (s.MySQLMode() || s.PostgresMode()) && (e.Value.NumericText != "" && !strings.ContainsAny(e.Value.NumericText, "eE") || e.Value.Type == ColDecimal) {
+		if (s.expressionMySQL() || s.expressionPostgres()) && (e.Value.NumericText != "" && !strings.ContainsAny(e.Value.NumericText, "eE") || e.Value.Type == ColDecimal) {
 			value := e.Value
 			if value.NumericText != "" {
 				var err error
@@ -486,7 +490,7 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 			return ColumnDef{ColType: ColDecimal, Precision: max(digits, scale), Scale: scale, NotNull: true}, nil
 		}
 		col := ColumnDef{ColType: e.Value.Type, NotNull: true}
-		if s.PostgresMode() {
+		if s.expressionPostgres() {
 			if typ := e.Value.LogicalType(); typ.Known() {
 				col.SemanticType = typ.Kind
 				col.Declared = typ.Declaration()
@@ -591,7 +595,7 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 				b = s.describeParameter(p.Index)
 			}
 		}
-		if s.MySQLMode() {
+		if s.expressionMySQL() {
 			if mysqlNumericHexExpression(e.Left) {
 				a = ColumnDef{ColType: ColUnsigned, Unsigned: true}
 			}
@@ -601,7 +605,7 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 		}
 		switch strings.ToUpper(e.Op) {
 		case "=", "!=", "<>", "<", ">", "<=", ">=", "AND", "OR", "IS", "IS NOT", "LIKE", "NOT LIKE", "REGEXP", "GLOB":
-			if s.PostgresMode() {
+			if s.expressionPostgres() {
 				return ColumnDef{ColType: ColInteger, Declared: "BOOLEAN", Postgres: true}, nil
 			}
 			return integer, nil
@@ -613,7 +617,7 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 		if a.ColType == ColReal || b.ColType == ColReal {
 			return real, nil
 		}
-		if e.Op == "/" && (s.MySQLMode() || a.ColType == ColDecimal || b.ColType == ColDecimal) {
+		if e.Op == "/" && (s.expressionMySQL() || a.ColType == ColDecimal || b.ColType == ColDecimal) {
 			return ColumnDef{ColType: ColDecimal, Declared: "DECIMAL", Precision: 65, Scale: min(30, a.Scale+4)}, nil
 		}
 		if a.ColType == ColText || b.ColType == ColText {
@@ -677,9 +681,9 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 				}
 				name := strings.ToUpper(mysqlCastTarget(target.Value.Text))
 				c := describeType(name)
-				if s.PostgresMode() {
+				if s.expressionPostgres() {
 					c = postgresDescribeType(name)
-				} else if !s.MySQLMode() && (name == "DECIMAL" || name == "NUMERIC") {
+				} else if !s.expressionMySQL() && (name == "DECIMAL" || name == "NUMERIC") {
 					c = ColumnDef{ColType: ColDecimal, Declared: name}
 				}
 				s.constrainDescription(e.Args[0], c, env)
@@ -687,7 +691,7 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 			}
 		}
 
-		if err := validateResolvedFunction(s.Dialect(), e); err != nil && !isAggregate(e) && e.Window == nil {
+		if err := validateResolvedFunction(s.ExpressionDialect(), e); err != nil && !isAggregate(e) && e.Window == nil {
 
 			return text, err
 		}
@@ -699,13 +703,13 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 				return text, err
 			}
 			args = append(args, c)
-			if s.MySQLMode() && mysqlNumericMetadataFunction(name) {
+			if s.expressionMySQL() && mysqlNumericMetadataFunction(name) {
 				if mysqlNumericHexExpression(a) {
 					args[len(args)-1] = ColumnDef{ColType: ColUnsigned, Unsigned: true}
 				}
 			}
 		}
-		if expected, known, err := FunctionArgumentTypes(s.Dialect(), name, args); known || err != nil {
+		if expected, known, err := FunctionArgumentTypes(s.ExpressionDialect(), name, args); known || err != nil {
 			if err != nil {
 				return text, err
 			}
@@ -724,7 +728,7 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 				}
 			}
 		}
-		if column, known, err := FunctionMetadata(s.Dialect(), name, args); known || err != nil {
+		if column, known, err := FunctionMetadata(s.ExpressionDialect(), name, args); known || err != nil {
 			return column, err
 		}
 		return ColumnDef{ColType: ColUnknown}, nil

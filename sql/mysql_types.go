@@ -462,10 +462,10 @@ func (s *Schema) normalizeMySQLRow(info *TableInfo, row map[string]Value) error 
 	return nil
 }
 func (s *Schema) comparisonAffinity(v Value, col ColumnDef) Value {
-	if s.MySQLMode() && v.HexLiteral && (col.ColType == ColInteger || col.ColType == ColReal || col.ColType == ColDecimal) {
+	if s.expressionMySQL() && v.HexLiteral && (col.ColType == ColInteger || col.ColType == ColReal || col.ColType == ColDecimal) {
 		v = mysqlHexNumber(v)
 	}
-	if s.MySQLMode() && col.ColType == ColBlob && v.Type == ColText && !v.Null {
+	if s.expressionMySQL() && col.ColType == ColBlob && v.Type == ColText && !v.Null {
 		return NewBlobValue([]byte(v.Text))
 	}
 	return applyAffinity(v, col.ColType)

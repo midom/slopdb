@@ -22,7 +22,7 @@ func validPostgresFunction(name string, n int) (bool, bool) {
 	return ok && spec.valid(n), ok
 }
 func (s *Schema) describePostgresFunction(e *FuncCallExpr, env map[string]ColumnDef, scope map[string][]ColumnDef, depth int) (ColumnDef, bool, error) {
-	if !s.PostgresMode() {
+	if !s.expressionPostgres() {
 		return ColumnDef{}, false, nil
 	}
 	args := make([]ColumnDef, len(e.Args))
@@ -33,7 +33,7 @@ func (s *Schema) describePostgresFunction(e *FuncCallExpr, env map[string]Column
 		}
 		args[i] = c
 	}
-	return FunctionMetadata(s.Dialect(), e.Name, args)
+	return FunctionMetadata(s.ExpressionDialect(), e.Name, args)
 }
 
 func postgresBooleanOperator(op string) bool {
@@ -48,13 +48,13 @@ func (s *Schema) postgresBooleanValue(b bool) Value {
 	if b {
 		v.Int = 1
 	}
-	if s.PostgresMode() {
+	if s.expressionPostgres() {
 		v = v.WithSemanticType(TypeBoolean)
 	}
 	return v
 }
 func (s *Schema) booleanColumn() ColumnDef {
-	if s.PostgresMode() {
+	if s.expressionPostgres() {
 		return LogicalType{Kind: TypeBoolean}.Column()
 	}
 	return ColumnDef{ColType: ColInteger}

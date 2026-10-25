@@ -199,31 +199,32 @@ type InsertStmt struct {
 }
 
 type SelectStmt struct {
-	JoinGroup    bool // internal parenthesized joined table, preserves its qualified namespace
-	Windows      []WindowDefinition
-	prepared     *preparedExecutionPlan
-	With         *WithClause
-	Compound     *UnionStmt
-	materialized *ResultSet
-	Columns      []SelectColumn
-	From         string
-	FromAlias    string
-	FromExpr     Expression
-	Joins        []JoinClause
-	Virtual      *VirtualTable
-	Where        Expression
-	OrderBy      []OrderByClause
-	Limit        int64
-	Offset       int64
-	LimitParam   int // one-based parameter index; zero means a constant
-	OffsetParam  int
-	SelectAll    bool
-	Distinct     bool
-	GroupBy      []Expression
-	Having       Expression
-	Lock         *SelectLock
-	trackRows    bool // retain physical row origins when expanding a view
-	mutationRows bool // retain each physical table alias's row identity for joined DML
+	definitionDialect DefinitionDialect // originating stored view expression semantics
+	JoinGroup         bool              // internal parenthesized joined table, preserves its qualified namespace
+	Windows           []WindowDefinition
+	prepared          *preparedExecutionPlan
+	With              *WithClause
+	Compound          *UnionStmt
+	materialized      *ResultSet
+	Columns           []SelectColumn
+	From              string
+	FromAlias         string
+	FromExpr          Expression
+	Joins             []JoinClause
+	Virtual           *VirtualTable
+	Where             Expression
+	OrderBy           []OrderByClause
+	Limit             int64
+	Offset            int64
+	LimitParam        int // one-based parameter index; zero means a constant
+	OffsetParam       int
+	SelectAll         bool
+	Distinct          bool
+	GroupBy           []Expression
+	Having            Expression
+	Lock              *SelectLock
+	trackRows         bool // retain physical row origins when expanding a view
+	mutationRows      bool // retain each physical table alias's row identity for joined DML
 }
 
 // SelectLock applies to rows from tables in this SELECT's query block.
