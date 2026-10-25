@@ -206,3 +206,18 @@ func TestPrefixUniqueCollationChangeIsAtomic(t *testing.T) {
 	}
 	objectExec(t, d, "INSERT INTO p VALUES(3,'Ca-three')")
 }
+
+func TestNamedPrefixConstraintOnTextPrimaryKey(t *testing.T) {
+	d, err := Open(t.TempDir(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	objectExec(t, d, "CREATE TABLE p(v TEXT PRIMARY KEY,CONSTRAINT prefix_unique UNIQUE KEY(v(2)));INSERT INTO p VALUES('alpha')")
+	if _, err = d.Exec("INSERT INTO p VALUES('alpine')"); err == nil {
+		t.Fatal("prefix constraint incorrectly treated as clustered full key")
+	}
+	if _, err = d.CheckIntegrity(); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -83,7 +83,7 @@ func appendClusteredValue(key []byte, value Value) []byte {
 
 func (s *Schema) isClusteredIndex(idx *IndexInfo) bool {
 	info := s.tables[idx.Table]
-	return info != nil && len(info.PKColumns) == 1 &&
+	return info != nil && !idx.hasPrefixes() && !idx.Fulltext && len(info.PKColumns) == 1 &&
 		len(idx.columnNames()) == 1 && idx.Column == info.PKColumns[0] && s.isAutoIndex(idx)
 }
 
