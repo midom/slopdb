@@ -14,9 +14,11 @@ Schema DDL and transaction markers still use MySQL query events. MySQL logs
 DDL as statements even with ROW logging; those events do not make the data
 stream statement-based. See the [MySQL binary logging documentation](https://dev.mysql.com/doc/refman/8.4/en/replication-options-binary-log.html).
 
-`SHOW MASTER STATUS`, `SHOW BINARY LOG STATUS`, a binlog dump, or a replication
-identity-variable query activates the journal. Embedders can call
-`Database.EnableCDC(ctx)` explicitly. Activation and subsequent records use the
+`SHOW MASTER STATUS`, `SHOW BINARY LOG STATUS` or a binlog dump activates the
+journal. Embedders can call `Database.EnableChangefeed(ctx)` explicitly
+(`EnableCDC` remains a compatibility alias). Passive identity/global/status
+queries do not activate it: before activation, `log_bin=0`, `server_id=0` and
+`server_uuid` is empty. Activation and subsequent records use the
 configured WAL/replication durability. Activation records the initial catalog;
 row history before activation is unavailable. Once enabled, logging continues
 across restarts, including without an active MySQL listener.

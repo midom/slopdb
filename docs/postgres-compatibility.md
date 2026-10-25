@@ -28,15 +28,16 @@ comparing UUID/temporal columns with strings. REGCLASS text output currently use
 numeric OIDs. Arrays, composites, enums/domains, ranges, spatial,
 network and full-text PostgreSQL types remain open.
 
-Read committed is the default. REPEATABLE READ retains the existing native
-MySQL-style snapshot rule: SELECT uses the transaction snapshot; locking reads
-and updates use current committed data. This does not implement PostgreSQL
-snapshot-isolation update-conflict behavior. SERIALIZABLE, predicate locking
+Read committed is the default. PostgreSQL REPEATABLE READ uses one transaction
+snapshot for SELECT, locking reads and updates; changed target rows raise
+serialization failures (`40001`) rather than rereading newer committed rows.
+Constant SELECTs establish that snapshot too. SERIALIZABLE, predicate locking
 and read-only transaction modes remain unsupported.
 
 ## Functions
 
-A separate PostgreSQL registry implements 150 function names and aliases across
+The shared function resolver selects PostgreSQL signatures and behavior for
+165 function names and aliases across
 string and byte operations, quoting,
 FORMAT `%s`/`%I`/`%L`, concatenation with PostgreSQL NULL rules, regex functions,
 JSON/JSONB builders and scalar access/update functions, exact NUMERIC operations,
@@ -104,11 +105,10 @@ transaction. Errors, cancellation, disconnects and malformed streams do not
 publish partial imports. TO uses native streaming query snapshots and bounded
 output chunks. Rows are decoded incrementally, but pending native transaction
 writes consume memory proportional to an import; COPY is not a memory-bounded
-bulk transaction engine. Input currently inserts each row through the native
-prepared DML path with a new native statement view per row; statement-time
-defaults can therefore vary within one import. An immediate foreign key cannot
-refer forward to a later
-row in the same COPY unless the constraint is deferred.
+bulk transaction engine. FROM consumes the shared one-statement bulk path,
+with one statement time and snapshot across all decoded rows and lock retries.
+Immediate self-referential foreign keys can refer forward to later rows in the
+same import; statement-end validation checks the complete private write set.
 
 Server-side filenames and PROGRAM, FREEZE, WHERE/default-marker options,
 parameterized COPY queries and non-UTF8 transcoding remain unsupported.
@@ -127,3 +127,9 @@ See [server operation and protocol details](postgres-server.md). Catalog layout
 and behavior were checked against PostgreSQL 16 documentation for
 [pg_class](https://www.postgresql.org/docs/16/catalog-pg-class.html) and
 [information_schema.columns](https://www.postgresql.org/docs/16/infoschema-columns.html).
+
+Temporary tables use private WAL-less LSM ranges. PostgreSQL temporary DDL
+participates in transaction and savepoint rollback; `ON COMMIT PRESERVE ROWS`,
+`DELETE ROWS` and `DROP` execute atomically with commit, including otherwise
+empty transactions. Native/MySQL temporary definitions retain their existing
+session lifetime rules. All temporary ranges are cleaned on shutdown/restart.

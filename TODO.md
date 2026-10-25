@@ -51,7 +51,9 @@ See [online indexes](docs/online-indexes.md) and
 
 READ COMMITTED is the native API default. MySQL sessions default to REPEATABLE
 READ, with a retained consistent-read snapshot for plain SELECT and current
-statement views for locking reads and mutations. Own writes overlay both views.
+statement views for locking reads and mutations. PostgreSQL REPEATABLE READ
+uses the transaction snapshot for mutations/locking reads too and reports
+changed-row conflicts. Own writes overlay the retained views.
 READ COMMITTED statements see the latest committed data plus private writes;
 nonrepeatable reads and phantoms are allowed at that level. Gap locks and
 SERIALIZABLE remain unsupported.
@@ -178,3 +180,9 @@ reverse seeks. `VACUUM` flushes writes and compacts SSTables.
 - [x] Background WAL rotation fsync outside storage locks, with durable barriers covering all earlier generations, error propagation and shutdown joins
 
 See [Raft replication](docs/replication.md) for operational limits.
+
+- [x] Shared logical types, function descriptors, prepared inference, session dialect/lexing and common one-statement bulk/streaming execution
+- [x] Typed MySQL user variables and passive shared global/Raft/LSM inspection
+- [x] Shared typed information_schema facts and SHOW/pg_catalog projections; see docs/catalogs.md
+- [x] Concurrent MySQL/PostgreSQL CLI listeners over one physical database
+- [x] PostgreSQL transactional temporary definitions and ON COMMIT actions

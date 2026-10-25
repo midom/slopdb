@@ -56,8 +56,9 @@ cannot be changed through SQL. Supported account hosts are exact addresses,
 The protocol reports MySQL compatibility version `5.7.44-SlopDB`, including the
 handshake, `VERSION()`, and session/global version variables.
 
-Server mode enables [MySQL quoting](sql-quoting.md) by default. Pass
-`--mysql-quoting=false` to use SlopDB's ordinary quoting rules. Other CLI storage,
+MySQL sessions use [MySQL quoting](sql-quoting.md) independently of the native
+API preference selected by `--mysql-quoting`. MySQL and PostgreSQL listeners can
+serve the same physical database in one process. Other CLI storage,
 query timeout, lock timeout, compression and durability flags apply normally;
 WAL and WAL fsync remain enabled by default.
 
@@ -256,3 +257,63 @@ Protocol layout references: MySQL's [TLS upgrade](https://dev.mysql.com/doc/dev/
 [connection handshake](https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_connection_phase_packets_protocol_handshake_v10.html),
 [prepared execution](https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_com_stmt_execute.html),
 and [binary result sets](https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_binary_resultset.html).
+
+
+## Session values and live server inspection
+
+User variables are typed connection-local values, evaluated as ordinary SQL
+expressions rather than substituted SQL strings:
+
+```sql
+SET @a=(SELECT MAX(id) FROM posts), @b=@a+1;
+SELECT @a, @b, @missing;
+SELECT @a := @a+1;
+SELECT @@read_only, @@global.slopdb_raft_role;
+SHOW GLOBAL VARIABLES;
+SHOW GLOBAL VARIABLES LIKE 'slopdb_raft_%';
+SHOW RAFT STATUS;
+SHOW LSM STATUS LIKE 'level.%';
+```
+
+Undefined user variables return SQL NULL. Assignments support scalar subqueries
+and prepared bindings; multirow scalar subqueries fail. Values survive SQL
+rollback/savepoints, remain private to their connection, and reset on disconnect
+or COM_RESET_CONNECTION. Variable storage is bounded by the session memory
+budget. Persistent defaults, checks and views cannot capture these variables.
+Session-only inspection does not implicitly start a data transaction when
+`autocommit=0`.
+
+`read_only` and `super_read_only` follow the current owner/Raft writable state.
+Standalone writable engines report 0; followers, recovery and unavailable
+leaders report 1. Numeric SELECT results use 0/1 while SHOW uses OFF/ON.
+Global variables expose the following live groups in addition to existing
+MySQL compatibility/session settings:
+
+| Group | Variables |
+| --- | --- |
+| Process/listeners | `slopdb_uptime_seconds`, `slopdb_connections`, `slopdb_listeners`, `slopdb_max_prepared_statements`, `version_compile_os`, `version_compile_machine`, `protocol_version` |
+| Storage/settings | `slopdb_storage_engine`, `slopdb_page_size`, `slopdb_wal_enabled`, `slopdb_wal_fsync`, `slopdb_query_timeout_ms`, `slopdb_lock_wait_timeout_ms`, `slopdb_query_memory_bytes`, `slopdb_deadlock_detection` |
+| Storage gauges/counters | `slopdb_memtable_bytes`, `slopdb_immutable_memtable_bytes`, `slopdb_storage_sequence`, `slopdb_sstable_count`, `slopdb_sstable_bytes`, `slopdb_block_cache_bytes`, `slopdb_block_cache_hits`, `slopdb_block_cache_misses`, `slopdb_flushes`, `slopdb_compactions` |
+| Change capture | `log_bin`, `server_id`, `server_uuid`, `gtid_executed`, `gtid_purged`, `slopdb_cdc_enabled`, `slopdb_cdc_sequence`, `slopdb_cdc_source_uuid` |
+| Raft | Every `SHOW RAFT STATUS` field is also available with a `slopdb_raft_` prefix. |
+
+Raft fields include enabled/ready/writable/recovering flags, node/cluster/leader
+identities and addresses, role/term, applied/commit/log/snapshot/durable
+frontiers, durability/read-barrier modes, read-proof readiness/age/staleness,
+replicated/durable position tokens and errors. Values are passive local owner
+observations: inspection does not propose log entries, verify a quorum, activate
+CDC or acquire a data-read fence. Status remains accessible on followers without
+admitting uncertified table reads or writes. Storage detail, counter scope and
+units are documented in [LSM diagnostics](diagnostics.md#lsm-storage-status).
+
+The same native inspection commands work through PostgreSQL. Supported live
+variables can also be read using `current_setting('slopdb.raft.role')`; dotted
+names map to underscore names. Schema metadata comes from shared
+[information_schema and catalog projections](catalogs.md).
+
+`LOAD DATA LOCAL INFILE` requests client-provided input and consumes the shared
+atomic one-statement bulk path. It supports text/CSV separators, enclosure,
+escapes, NULLs, ignored header lines and selected columns, including compressed
+and TLS transports. It never opens a server filename or executes PROGRAM.
+Decoders spool typed rows for lock retries; statement time and snapshot remain
+stable, constraints apply normally, and errors roll back the entire import.

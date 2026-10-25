@@ -32,11 +32,15 @@ listeners, cancel work, roll back open transactions and close/flush the database
 flush errors exit nonzero. Storage, compression, query timeout, lock timeout,
 WAL and durability CLI flags apply normally.
 
-CLI MySQL and PostgreSQL server modes are mutually exclusive. PostgreSQL mode
-uses standard SQL quoting, including double-quoted identifiers, and rejects
-`--mysql-quoting=true`. The embedded `postgresserver` package likewise requires
-a database opened with standard quoting. Each database directory must have one
-owning process; do not run separate servers against the same directory.
+MySQL and PostgreSQL listeners can run together in one process over the same
+physical database. Each frontend applies its own session syntax: PostgreSQL
+uses double-quoted identifiers; MySQL uses its string and backslash rules.
+`--mysql-quoting` controls the native API preference independently. Each
+database directory still requires one owning process. For example:
+
+```sh
+./slopdb --mysql-tcp 127.0.0.1:3306 --postgres-tcp 127.0.0.1:5432 ./db
+```
 
 ## Login, TLS and client certificates
 
@@ -154,9 +158,11 @@ batches without explicit transaction commands run atomically. Batches that mix
 explicit transaction commands follow the native statement-by-statement behavior.
 A deadlock or other engine-initiated whole-transaction rollback also retains
 that failed PostgreSQL transaction state until the client rolls back.
-READ COMMITTED remains the default. REPEATABLE READ selects the native retained
-snapshot behavior: consistent SELECTs use a transaction snapshot while locking
-reads and mutations use current data, following MySQL's isolation semantics.
+READ COMMITTED remains the default. PostgreSQL REPEATABLE READ retains the
+transaction snapshot for plain SELECT, locking reads and mutations. The first
+non-control statement, including a constant SELECT, establishes it. A changed
+target row raises `40001` after lock acquisition; the transaction remains failed
+until rollback. Own writes remain visible.
 SERIALIZABLE and read-only transaction requests fail. DDL uses SlopDB's transactional semantics.
 Extended cycles build indexes transactionally; a standalone simple Query uses
 the native online-index build path.
