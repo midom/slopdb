@@ -78,7 +78,10 @@ func (c *client) variable(name string, global bool) (sql.Value, error) {
 	case "ft_min_word_len":
 		return sql.NewIntValue(4), nil
 	case "transaction_isolation", "tx_isolation":
-		return sql.NewTextValue("READ-COMMITTED"), nil
+		if global {
+			return sql.NewTextValue("REPEATABLE-READ"), nil
+		}
+		return sql.NewTextValue(strings.ReplaceAll(string(c.session.IsolationLevel()), " ", "-")), nil
 	case "lower_case_table_names":
 		return sql.NewIntValue(1), nil
 	case "time_zone", "system_time_zone":
@@ -292,6 +295,7 @@ func (c *client) setSessionVariables(tokens []sql.Token) (*db.ExecResult, bool, 
 	}
 	next := c.variables
 	autocommit := c.autocommit
+	var isolation sql.IsolationLevel
 	for i < len(tokens) {
 		name := strings.ToLower(tokens[i].Value)
 		i++
@@ -305,6 +309,12 @@ func (c *client) setSessionVariables(tokens []sql.Token) (*db.ExecResult, bool, 
 		v := tokens[i]
 		i++
 		switch name {
+		case "transaction_isolation", "tx_isolation":
+			var err error
+			isolation, err = sql.ParseIsolationLevel(v.Value)
+			if err != nil {
+				return nil, true, err
+			}
 		case "group_concat_max_len":
 			n, err := strconv.ParseInt(v.Value, 10, 64)
 			if err != nil || n < 4 || n > 1<<32-1 {
@@ -358,6 +368,11 @@ func (c *client) setSessionVariables(tokens []sql.Token) (*db.ExecResult, bool, 
 		var err error
 		result, err = c.session.ExecContext(c.mysqlContext(), "COMMIT")
 		if err != nil {
+			return nil, true, err
+		}
+	}
+	if isolation != "" {
+		if err := c.session.SetIsolationLevel(isolation); err != nil {
 			return nil, true, err
 		}
 	}

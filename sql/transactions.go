@@ -43,6 +43,7 @@ func (s *Schema) NewSession() *Schema {
 	child.disableAutoIncrementPersistence = s.disableAutoIncrementPersistence
 	child.enableAutoIncrementGroupCommit = s.enableAutoIncrementGroupCommit
 	child.mysqlMode = s.mysqlMode
+	child.isolation = s.isolation
 	child.restoreState(s.captureState())
 	child.rowIDCount = make(map[string]int64)
 	return child
@@ -66,6 +67,7 @@ func (s *Schema) RefreshReadCommitted() error {
 // A new snapshot for each statement gives READ COMMITTED, including in a tx.
 func (s *Schema) StartStatement() error {
 	s.EndStatement()
+	s.consistentIndexDeletes = nil
 	s.statementTime = time.Now().UTC()
 	if s.replicaReadOnly {
 		s.replicaReadOnly = false
@@ -73,7 +75,10 @@ func (s *Schema) StartStatement() error {
 	}
 	if s.statementSnapshotHook != nil {
 		if handled, err := s.statementSnapshotHook(s.ctx, s); handled || err != nil {
-			return err
+			if err != nil {
+				return err
+			}
+			return s.useConsistentStatementSnapshot()
 		}
 	}
 	root := s
@@ -87,7 +92,7 @@ func (s *Schema) StartStatement() error {
 	}
 	s.statementSnapshot = s.lsm.SnapshotForReader(s.snapshotReader)
 	s.statementActive = true
-	return nil
+	return s.useConsistentStatementSnapshot()
 }
 func (s *Schema) EndStatement() {
 	s.statementTime = time.Time{}
@@ -406,6 +411,9 @@ func (s *Schema) prepareCommit() error {
 }
 
 func (s *Schema) endTransaction() {
+	s.releaseConsistentSnapshot()
+	s.consistentIndexDeletes = nil
+	s.txIsolation = ""
 	s.rowIDDirty = false
 	if s.parent != nil {
 		s.rowIDCount = make(map[string]int64)

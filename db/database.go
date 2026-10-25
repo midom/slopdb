@@ -317,6 +317,7 @@ func (db *Database) execAdmittedStatementsInto(ctx context.Context, stmts []sql.
 				if _, rollback := stmt.(*sql.RollbackStmt); !rollback {
 					reuse, _ := ctx.Value(reuseReadSnapshotKey{}).(bool)
 					if !reuse {
+						schema.StatementReadView(stmt)
 						err = schema.StartStatement()
 					}
 					if reuse {
@@ -331,7 +332,7 @@ func (db *Database) execAdmittedStatementsInto(ctx context.Context, stmts []sql.
 				result, err = db.execOnlineIndex(ctx, schema, stmt, lockTimeout, &lockDeadline)
 			} else if err == nil {
 				switch stmt.(type) {
-				case *sql.BeginStmt, *sql.CommitStmt, *sql.RollbackStmt, *sql.SavepointStmt, *sql.ReleaseStmt, *sql.SelectStmt, *sql.UnionStmt, *sql.ExplainStmt, *sql.ShowStmt, *sql.VacuumStmt:
+				case *sql.BeginStmt, *sql.SetIsolationStmt, *sql.CommitStmt, *sql.RollbackStmt, *sql.SavepointStmt, *sql.ReleaseStmt, *sql.SelectStmt, *sql.UnionStmt, *sql.ExplainStmt, *sql.ShowStmt, *sql.VacuumStmt:
 					result, err = executor.execStatement(stmt)
 				case *sql.PragmaStmt:
 					if stmt.(*sql.PragmaStmt).Name == "page_size" {
@@ -553,8 +554,19 @@ func (db *statementExecutor) execStatement(stmt sql.Statement) (*ExecResult, err
 			return nil, fmt.Errorf("DROP TRIGGER error: %w", err)
 		}
 	case *sql.BeginStmt:
-		if err := db.schema.Begin(); err != nil {
+		if err := db.schema.BeginWithOptions(s); err != nil {
 			return nil, fmt.Errorf("BEGIN error: %w", err)
+		}
+		result = &ExecResult{}
+	case *sql.SetIsolationStmt:
+		var err error
+		if s.Session {
+			err = db.schema.SetIsolationLevel(s.Level)
+		} else {
+			err = db.schema.SetNextTransactionIsolation(s.Level)
+		}
+		if err != nil {
+			return nil, err
 		}
 		result = &ExecResult{}
 	case *sql.CommitStmt:

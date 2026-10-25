@@ -201,6 +201,7 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 			return nil, err
 		}
 	}
+	s.schema.StatementReadView(statements[0])
 	if err = s.schema.StartStatement(); err != nil {
 		release()
 		return nil, err

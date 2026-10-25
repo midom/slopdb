@@ -322,7 +322,17 @@ type AnalyzeStmt struct {
 	Table string
 }
 
-type BeginStmt struct{}
+type BeginStmt struct {
+	Isolation          IsolationLevel
+	ConsistentSnapshot bool
+}
+type SetIsolationStmt struct {
+	Level   IsolationLevel
+	Session bool
+}
+
+func (*SetIsolationStmt) stmt() {}
+
 type CommitStmt struct{ Durability string }
 type RollbackStmt struct{}
 type SavepointStmt struct {

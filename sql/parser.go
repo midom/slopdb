@@ -197,7 +197,11 @@ func (p *Parser) parseLimit(limit, offset *int64, limitParam, offsetParam *int) 
 
 func (p *Parser) parseStatement() (Statement, error) {
 	if p.showWord("SET") {
-		return p.parseReadBarrierSetting()
+		look := *p.tok
+		if strings.EqualFold(look.Next().Value, "READ") {
+			return p.parseReadBarrierSetting()
+		}
+		return p.parseSetIsolation()
 	}
 	if p.showWord("WAIT") {
 		return p.parseWaitPosition()
@@ -2480,22 +2484,42 @@ func (p *Parser) parseAnalyze() (Statement, error) {
 	return stmt, nil
 }
 func (p *Parser) parseBegin() (Statement, error) {
-	start := p.cur.Value == "START"
+	start := strings.EqualFold(p.cur.Value, "START")
 	p.advance()
-	if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "TRANSACTION" {
+	if p.showWord("TRANSACTION") || p.showWord("WORK") && !start {
 		p.advance()
 	} else if start {
 		return nil, fmt.Errorf("START requires TRANSACTION")
 	}
-	if strings.EqualFold(p.cur.Value, "ISOLATION") {
-		for _, word := range []string{"ISOLATION", "LEVEL", "READ", "COMMITTED"} {
-			if !strings.EqualFold(p.cur.Value, word) {
-				return nil, fmt.Errorf("only READ COMMITTED isolation is supported")
+	stmt := &BeginStmt{}
+	for p.cur.Type != TokEOF && p.cur.Type != TokSemicolon {
+		switch {
+		case p.optionalAlterWord("ISOLATION"):
+			if stmt.Isolation != "" || !p.optionalAlterWord("LEVEL") {
+				return nil, fmt.Errorf("expected one ISOLATION LEVEL")
 			}
+			level, err := p.parseIsolationLevel()
+			if err != nil {
+				return nil, err
+			}
+			stmt.Isolation = level
+		case p.optionalAlterWord("WITH"):
+			if stmt.ConsistentSnapshot || !p.optionalAlterWord("CONSISTENT") || !p.optionalAlterWord("SNAPSHOT") {
+				return nil, fmt.Errorf("expected WITH CONSISTENT SNAPSHOT")
+			}
+			stmt.ConsistentSnapshot = true
+		case p.optionalAlterWord("READ"):
+			if !p.optionalAlterWord("WRITE") {
+				return nil, fmt.Errorf("expected READ WRITE")
+			}
+		default:
+			return nil, fmt.Errorf("unsupported transaction characteristic %q", p.cur.Value)
+		}
+		if p.cur.Type == TokComma {
 			p.advance()
 		}
 	}
-	return &BeginStmt{}, nil
+	return stmt, nil
 }
 
 func (p *Parser) parseCommit() (Statement, error) {

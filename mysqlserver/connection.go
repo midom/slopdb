@@ -292,11 +292,20 @@ func (c *client) control(query string) (*db.ExecResult, bool, error) {
 	}
 	if word(0, "SET") {
 		t := tokens[1:]
+		sessionDefault := false
 		if len(t) > 0 && strings.EqualFold(t[0].Value, "SESSION") {
+			sessionDefault = true
 			t = t[1:]
 		}
-		if len(t) == 5 && strings.EqualFold(t[0].Value, "TRANSACTION") && strings.EqualFold(t[1].Value, "ISOLATION") && strings.EqualFold(t[2].Value, "LEVEL") && strings.EqualFold(t[3].Value, "READ") && strings.EqualFold(t[4].Value, "COMMITTED") {
-			return nil, true, nil // SlopDB always uses READ COMMITTED.
+		if len(t) == 5 && strings.EqualFold(t[0].Value, "TRANSACTION") && strings.EqualFold(t[1].Value, "ISOLATION") && strings.EqualFold(t[2].Value, "LEVEL") {
+			level, err := sql.ParseIsolationLevel(t[3].Value + " " + t[4].Value)
+			if err != nil {
+				return nil, true, err
+			}
+			if sessionDefault {
+				return nil, true, c.session.SetIsolationLevel(level)
+			}
+			return nil, true, c.session.SetNextTransactionIsolation(level)
 		}
 		if len(t) == 3 && strings.EqualFold(t[0].Value, "autocommit") && t[1].Type == sql.TokEq {
 			var enabled bool

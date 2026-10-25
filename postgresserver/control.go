@@ -54,7 +54,10 @@ func (c *client) helperMetadata(query string) (helper, bool) {
 			return helper{}, false
 		}
 		if equal(i, "ISOLATION") {
-			if !equal(i+1, "LEVEL") || !equal(i+2, "READ") || !equal(i+3, "COMMITTED") {
+			if !equal(i+1, "LEVEL") || i+3 >= len(ts) {
+				return helper{}, false
+			}
+			if _, err := sql.ParseIsolationLevel(ts[i+2].Value + " " + ts[i+3].Value); err != nil {
 				return helper{}, false
 			}
 			i += 4
@@ -63,7 +66,7 @@ func (c *client) helperMetadata(query string) (helper, bool) {
 			i += 2
 		}
 		if i == len(ts) {
-			return helper{kind: "BEGIN"}, true
+			return helper{kind: "BEGIN", setting: query}, true
 		}
 	}
 	if equal(0, "SELECT") {
@@ -93,12 +96,19 @@ func (c *client) helperMetadata(query string) (helper, bool) {
 		if equal(offset, "SESSION") {
 			offset++
 		}
-		if len(ts) == offset+5 && equal(offset, "TRANSACTION") && equal(offset+1, "ISOLATION") && equal(offset+2, "LEVEL") && equal(offset+3, "READ") && equal(offset+4, "COMMITTED") {
-			return helper{kind: "SET"}, true
+		if len(ts) == offset+5 && equal(offset, "TRANSACTION") && equal(offset+1, "ISOLATION") && equal(offset+2, "LEVEL") {
+			if _, err := sql.ParseIsolationLevel(ts[offset+3].Value + " " + ts[offset+4].Value); err != nil {
+				return helper{}, false
+			}
+			return helper{kind: "SET", name: "isolation", setting: query}, true
 		}
 		if len(ts) == offset+3 && (ts[offset+1].Type == sql.TokEq || equal(offset+1, "TO")) {
 			name, value := strings.ToLower(ts[offset].Value), ts[offset+2].Value
 			switch name {
+			case "transaction_isolation", "default_transaction_isolation":
+				if level, err := sql.ParseIsolationLevel(value); err == nil {
+					return helper{kind: "SET", name: "isolation_default", setting: string(level)}, true
+				}
 			case "client_encoding":
 				if strings.EqualFold(value, "UTF8") || strings.EqualFold(value, "UTF-8") {
 					return helper{kind: "SET"}, true
@@ -128,7 +138,17 @@ func (c *client) helperMetadata(query string) (helper, bool) {
 func (c *client) runHelper(ctx context.Context, h helper) (*db.ExecResult, error) {
 	result := &db.ExecResult{}
 	if h.kind == "BEGIN" {
-		return c.session.ExecContext(ctx, "BEGIN")
+		query := h.setting
+		if query == "" {
+			query = "BEGIN"
+		}
+		return c.session.ExecContext(ctx, query)
+	}
+	if h.kind == "SET" && h.name == "isolation" {
+		return c.session.ExecContext(ctx, h.setting)
+	}
+	if h.kind == "SET" && h.name == "isolation_default" {
+		return result, c.session.SetIsolationLevel(sql.IsolationLevel(h.setting))
 	}
 	if h.kind == "DISCARD" {
 		if c.session.InTransaction() {
@@ -171,7 +191,7 @@ func (c *client) runHelper(ctx context.Context, h helper) (*db.ExecResult, error
 		case "standard_conforming_strings":
 			text = "on"
 		case "transaction_isolation", "default_transaction_isolation":
-			text = "read committed"
+			text = strings.ToLower(string(c.session.IsolationLevel()))
 		case "application_name":
 			text = c.applicationName
 		}

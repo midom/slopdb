@@ -61,35 +61,44 @@ type ViewInfo struct {
 }
 
 type Schema struct {
-	statementTime      time.Time
-	onlineIndexMu      catalogGate
-	onlineIndexBuilds  map[*OnlineIndexBuild]struct{}
-	queryMemoryBytes   int64
-	queryTempDir       string
-	queryDisks         []*diskHash
-	maxCTEIterations   int64
-	maxCTERows         int64
-	cteScope           map[string]*ResultSet
-	commitMu           catalogGate // protects committed catalog publication
-	statementSnapshot  uint64
-	snapshotReader     uint64
-	nextSnapshotReader atomic.Uint64
-	statementActive    bool
-	validatedRowKey    string
-	lsm                *storage.LSMTree
-	tables             map[string]*TableInfo
-	indexes            map[string]*IndexInfo
-	outerRow           map[string]Value
-	stats              map[string]int64
-	distributions      map[string]*tableStatistics
-	nextObjectID       uint64
-	userVersion        int64
-	collation          Collation
-	views              map[string]*ViewInfo
-	triggers           map[string]*TriggerInfo
-	autoincMax         map[string]int64
-	autoincQueued      map[string]int64 // high-water snapshots in WAL enqueue order; commitMu protects it
-	rowIDCount         map[string]int64
+	isolation                IsolationLevel
+	nextIsolation            IsolationLevel
+	txIsolation              IsolationLevel
+	consistentSnapshot       uint64
+	consistentSnapshotActive bool
+	statementCurrentSnapshot uint64
+	statementQuery           bool
+	statementConsistent      bool
+	consistentIndexDeletes   map[string]bool
+	statementTime            time.Time
+	onlineIndexMu            catalogGate
+	onlineIndexBuilds        map[*OnlineIndexBuild]struct{}
+	queryMemoryBytes         int64
+	queryTempDir             string
+	queryDisks               []*diskHash
+	maxCTEIterations         int64
+	maxCTERows               int64
+	cteScope                 map[string]*ResultSet
+	commitMu                 catalogGate // protects committed catalog publication
+	statementSnapshot        uint64
+	snapshotReader           uint64
+	nextSnapshotReader       atomic.Uint64
+	statementActive          bool
+	validatedRowKey          string
+	lsm                      *storage.LSMTree
+	tables                   map[string]*TableInfo
+	indexes                  map[string]*IndexInfo
+	outerRow                 map[string]Value
+	stats                    map[string]int64
+	distributions            map[string]*tableStatistics
+	nextObjectID             uint64
+	userVersion              int64
+	collation                Collation
+	views                    map[string]*ViewInfo
+	triggers                 map[string]*TriggerInfo
+	autoincMax               map[string]int64
+	autoincQueued            map[string]int64 // high-water snapshots in WAL enqueue order; commitMu protects it
+	rowIDCount               map[string]int64
 
 	ctx                   context.Context
 	statementSnapshotHook func(context.Context, *Schema) (bool, error)
@@ -1795,9 +1804,29 @@ func (s *Schema) restoreState(st *schemaState) {
 	s.overlayTemporaryState(st)
 }
 func (s *Schema) Begin() error {
+	return s.BeginWithOptions(&BeginStmt{})
+}
+
+func (s *Schema) BeginWithOptions(stmt *BeginStmt) error {
 	if s.inTx {
 		return fmt.Errorf("already in transaction")
 	}
+	level := s.IsolationLevel()
+	if s.nextIsolation != "" {
+		level = s.nextIsolation
+	}
+	if stmt.Isolation != "" {
+		var err error
+		level, err = ParseIsolationLevel(string(stmt.Isolation))
+		if err != nil {
+			return err
+		}
+	}
+	if stmt.ConsistentSnapshot && level != RepeatableRead {
+		return fmt.Errorf("WITH CONSISTENT SNAPSHOT requires REPEATABLE READ")
+	}
+	s.nextIsolation = ""
+	s.txIsolation = level
 	s.txState = s.captureState()
 	s.inTx = true
 	s.txWrites = nil
@@ -1806,6 +1835,12 @@ func (s *Schema) Begin() error {
 	s.txRowVersions = make(map[string]uint64)
 	s.txHasWrites = false
 	s.txHasDDL = false
+	if stmt.ConsistentSnapshot {
+		if err := s.ensureConsistentSnapshot(); err != nil {
+			s.endTransaction()
+			return err
+		}
+	}
 	return nil
 }
 func (s *Schema) Commit() error {
@@ -2164,6 +2199,19 @@ func (s *Schema) txIterator(base storage.Iterator, lower, upper []byte) storage.
 			typ = 0
 		}
 		rows = append(rows, storage.KeyValue{Key: storage.InternalKey{UserKey: w.key, OpType: typ}, Value: w.value})
+	}
+	deletes, err := s.snapshotIndexDeletes()
+	if err != nil {
+		return &transactionIterator{base: base, err: err}
+	}
+	for key := range deletes {
+		data := []byte(key)
+		if lower != nil && bytes.Compare(data, lower) < 0 || upper != nil && bytes.Compare(data, upper) >= 0 {
+			continue
+		}
+		if _, explicit := s.txLatest[key]; !explicit {
+			rows = append(rows, storage.KeyValue{Key: storage.InternalKey{UserKey: data, OpType: 0}})
+		}
 	}
 	if len(rows) == 0 {
 		return base
@@ -4153,6 +4201,11 @@ func (s *Schema) SelectInto(stmt *SelectStmt, dst *ResultSet) (*ResultSet, error
 }
 
 func (s *Schema) selectInto(stmt *SelectStmt, dst *ResultSet) (result *ResultSet, err error) {
+	restoreReadView, err := s.selectReadView(stmt)
+	if err != nil {
+		return nil, err
+	}
+	defer restoreReadView()
 	if s.selectDepth == 0 && !s.statementActive {
 		s.statementTime = time.Now().UTC()
 		defer func() { s.statementTime = time.Time{} }()

@@ -11,8 +11,13 @@ import (
 
 // MySQLMode controls connection-local value affinity and result-count behavior.
 // Catalog type declarations remain persistent and independent of session state.
-func (s *Schema) SetMySQLMode(enabled bool) { s.mysqlMode = enabled }
-func (s *Schema) MySQLMode() bool           { return s.mysqlMode }
+func (s *Schema) SetMySQLMode(enabled bool) {
+	if enabled && !s.mysqlMode && s.isolation == "" {
+		s.isolation = RepeatableRead
+	}
+	s.mysqlMode = enabled
+}
+func (s *Schema) MySQLMode() bool { return s.mysqlMode }
 
 // parseColumnType consumes only the type portion, leaving constraints to the
 // shared parser. Unknown words are deliberately left for its useful error.

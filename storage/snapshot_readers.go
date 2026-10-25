@@ -13,6 +13,22 @@ type snapshotReaderShard struct {
 	padding [48]byte // keep independent reader locks on separate cache lines
 }
 
+// PromoteReaderSnapshot retains a reader's existing view for a transaction.
+// Registration follows the same global-before-shard lock order as collection;
+// the reader pin must remain held until this method returns.
+func (l *LSMTree) PromoteReaderSnapshot(reader, seq uint64) error {
+	l.snapshotMu.Lock()
+	defer l.snapshotMu.Unlock()
+	shard := &l.readerSnapshots[reader&(snapshotReaderShards-1)]
+	shard.mu.Lock()
+	defer shard.mu.Unlock()
+	if shard.pins[seq] == 0 {
+		return fmt.Errorf("reader snapshot is no longer pinned")
+	}
+	l.snapshots[seq]++
+	return nil
+}
+
 // SnapshotForReader gives a stable reader its own snapshot-registration bucket.
 // Pair it with ReleaseSnapshotForReader using the same reader ID. Collisions
 // only share bookkeeping; every registered sequence still pins old versions.

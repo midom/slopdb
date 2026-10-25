@@ -211,6 +211,11 @@ func (s *Schema) executeSubquery(sub *SelectStmt, outer map[string]Value) (*Resu
 }
 
 func (s *Schema) executeSubqueryMode(sub *SelectStmt, outer map[string]Value, exists bool) (*ResultSet, error) {
+	restoreReadView, viewErr := s.selectReadView(sub)
+	if viewErr != nil {
+		return nil, viewErr
+	}
+	defer restoreReadView()
 	if s.selectDepth == 0 {
 		defer s.clearSelectCaches()
 	}
