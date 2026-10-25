@@ -431,6 +431,9 @@ func (h *diskHash) add(key string, row map[string]Value) error {
 		if value.NumericExact != "" {
 			flags |= 16
 		}
+		if value.HexLiteral {
+			flags |= 32
+		}
 		payload = append(payload, flags)
 		if value.EnumValue {
 			payload = binary.AppendVarint(payload, value.EnumOrdinal)
@@ -498,10 +501,11 @@ func decodeSpillMap(data []byte) (map[string]Value, error) {
 			return nil, fmt.Errorf("invalid temporary spill value length")
 		}
 		data = data[size:]
-		if len(data) == 0 || data[0] & ^byte(31) != 0 {
+		if len(data) == 0 || data[0] & ^byte(63) != 0 {
 			return nil, fmt.Errorf("invalid temporary spill value metadata")
 		}
 		value.Binary, value.EnumValue = data[0]&1 != 0, data[0]&2 != 0
+		value.HexLiteral = data[0]&32 != 0
 		hasCollation := data[0]&4 != 0
 		hasNumericText, hasNumericExact := data[0]&8 != 0, data[0]&16 != 0
 		data = data[1:]

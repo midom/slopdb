@@ -2176,7 +2176,9 @@ func (p *Parser) parsePrimary() (Expression, error) {
 			return nil, fmt.Errorf("invalid blob literal: %w", err)
 		}
 		p.advance()
-		return &LiteralExpr{Value: NewBlobValue(blob)}, nil
+		value := NewBlobValue(blob)
+		value.HexLiteral = true
+		return &LiteralExpr{Value: value}, nil
 	}
 
 	if p.cur.Type == TokInt {

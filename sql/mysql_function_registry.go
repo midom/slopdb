@@ -82,6 +82,9 @@ func mysqlFunctionSize(s *Schema, n uint64) error {
 
 // MySQL scalar functions accept a leading numeric prefix in string arguments.
 func mysqlFunctionNumber(v Value) Value {
+	if v.HexLiteral && v.Type == ColBlob {
+		return mysqlHexNumber(v)
+	}
 	if v.Null || isNumeric(v) {
 		return v
 	}
@@ -127,6 +130,9 @@ func mysqlFunctionNumber(v Value) Value {
 }
 
 func mysqlFunctionInt(v Value) int64 {
+	if v.HexLiteral && v.Type == ColBlob {
+		v = mysqlHexNumber(v)
+	}
 	switch v.Type {
 	case ColInteger, ColUnsigned:
 		return integerValue(v)
@@ -158,4 +164,15 @@ func mysqlFunctionInt(v Value) int64 {
 		}
 		return n
 	}
+}
+
+func mysqlHexNumber(v Value) Value {
+	if len(v.Blob) > 8 {
+		return NewUnsignedValue(0)
+	}
+	var n uint64
+	for _, b := range v.Blob {
+		n = n<<8 | uint64(b)
+	}
+	return NewUnsignedValue(n)
 }

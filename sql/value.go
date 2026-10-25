@@ -529,6 +529,7 @@ func (*SubqueryExpr) expr()  {}
 func (*ExistsExpr) expr()    {}
 
 type Value struct {
+	HexLiteral   bool      `json:"-"` // transient X'..' numeric context, never a stored BLOB property
 	Collation    Collation `json:"-"`
 	Type         ColumnType
 	EnumValue    bool  `json:"-"`

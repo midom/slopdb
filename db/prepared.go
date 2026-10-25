@@ -275,6 +275,7 @@ func argumentValue(arg any) (sql.Value, error) {
 	case nil:
 		return sql.NewNullValue(), nil
 	case sql.Value:
+		v.HexLiteral = false
 		if v.Null {
 			return sql.NewNullValue(), nil
 		}

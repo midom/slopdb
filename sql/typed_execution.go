@@ -156,6 +156,7 @@ func (p *typedProgram) eval(slots []Value) (Value, error) {
 			}
 		case "slot":
 			v = slots[i.slot]
+			v.HexLiteral = false
 		case "branchAND", "branchOR":
 			left := p.registers[i.a]
 			if i.op == "branchAND" && !left.Null && !truthValue(left) || i.op == "branchOR" && truthValue(left) {
@@ -171,6 +172,9 @@ func (p *typedProgram) eval(slots []Value) (Value, error) {
 			v = typedBoolean(p.registers[i.a], p.registers[i.b], i.op == "AND")
 		case "unaryNOT", "unary+", "unary-":
 			v = p.registers[i.a]
+			if p.mysqlMode && v.HexLiteral {
+				v = mysqlHexNumber(v)
+			}
 			if !v.Null {
 				if i.op == "unaryNOT" {
 					if truthValue(v) {

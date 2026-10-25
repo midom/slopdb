@@ -359,6 +359,7 @@ func castSQLValue(value Value, target string) (Value, error) {
 		return NewTextValue(value.String()), nil
 	case "BLOB":
 		if value.Type == ColBlob {
+			value.HexLiteral = false
 			return value, nil
 		}
 		return NewBlobValue([]byte(value.String())), nil

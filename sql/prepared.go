@@ -119,6 +119,7 @@ func (q *PreparedQuery) Bind(args []Value) (*BoundQuery, error) {
 	for i, literal := range b.literals {
 		if literal != nil {
 			literal.Value = args[i]
+			literal.Value.HexLiteral = false
 		}
 	}
 	return b, nil

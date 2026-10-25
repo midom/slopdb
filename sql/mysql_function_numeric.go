@@ -100,6 +100,9 @@ func mysqlNumericFunctions() map[string]mysqlFunctionSpec {
 	}}
 	functions["ABS"] = mysqlFunctionSpec{Min: 1, Max: 1, MySQLOnly: true, Metadata: mysqlNumericFunctionMetadata, Eval: func(_ *Schema, args []Value) (Value, error) {
 		v := args[0]
+		if v.HexLiteral {
+			v = mysqlHexNumber(v)
+		}
 		if v.Null {
 			return NewNullValue(), nil
 		}
@@ -156,6 +159,9 @@ func mysqlNumericFunctions() map[string]mysqlFunctionSpec {
 			return NewNullValue(), nil
 		}
 		count := 0
+		if v.HexLiteral {
+			return NewIntValue(int64(bits.OnesCount64(mysqlHexNumber(v).Uint))), nil
+		}
 		if v.Type == ColBlob {
 			for _, b := range v.Blob {
 				count += bits.OnesCount8(b)
@@ -233,6 +239,9 @@ func mysqlModMetadata(args []ColumnDef) ColumnDef {
 }
 
 func mysqlIntegralFunction(v Value, ceil bool) (Value, error) {
+	if v.HexLiteral {
+		v = mysqlHexNumber(v)
+	}
 	if v.Null {
 		return NewNullValue(), nil
 	}
@@ -266,6 +275,9 @@ func mysqlIntegralFunction(v Value, ceil bool) (Value, error) {
 }
 
 func mysqlTruncateNumber(v Value, places int64) (Value, error) {
+	if v.HexLiteral {
+		v = mysqlHexNumber(v)
+	}
 	if v.Type == ColReal || !isNumeric(v) {
 		x := toFloat(mysqlFunctionNumber(v))
 		if places > 308 {
@@ -309,6 +321,9 @@ func mysqlTruncateNumber(v Value, places int64) (Value, error) {
 }
 
 func mysqlRoundNumber(v Value, places int64) (Value, error) {
+	if v.HexLiteral {
+		v = mysqlHexNumber(v)
+	}
 	if v.Type == ColReal || !isNumeric(v) {
 		x := toFloat(mysqlFunctionNumber(v))
 		if places > 308 {
@@ -367,6 +382,12 @@ func mysqlModuloFunction(s *Schema, args []Value) (Value, error) {
 	if mysqlAnyNull(args) {
 		return NewNullValue(), nil
 	}
+	args = append([]Value(nil), args...)
+	for i, v := range args {
+		if v.HexLiteral {
+			args[i] = mysqlHexNumber(v)
+		}
+	}
 	left, right := mysqlFunctionNumber(args[0]), mysqlFunctionNumber(args[1])
 	if args[0].Type == ColReal || args[1].Type == ColReal || !isNumeric(args[0]) || !isNumeric(args[1]) {
 		if toFloat(right) == 0 {
@@ -401,6 +422,9 @@ func mysqlModuloFunction(s *Schema, args []Value) (Value, error) {
 }
 
 func mysqlNumericUint(v Value) uint64 {
+	if v.HexLiteral {
+		return mysqlHexNumber(v).Uint
+	}
 	if v.Type == ColUnsigned {
 		return v.Uint
 	}
@@ -476,6 +500,9 @@ func mysqlConvertBase(value Value, from, to int64) Value {
 		} else {
 			number = 0 - number
 		}
+	}
+	if value.HexLiteral {
+		number = mysqlHexNumber(value).Uint
 	}
 	if to < 0 {
 		return NewTextValue(strings.ToUpper(strconv.FormatInt(int64(number), int(t))))

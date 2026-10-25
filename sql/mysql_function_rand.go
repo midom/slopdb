@@ -75,6 +75,9 @@ func (s *Schema) evalMySQLRand(expression *FuncCallExpr, row map[string]Value) (
 }
 
 func mysqlRandSeed(value Value) uint32 {
+	if value.HexLiteral {
+		return uint32(mysqlHexNumber(value).Uint)
+	}
 	if value.Null {
 		return 0
 	}

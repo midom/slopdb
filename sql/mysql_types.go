@@ -193,6 +193,7 @@ func (p *Parser) parseColumnType(col *ColumnDef) error {
 }
 
 func decorateColumnValue(v Value, col ColumnDef) Value {
+	v.HexLiteral = false
 	v.Binary = col.Binary
 	if !v.Null && len(col.EnumValues) > 0 {
 		v.EnumValue = true
@@ -216,6 +217,9 @@ func (s *Schema) orderValueCompare(a, b Value) int {
 }
 
 func mysqlNumericComparisonValue(v Value) Value {
+	if v.HexLiteral && v.Type == ColBlob {
+		return mysqlHexNumber(v)
+	}
 	if v.EnumValue {
 		return NewIntValue(v.EnumOrdinal)
 	}
@@ -255,6 +259,7 @@ func mysqlMixedNumericCompare(a, b Value) (int, bool) {
 // normalizeColumnValue is shared by inserts, updates and ALTER rewrites, before
 // validation and key encoding. It never returns borrowed binary storage.
 func normalizeColumnValue(v Value, col ColumnDef) (Value, error) {
+	v.HexLiteral = false
 	if v.Null {
 		return v, nil
 	}
@@ -420,6 +425,9 @@ func (s *Schema) mysqlUpsertChanges() int64 {
 
 func (s *Schema) normalizeMySQLValue(v Value, col ColumnDef) (Value, error) {
 	if s.mysqlMode {
+		if v.HexLiteral && (col.ColType == ColInteger || col.ColType == ColReal || col.ColType == ColDecimal) {
+			v = mysqlHexNumber(v)
+		}
 		col.MySQL = true
 		var err error
 		v, err = s.mysqlAssignmentValue(v, col)
@@ -440,6 +448,9 @@ func (s *Schema) normalizeMySQLRow(info *TableInfo, row map[string]Value) error 
 	return nil
 }
 func (s *Schema) comparisonAffinity(v Value, col ColumnDef) Value {
+	if s.mysqlMode && v.HexLiteral && (col.ColType == ColInteger || col.ColType == ColReal || col.ColType == ColDecimal) {
+		v = mysqlHexNumber(v)
+	}
 	if s.mysqlMode && col.ColType == ColBlob && v.Type == ColText && !v.Null {
 		return NewBlobValue([]byte(v.Text))
 	}

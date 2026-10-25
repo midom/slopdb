@@ -282,7 +282,9 @@ func TestIndexedSpillPreservesValueMetadata(t *testing.T) {
 	literal.NumericText = "12345678901234567890.123456"
 	expression := NewRealValue(1.0 / 3)
 	expression.NumericExact = "1/3"
-	original := map[string]Value{"v": value, "literal": literal, "expression": expression}
+	hexLiteral := NewBlobValue([]byte{'1'})
+	hexLiteral.HexLiteral = true
+	original := map[string]Value{"v": value, "literal": literal, "expression": expression, "hex": hexLiteral}
 	if err = h.add("key", original); err != nil {
 		t.Fatal(err)
 	}

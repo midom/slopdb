@@ -455,6 +455,14 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 		if err != nil {
 			return text, err
 		}
+		if s.mysqlMode {
+			if mysqlNumericHexExpression(e.Left) {
+				a = ColumnDef{ColType: ColUnsigned, Unsigned: true}
+			}
+			if mysqlNumericHexExpression(e.Right) {
+				b = ColumnDef{ColType: ColUnsigned, Unsigned: true}
+			}
+		}
 		switch strings.ToUpper(e.Op) {
 		case "=", "!=", "<>", "<", ">", "<=", ">=", "AND", "OR", "IS", "IS NOT", "LIKE", "NOT LIKE", "REGEXP", "GLOB":
 			return integer, nil
@@ -520,6 +528,11 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 				return text, err
 			}
 			args = append(args, c)
+			if s.mysqlMode && mysqlNumericMetadataFunction(name) {
+				if mysqlNumericHexExpression(a) {
+					args[len(args)-1] = ColumnDef{ColType: ColUnsigned, Unsigned: true}
+				}
+			}
 		}
 		if column, ok := s.describeRegisteredMySQLFunction(name, args); ok {
 			return column, nil

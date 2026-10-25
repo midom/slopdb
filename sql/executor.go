@@ -6115,6 +6115,9 @@ func (s *Schema) deleteConflicts(table string, info *TableInfo, row map[string]V
 func truthValue(v Value) bool { return !v.Null && toFloat(v) != 0 }
 func (s *Schema) evalCondition(expr Expression, row map[string]Value) (bool, error) {
 	v, err := s.evalExpr(expr, row)
+	if s.mysqlMode && v.HexLiteral {
+		v = mysqlHexNumber(v)
+	}
 	return truthValue(v), err
 }
 
@@ -6135,16 +6138,19 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 			return NewIntValue(1), nil
 		}
 		if v, ok := row[e.Name]; ok {
+			v.HexLiteral = false
 			return v, nil
 		}
 		for name, value := range row {
 			if strings.EqualFold(name, e.Name) {
+				value.HexLiteral = false
 				return value, nil
 			}
 		}
 
 		if s.outerRow != nil {
 			if v, ok := s.outerRow[e.Name]; ok {
+				v.HexLiteral = false
 				return v, nil
 			}
 		}
@@ -6162,11 +6168,15 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 			return right, nil
 		}
 		if e.Op == "BINARY" {
+			right.HexLiteral = false
 			right.Binary = true
 			return right, nil
 		}
 		if right.Null {
 			return right, nil
+		}
+		if s.mysqlMode && right.HexLiteral {
+			right = mysqlHexNumber(right)
 		}
 		if right.EnumValue && (e.Op == "+" || e.Op == "-" || e.Op == "~") {
 			right = NewIntValue(right.EnumOrdinal)
@@ -6207,12 +6217,14 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 	case *FuncCallExpr:
 		if e.Window != nil {
 			if v, ok := row[windowSlot(e)]; ok {
+				v.HexLiteral = false
 				return v, nil
 			}
 			return NewNullValue(), fmt.Errorf("window function evaluated outside window stage")
 		}
 		if isAggregate(e) {
 			if v, ok := row[aggregateSlot(e)]; ok {
+				v.HexLiteral = false
 				return v, nil
 			}
 		}
@@ -6222,7 +6234,9 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 	case *BetweenExpr:
 		return s.evalBetween(e, row)
 	case *CaseExpr:
-		return s.evalCase(e, row)
+		value, err := s.evalCase(e, row)
+		value.HexLiteral = false
+		return value, err
 	case *SubqueryExpr:
 		return s.evalSubqueryValue(e.Stmt, row)
 	case *ExistsExpr:
@@ -6243,6 +6257,12 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 }
 
 func (s *Schema) evalFunc(e *FuncCallExpr, row map[string]Value) (Value, error) {
+	value, err := s.evalFuncResult(e, row)
+	value.HexLiteral = false
+	return value, err
+}
+
+func (s *Schema) evalFuncResult(e *FuncCallExpr, row map[string]Value) (Value, error) {
 	if value, handled, err := s.evalJSONFunc(e, row); handled {
 		return value, err
 	}
@@ -6561,6 +6581,12 @@ func (s *Schema) evalFunc(e *FuncCallExpr, row map[string]Value) (Value, error) 
 		t, err := s.evalExpr(e.Args[1], row)
 		if err != nil {
 			return NewNullValue(), err
+		}
+		if s.mysqlMode && v.HexLiteral {
+			target := strings.ToUpper(mysqlCastTarget(t.Text))
+			if target == "INTEGER" || target == "INT" || target == "BIGINT" || target == "UNSIGNED" || target == "UNSIGNED INTEGER" || target == "REAL" || target == "DOUBLE" || target == "FLOAT" || strings.HasPrefix(target, "DECIMAL") || strings.HasPrefix(target, "NUMERIC") {
+				v = mysqlHexNumber(v)
+			}
 		}
 		if s.mysqlMode && (strings.EqualFold(t.Text, "DECIMAL") || strings.EqualFold(t.Text, "NUMERIC")) {
 			return normalizeDecimal(v, ColumnDef{Name: "CAST", ColType: ColDecimal, Precision: 10, Scale: 0})
@@ -6969,6 +6995,14 @@ func (s *Schema) evalArithmetic(e *BinaryExpr, row map[string]Value, fn func(flo
 // arithmeticValues is shared by interpreted and slot-bound execution so exact
 // integers, NULL propagation and numeric errors cannot diverge.
 func arithmeticValuesMode(mysqlMode bool, op string, lv, rv Value, fn func(float64, float64) float64) (Value, error) {
+	if mysqlMode {
+		if lv.HexLiteral {
+			lv = mysqlHexNumber(lv)
+		}
+		if rv.HexLiteral {
+			rv = mysqlHexNumber(rv)
+		}
+	}
 	if mysqlMode && op != "%" && (lv.Type == ColReal || rv.Type == ColReal) {
 		if lv.Type == ColDecimal {
 			lv = NewRealValue(toFloatVal(lv))
