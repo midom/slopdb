@@ -37,8 +37,15 @@ func (s *Schema) bindCatalogCollation() {
 func (s *Schema) bindIndexCollation(idx *IndexInfo) {
 	idx.collation = s.collation
 	idx.binaryColumns = nil
+	idx.columnCollations = nil
 	if info := s.tables[idx.Table]; info != nil {
 		for _, column := range info.Columns {
+			if column.Collation != "" {
+				if idx.columnCollations == nil {
+					idx.columnCollations = make(map[string]Collation)
+				}
+				idx.columnCollations[column.Name] = column.Collation
+			}
 			if column.Binary {
 				if idx.binaryColumns == nil {
 					idx.binaryColumns = make(map[string]bool)
@@ -149,7 +156,7 @@ func (s *Schema) rebuildCollation(mode Collation) error {
 			var signature []byte
 			for i, value := range values {
 				if !columnBinary(info, group[i]) {
-					value = mode.keyValue(value)
+					value = info.columnCollation(group[i]).keyValue(value)
 				}
 				signature = appendValueIdentity(signature, value)
 			}

@@ -203,6 +203,9 @@ func decorateColumnValue(v Value, col ColumnDef) Value {
 	v = v.WithSemanticType(col.LogicalType().Kind)
 	v.HexLiteral = false
 	v.Binary = col.Binary
+	if v.Type == ColText {
+		v.Collation = col.Collation
+	}
 	if !v.Null && len(col.EnumValues) > 0 {
 		v.EnumValue = true
 		v.EnumOrdinal = 0
@@ -603,11 +606,11 @@ func (p *Parser) parseTableOptions(stmt *CreateTableStmt) error {
 			if p.cur.Type == TokEq {
 				p.advance()
 			}
-			switch strings.ToLower(p.cur.Value) {
-			case "binary", "utf8_bin", "utf8mb4_bin", "utf8mb3_bin":
-			default:
+			mode, err := ParseCollation(p.cur.Value)
+			if err != nil {
 				return fmt.Errorf("unsupported table collation: %s", p.cur.Value)
 			}
+			stmt.DefaultCollation = mode
 			p.advance()
 		default:
 			return fmt.Errorf("unsupported table option: %s", p.cur.Value)

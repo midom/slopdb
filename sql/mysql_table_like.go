@@ -47,6 +47,7 @@ func (s *Schema) expandCreateTableLike(input *CreateTableStmt) (*CreateTableStmt
 	stmt := *input
 	stmt.Like = ""
 	stmt.Charset, stmt.Engine = source.Charset, source.Engine
+	stmt.DefaultCollation = source.DefaultCollation
 	stmt.Columns = slices.Clone(source.Columns)
 	for i := range stmt.Columns {
 		col := &stmt.Columns[i]

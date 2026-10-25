@@ -161,6 +161,7 @@ func indexValues(columns []string, row map[string]Value) ([]Value, bool) {
 func (c Collation) keyValue(value Value) Value {
 	if !value.Null && value.Type == ColText {
 		value.Text = c.Key(value.Text)
+		value.Binary, value.Collation = true, ""
 	}
 	return value
 }
@@ -203,6 +204,9 @@ func (idx *IndexInfo) keyValue(column string, value Value) Value {
 	}
 	if idx.binaryColumns[column] {
 		return value
+	}
+	if mode := idx.columnCollations[column]; mode != "" {
+		return mode.keyValue(value)
 	}
 	return idx.collation.keyValue(value)
 }

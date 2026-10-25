@@ -192,7 +192,7 @@ func (s *Schema) lockRow(table string, info *TableInfo, row map[string]Value, ke
 				break
 			}
 			if !columnBinary(info, column) {
-				v = s.collation.keyValue(v)
+				v = info.columnCollation(column).keyValue(v)
 			}
 			values = append(values, v)
 		}

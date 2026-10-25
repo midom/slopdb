@@ -139,7 +139,7 @@ func appendAccessValue(prefix []byte, v Value, idx *IndexInfo, info ...*TableInf
 func appendAccessValueColumn(prefix []byte, v Value, idx *IndexInfo, info *TableInfo, column string) []byte {
 	if idx == nil {
 		if info != nil && !info.binaryColumn(column) {
-			v = info.collation.keyValue(v)
+			v = info.columnCollation(column).keyValue(v)
 		}
 		return appendClusteredValue(copyBytes(prefix), v)
 	}

@@ -74,6 +74,10 @@ func (p likePattern) fold(r rune) rune {
 }
 
 func (p likePattern) match(input string) bool {
+	return p.matchWithCollation(input, "")
+}
+
+func (p likePattern) matchWithCollation(input string, collation Collation) bool {
 	if !p.valid {
 		return false
 	}
@@ -90,7 +94,11 @@ func (p likePattern) match(input string) bool {
 		if p.bytes {
 			r, n = rune(input[si]), 1
 		}
-		if ti < len(p.tokens) && (p.tokens[ti].wild && p.tokens[ti].r == '_' || !p.tokens[ti].wild && p.tokens[ti].r == p.fold(r)) {
+		equal := ti < len(p.tokens) && p.tokens[ti].r == p.fold(r)
+		if collation != "" && ti < len(p.tokens) && !p.tokens[ti].wild {
+			equal = unicodeMySQLKey(collation, string(r), false) == unicodeMySQLKey(collation, string(p.tokens[ti].r), false)
+		}
+		if ti < len(p.tokens) && (p.tokens[ti].wild && p.tokens[ti].r == '_' || !p.tokens[ti].wild && equal) {
 			si += n
 			ti++
 			continue
@@ -151,6 +159,11 @@ func (s *Schema) matchLikeValues(input, pattern Value, escape byte) bool {
 	binary := s.MySQLMode() && (input.Type == ColBlob || pattern.Type == ColBlob)
 	if binary && collation == "" {
 		return s.matchLikeKind(left, right, escape, true, true)
+	}
+	if unicodeMySQLCollation(collation) {
+		// Wildcards count original code points. Collation expansions must not
+		// turn one character into multiple positions in a LIKE pattern.
+		return compileLikeMode(right, escape, true).matchWithCollation(left, collation)
 	}
 	if _, ok := mysqlCollation(string(collation)); ok {
 		sensitive = strings.HasSuffix(string(collation), "_BIN")

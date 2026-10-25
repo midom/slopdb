@@ -13,11 +13,20 @@ func (info *TableInfo) encodePK(table string, row map[string]Value) []byte {
 	for _, name := range info.PKColumns {
 		value := row[name]
 		if value.Type == ColText && !value.Null && !info.binaryColumn(name) {
-			value.Text = info.collation.Key(value.Text)
+			value.Text = info.columnCollation(name).Key(value.Text)
 		}
 		key = appendClusteredValue(key, value)
 	}
 	return key
+}
+
+func (info *TableInfo) columnCollation(name string) Collation {
+	for _, col := range info.Columns {
+		if col.Name == name && col.Collation != "" {
+			return col.Collation
+		}
+	}
+	return info.collation
 }
 
 func (info *TableInfo) binaryColumn(name string) bool {

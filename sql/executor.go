@@ -26,35 +26,37 @@ import (
 )
 
 type TableInfo struct {
-	Engine        string          `json:"engine,omitempty"`
-	Charset       string          `json:"charset,omitempty"`
-	collation     Collation       `json:"-"`
-	ID            uint64          `json:"id,omitempty"`
-	Constraints   []ConstraintDef `json:"constraints,omitempty"`
-	Name          string          `json:"name"`
-	Columns       []ColumnDef     `json:"columns"`
-	TableCheck    []Expression    `json:"-"`
-	TableCheckSQL []string        `json:"table_check_sql,omitempty"`
-	TableUnique   [][]string      `json:"table_unique,omitempty"`
-	ForeignKeys   []ForeignKeyDef `json:"foreign_keys,omitempty"`
-	PKColumns     []string        `json:"pk_columns,omitempty"`
+	DefaultCollation Collation       `json:"default_collation,omitempty"`
+	Engine           string          `json:"engine,omitempty"`
+	Charset          string          `json:"charset,omitempty"`
+	collation        Collation       `json:"-"`
+	ID               uint64          `json:"id,omitempty"`
+	Constraints      []ConstraintDef `json:"constraints,omitempty"`
+	Name             string          `json:"name"`
+	Columns          []ColumnDef     `json:"columns"`
+	TableCheck       []Expression    `json:"-"`
+	TableCheckSQL    []string        `json:"table_check_sql,omitempty"`
+	TableUnique      [][]string      `json:"table_unique,omitempty"`
+	ForeignKeys      []ForeignKeyDef `json:"foreign_keys,omitempty"`
+	PKColumns        []string        `json:"pk_columns,omitempty"`
 }
 
 type IndexInfo struct {
-	FulltextVersion int             `json:"fulltext_version,omitempty"`
-	PrefixEncoding  int             `json:"prefix_encoding,omitempty"`
-	DisplayName     string          `json:"display_name,omitempty"`
-	PrefixLengths   []int64         `json:"prefix_lengths,omitempty"`
-	collation       Collation       `json:"-"`
-	binaryColumns   map[string]bool `json:"-"`
-	ID              uint64          `json:"id,omitempty"`
-	Name            string          `json:"name"`
-	Table           string          `json:"table"`
-	Column          string          `json:"column"`
-	IsUnique        bool            `json:"is_unique"`
-	Columns         []string        `json:"columns,omitempty"`
-	Auto            bool            `json:"auto,omitempty"`
-	Fulltext        bool            `json:"fulltext,omitempty"`
+	columnCollations map[string]Collation `json:"-"`
+	FulltextVersion  int                  `json:"fulltext_version,omitempty"`
+	PrefixEncoding   int                  `json:"prefix_encoding,omitempty"`
+	DisplayName      string               `json:"display_name,omitempty"`
+	PrefixLengths    []int64              `json:"prefix_lengths,omitempty"`
+	collation        Collation            `json:"-"`
+	binaryColumns    map[string]bool      `json:"-"`
+	ID               uint64               `json:"id,omitempty"`
+	Name             string               `json:"name"`
+	Table            string               `json:"table"`
+	Column           string               `json:"column"`
+	IsUnique         bool                 `json:"is_unique"`
+	Columns          []string             `json:"columns,omitempty"`
+	Auto             bool                 `json:"auto,omitempty"`
+	Fulltext         bool                 `json:"fulltext,omitempty"`
 }
 
 type ViewInfo struct {
@@ -373,6 +375,11 @@ func (s *Schema) loadSchema() error {
 		return err
 	}
 	for _, info := range s.tables {
+		if info.DefaultCollation != "" {
+			if _, err := ParseCollation(string(info.DefaultCollation)); err != nil {
+				return fmt.Errorf("invalid stored table collation on %s: %w", info.Name, err)
+			}
+		}
 		if info.ID == 0 && len(info.PKColumns) > 1 {
 			for i, g := range info.TableUnique {
 				if slices.Equal(g, info.PKColumns) {
@@ -383,6 +390,11 @@ func (s *Schema) loadSchema() error {
 		}
 		for i := range info.Columns {
 			col := &info.Columns[i]
+			if col.Collation != "" {
+				if _, err := ParseCollation(string(col.Collation)); err != nil {
+					return fmt.Errorf("invalid stored column collation on %s.%s: %w", info.Name, col.Name, err)
+				}
+			}
 			if col.DefaultSQL != "" && col.Default == nil {
 				expr, err := parseExpr(col.DefaultSQL)
 				if err != nil {
@@ -502,6 +514,16 @@ func (s *Schema) schemaGet(key []byte) (value []byte, found bool, err error) {
 }
 
 func (s *Schema) CreateTable(stmt *CreateTableStmt) error {
+	if stmt.DefaultCollation != "" {
+		copy := *stmt
+		copy.Columns = append([]ColumnDef(nil), stmt.Columns...)
+		for i := range copy.Columns {
+			if copy.Columns[i].ColType == ColText && !copy.Columns[i].Binary && copy.Columns[i].Collation == "" {
+				copy.Columns[i].Collation = copy.DefaultCollation
+			}
+		}
+		stmt = &copy
+	}
 	if stmt.OnCommit != TemporaryCommitUnspecified && (!stmt.Temporary || !s.Dialect().TemporaryDDLPolicy().CommitActions) {
 		return fmt.Errorf("ON COMMIT is supported only for PostgreSQL temporary tables")
 	}
@@ -610,18 +632,19 @@ func (s *Schema) CreateTable(stmt *CreateTableStmt) error {
 		return err
 	}
 	info := &TableInfo{
-		Engine:        stmt.Engine,
-		Charset:       stmt.Charset,
-		collation:     s.collation,
-		ID:            id,
-		Constraints:   stmt.Constraints,
-		Name:          name,
-		Columns:       stmt.Columns,
-		TableCheck:    tcexpr,
-		TableCheckSQL: tcsql,
-		TableUnique:   tableUnique,
-		ForeignKeys:   stmt.ForeignKeys,
-		PKColumns:     stmt.PKColumns,
+		DefaultCollation: stmt.DefaultCollation,
+		Engine:           stmt.Engine,
+		Charset:          stmt.Charset,
+		collation:        s.collation,
+		ID:               id,
+		Constraints:      stmt.Constraints,
+		Name:             name,
+		Columns:          stmt.Columns,
+		TableCheck:       tcexpr,
+		TableCheckSQL:    tcsql,
+		TableUnique:      tableUnique,
+		ForeignKeys:      stmt.ForeignKeys,
+		PKColumns:        stmt.PKColumns,
 	}
 	if err := validateConstraintExpressions(info); err != nil {
 		return err
@@ -945,6 +968,8 @@ func (s *Schema) getCreateTableSQL(tableName string, inlineIndexes bool) string 
 		fmt.Fprintf(&b, "%s %s", quoteIdent(col.Name), col.DeclaredType())
 		if col.Binary {
 			b.WriteString(" COLLATE BINARY")
+		} else if col.Collation != "" {
+			b.WriteString(" COLLATE " + string(col.Collation))
 		}
 		if col.NotNull {
 			b.WriteString(inlineName("NOT_NULL", col.Name) + " NOT NULL")
@@ -1022,6 +1047,9 @@ func (s *Schema) getCreateTableSQL(tableName string, inlineIndexes bool) string 
 	}
 	if info.Charset != "" {
 		b.WriteString(" DEFAULT CHARSET=" + info.Charset)
+	}
+	if info.DefaultCollation != "" {
+		b.WriteString(" COLLATE " + string(info.DefaultCollation))
 	}
 	return b.String()
 }

@@ -235,6 +235,9 @@ func (s *Schema) AlterTable(a *AlterTableStmt) error {
 		}
 		col := *a.Column
 		col.MySQL = col.MySQL || s.MySQLMode()
+		if col.ColType == ColText && !col.Binary && col.Collation == "" {
+			col.Collation = info.DefaultCollation
+		}
 		if col.Default != nil {
 			col.DefaultSQL = formatExpr(col.Default)
 		}

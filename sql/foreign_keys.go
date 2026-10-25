@@ -97,7 +97,7 @@ func (s *Schema) foreignDefinitions(info *TableInfo) error {
 					target = col
 				}
 			}
-			if source.ColType != target.ColType || source.Unsigned != target.Unsigned || (source.ColType == ColDecimal && (source.Precision != target.Precision || source.Scale != target.Scale)) || (source.ColType == ColText && source.Binary != target.Binary) || ((source.MySQL || target.MySQL) && source.ColType == ColInteger && source.IntegerBits != target.IntegerBits) {
+			if source.ColType != target.ColType || source.Unsigned != target.Unsigned || (source.ColType == ColDecimal && (source.Precision != target.Precision || source.Scale != target.Scale)) || (source.ColType == ColText && (source.Binary != target.Binary || source.Collation != target.Collation)) || ((source.MySQL || target.MySQL) && source.ColType == ColInteger && source.IntegerBits != target.IntegerBits) {
 				return fmt.Errorf("foreign key type mismatch: %s.%s and %s.%s", info.Name, name, parent.Name, ref[i])
 			}
 		}

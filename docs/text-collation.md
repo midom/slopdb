@@ -96,3 +96,24 @@ Collation keys depend on the Unicode data supplied by the pinned
 `golang.org/x/text` dependency. If that dependency's Unicode tables are updated,
 rebuild the keys by changing to `BINARY` and back to the desired Unicode mode
 before relying on indexed comparisons under the new tables.
+
+MySQL-compatible table defaults (`CREATE TABLE ... COLLATE=...`) and explicit
+column `COLLATE` declarations persist independently of the database default.
+They apply to equality, ordering, clustered keys, secondary and prefix indexes,
+unique constraints and lock identities; `CREATE TABLE ... LIKE` and newly added
+text columns inherit the stored table default. Explicit `BINARY` columns keep
+bytewise comparisons. Changing `PRAGMA collation` preserves these explicit
+policies while rebuilding affected keys atomically.
+
+`utf8`, `utf8mb3` and `utf8mb4` aliases accept `unicode_ci` and
+`unicode_520_ci`; `utf8mb4_0900_ai_ci` is also accepted. These names map to the
+root Unicode primary-weight collation supplied by the pinned Go x/text tables,
+with case/accent insensitivity, canonical equivalence and expansions such as
+`Straße = STRASSE`. Supplementary characters retain distinct weights. The older
+Unicode aliases use PAD SPACE; `0900_ai_ci` retains trailing spaces. LIKE
+wildcards count original Unicode code points and do not expand a single
+character into multiple wildcard positions. Exact historical MySQL UCA 4.0,
+5.2 and 9.0 tailoring/version differences are not emulated. The legacy
+`general_ci` implementation and its independently recorded weights remain
+separate. Applications requiring exact MySQL linguistic ordering across every
+historic UCA revision must account for this compatibility limit.

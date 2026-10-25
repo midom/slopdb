@@ -56,9 +56,10 @@ type ForeignKeyDef struct {
 }
 
 type ColumnDef struct {
-	SemanticCollation Collation `json:"-"` // inferred expression collation; empty means database default
-	ParameterIndex    int       `json:"-"` // internal static inference provenance; never persisted
-	SemanticType      TypeID    `json:"-"` // inferred logical type; durable declarations retain existing catalog fields
+	Collation         Collation `json:"collation,omitempty"` // explicit stored comparison policy
+	SemanticCollation Collation `json:"-"`                   // inferred expression collation; empty means database default
+	ParameterIndex    int       `json:"-"`                   // internal static inference provenance; never persisted
+	SemanticType      TypeID    `json:"-"`                   // inferred logical type; durable declarations retain existing catalog fields
 	// DisplayName preserves a duplicate SQL output label; Name is the unique row-map key.
 	DisplayName          string            `json:"-"`
 	TypeModifiers        bool              `json:"type_modifiers,omitempty"`
@@ -148,21 +149,22 @@ func (col ColumnDef) DeclaredType() string {
 }
 
 type CreateTableStmt struct {
-	Engine        string
-	Charset       string
-	Temporary     bool
-	OnCommit      TemporaryCommitAction
-	Like          string // source table for CREATE TABLE ... LIKE
-	Constraints   []ConstraintDef
-	Table         string
-	Columns       []ColumnDef
-	TableCheck    []Expression `json:"-"`
-	TableCheckSQL []string     `json:"table_check_sql,omitempty"`
-	TableUnique   [][]string
-	ForeignKeys   []ForeignKeyDef
-	PKColumns     []string
-	IfNotExists   bool
-	Indexes       []IndexDef
+	DefaultCollation Collation
+	Engine           string
+	Charset          string
+	Temporary        bool
+	OnCommit         TemporaryCommitAction
+	Like             string // source table for CREATE TABLE ... LIKE
+	Constraints      []ConstraintDef
+	Table            string
+	Columns          []ColumnDef
+	TableCheck       []Expression `json:"-"`
+	TableCheckSQL    []string     `json:"table_check_sql,omitempty"`
+	TableUnique      [][]string
+	ForeignKeys      []ForeignKeyDef
+	PKColumns        []string
+	IfNotExists      bool
+	Indexes          []IndexDef
 }
 
 type IndexDef struct {

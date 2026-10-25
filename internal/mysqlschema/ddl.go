@@ -89,6 +89,8 @@ func cdcColumn(column sql.ColumnDef) string {
 	result := cdcQuote(column.Name) + " " + typeName
 	if column.Binary && column.ColType == sql.ColText {
 		result += " COLLATE utf8mb4_bin"
+	} else if column.ColType == sql.ColText && column.Collation != "" {
+		result += " COLLATE " + strings.ToLower(string(column.Collation))
 	}
 	if column.NotNull {
 		result += " NOT NULL"
@@ -200,7 +202,11 @@ func Create(table changefeed.Relation, root string) string {
 	for _, name := range names {
 		parts = append(parts, keys[name])
 	}
-	return "CREATE TABLE " + cdcTableName(table, root) + " (" + strings.Join(parts, ", ") + ") DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin"
+	mode := "utf8mb4_bin"
+	if table.Definition != nil && table.Definition.DefaultCollation != "" {
+		mode = strings.ToLower(string(table.Definition.DefaultCollation))
+	}
+	return "CREATE TABLE " + cdcTableName(table, root) + " (" + strings.Join(parts, ", ") + ") DEFAULT CHARACTER SET utf8mb4 COLLATE " + mode
 }
 func cdcSameColumn(a, b sql.ColumnDef) bool {
 	a.Name, b.Name = "", ""

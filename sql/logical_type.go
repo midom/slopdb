@@ -327,6 +327,9 @@ func LogicalTypeFromColumn(c ColumnDef) LogicalType {
 		}
 	}
 	t.Collation = c.SemanticCollation
+	if c.Collation != "" {
+		t.Collation = c.Collation
+	}
 	if c.Binary {
 		t.Collation = BinaryCollation
 	}

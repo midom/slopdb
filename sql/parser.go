@@ -631,13 +631,13 @@ func (p *Parser) parseColumnDef(col *ColumnDef, alteration ...bool) error {
 			if err != nil {
 				return err
 			}
-			if name != "BINARY" && name != "DEFAULT" {
-				return fmt.Errorf("unsupported column collation: %s", name)
-			}
 			if col.ColType != ColText {
 				return fmt.Errorf("text collation requires a TEXT column")
 			}
 			col.Binary = name == "BINARY"
+			if name != "BINARY" && name != "DEFAULT" {
+				col.Collation = Collation(name)
+			}
 			continue
 		}
 
