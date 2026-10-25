@@ -16,18 +16,8 @@ func postgresCatalogFunctions() map[string]mysqlFunctionSpec {
 			return NewNullValue(), nil
 		}
 		name := strings.ReplaceAll(a[0].String(), "\"", "")
-		resolved, e := s.namespaceName(name, false, nil)
-		if e != nil {
-			return NewNullValue(), nil
-		}
-		if t := s.tables[resolved]; t != nil {
-			return NewIntValue(pgObjectOID(t.ID)), nil
-		}
-		if idx := s.indexes[resolved]; idx != nil {
-			return NewIntValue(pgObjectOID(idx.ID)), nil
-		}
-		if s.views[resolved] != nil {
-			return NewIntValue(pgSyntheticOID("view:" + resolved)), nil
+		if oid, ok := s.pgLookupRelation(name); ok {
+			return NewIntValue(oid), nil
 		}
 		return NewNullValue(), nil
 	})
@@ -37,7 +27,7 @@ func postgresCatalogFunctions() map[string]mysqlFunctionSpec {
 		}
 		n := strings.Trim(a[0].String(), "\"")
 		if n == "pg_catalog" || n == "information_schema" || s.namespaces[s.namespaceAlias(n)] {
-			return NewIntValue(pgNamespaceOID(n)), nil
+			return NewIntValue(pgNamespaceOID(s.namespaceAlias(n))), nil
 		}
 		return NewNullValue(), nil
 	})
@@ -79,20 +69,32 @@ func postgresCatalogFunctions() map[string]mysqlFunctionSpec {
 		if e != nil {
 			return NewNullValue(), e
 		}
+
 		for n, t := range s.tables {
 			if pgObjectOID(t.ID) == oid {
 				_, obj := pgObjectNames(n)
-				resolved, e := s.namespaceName(obj, false, nil)
-				return pgBool(e == nil && resolved == n), nil
+				resolved, ok := s.pgLookupRelation(obj)
+				return pgBool(ok && resolved == oid), nil
+			}
+			if pgPrimaryOID(t) != 0 && pgPrimaryOID(t) == oid {
+				resolved, ok := s.pgLookupRelation(pgPrimaryName(t))
+				return pgBool(ok && resolved == oid), nil
+			}
+		}
+		for _, idx := range s.indexes {
+			if pgObjectOID(idx.ID) == oid {
+				resolved, ok := s.pgLookupRelation(idx.SQLName())
+				return pgBool(ok && resolved == oid), nil
 			}
 		}
 		for n := range s.views {
 			if pgSyntheticOID("view:"+n) == oid {
 				_, obj := pgObjectNames(n)
-				resolved, e := s.namespaceName(obj, false, nil)
-				return pgBool(e == nil && resolved == n), nil
+				resolved, ok := s.pgLookupRelation(obj)
+				return pgBool(ok && resolved == oid), nil
 			}
 		}
+
 		return NewNullValue(), nil
 	})
 	add("PG_GET_VIEWDEF", 1, 2, ColText, "TEXT", func(s *Schema, a []Value) (Value, error) {
@@ -370,4 +372,39 @@ func pgConstraintKind(kind string) string {
 		return "FOREIGN KEY"
 	}
 	return strings.ToUpper(kind)
+}
+
+func (s *Schema) pgLookupRelation(name string) (int64, bool) {
+	name = strings.ToLower(name)
+	paths := s.SearchPath()
+	obj := name
+	if ns, n, qualified := strings.Cut(name, "."); qualified {
+		paths = []string{s.namespaceAlias(ns)}
+		obj = n
+	}
+	for _, ns := range paths {
+		key := namespaceObject(s.namespaceAlias(ns), obj)
+		if t := s.tables[key]; t != nil {
+			return pgObjectOID(t.ID), true
+		}
+		if s.views[key] != nil {
+			return pgSyntheticOID("view:" + key), true
+		}
+		if idx := s.indexes[key]; idx != nil {
+			return pgObjectOID(idx.ID), true
+		}
+		for _, t := range s.tables {
+			tns, _ := SplitSchemaName(t.Name)
+			if tns == s.namespaceAlias(ns) && pgPrimaryOID(t) != 0 && pgPrimaryName(t) == obj {
+				return pgPrimaryOID(t), true
+			}
+		}
+		for _, idx := range s.indexes {
+			tns, _ := SplitSchemaName(idx.Table)
+			if tns == s.namespaceAlias(ns) && idx.SQLName() == obj {
+				return pgObjectOID(idx.ID), true
+			}
+		}
+	}
+	return 0, false
 }

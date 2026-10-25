@@ -240,6 +240,71 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 		views = append(views, n)
 	}
 	sort.Strings(views)
+
+	// A wire OID has fewer bits than the native object allocator. Refuse an
+	// unrepresentable catalog instead of silently wrapping or publishing OID zero.
+	seen := map[int64]string{}
+	claim := func(oid int64, key string) error {
+		if oid == 0 {
+			return fmt.Errorf("PostgreSQL OID range exhausted for %s", key)
+		}
+		if old, ok := seen[oid]; ok && old != key {
+			return fmt.Errorf("PostgreSQL virtual OID collision between %s and %s", old, key)
+		}
+		seen[oid] = key
+		return nil
+	}
+	for _, n := range tables {
+		t := s.tables[n]
+		if e := claim(pgObjectOID(t.ID), "table:"+n); e != nil {
+			return nil, e
+		}
+		if pgPrimaryOID(t) != 0 {
+			if e := claim(pgPrimaryOID(t), "primary:"+n); e != nil {
+				return nil, e
+			}
+		}
+	}
+	for _, n := range indexes {
+		if e := claim(pgObjectOID(s.indexes[n].ID), "index:"+n); e != nil {
+			return nil, e
+		}
+	}
+	for _, n := range views {
+		if e := claim(pgSyntheticOID("view:"+n), "view:"+n); e != nil {
+			return nil, e
+		}
+	}
+	columnRelations := s.tables
+	columnNames := tables
+	viewColumns := map[string][]ColumnDef{}
+	if name == "pg_attribute" || name == "information_schema.columns" || name == "pg_class" {
+		columnRelations = make(map[string]*TableInfo, len(s.tables)+len(s.views))
+		for n, t := range s.tables {
+			columnRelations[n] = t
+		}
+		columnNames = append([]string(nil), tables...)
+		for _, n := range views {
+			cols, e := s.describeTable(n, nil, 0)
+			if e != nil {
+				return nil, e
+			}
+			for i := range cols {
+				cols[i].NotNull = false
+				cols[i].PrimaryKey = false
+				cols[i].DefaultSQL = ""
+			}
+			viewColumns[n] = cols
+			columnRelations[n] = &TableInfo{Name: n, Columns: cols}
+			columnNames = append(columnNames, n)
+		}
+	}
+	relationOID := func(n string, t *TableInfo) int64 {
+		if s.views[n] != nil {
+			return pgSyntheticOID("view:" + n)
+		}
+		return pgObjectOID(t.ID)
+	}
 	switch name {
 	case "pg_namespace", "information_schema.schemata":
 		r := pgCatalog("oid:o nspname nspowner:o nspacl")
@@ -311,16 +376,16 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 			add(pgObjectOID(idx.ID), ns+"."+idx.SQLName(), "i", len(idx.columnNames()), false, s.isTemporaryTable(idx.Table))
 		}
 		for _, n := range views {
-			add(pgSyntheticOID("view:"+n), n, "v", len(s.views[n].Columns), false, false)
+			add(pgSyntheticOID("view:"+n), n, "v", len(viewColumns[n]), false, false)
 		}
 		return r, nil
 	case "pg_attribute":
 		r := pgCatalog("attrelid:o attname atttypid:o attstattarget:i attlen:i attnum:i attndims:i attcacheoff:i atttypmod:i attbyval:b attstorage attalign attnotnull:b atthasdef:b atthasmissing:b attidentity attgenerated attisdropped:b attislocal:b attinhcount:i attcollation:o attacl attoptions attfdwoptions attmissingval")
-		for _, n := range tables {
-			t := s.tables[n]
+		for _, n := range columnNames {
+			t := columnRelations[n]
 			for i, c := range t.Columns {
 				typ := pgTypeFor(pgTypeOID(c))
-				pgCatalogRow(r, pgObjectOID(t.ID), c.Name, typ.oid, -1, typ.length, i+1, 0, -1, pgTypeMod(c), typ.length > 0, "p", "i", c.NotNull || c.PrimaryKey, c.DefaultSQL != "", false, "", "", false, true, 0, 0, nil, nil, nil, nil)
+				pgCatalogRow(r, relationOID(n, t), c.Name, typ.oid, -1, typ.length, i+1, 0, -1, pgTypeMod(c), typ.length > 0, "p", "i", c.NotNull || c.PrimaryKey, c.DefaultSQL != "", false, "", "", false, true, 0, 0, nil, nil, nil, nil)
 			}
 		}
 		return r, nil
@@ -434,8 +499,8 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 		return r, nil
 	case "information_schema.columns":
 		r := pgCatalog("table_catalog table_schema table_name column_name ordinal_position:i column_default is_nullable data_type character_maximum_length:i character_octet_length:i numeric_precision:i numeric_precision_radix:i numeric_scale:i datetime_precision:i interval_type interval_precision:i character_set_catalog character_set_schema character_set_name collation_catalog collation_schema collation_name domain_catalog domain_schema domain_name udt_catalog udt_schema udt_name scope_catalog scope_schema scope_name maximum_cardinality:i dtd_identifier is_self_referencing is_identity identity_generation identity_start identity_increment identity_maximum identity_minimum identity_cycle is_generated generation_expression is_updatable")
-		for _, n := range tables {
-			t := s.tables[n]
+		for _, n := range columnNames {
+			t := columnRelations[n]
 			ns, obj := pgObjectNames(n)
 			for i, c := range t.Columns {
 				typ := pgTypeFor(pgTypeOID(c))
@@ -543,16 +608,16 @@ func (s *Schema) postgresConstraints(name string, tables []string, database stri
 				if typ == "p" {
 					indexOID = pgPrimaryOID(t)
 				}
-				pgCatalogRow(r, oid, c.Name, pgNamespaceOID(ns), typ, c.Deferrable, c.InitiallyDeferred, true, pgObjectOID(t.ID), 0, indexOID, 0, refid, pgAction(c.OnUpdate), pgAction(c.OnDelete), "s", true, 0, true, keys(c.Columns, t), keys(c.RefColumns, ref), c.CheckSQL)
+				pgCatalogRow(r, oid, pgConstraintName(t, c), pgNamespaceOID(ns), typ, c.Deferrable, c.InitiallyDeferred, true, pgObjectOID(t.ID), 0, indexOID, 0, refid, pgAction(c.OnUpdate), pgAction(c.OnDelete), "s", true, 0, true, keys(c.Columns, t), keys(c.RefColumns, ref), c.CheckSQL)
 			case "information_schema.table_constraints":
-				pgCatalogRow(r, database, ns, c.Name, database, ns, obj, kind, pgYes(c.Deferrable), pgYes(c.InitiallyDeferred), "YES", "YES")
+				pgCatalogRow(r, database, ns, pgConstraintName(t, c), database, ns, obj, kind, pgYes(c.Deferrable), pgYes(c.InitiallyDeferred), "YES", "YES")
 			case "information_schema.key_column_usage":
 				for i, col := range c.Columns {
 					var pos any
 					if typ == "f" {
 						pos = i + 1
 					}
-					pgCatalogRow(r, database, ns, c.Name, database, ns, obj, col, i+1, pos)
+					pgCatalogRow(r, database, ns, pgConstraintName(t, c), database, ns, obj, col, i+1, pos)
 				}
 			case "information_schema.referential_constraints":
 				if typ != "f" {
@@ -563,7 +628,7 @@ func (s *Schema) postgresConstraints(name string, tables []string, database stri
 				if ref != nil {
 					for _, candidate := range ref.Constraints {
 						if strings.Join(candidate.Columns, "\x00") == strings.Join(c.RefColumns, "\x00") && (candidate.Kind == "PRIMARY" || candidate.Kind == "UNIQUE") {
-							refname = candidate.Name
+							refname = pgConstraintName(ref, candidate)
 							break
 						}
 					}
@@ -575,7 +640,7 @@ func (s *Schema) postgresConstraints(name string, tables []string, database stri
 				if del == "" {
 					del = "NO ACTION"
 				}
-				pgCatalogRow(r, database, ns, c.Name, database, refns, refname, "NONE", up, del)
+				pgCatalogRow(r, database, ns, pgConstraintName(t, c), database, refns, refname, "NONE", up, del)
 			}
 		}
 	}
@@ -606,7 +671,7 @@ func pgPrimaryOID(t *TableInfo) int64 {
 func pgPrimaryName(t *TableInfo) string {
 	for _, c := range t.Constraints {
 		if c.Kind == "PRIMARY" {
-			return c.Name
+			return pgConstraintName(t, c)
 		}
 	}
 	_, name := pgObjectNames(t.Name)
@@ -618,4 +683,9 @@ func pgPrimarySQL(t *TableInfo) string {
 		cols[i] = quoteIdent(c)
 	}
 	return "CREATE UNIQUE INDEX " + quoteIdent(pgPrimaryName(t)) + " ON " + quoteIdent(t.Name) + "(" + strings.Join(cols, ", ") + ")"
+}
+
+func pgConstraintName(t *TableInfo, c ConstraintDef) string {
+	ns, _ := SplitSchemaName(t.Name)
+	return strings.TrimPrefix(c.Name, ns+".")
 }
