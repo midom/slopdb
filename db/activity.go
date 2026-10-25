@@ -25,9 +25,7 @@ type activityRecord struct {
 func (d *Database) registerActivity(s *sql.Schema) {
 	now := time.Now()
 	r := &activityRecord{value: sql.SessionActivity{ID: d.activityIDs.Add(1), SessionID: d.locks.state(s).id, Dialect: s.Dialect(), StartedAt: now, StateChange: now, State: sql.ActivityIdle}}
-	if path := s.SessionSearchPath(); len(path) > 0 {
-		r.value.Database = path[0]
-	}
+	r.value.Database = s.CurrentSchema()
 	d.activityRecords.Store(s, r)
 	s.SetActivitySnapshot(d.Activity)
 }
@@ -161,7 +159,7 @@ func (d *Database) syncActivity(s *sql.Schema) {
 	}
 	inTx := s.InTransaction()
 	dialect := s.Dialect()
-	path := s.SessionSearchPath()
+	database := s.CurrentSchema()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.inTransaction = inTx
@@ -179,9 +177,7 @@ func (d *Database) syncActivity(s *sql.Schema) {
 	}
 	if !r.identified {
 		r.value.Dialect = dialect
-		if len(path) > 0 {
-			r.value.Database = path[0]
-		}
+		r.value.Database = database
 	}
 }
 
