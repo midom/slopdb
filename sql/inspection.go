@@ -14,25 +14,46 @@ func IsLocalInspectionStatement(stmt Statement) bool {
 	case *ShowStmt:
 		return st.Kind == "LSM STATUS" || st.Kind == "RAFT STATUS" || st.Kind == "GLOBAL VARIABLES"
 	case *SelectStmt:
-		if st.From != "" || st.FromExpr != nil || st.With != nil || st.Compound != nil || len(st.Joins) > 0 || st.Virtual != nil {
+		if st.From != "" || st.FromExpr != nil || st.With != nil || st.Compound != nil || len(st.Joins) > 0 || st.Virtual != nil || len(st.GroupBy) > 0 || st.Having != nil || len(st.Windows) > 0 || st.Lock != nil {
 			return false
 		}
+		observesState := false
 		for _, c := range st.Columns {
 			if c.Star || !localInspectionExpr(c.Expr) {
 				return false
 			}
+			observesState = observesState || inspectionStateExpression(c.Expr)
 		}
 		if st.Where != nil && !localInspectionExpr(st.Where) {
 			return false
 		}
+		observesState = observesState || inspectionStateExpression(st.Where)
 		for _, o := range st.OrderBy {
 			if !localInspectionExpr(o.Expr) {
 				return false
 			}
+			observesState = observesState || inspectionStateExpression(o.Expr)
 		}
-		return true
+		return observesState
 	}
 	return false
+}
+
+func inspectionStateExpression(expr Expression) bool {
+	if expr == nil {
+		return false
+	}
+	found := false
+	_ = walkExpression(expr, func(e Expression) (bool, error) {
+		if f, ok := e.(*FuncCallExpr); ok {
+			switch strings.ToUpper(f.Name) {
+			case "CURRENT_SETTING", "__SESSION_VARIABLE", "__SET_SESSION_VARIABLE", "__SYSTEM_VARIABLE":
+				found = true
+			}
+		}
+		return found, nil
+	})
+	return found
 }
 func localInspectionExpr(expr Expression) bool {
 	switch e := expr.(type) {
@@ -65,6 +86,9 @@ func localInspectionExpr(expr Expression) bool {
 	case *BetweenExpr:
 		return localInspectionExpr(e.Expr) && localInspectionExpr(e.Low) && localInspectionExpr(e.High)
 	case *FuncCallExpr:
+		if e.Window != nil || e.MySQLGroupConcat || len(e.GroupConcatOrder) > 0 || e.GroupConcatSeparator != nil {
+			return false
+		}
 		switch strings.ToUpper(e.Name) {
 		case "CURRENT_SETTING", "CAST", "COALESCE", "IFNULL", "NULLIF", "__SESSION_VARIABLE", "__SET_SESSION_VARIABLE", "__SYSTEM_VARIABLE":
 		default:
