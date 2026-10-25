@@ -19,6 +19,11 @@ func (s *Schema) selectPreparedPoint(stmt *SelectStmt, info *TableInfo, dst *Res
 				return nil, false, nil
 			}
 			p.pointProjection = append([]ColumnDef(nil), info.Columns...)
+			for i := range p.pointProjection {
+				c := &p.pointProjection[i]
+				c.SemanticType = c.LogicalType().Kind
+				c.Default, c.Check = nil, nil
+			}
 		} else {
 			if len(stmt.Columns) == 0 || len(stmt.Columns) > 8 {
 				return nil, false, nil
@@ -30,8 +35,12 @@ func (s *Schema) selectPreparedPoint(stmt *SelectStmt, info *TableInfo, dst *Res
 					return nil, false, nil
 				}
 				found := false
+				var typed ColumnDef
 				for _, physical := range info.Columns {
 					if physical.Name == ref.Name {
+						typed = physical
+						typed.SemanticType = physical.LogicalType().Kind
+						typed.Default, typed.Check = nil, nil
 						found = true
 						break
 					}
@@ -39,7 +48,7 @@ func (s *Schema) selectPreparedPoint(stmt *SelectStmt, info *TableInfo, dst *Res
 				if !found {
 					return nil, false, nil
 				}
-				columns = append(columns, ColumnDef{Name: ref.Name})
+				columns = append(columns, typed)
 			}
 			if uniqueResultColumns(columns, nil) {
 				return nil, false, nil

@@ -269,23 +269,35 @@ func argumentValue(arg any) (sql.Value, error) {
 		return sql.NewTextValue(v), nil
 	case bool:
 		if v {
-			return sql.NewIntValue(1), nil
+			return sql.NewIntValue(1).WithSemanticType(sql.TypeBoolean), nil
 		}
-		return sql.NewIntValue(0), nil
+		return sql.NewIntValue(0).WithSemanticType(sql.TypeBoolean), nil
 	case nil:
 		return sql.NewNullValue(), nil
 	case sql.Value:
 		v.HexLiteral = false
 		if v.Null {
-			return sql.NewNullValue(), nil
+			null := sql.NewNullValue()
+			null.SemanticType, null.PGType, null.Binary, null.Collation = v.SemanticType, v.PGType, v.Binary, v.Collation
+			return null, nil
 		}
 		switch v.Type {
 		case sql.ColInteger, sql.ColUnsigned, sql.ColText:
 			return v, nil
 		case sql.ColDecimal:
-			return sql.NewDecimalValue(v.Text)
+			normalized, err := sql.NewDecimalValue(v.Text)
+			if err != nil {
+				return sql.Value{}, err
+			}
+			v.Text = normalized.Text
+			return v, nil
 		case sql.ColJSON:
-			return sql.NewJSONValue(v.Text)
+			normalized, err := sql.NewJSONValue(v.Text)
+			if err != nil {
+				return sql.Value{}, err
+			}
+			v.Text = normalized.Text
+			return v, nil
 		case sql.ColReal:
 			if !math.IsNaN(v.Real) && !math.IsInf(v.Real, 0) {
 				return v, nil

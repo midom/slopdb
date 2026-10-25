@@ -161,7 +161,7 @@ func validateValue(v sql.Value, oid uint32) error {
 			return &protocolError{"22003", "integer out of range"}
 		}
 	case oidFloat4, oidFloat8:
-		if v.Type != sql.ColReal {
+		if v.Type != sql.ColReal && v.Type != sql.ColInteger && v.Type != sql.ColUnsigned && v.Type != sql.ColDecimal {
 			return bad
 		}
 	case oidBytea:
@@ -180,6 +180,17 @@ func validateValue(v sql.Value, oid uint32) error {
 	return nil
 }
 func wireValue(v sql.Value, oid uint32, binaryFormat bool) ([]byte, error) {
+	if !v.Null && (oid == oidFloat4 || oid == oidFloat8) && v.Type != sql.ColReal {
+		target := "DOUBLE PRECISION"
+		if oid == oidFloat4 {
+			target = "REAL"
+		}
+		converted, err := sql.CastPostgresValue(v, target)
+		if err != nil {
+			return nil, err
+		}
+		v = converted
+	}
 	if v.Null {
 		return nil, nil
 	}
@@ -267,6 +278,14 @@ func resultFields(result *db.ExecResult) []field {
 	fields := make([]field, len(result.Columns))
 	for i, col := range result.Columns {
 		oid := nativeOID(col.ColType)
+		if col.SemanticType != sql.TypeUnknown {
+			oid = sql.PostgresOID(col.LogicalType())
+			if oid == 0 {
+				oid = oidText
+			}
+			fields[i] = field{col.ResultName(), oid}
+			continue
+		}
 		if col.Postgres {
 			if typed := sql.PostgresColumnOID(col); typed != 0 {
 				oid = typed

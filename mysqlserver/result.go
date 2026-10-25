@@ -312,6 +312,9 @@ func (c *client) result(result *db.ExecResult, binaryRows bool) error {
 	// Use a string wire type for mixed columns to avoid truncation or rounding.
 	columns := append([]sql.ColumnDef(nil), result.Columns...)
 	for i, col := range columns {
+		if col.SemanticType != sql.TypeUnknown {
+			continue
+		}
 		seen := false
 		for _, row := range result.Rows {
 			v, ok := row[col.Name]

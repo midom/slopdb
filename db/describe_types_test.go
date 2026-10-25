@@ -168,3 +168,41 @@ func TestSharedDescriptionRejectsInvalidParameterMaps(t *testing.T) {
 		}
 	}
 }
+
+func TestPreparedBindingsPreserveNeutralTypeIdentity(t *testing.T) {
+	d := projectionDatabase(t)
+	s, e := d.NewSession()
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	if e = s.SetDialect(sql.DialectPostgreSQL); e != nil {
+		t.Fatal(e)
+	}
+	p, e := s.Prepare("SELECT ? AS v")
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer p.Close()
+	decimal, e := sql.NewDecimalValue("123.4500")
+	if e != nil {
+		t.Fatal(e)
+	}
+	document, e := sql.NewJSONValue(`{"n":123.45}`)
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, v := range []sql.Value{decimal.WithSemanticType(sql.TypeDecimal), document.WithSemanticType(sql.TypeJSONB), sql.NewNullValue().WithSemanticType(sql.TypeUUID)} {
+		r, e := p.Exec(v)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if r.Rows[0]["v"].LogicalType().Kind != v.LogicalType().Kind || r.Columns[0].LogicalType().Kind != v.LogicalType().Kind {
+			t.Fatalf("lost identity %+v => %+v %+v", v, r.Columns, r.Rows)
+		}
+	}
+	r, e := s.Exec("SELECT CASE WHEN TRUE THEN NULL ELSE TRUE END AS b")
+	if e != nil || r.Columns[0].LogicalType().Kind != sql.TypeBoolean {
+		t.Fatal(r, e)
+	}
+}

@@ -96,5 +96,6 @@ func (s *Schema) selectProjection(stmt *SelectStmt, info *TableInfo) ([]ColumnDe
 			expressions = append(expressions, selectExprCol{name: name, expr: sc.Expr})
 		}
 	}
+	s.projectionMetadata(stmt, info, columns)
 	return columns, expressions, uniqueResultColumns(columns, expressions)
 }

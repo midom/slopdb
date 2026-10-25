@@ -2898,6 +2898,14 @@ func (s *Schema) Union(stmt *UnionStmt) (*ResultSet, error) {
 		return nil, fmt.Errorf("compound SELECTs must return the same number of columns")
 	}
 
+	for i := range left.Columns {
+		name, label := left.Columns[i].Name, left.Columns[i].DisplayName
+		t := describeCommon(left.Columns[i], right.Columns[i])
+		t.Name, t.DisplayName = name, label
+		t.SemanticType = t.LogicalType().Kind
+		left.Columns[i] = t
+	}
+
 	for i := range right.Rows {
 		mapped := make(map[string]Value)
 		for j, rc := range right.Columns {
@@ -4203,6 +4211,7 @@ func (s *Schema) buildReturningResult(cols []SelectColumn, rows []map[string]Val
 		rs.Columns = append(rs.Columns, ColumnDef{Name: name})
 		expressions = append(expressions, selectExprCol{name: name, expr: sc.Expr})
 	}
+	s.returningMetadata(cols, info, rs)
 	uniqueResultColumns(rs.Columns, expressions)
 	for _, row := range rows {
 		projected := make(map[string]Value)

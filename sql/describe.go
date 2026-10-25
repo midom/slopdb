@@ -357,22 +357,48 @@ func describeColumns(names ...string) []ColumnDef {
 func describeCommon(a, b ColumnDef) ColumnDef {
 	if a.ColType == ColUnknown {
 		b.Name = a.Name
+		b.NotNull = false
 		return b
 	}
 	if b.ColType == ColUnknown {
+		a.NotNull = false
+		return a
+	}
+
+	// Equal storage tags can still carry different SQL semantics (ENUM/TEXT,
+	// UUID/BYTEA, timestamp/text or float4/float8). Do not retain one branch's
+	// narrower declaration as the result descriptor for all branches.
+	if a.ColType == b.ColType && a.LogicalType().Kind != b.LogicalType().Kind {
+		nullable := a.NotNull && b.NotNull
+		name := a.Name
+		switch a.ColType {
+		case ColInteger:
+			a = ColumnDef{Name: name, ColType: ColInteger}
+		case ColReal:
+			a = ColumnDef{Name: name, ColType: ColReal}
+		case ColText:
+			a = ColumnDef{Name: name, ColType: ColText}
+		case ColBlob:
+			a = ColumnDef{Name: name, ColType: ColBlob}
+		case ColJSON:
+			a = ColumnDef{Name: name, ColType: ColJSON, Declared: "JSON"}
+		}
+		a.NotNull = nullable
 		return a
 	}
 	if a.ColType != b.ColType {
 		numeric := func(t ColumnType) bool { return t == ColInteger || t == ColUnsigned || t == ColDecimal || t == ColReal }
-		if a.ColType == ColReal || b.ColType == ColReal {
+		if numeric(a.ColType) && numeric(b.ColType) && (a.ColType == ColReal || b.ColType == ColReal) {
 			a = ColumnDef{Name: a.Name, ColType: ColReal}
 		} else if numeric(a.ColType) && numeric(b.ColType) && (a.ColType == ColDecimal || b.ColType == ColDecimal) {
 			a.ColType = ColDecimal
 			a.Declared = "DECIMAL"
 			a.Unsigned = false
 		} else if numeric(a.ColType) && numeric(b.ColType) && (a.ColType == ColUnsigned || b.ColType == ColUnsigned) {
-			a.ColType = ColUnsigned
-			a.Unsigned = true
+			a.ColType = ColDecimal
+			a.Declared = "NUMERIC"
+			a.SemanticType = TypeDecimal
+			a.Unsigned = false
 		} else {
 			a = ColumnDef{Name: a.Name, ColType: ColText}
 		}
@@ -427,14 +453,14 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 	case nil:
 		return text, nil
 	case *LiteralExpr:
-		if e.BoundParameter {
+		if e.BoundParameter && s.describeTypes != nil {
 			return s.describeParameter(int(e.Value.Int) - 1), nil
 		}
 		if e.Value.Null {
-			if s.describeTypes != nil {
-				return ColumnDef{ColType: ColUnknown}, nil
+			if typ := e.Value.LogicalType(); typ.Known() {
+				return typ.Column(), nil
 			}
-			return text, nil
+			return ColumnDef{ColType: ColUnknown}, nil
 		}
 		if (s.MySQLMode() || s.PostgresMode()) && (e.Value.NumericText != "" && !strings.ContainsAny(e.Value.NumericText, "eE") || e.Value.Type == ColDecimal) {
 			value := e.Value
@@ -591,6 +617,28 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 		}
 		return describeCommon(a, b), nil
 	case *CaseExpr:
+		var caseType ColumnDef
+		if e.Expr != nil {
+			var err error
+			caseType, err = s.describeExpression(e.Expr, env, scope, depth+1)
+			if err != nil {
+				return text, err
+			}
+		}
+		for _, w := range e.Whens {
+			if e.Expr == nil {
+				s.constrainDescription(w.Cond, s.booleanColumn(), env)
+			} else {
+				s.constrainDescription(w.Cond, caseType, env)
+			}
+			c, err := s.describeExpression(w.Cond, env, scope, depth+1)
+			if err != nil {
+				return text, err
+			}
+			if e.Expr != nil {
+				s.constrainDescription(e.Expr, c, env)
+			}
+		}
 		var result ColumnDef
 		set := false
 		for _, w := range e.Whens {
