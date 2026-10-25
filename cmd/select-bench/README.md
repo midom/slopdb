@@ -141,3 +141,58 @@ Setup, page-spaced warmup, seed validation, compaction and close are outside the
 timed samples. No loading or writes run alongside measurements. Benchmark
 timings are not ordinary test pass/fail thresholds; functionality tests use
 `t.TempDir()` and small fixtures.
+
+## Ordinary SQL and database/sql access
+
+The same checked fixture supports these access modes:
+
+| Flags | Access path |
+|---|---|
+| `-api native -query-mode text` | Independent `Session.Exec` calls with literal SQL; parsing is timed |
+| `-api native -query-mode prepared` | Shared native prepared statement, independently owned results |
+| `-api native -query-mode prepared -reuse-results` | One reusable native result destination per worker |
+| `-api embedded -query-mode text` | Native embedded `database/sql` pool with literal SQL |
+| `-api embedded -query-mode prepared` | Native embedded pool with a shared prepared statement |
+| `-api mysql -query-mode text` or `prepared` | `go-sql-driver/mysql` over loopback TCP |
+| `-api pgx -query-mode text` or `prepared` | pgx `database/sql` adapter over loopback TCP |
+| `-api pq -query-mode text` or `prepared` | lib/pq over loopback TCP |
+
+Text queries have no bound arguments; pgx uses simple protocol with automatic
+statement caching disabled in text mode. Explicit prepared modes prepare before
+timing. Pools have one maximum open and idle connection per worker. Setup holds
+one result per connection until every connection is acquired, so connection
+opening and lazy per-connection preparation finish before measurement. Timed
+calls use the shared ordinary `database/sql` pool; query results are fully
+scanned, drained and closed before validation and the next request. Pool wait
+counts, open connections and checked answers are recorded.
+
+Without `-endpoint`, wire clients start an isolated protocol server in the same
+process as the benchmark. CPU and allocation counters then include both ends.
+The embedded driver wraps the already-open fixture through its non-owning
+connector. No network is involved in embedded access.
+
+A dedicated external benchmark server can expose both protocols and report
+server counters separately:
+
+```sh
+select-bench -dir /tmp/select-seed -cache-bytes 536870912 \
+  -serve-mysql 127.0.0.1:33061 -serve-postgres 127.0.0.1:54361 \
+  -stats-listen 127.0.0.1:33062 -json /tmp/select-server.json
+```
+
+Readiness JSON records actual endpoints, PID and statistics URL. The server opens
+only the existing fixture, uses no TLS/compression, and shuts down on SIGTERM.
+Use a separate client process for each case:
+
+```sh
+select-bench -dir /tmp/select-seed -api mysql -query-mode prepared \
+  -endpoint 127.0.0.1:33061 -server-stats-url http://127.0.0.1:33062/stats \
+  -workers 60 -duration 10s -samples 3 -json /tmp/mysql-prepared.json
+```
+
+External clients never open the server's LSM directory. `-dir` supplies fixture
+metadata for validation. Client CPU/allocation counters exclude the server;
+`ServerBefore`/`ServerAfter` and server deltas are sampled outside each timed
+window through the optional statistics URL. Storage statistics in those reports
+come from the server. Keep server and client runtime settings, transport, cache,
+connection count and result-consumption behavior explicit when comparing modes.

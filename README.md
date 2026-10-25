@@ -80,6 +80,11 @@ The Go API supports querying, concurrent application sessions and transactions,
 with deadlines and cancellation. Options let applications choose resource and
 durability settings.
 
+The embedded [`database/sql` driver](docs/driver.md) registers as `slopdb`:
+import `_ "slopdb/driver"`, then call `sql.Open("slopdb", directory)`. A pool
+uses independent sessions over one shared physical engine. `NewConnector` can
+also wrap an existing native database without taking ownership of it.
+
 See [prepared statements](docs/prepared-statements.md) for parameter binding and
 transaction examples, and [application operations](docs/application-operations.md)
 for working with results, loading data, backups and integrity checks.
