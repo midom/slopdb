@@ -50,14 +50,7 @@ func (s *Schema) writeBatchWithOnlineIndexes(batch []storage.Mutation) error {
 }
 
 func (s *Schema) writeBatchWithOnlineIndexesQueued(batch []storage.Mutation, queued func()) error {
-	batch, private := s.splitTemporaryBatch(batch)
-	if len(batch) == 0 {
-		if queued != nil {
-			queued()
-		}
-		s.applyTemporaryBatch(private)
-		return nil
-	}
+	batch = s.prepareTemporaryBatch(batch)
 	root := s
 	if root.parent != nil {
 		root = root.parent
@@ -67,7 +60,6 @@ func (s *Schema) writeBatchWithOnlineIndexesQueued(batch []storage.Mutation, que
 	if err := s.lsm.WriteBatchWithEnqueue(batch, queued); err != nil {
 		return err
 	}
-	s.applyTemporaryBatch(private)
 	for b := range root.onlineIndexBuilds {
 		b.mu.Lock()
 		for _, w := range batch {

@@ -50,3 +50,35 @@ func (l *LSMTree) SyncReplicationWAL() error {
 	}
 	return l.syncWAL()
 }
+
+// writeWithLocalMutations never sends session-local rows to consensus. The SQL
+// session gate excludes every observer of these rows while the durable part is
+// committed, so mixed SQL transactions remain atomic to all permitted readers.
+// Standalone batches publish both parts at one native sequence watermark.
+func (l *LSMTree) writeWithLocalMutations(h *ReplicationHooks, batch []Mutation, queued func()) error {
+	var durable, local []Mutation
+	for _, w := range batch {
+		if w.NoWAL {
+			local = append(local, w)
+		} else {
+			durable = append(durable, w)
+		}
+	}
+	if len(local) == 0 {
+		return h.Write(batch, queued)
+	}
+	if len(durable) > 0 {
+		if err := h.Write(durable, queued); err != nil {
+			return err
+		}
+	} else if queued != nil {
+		queued()
+	}
+	if err := l.writeMutationsLocal(local, false, false, nil); err != nil {
+		if len(durable) > 0 {
+			return fmt.Errorf("durable batch committed but temporary publication failed: %w", err)
+		}
+		return err
+	}
+	return nil
+}

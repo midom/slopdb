@@ -104,8 +104,7 @@ func (s *Schema) EndStatement() {
 }
 func (s *Schema) committedGet(key []byte) ([]byte, bool, error) {
 	if s.temporaryKey(key) {
-		value, found := s.temporary.rows[string(key)]
-		return copyBytes(value), found, nil
+		return s.lsm.Get(key)
 	}
 	if s.statementActive {
 		return s.lsm.GetAtForReader(key, s.statementSnapshot, s.snapshotReader)
@@ -114,9 +113,9 @@ func (s *Schema) committedGet(key []byte) ([]byte, bool, error) {
 }
 func (s *Schema) committedIterator() storage.Iterator {
 	if s.statementActive {
-		return s.temporaryIterator(s.lsm.NewIteratorAt(s.statementSnapshot), nil, nil)
+		return s.lsm.NewIteratorAt(s.statementSnapshot)
 	}
-	return s.temporaryIterator(s.lsm.NewIterator(), nil, nil)
+	return s.lsm.NewIterator()
 }
 func (s *Schema) refreshReadCommittedLocked() error {
 	// A physical replica imports catalog and data together in the owner's

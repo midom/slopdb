@@ -344,6 +344,7 @@ type Mutation struct {
 	Key, Value  []byte
 	Delete      bool
 	RangeDelete bool // Value is the exclusive end key
+	NoWAL       bool // session-local data: publish normally, omit from WAL and replication
 }
 
 func (l *LSMTree) writeBatchDirect(batch []Mutation) error {
@@ -369,14 +370,15 @@ func (l *LSMTree) writeMutationsWithInstaller(batch []Mutation, syncWAL, rangeDe
 				batch[i].RangeDelete = true
 			}
 		}
-		return h.Write(batch, nil)
+		return l.writeWithLocalMutations(h, batch, nil)
 	}
 	return l.writeMutationsLocal(batch, syncWAL, rangeDelete, install)
 }
 func (l *LSMTree) writeMutationsLocal(batch []Mutation, syncWAL, rangeDelete bool, install func(*MemTable, uint64)) error {
-	hasRanges := rangeDelete
+	hasRanges, durable := rangeDelete, false
 	for _, w := range batch {
 		hasRanges = hasRanges || w.RangeDelete
+		durable = durable || !w.NoWAL
 	}
 
 	l.writerMu.Lock()
@@ -394,7 +396,7 @@ func (l *LSMTree) writeMutationsLocal(batch []Mutation, syncWAL, rangeDelete boo
 		l.mu.Unlock()
 		return err
 	}
-	if !l.opt.DisableWAL {
+	if !l.opt.DisableWAL && durable {
 		if err := l.ensureWAL(); err != nil {
 			l.mu.Unlock()
 			return err
@@ -411,9 +413,12 @@ func (l *LSMTree) writeMutationsLocal(batch []Mutation, syncWAL, rangeDelete boo
 		}
 		return kTypeValue
 	}
-	if !l.opt.DisableWAL {
+	if !l.opt.DisableWAL && durable {
 		capacity := 1
 		for _, w := range batch {
+			if w.NoWAL {
+				continue
+			}
 			capacity += 9 + 3*binary.MaxVarintLen64 + len(w.Key) + len(w.Value)
 		}
 		data := l.walWriteScratch[:0]
@@ -423,6 +428,9 @@ func (l *LSMTree) writeMutationsLocal(batch []Mutation, syncWAL, rangeDelete boo
 		data = data[:1]
 		data[0] = 3
 		for i, w := range batch {
+			if w.NoWAL {
+				continue
+			}
 			size := 9 + uvarintSize(uint64(len(w.Key))) + len(w.Key) + uvarintSize(uint64(len(w.Value))) + len(w.Value)
 			data = binary.AppendUvarint(data, uint64(size))
 			data = appendWALRecord(data, typ(w), w.Key, w.Value, base+uint64(i)+1)

@@ -269,6 +269,11 @@ func newSchemaWithOptions(lsm *storage.LSMTree, pageSize int, opt *storage.Optio
 		s.disableAutoIncrementPersistence = opt.DisableAutoIncrementPersistence
 		s.enableAutoIncrementGroupCommit = !opt.DisableWAL && !opt.DisableWALSync
 	}
+	if snapshot == nil {
+		if err := cleanupTemporaryRange(lsm); err != nil {
+			return nil, err
+		}
+	}
 	if err := s.loadCollation(); err != nil {
 		return nil, err
 	}
@@ -2100,8 +2105,7 @@ func (s *Schema) write(key, value []byte) error {
 		return nil
 	}
 	if s.temporaryKey(key) {
-		s.temporary.rows[string(key)] = copyBytes(value)
-		return nil
+		return s.lsm.WriteBatch([]storage.Mutation{{Key: key, Value: value, NoWAL: true}})
 	}
 	return s.lsm.Put(key, value)
 }
@@ -2114,8 +2118,7 @@ func (s *Schema) remove(key []byte) error {
 		return nil
 	}
 	if s.temporaryKey(key) {
-		delete(s.temporary.rows, string(key))
-		return nil
+		return s.lsm.WriteBatch([]storage.Mutation{{Key: key, Delete: true, NoWAL: true}})
 	}
 	return s.lsm.Delete(key)
 }

@@ -120,6 +120,7 @@ func (db *Database) Close() error {
 	defer db.mu.Unlock()
 	db.closed.Store(true)
 	_ = db.schema.Rollback()
+	db.schema.DiscardTemporaryTables()
 	db.locks.release(db.schema)
 	for session := range db.sessions {
 		session.closeLocked()

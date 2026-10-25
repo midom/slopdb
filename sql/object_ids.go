@@ -21,6 +21,9 @@ func objectPrefix(namespace byte, id uint64) string {
 	var b [11]byte
 	b[0], b[1], b[10] = namespace, 0xff, ':'
 	binary.BigEndian.PutUint64(b[2:10], id)
+	if id > math.MaxInt64 {
+		return string(append([]byte{3}, b[:]...))
+	}
 	return string(b[:])
 }
 
@@ -53,7 +56,7 @@ func (s *Schema) allocateObjectID() (uint64, error) {
 	if s.temporary != nil && s.temporary.building {
 		return s.temporaryObjectID(), nil
 	}
-	if s.nextObjectID == math.MaxUint64 {
+	if s.nextObjectID >= math.MaxInt64 {
 		return 0, fmt.Errorf("storage object IDs exhausted")
 	}
 	s.nextObjectID++

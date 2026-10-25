@@ -135,6 +135,9 @@ func (s *Schema) CheckIntegrity() (report IntegrityReport, err error) {
 				expectedCounts[idx.Name]++
 			}
 			report.Rows++
+		case 3:
+			// Session-owned temporary ranges have no committed shared catalog.
+			// Their physical blocks remain covered by storage integrity checks.
 		case 2:
 			var idx *IndexInfo
 			if len(key) >= 11 && key[1] == 0xff && key[10] == ':' {

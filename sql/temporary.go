@@ -1,12 +1,10 @@
 package sql
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"maps"
 	"math"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -19,7 +17,6 @@ type temporaryCatalog struct {
 	tables   map[string]*TableInfo
 	indexes  map[string]*IndexInfo
 	base     *schemaState
-	rows     map[string][]byte
 	ids      map[uint64]bool
 	dropped  map[uint64]bool
 	autoinc  map[string]int64
@@ -35,7 +32,7 @@ func (s *Schema) isTemporaryTable(name string) bool {
 // IsTemporaryTable reports whether this session resolves name to a private table.
 func (s *Schema) IsTemporaryTable(name string) bool { return s.isTemporaryTable(name) }
 func (s *Schema) temporaryKey(key []byte) bool {
-	return s.temporary != nil && len(key) >= 10 && (key[0] == 1 || key[0] == 2) && key[1] == 0xff && s.temporary.ids[binary.BigEndian.Uint64(key[2:10])]
+	return s.temporary != nil && len(key) >= 11 && key[0] == 3 && (key[1] == 1 || key[1] == 2) && key[2] == 0xff && s.temporary.ids[binary.BigEndian.Uint64(key[3:11])]
 }
 func (s *Schema) temporaryObjectID() uint64 {
 	root := s
@@ -80,7 +77,7 @@ func (s *Schema) createTemporaryTable(stmt *CreateTableStmt) error {
 		}
 	}
 	if s.temporary == nil {
-		s.temporary = &temporaryCatalog{tables: map[string]*TableInfo{}, indexes: map[string]*IndexInfo{}, rows: map[string][]byte{}, ids: map[uint64]bool{}, dropped: map[uint64]bool{}, autoinc: map[string]int64{}, nextRow: map[string]int64{}}
+		s.temporary = &temporaryCatalog{tables: map[string]*TableInfo{}, indexes: map[string]*IndexInfo{}, ids: map[uint64]bool{}, dropped: map[uint64]bool{}, autoinc: map[string]int64{}, nextRow: map[string]int64{}}
 	}
 	persistent := s.captureState()
 	// Copy before hiding a permanent table of the same name.
@@ -189,6 +186,7 @@ func (s *Schema) DiscardTemporaryTables() {
 		return
 	}
 	state := s.captureState()
+	_ = s.cleanupTemporaryIDs(s.temporary.ids)
 	s.temporary = nil
 	s.restoreState(state)
 }
@@ -211,16 +209,12 @@ func (s *Schema) dropTemporaryTable(stmt *DropTableStmt) error {
 		}
 	}
 	delete(t.tables, name)
-	t.rows = maps.Clone(t.rows)
 	t.dropped = maps.Clone(t.dropped)
 	for id := range ids {
 		t.dropped[id] = true
 	}
-	for key := range t.rows {
-		data := []byte(key)
-		if len(data) >= 10 && ids[binary.BigEndian.Uint64(data[2:10])] {
-			delete(t.rows, key)
-		}
+	if err := s.cleanupTemporaryIDs(ids); err != nil {
+		return err
 	}
 	s.restoreState(persistent)
 	return nil
@@ -319,50 +313,50 @@ func (s *Schema) overlayTemporaryState(state *schemaState) {
 	}
 	s.catalogLookup = nil
 }
-func (s *Schema) temporaryIterator(base storage.Iterator, lower, upper []byte) storage.Iterator {
-	if s.temporary == nil || len(s.temporary.rows) == 0 {
-		return base
-	}
-	rows := make([]storage.KeyValue, 0, len(s.temporary.rows))
-	for key, value := range s.temporary.rows {
-		data := []byte(key)
-		if lower != nil && bytes.Compare(data, lower) < 0 || upper != nil && bytes.Compare(data, upper) >= 0 {
-			continue
-		}
-		rows = append(rows, storage.KeyValue{Key: storage.InternalKey{UserKey: data, OpType: 1}, Value: value})
-	}
-	if len(rows) == 0 {
-		return base
-	}
-	sort.Slice(rows, func(i, j int) bool { return bytes.Compare(rows[i].Key.UserKey, rows[j].Key.UserKey) < 0 })
-	it := &transactionIterator{base: base, rows: rows}
-	it.Next()
-	return it
-}
-func (s *Schema) splitTemporaryBatch(batch []storage.Mutation) (persistent, private []storage.Mutation) {
+
+// prepareTemporaryBatch marks local ranges without splitting native atomic
+// publication. Dropped definitions must not resurrect earlier private writes.
+func (s *Schema) prepareTemporaryBatch(batch []storage.Mutation) []storage.Mutation {
 	if s.temporary == nil {
-		return batch, nil
+		return batch
 	}
-	for _, mutation := range batch {
-		if s.temporaryKey(mutation.Key) {
-			private = append(private, mutation)
-		} else {
-			persistent = append(persistent, mutation)
+	out := batch[:0]
+	for _, w := range batch {
+		if s.temporaryKey(w.Key) {
+			if s.temporary.dropped[binary.BigEndian.Uint64(w.Key[3:11])] {
+				continue
+			}
+			w.NoWAL = true
 		}
+		out = append(out, w)
 	}
-	return
+	return out
 }
-func (s *Schema) applyTemporaryBatch(batch []storage.Mutation) {
-	for _, mutation := range batch {
-		if s.temporary.dropped[binary.BigEndian.Uint64(mutation.Key[2:10])] {
-			continue
-		}
-		if mutation.Delete {
-			delete(s.temporary.rows, string(mutation.Key))
-		} else {
-			s.temporary.rows[string(mutation.Key)] = copyBytes(mutation.Value)
+func (s *Schema) cleanupTemporaryIDs(ids map[uint64]bool) error {
+	batch := make([]storage.Mutation, 0, len(ids)*2)
+	for id := range ids {
+		for _, kind := range []byte{1, 2} {
+			prefix := []byte(objectPrefix(kind, id))
+			batch = append(batch, storage.Mutation{Key: prefix, Value: prefixSuccessor(prefix), RangeDelete: true, NoWAL: true})
 		}
 	}
+	return s.lsm.WriteBatch(batch)
+}
+
+// Only a physical database's initial catalog open clears crash leftovers.
+// Historical/repeated catalog views must not erase live sessions' private data.
+func cleanupTemporaryRange(lsm *storage.LSMTree) error {
+	it := lsm.NewIteratorSeek([]byte{3})
+	exists := it.Valid() && len(it.Key().UserKey) > 0 && it.Key().UserKey[0] == 3
+	err := storage.IteratorError(it)
+	it.Close()
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
+	return lsm.WriteBatch([]storage.Mutation{{Key: []byte{3}, Value: []byte{4}, RangeDelete: true, NoWAL: true}})
 }
 
 // TemporaryCatalogInfo is a caller-owned snapshot of this session's private

@@ -250,10 +250,13 @@ func (s *Schema) schemaMultiGet(keys [][]byte) (results []storage.PointValue, er
 }
 
 func (s *Schema) newIteratorSeek(key []byte) storage.Iterator {
-	if s.hasTemporaryTables() {
-		it := s.newIterator()
-		it.Seek(key)
-		return it
+	if s.temporaryKey(key) {
+		base := s.lsm.NewIteratorSeek(key)
+		if s.inTx && len(s.txWrites) > 0 {
+			base = s.txIterator(base, nil, nil)
+			base.Seek(key)
+		}
+		return s.profileReader(base, "Scan")
 	}
 	if s.inTx && len(s.txWrites) > 0 {
 		it := s.txNewIterator()
@@ -268,10 +271,10 @@ func (s *Schema) newIteratorSeek(key []byte) storage.Iterator {
 
 func (s *Schema) newRangeIterator(lower, upper []byte, reverse bool) storage.Iterator {
 	var base storage.Iterator
-	overlay := s.inTx && len(s.txWrites) > 0 || s.hasTemporaryTables()
+	overlay := s.inTx && len(s.txWrites) > 0
 	// Bounded read views exclude unrelated SSTables and initialize at the
 	// requested range, even when private transaction writes are present.
-	if s.statementActive {
+	if s.statementActive && !s.temporaryKey(lower) {
 		base = s.lsm.NewIteratorAtRange(s.statementSnapshot, lower, upper, reverse && !overlay)
 	} else {
 		base = s.lsm.NewIteratorRange(lower, upper, reverse && !overlay)
@@ -279,7 +282,6 @@ func (s *Schema) newRangeIterator(lower, upper []byte, reverse bool) storage.Ite
 	if !overlay {
 		return s.profileReader(base, "RangeScan")
 	}
-	base = s.temporaryIterator(base, lower, upper)
 	it := s.txIterator(base, lower, upper)
 	if reverse {
 		it.Seek(upper)
