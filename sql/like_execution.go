@@ -13,11 +13,13 @@ type likePatternKey struct {
 	pattern   string
 	escape    byte
 	sensitive bool
+	bytes     bool
 }
 type likePattern struct {
 	tokens    []likeToken
 	valid     bool
 	sensitive bool
+	bytes     bool
 }
 
 func foldLikeRune(r rune) rune {
@@ -32,9 +34,16 @@ func compileLike(pattern string, escape byte) likePattern {
 }
 
 func compileLikeMode(pattern string, escape byte, sensitive bool) likePattern {
-	p := likePattern{valid: true, sensitive: sensitive}
+	return compileLikeKind(pattern, escape, sensitive, false)
+}
+
+func compileLikeKind(pattern string, escape byte, sensitive, binary bool) likePattern {
+	p := likePattern{valid: true, sensitive: sensitive, bytes: binary}
 	for pos := 0; pos < len(pattern); {
 		r, n := utf8.DecodeRuneInString(pattern[pos:])
+		if binary {
+			r, n = rune(pattern[pos]), 1
+		}
 		pos += n
 		if escape != 0 && r == rune(escape) {
 			if pos == len(pattern) {
@@ -42,6 +51,9 @@ func compileLikeMode(pattern string, escape byte, sensitive bool) likePattern {
 				return p
 			}
 			r, n = utf8.DecodeRuneInString(pattern[pos:])
+			if binary {
+				r, n = rune(pattern[pos]), 1
+			}
 			pos += n
 			p.tokens = append(p.tokens, likeToken{r: p.fold(r)})
 		} else {
@@ -75,6 +87,9 @@ func (p likePattern) match(input string) bool {
 			continue
 		}
 		r, n := utf8.DecodeRuneInString(input[si:])
+		if p.bytes {
+			r, n = rune(input[si]), 1
+		}
 		if ti < len(p.tokens) && (p.tokens[ti].wild && p.tokens[ti].r == '_' || !p.tokens[ti].wild && p.tokens[ti].r == p.fold(r)) {
 			si += n
 			ti++
@@ -84,6 +99,9 @@ func (p likePattern) match(input string) bool {
 			return false
 		}
 		_, n = utf8.DecodeRuneInString(input[mark:])
+		if p.bytes {
+			n = 1
+		}
 		mark += n
 		si = mark
 		ti = star + 1
@@ -99,13 +117,17 @@ func (s *Schema) matchLike(input, pattern string, escape byte) bool {
 }
 
 func (s *Schema) matchLikeMode(input, pattern string, escape byte, sensitive bool) bool {
+	return s.matchLikeKind(input, pattern, escape, sensitive, false)
+}
+
+func (s *Schema) matchLikeKind(input, pattern string, escape byte, sensitive, binary bool) bool {
 	if s.selectDepth == 0 {
-		return compileLikeMode(pattern, escape, sensitive).match(input)
+		return compileLikeKind(pattern, escape, sensitive, binary).match(input)
 	}
-	key := likePatternKey{pattern, escape, sensitive}
+	key := likePatternKey{pattern, escape, sensitive, binary}
 	p, ok := s.likePatterns[key]
 	if !ok {
-		p = compileLikeMode(pattern, escape, sensitive)
+		p = compileLikeKind(pattern, escape, sensitive, binary)
 		if len(s.likePatterns) < 4096 {
 			if s.likePatterns == nil {
 				s.likePatterns = make(map[likePatternKey]likePattern)
@@ -126,6 +148,10 @@ func (s *Schema) matchLikeValues(input, pattern Value, escape byte) bool {
 		collation = s.collation
 	}
 	sensitive := false
+	binary := s.mysqlMode && (input.Type == ColBlob || pattern.Type == ColBlob)
+	if binary && collation == "" {
+		return s.matchLikeKind(left, right, escape, true, true)
+	}
 	if _, ok := mysqlCollation(string(collation)); ok {
 		sensitive = strings.HasSuffix(string(collation), "_BIN")
 		if !sensitive {

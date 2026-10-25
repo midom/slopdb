@@ -148,4 +148,14 @@ func TestMySQLBinaryStringsInGroupConcatAndLike(t *testing.T) {
 			t.Fatalf("%s: %v %v", expression, v, err)
 		}
 	}
+	for _, expression := range []string{"X'41' LIKE 'a'", "X'c3a9' LIKE '_'"} {
+		v, err = s.evalExpr(parseTestExpression(t, expression), nil)
+		if err != nil || v.Int != 0 {
+			t.Fatalf("%s: %v %v", expression, v, err)
+		}
+	}
+	v, err = s.evalExpr(parseTestExpression(t, "X'c3a9' LIKE '__'"), nil)
+	if err != nil || v.Int != 1 {
+		t.Fatal(v, err)
+	}
 }

@@ -66,7 +66,7 @@ func (s *Schema) evalMySQLFunc(e *FuncCallExpr, row map[string]Value) (Value, bo
 		for _, arg := range args[1:] {
 			cmp := s.valueCompare(arg, best)
 			if !allNumeric {
-				cmp = strings.Compare(arg.String(), best.String())
+				cmp = strings.Compare(mysqlStringValue(arg), mysqlStringValue(best))
 			}
 			if name == "GREATEST" && cmp > 0 || name == "LEAST" && cmp < 0 {
 				best = arg
@@ -167,7 +167,7 @@ func (s *Schema) evalMySQLFunc(e *FuncCallExpr, row map[string]Value) (Value, bo
 		var parsed time.Time
 		var err error
 		for _, layout := range []string{"2006-01-02 15:04:05.999999999", "2006-01-02", "20060102150405", time.RFC3339Nano} {
-			parsed, err = time.ParseInLocation(layout, args[0].String(), time.UTC)
+			parsed, err = time.ParseInLocation(layout, mysqlStringValue(args[0]), time.UTC)
 			if err == nil {
 				break
 			}
