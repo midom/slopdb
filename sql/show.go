@@ -207,7 +207,7 @@ func (s *Schema) showColumns(stmt *ShowStmt) (*ResultSet, error) {
 		if s.PostgresMode() { // SHOW preserves its native literal-default presentation.
 			if fact, ok := s.catalogFacts().relation(stmt.Object); ok {
 				for _, col := range fact.Columns {
-					if col.Name == row["column_name"].Text {
+					if col.DeclaredName() == row["column_name"].Text {
 						projected["Default"] = catalogDefault(col, false)
 					}
 				}

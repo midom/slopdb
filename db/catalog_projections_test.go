@@ -60,3 +60,49 @@ func TestCatalogProjectionsShareNativeFacts(t *testing.T) {
 		t.Fatal("unknown ownership must remain NULL", r)
 	}
 }
+
+func TestCatalogDeclaredNamesAndEffectiveCollations(t *testing.T) {
+	d, _ := bulkDatabase(t)
+	s, e := d.NewSession()
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	if e = s.SetDialect(sql.DialectMySQL); e != nil {
+		t.Fatal(e)
+	}
+	ctx := sql.WithMySQLSession(context.Background(), sql.MySQLSessionOptions{Database: "wiki", RootDatabase: "wiki"})
+	exec := func(q string) *ExecResult {
+		t.Helper()
+		r, e := s.ExecContext(ctx, q)
+		if e != nil {
+			t.Fatalf("%s: %v", q, e)
+		}
+		return r
+	}
+	exec("CREATE TABLE parent_names(ID BIGINT PRIMARY KEY);CREATE TABLE named(ID BIGINT PRIMARY KEY,ParentID BIGINT,Word VARCHAR(20),Exact VARCHAR(20) COLLATE utf8mb4_bin,KEY WordIndex(Word(7)),CONSTRAINT parent_fk FOREIGN KEY(ParentID) REFERENCES parent_names(ID)) COLLATE utf8mb4_unicode_520_ci")
+	r := exec("SELECT column_name,collation_name FROM information_schema.columns WHERE table_schema='wiki' AND table_name='named' ORDER BY ordinal_position")
+	if len(r.Rows) != 4 || r.Rows[0]["column_name"].Text != "ID" || r.Rows[2]["collation_name"].Text != "utf8mb4_unicode_520_ci" || r.Rows[3]["collation_name"].Text != "utf8mb4_bin" {
+		t.Fatalf("column display: %+v", r)
+	}
+	r = exec("SHOW FULL COLUMNS FROM named")
+	if r.Rows[0]["Field"].Text != "ID" || r.Rows[2]["Collation"].Text != "utf8mb4_unicode_520_ci" || !r.Rows[2]["Privileges"].Null {
+		t.Fatal(r)
+	}
+	r = exec("SELECT column_name,sub_part FROM information_schema.statistics WHERE table_name='named' AND index_name='wordindex'")
+	if len(r.Rows) != 1 || r.Rows[0]["column_name"].Text != "Word" || r.Rows[0]["sub_part"].Int != 7 {
+		t.Fatal(r)
+	}
+	r = exec("SELECT column_name,referenced_column_name FROM information_schema.key_column_usage WHERE constraint_name='parent_fk'")
+	if len(r.Rows) != 1 || r.Rows[0]["column_name"].Text != "ParentID" || r.Rows[0]["referenced_column_name"].Text != "ID" {
+		t.Fatal(r)
+	}
+	r = exec("SELECT table_collation FROM information_schema.tables WHERE table_name='named'")
+	if len(r.Rows) != 1 || r.Rows[0]["table_collation"].Text != "utf8mb4_unicode_520_ci" {
+		t.Fatal(r)
+	}
+	r = exec("SELECT collation_name FROM information_schema.collations WHERE collation_name='utf8mb4_unicode_520_ci'")
+	if len(r.Rows) != 1 {
+		t.Fatal(r)
+	}
+}

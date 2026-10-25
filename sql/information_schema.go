@@ -282,7 +282,7 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 				row["engine"] = "LSM"
 				row["row_format"] = "LSM"
 				row["table_comment"] = "SlopDB transactional LSM storage"
-				row["table_collation"] = "binary"
+				row["table_collation"] = strings.ToLower(string(s.catalogTextCollation(ColumnDef{}, t)))
 				if count, ok := view.RowEstimate(f.Key); ok {
 					row["table_rows"] = count
 				}
@@ -315,7 +315,7 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 				if pos := strings.IndexAny(dt, "( "); pos >= 0 {
 					dt = dt[:pos]
 				}
-				row["column_name"] = c.Name
+				row["column_name"] = c.DeclaredName()
 				row["ordinal_position"] = i + 1
 				row["slopdb_column_ordinal"] = i + 1
 				row["column_default"] = catalogDefault(c, s.PostgresMode())
@@ -335,16 +335,26 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 				if c.AutoIncrement || c.MySQLAutoIncrement {
 					row["extra"] = "auto_increment"
 				}
-				typ := pgTypeFor(pgTypeOID(c))
+				logical := c.LogicalType()
 				if s.PostgresMode() {
+					typ := pgTypeFor(pgTypeOID(c))
 					row["data_type"] = typ.display
+					row["udt_catalog"] = database
+					row["udt_schema"] = "pg_catalog"
+					row["udt_name"] = typ.name
 				}
-				row["udt_catalog"] = database
-				row["udt_schema"] = "pg_catalog"
-				row["udt_name"] = typ.name
-				if c.ColType == ColText && typ.category == "S" {
-					row["character_set_name"] = "utf8mb4"
-					row["collation_name"] = "utf8mb4_bin"
+				switch logical.Kind {
+				case TypeText, TypeVarchar, TypeEnum, TypeIdentifier:
+					charset := "utf8mb4"
+					if t != nil && t.Charset != "" {
+						charset = strings.ToLower(t.Charset)
+					}
+					collation := strings.ToLower(string(s.catalogTextCollation(c, t)))
+					if prefix, _, ok := strings.Cut(collation, "_"); ok && (prefix == "utf8" || prefix == "utf8mb3" || prefix == "utf8mb4") {
+						charset = prefix
+					}
+					row["character_set_name"] = charset
+					row["collation_name"] = collation
 				}
 				if c.Length > 0 {
 					row["character_maximum_length"] = c.Length
@@ -365,7 +375,11 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 					row["numeric_precision_radix"] = 2
 					row["numeric_scale"] = 0
 				case ColReal:
-					row["numeric_precision"] = 53
+					precision := 53
+					if logical.Kind == TypeFloat32 {
+						precision = 24
+					}
+					row["numeric_precision"] = precision
 					row["numeric_precision_radix"] = 2
 				case ColDecimal:
 					row["numeric_precision_radix"] = 10
@@ -374,9 +388,17 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 						row["numeric_scale"] = c.Scale
 					}
 				}
-				if typ.category == "D" || typ.category == "T" {
-					row["datetime_precision"] = c.TemporalPrecision
+				switch logical.Kind {
+				case TypeDate:
+					row["datetime_precision"] = 0
+				case TypeTime, TypeTimeTZ, TypeTimestamp, TypeTimestampTZ, TypeInterval:
+					precision := c.TemporalPrecision
+					if c.Postgres && !c.TypeModifiers {
+						precision = 6
+					}
+					row["datetime_precision"] = precision
 				}
+
 				add(row)
 			}
 		case "statistics", "table_indexes":
@@ -415,7 +437,7 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 					row["index_schema"] = ns
 					row["index_name"] = key.name
 					row["seq_in_index"] = i + 1
-					row["column_name"] = cn
+					row["column_name"] = catalogDeclaredColumnName(t, cn)
 					row["collation"] = "A"
 					row["nullable"] = "YES"
 					for _, c := range t.Columns {
@@ -471,7 +493,7 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 					}
 					for i, cn := range c.Columns {
 						row := common()
-						row["column_name"] = cn
+						row["column_name"] = catalogDeclaredColumnName(t, cn)
 						row["ordinal_position"] = i + 1
 						if kind == "FOREIGN KEY" {
 							rns, rname := SplitSchemaName(c.RefTable)
@@ -479,7 +501,7 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 							row["referenced_table_schema"] = s.catalogNamespace(rns)
 							row["referenced_table_name"] = rname
 							if i < len(c.RefColumns) {
-								row["referenced_column_name"] = c.RefColumns[i]
+								row["referenced_column_name"] = catalogDeclaredColumnName(view.tables[c.RefTable], c.RefColumns[i])
 							}
 						}
 						add(row)
@@ -540,7 +562,7 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 						row := common()
 						row["table_schema"] = s.catalogNamespace(tns)
 						row["table_name"] = tn
-						row["column_name"] = cn
+						row["column_name"] = catalogDeclaredColumnName(target, cn)
 						add(row)
 					}
 				}
@@ -649,4 +671,30 @@ func catalogConstraintKind(kind string) string {
 func catalogConstraintName(t *TableInfo, c ConstraintDef) string {
 	ns, _ := SplitSchemaName(t.Name)
 	return strings.TrimPrefix(c.Name, ns+".")
+}
+
+func catalogDeclaredColumnName(table *TableInfo, name string) string {
+	if table != nil {
+		for _, col := range table.Columns {
+			if col.Name == name {
+				return col.DeclaredName()
+			}
+		}
+	}
+	return name
+}
+func (s *Schema) catalogTextCollation(c ColumnDef, table *TableInfo) Collation {
+	if c.Binary {
+		return BinaryCollation
+	}
+	if c.Collation != "" {
+		return c.Collation
+	}
+	if table != nil && table.DefaultCollation != "" {
+		return table.DefaultCollation
+	}
+	if s.collation != "" {
+		return s.collation
+	}
+	return "UTF8MB4_BIN"
 }

@@ -295,7 +295,7 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 		case "pg_attribute":
 			for i, c := range rel.Columns {
 				typ := pgTypeFor(pgTypeOID(c))
-				pgCatalogRow(r, oid, c.Name, typ.oid, -1, typ.length, i+1, 0, -1, pgTypeMod(c), typ.length > 0, "p", "i", c.NotNull || c.PrimaryKey, c.DefaultSQL != "", false, "", "", false, true, 0, 0, nil, nil, nil, nil)
+				pgCatalogRow(r, oid, c.DeclaredName(), typ.oid, -1, typ.length, i+1, 0, -1, pgTypeMod(c), typ.length > 0, "p", "i", c.NotNull || c.PrimaryKey, c.DefaultSQL != "", false, "", "", false, true, 0, 0, nil, nil, nil, nil)
 			}
 		case "pg_attrdef":
 			if t == nil {
