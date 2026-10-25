@@ -14,6 +14,9 @@ import (
 // PostgresColumnOID describes the declared PostgreSQL type without changing the
 // native row encoding. Zero means the column has no PostgreSQL declaration.
 func PostgresColumnOID(col ColumnDef) uint32 {
+	if col.SemanticType != TypeUnknown {
+		return PostgresOID(col.LogicalType())
+	}
 	if col.Unsigned && col.ColType == ColInteger {
 		return 1700
 	}
@@ -78,7 +81,12 @@ func PostgresColumnOID(col ColumnDef) uint32 {
 	}
 	return 0
 }
-func PostgresValueOID(v Value) uint32 { return PostgresColumnOID(ColumnDef{Declared: v.PGType}) }
+func PostgresValueOID(v Value) uint32 {
+	if v.SemanticType != TypeUnknown {
+		return PostgresOID(v.LogicalType())
+	}
+	return PostgresColumnOID(ColumnDef{Declared: v.PGType})
+}
 
 func postgresColumnDefinition(col *ColumnDef) {
 	col.Postgres = true
@@ -414,4 +422,58 @@ func postgresDescribeType(name string) ColumnDef {
 	}
 	postgresColumnDefinition(&c)
 	return c
+}
+
+// PostgresOID maps neutral logical types to PostgreSQL wire IDs. PostgreSQL
+// protocol metadata calls this after semantic inference, never during storage.
+func PostgresOID(t LogicalType) uint32 {
+	switch t.Kind {
+	case TypeBoolean:
+		return 16
+	case TypeBinary:
+		return 17
+	case TypeInt8, TypeInt16:
+		return 21
+	case TypeInt24, TypeInt32:
+		return 23
+	case TypeInt64:
+		return 20
+	case TypeUint8, TypeUint16, TypeUint24, TypeUint32, TypeUint64, TypeDecimal:
+		return 1700
+	case TypeFloat32:
+		return 700
+	case TypeFloat64:
+		return 701
+	case TypeText, TypeEnum:
+		return 25
+	case TypeIdentifier:
+		return 19
+	case TypeJSON:
+		return 114
+	case TypeJSONB:
+		return 3802
+	case TypeUUID:
+		return 2950
+	case TypeDate:
+		return 1082
+	case TypeTime:
+		return 1083
+	case TypeTimeTZ:
+		return 1266
+	case TypeTimestamp:
+		return 1114
+	case TypeTimestampTZ:
+		return 1184
+	case TypeInterval:
+		return 1186
+	case TypeObjectID:
+		return 26
+	case TypeRelationID:
+		return 2205
+	case TypeTypeID:
+		return 2206
+	case TypeSchemaID:
+		return 4089
+	}
+	return 0
 }

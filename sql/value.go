@@ -55,6 +55,7 @@ type ForeignKeyDef struct {
 }
 
 type ColumnDef struct {
+	SemanticType TypeID `json:"-"` // inferred logical type; durable declarations retain existing catalog fields
 	// DisplayName preserves a duplicate SQL output label; Name is the unique row-map key.
 	DisplayName          string            `json:"-"`
 	TypeModifiers        bool              `json:"type_modifiers,omitempty"`
@@ -549,7 +550,8 @@ func (*SubqueryExpr) expr()  {}
 func (*ExistsExpr) expr()    {}
 
 type Value struct {
-	PGType       string    `json:"-"` // expression/column PostgreSQL type; row storage uses existing physical tags
+	SemanticType TypeID    `json:"-"` // compact protocol-neutral logical type, never a physical row tag
+	PGType       string    `json:"-"` // deprecated compatibility input; use SemanticType/WithDeclaredType
 	HexLiteral   bool      `json:"-"` // transient X'..' numeric context, never a stored BLOB property
 	Collation    Collation `json:"-"`
 	Type         ColumnType
