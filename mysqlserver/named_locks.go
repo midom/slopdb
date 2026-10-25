@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -62,6 +63,14 @@ func (l *namedLocks) call(ctx context.Context, owner uint32, operation string, a
 		switch args[1].Type {
 		case sql.ColInteger:
 			seconds = float64(args[1].Int)
+		case sql.ColUnsigned:
+			seconds = float64(args[1].Uint)
+		case sql.ColDecimal:
+			var err error
+			seconds, err = strconv.ParseFloat(args[1].Text, 64)
+			if err != nil {
+				return sql.NewNullValue(), fmt.Errorf("invalid GET_LOCK timeout")
+			}
 		case sql.ColReal:
 			seconds = args[1].Real
 		default:

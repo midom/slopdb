@@ -129,3 +129,18 @@ func TestMySQLVariableStringsAreNotRewritten(t *testing.T) {
 		t.Fatal(value, err)
 	}
 }
+
+func TestNamedLocksAcceptExactNumericTimeouts(t *testing.T) {
+	var locks namedLocks
+	decimal, err := sql.NewDecimalValue("0.001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, timeout := range []sql.Value{decimal, sql.NewUnsignedValue(0)} {
+		value, err := locks.call(context.Background(), 1, "GET_LOCK", []sql.Value{sql.NewTextValue("exact"), timeout})
+		if err != nil || value.Int != 1 {
+			t.Fatal(value, err)
+		}
+		locks.releaseOwner(1)
+	}
+}
