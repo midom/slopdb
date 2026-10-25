@@ -27,7 +27,7 @@ func TestPostgreSQLSystemCatalogAndFunctionMetadata(t *testing.T) {
 	if len(p.Fields) != 3 {
 		t.Fatalf("fields: %+v", p.Fields)
 	}
-	var oid int64
+	var oid uint32
 	var ns, name string
 	if e = c.QueryRow(ctx, q).Scan(&oid, &ns, &name); e != nil {
 		t.Fatal(e)
