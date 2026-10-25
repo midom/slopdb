@@ -290,6 +290,9 @@ func (s *Schema) showCreate(stmt *ShowStmt) (*ResultSet, error) {
 	switch objectType {
 	case "TABLE":
 		text = s.getCreateTableSQL(stmt.Object, true)
+		if text != "" && s.mysqlMode {
+			text = strings.TrimSuffix(text, ";") + " ENGINE=LSM;"
+		}
 		if text == "" && s.views[stmt.Object] != nil {
 			objectType = "VIEW"
 			text = s.GetCreateViewSQL(stmt.Object)

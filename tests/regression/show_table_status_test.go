@@ -41,7 +41,7 @@ func TestShowTableStatus(t *testing.T) {
 			}
 		}
 		row := all.Rows[0]
-		if row["Engine"].Text != "SlopDB" || row["Row_format"].Text != "LSM" || row["Rows"].Int != 3 || row["Auto_increment"].Int < 4 || row["Data_length"].Int <= 0 || row["Index_length"].Int <= 0 || row["Avg_row_length"].Int != row["Data_length"].Int/3 {
+		if row["Engine"].Text != "LSM" || row["Row_format"].Text != "LSM" || row["Rows"].Int != 3 || row["Auto_increment"].Int < 4 || row["Data_length"].Int <= 0 || row["Index_length"].Int <= 0 || row["Avg_row_length"].Int != row["Data_length"].Int/3 {
 			t.Fatalf("table status: %+v", row)
 		}
 		for _, col := range []string{"Version", "Max_data_length", "Data_free", "Create_time", "Update_time", "Check_time", "Checksum"} {

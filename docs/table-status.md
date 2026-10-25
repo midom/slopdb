@@ -17,7 +17,7 @@ the same escaping rules as `SHOW TABLES`. `FULL` is not supported for this comma
 | Column | Meaning in SlopDB |
 | --- | --- |
 | Name | Table or view name |
-| Engine | `SlopDB` for tables; NULL for views |
+| Engine | `LSM` for tables; NULL for views |
 | Row_format | `LSM` for tables |
 | Rows | Estimated visible row count at the statement snapshot |
 | Avg_row_length | `Data_length / Rows`, rounded down; zero when Rows is zero |

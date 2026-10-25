@@ -61,7 +61,7 @@ func (s *Schema) showTableStatus(stmt *ShowStmt) (*ResultSet, error) {
 			indexBytes = statusAdd(indexBytes, statusAdd(estimate.DiskBytes, estimate.MemoryBytes))
 		}
 		dataBytes := statusAdd(data.DiskBytes, data.MemoryBytes)
-		row["Engine"] = NewTextValue("SlopDB")
+		row["Engine"] = NewTextValue("LSM")
 		row["Row_format"] = NewTextValue("LSM")
 		row["Rows"] = NewIntValue(data.Rows)
 		average := int64(0)
