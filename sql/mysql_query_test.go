@@ -132,3 +132,20 @@ func TestMySQLGroupConcatValues(t *testing.T) {
 		t.Fatal("lost separator metadata")
 	}
 }
+
+func TestMySQLBinaryStringsInGroupConcatAndLike(t *testing.T) {
+	s := &Schema{}
+	s.SetMySQLMode(true)
+	rows := []map[string]Value{{"g": NewBlobValue([]byte("bureaucrat"))}, {"g": NewBlobValue([]byte("sysop"))}}
+	f := parseTestExpression(t, "GROUP_CONCAT(g ORDER BY g SEPARATOR '|')").(*FuncCallExpr)
+	v, err := s.evalAggregate(f, rows)
+	if err != nil || v.Type != ColBlob || string(v.Blob) != "bureaucrat|sysop" {
+		t.Fatalf("%v %v", v, err)
+	}
+	for _, expression := range []string{"X'436f6d7061746962696c697479' LIKE 'Compatibility%'", "'Compatibility' LIKE X'436f6d7061746962696c69747925'"} {
+		v, err = s.evalExpr(parseTestExpression(t, expression), nil)
+		if err != nil || v.Int != 1 {
+			t.Fatalf("%s: %v %v", expression, v, err)
+		}
+	}
+}

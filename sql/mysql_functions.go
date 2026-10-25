@@ -8,6 +8,15 @@ import (
 	"unicode/utf8"
 )
 
+// mysqlStringValue interprets binary strings as their bytes in SQL string
+// operations. Value.String formats BLOBs for the native diagnostic interface.
+func mysqlStringValue(value Value) string {
+	if value.Type == ColBlob && !value.Null {
+		return string(value.Blob)
+	}
+	return value.String()
+}
+
 // MySQL functions are evaluated in the ordinary expression tree. In particular,
 // IF is lazy and session/clock functions are never marked deterministic.
 func (s *Schema) evalMySQLFunc(e *FuncCallExpr, row map[string]Value) (Value, bool, error) {

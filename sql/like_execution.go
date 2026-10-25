@@ -118,6 +118,9 @@ func (s *Schema) matchLikeMode(input, pattern string, escape byte, sensitive boo
 
 func (s *Schema) matchLikeValues(input, pattern Value, escape byte) bool {
 	left, right := input.String(), pattern.String()
+	if s.MySQLMode() {
+		left, right = mysqlStringValue(input), mysqlStringValue(pattern)
+	}
 	collation := explicitValueCollation(input, pattern)
 	if collation == "" && !input.Binary && !pattern.Binary {
 		collation = s.collation

@@ -17,7 +17,7 @@ func (s *Schema) evalMySQLGroupConcat(f *FuncCallExpr, rows []map[string]Value) 
 		if v.Null || v.Type != ColText && v.Type != ColBlob {
 			return NewNullValue(), fmt.Errorf("GROUP_CONCAT separator must be a string")
 		}
-		separator = v.String()
+		separator = mysqlStringValue(v)
 	}
 	type item struct {
 		text string
@@ -47,7 +47,7 @@ func (s *Schema) evalMySQLGroupConcat(f *FuncCallExpr, rows []map[string]Value) 
 			if v.Type == ColBlob {
 				binary = true
 			}
-			text.WriteString(v.String())
+			text.WriteString(mysqlStringValue(v))
 			if f.Distinct {
 				identity = s.appendValueIdentity(identity, v)
 			}
