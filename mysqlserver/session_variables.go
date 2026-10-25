@@ -21,7 +21,7 @@ func defaultSessionVariables() sessionVariables {
 }
 
 func (c *client) mysqlContext() context.Context {
-	ctx := sql.WithMySQLSession(c.ctx, sql.MySQLSessionOptions{Database: c.server.config.Database, Schemas: []string{c.server.config.Database}, GroupConcatMaxLen: c.variables.groupConcatMaxLen, SQLMode: c.variables.sqlMode, Function: c.mysqlFunction})
+	ctx := sql.WithMySQLSession(c.ctx, sql.MySQLSessionOptions{Database: c.selectedDatabaseName(), SchemaNames: c.availableSchemas, GroupConcatMaxLen: c.variables.groupConcatMaxLen, SQLMode: c.variables.sqlMode, Function: c.mysqlFunction, SystemTable: c.accountTable, FoundRows: c.capabilities&clientFoundRows != 0, Warning: c.addWarning})
 	return ctx
 }
 
@@ -39,6 +39,8 @@ func sqlTokens(query string, options sql.ParseOptions) []sql.Token {
 
 func (c *client) variable(name string, global bool) (sql.Value, error) {
 	switch strings.ToLower(name) {
+	case "warning_count":
+		return sql.NewIntValue(int64(c.warningCount())), nil
 	case "autocommit":
 		if c.autocommit {
 			return sql.NewIntValue(1), nil
@@ -90,7 +92,7 @@ func (c *client) variable(name string, global bool) (sql.Value, error) {
 // identifiers and comments are left untouched, and the ordinary SQL parser
 // still rejects multi-statements and validates the resulting expression.
 func (c *client) rewriteVariables(query string) (string, bool, error) {
-	tokens := sqlTokens(query, c.server.database.ParseOptions())
+	tokens := sqlTokens(query, c.currentDatabase().ParseOptions())
 	var out strings.Builder
 	end := 0
 	changed := false
@@ -146,19 +148,22 @@ func (c *client) rewriteVariables(query string) (string, bool, error) {
 }
 
 func (c *client) compatibilityControl(query string) (*db.ExecResult, bool, error) {
-	first := sql.NewTokenizerWithOptions(query, c.server.database.ParseOptions()).Next()
+	first := sql.NewTokenizerWithOptions(query, c.currentDatabase().ParseOptions()).Next()
 	if strings.EqualFold(first.Value, "SELECT") && strings.Contains(query, "@") {
 		rewritten, changed, err := c.rewriteVariables(query)
 		if err != nil {
 			return nil, true, err
 		}
 		if changed {
-			statements, parseErr := sql.ParseWithOptions(rewritten, c.server.database.ParseOptions())
+			statements, parseErr := sql.ParseWithOptions(rewritten, c.currentDatabase().ParseOptions())
 			if parseErr != nil {
 				return nil, true, parseErr
 			}
 			if len(statements) != 1 {
 				return nil, true, &protocolError{1064, "42000", "exactly one SQL statement is required"}
+			}
+			if err := c.authorize(statements[0]); err != nil {
+				return nil, true, err
 			}
 			result, err := c.session.ExecContext(c.mysqlContext(), rewritten)
 			return result, true, err
@@ -167,7 +172,7 @@ func (c *client) compatibilityControl(query string) (*db.ExecResult, bool, error
 	if !strings.EqualFold(first.Value, "SET") && !strings.EqualFold(first.Value, "SHOW") {
 		return nil, false, nil
 	}
-	tokens := sqlTokens(query, c.server.database.ParseOptions())
+	tokens := sqlTokens(query, c.currentDatabase().ParseOptions())
 	for _, t := range tokens {
 		if t.Type == sql.TokSemicolon {
 			return nil, false, nil
@@ -175,6 +180,9 @@ func (c *client) compatibilityControl(query string) (*db.ExecResult, bool, error
 	}
 	if len(tokens) < 2 {
 		return nil, false, nil
+	}
+	if result, handled, err := c.showWarnings(tokens); handled {
+		return result, true, err
 	}
 	if strings.EqualFold(first.Value, "SHOW") {
 		i := 1
@@ -188,7 +196,7 @@ func (c *client) compatibilityControl(query string) (*db.ExecResult, bool, error
 		}
 		if strings.EqualFold(tokens[i].Value, "ENGINES") && i+1 == len(tokens) {
 			r := &db.ExecResult{Columns: []sql.ColumnDef{{Name: "Engine", ColType: sql.ColText}, {Name: "Support", ColType: sql.ColText}, {Name: "Comment", ColType: sql.ColText}, {Name: "Transactions", ColType: sql.ColText}, {Name: "XA", ColType: sql.ColText}, {Name: "Savepoints", ColType: sql.ColText}}}
-			r.Rows = []map[string]sql.Value{{"Engine": sql.NewTextValue("InnoDB"), "Support": sql.NewTextValue("DEFAULT"), "Comment": sql.NewTextValue("SlopDB transactional LSM compatibility mapping"), "Transactions": sql.NewTextValue("YES"), "XA": sql.NewTextValue("NO"), "Savepoints": sql.NewTextValue("YES")}, {"Engine": sql.NewTextValue("MyISAM"), "Support": sql.NewTextValue("YES"), "Comment": sql.NewTextValue("SlopDB storage with fulltext compatibility"), "Transactions": sql.NewTextValue("YES"), "XA": sql.NewTextValue("NO"), "Savepoints": sql.NewTextValue("YES")}}
+			r.Rows = []map[string]sql.Value{{"Engine": sql.NewTextValue("LSM"), "Support": sql.NewTextValue("DEFAULT"), "Comment": sql.NewTextValue("SlopDB transactional LSM storage"), "Transactions": sql.NewTextValue("YES"), "XA": sql.NewTextValue("NO"), "Savepoints": sql.NewTextValue("YES")}}
 			return r, true, nil
 		}
 		if !strings.EqualFold(tokens[i].Value, "VARIABLES") {
@@ -356,4 +364,11 @@ func (c *client) setSessionVariables(tokens []sql.Token) (*db.ExecResult, bool, 
 	c.variables = next
 	c.autocommit = autocommit
 	return result, true, nil
+}
+
+func (c *client) selectedDatabaseName() string {
+	if c.selected != "" {
+		return c.selected
+	}
+	return c.server.config.Database
 }

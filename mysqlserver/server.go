@@ -53,6 +53,8 @@ type Server struct {
 	done       chan struct{}
 	nextID     atomic.Uint32
 	namedLocks namedLocks
+	accounts   serverAccounts
+	closeError error
 }
 
 func New(database *db.Database, config Config) (*Server, error) {
@@ -85,7 +87,11 @@ func New(database *db.Database, config Config) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("MySQL TLS: %w", err)
 	}
-	return &Server{database: database, config: config, listeners: make(map[net.Listener]struct{}), clients: make(map[net.Conn]context.CancelFunc), done: make(chan struct{})}, nil
+	server := &Server{database: database, config: config, listeners: make(map[net.Listener]struct{}), clients: make(map[net.Conn]context.CancelFunc), done: make(chan struct{})}
+	if err := server.initAccounts(); err != nil {
+		return nil, err
+	}
+	return server, nil
 }
 
 // Serve takes ownership of listener, closing it when Serve returns or Close is
@@ -139,7 +145,7 @@ func (s *Server) Close() error {
 	if s.closed {
 		s.mu.Unlock()
 		<-s.done
-		return nil
+		return s.closeError
 	}
 	s.closed = true
 	for listener := range s.listeners {
@@ -151,6 +157,11 @@ func (s *Server) Close() error {
 	}
 	s.mu.Unlock()
 	s.wg.Wait()
+	for name, database := range s.accounts.databases {
+		if name != s.config.Database {
+			s.closeError = errors.Join(s.closeError, database.Close())
+		}
+	}
 	close(s.done)
-	return nil
+	return s.closeError
 }

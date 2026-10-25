@@ -46,7 +46,7 @@ func (c *client) ok(result *db.ExecResult) error {
 		status |= 1 << 14
 	}
 	p = append16(p, status)
-	p = append16(p, 0)
+	p = append16(p, c.warningCount())
 	info := ""
 	if position != "" {
 		info = "slopdb_commit_position=" + position
@@ -64,7 +64,9 @@ func (c *client) ok(result *db.ExecResult) error {
 	}
 	return c.writer.write(p)
 }
-func (c *client) eof() error { return c.writer.write(append16([]byte{0xfe, 0, 0}, c.status())) }
+func (c *client) eof() error {
+	return c.writer.write(append16(append16([]byte{0xfe}, c.warningCount()), c.status()))
+}
 func (c *client) writeError(err error) error {
 	pErr := &protocolError{1105, "HY000", err.Error()}
 	var explicit *protocolError

@@ -11,6 +11,7 @@ import (
 
 const (
 	clientLongPassword     uint32 = 1
+	clientFoundRows        uint32 = 1 << 1
 	clientLongFlag         uint32 = 1 << 2
 	clientConnectDB        uint32 = 1 << 3
 	clientProtocol41       uint32 = 1 << 9
@@ -21,7 +22,7 @@ const (
 	clientConnectAttrs     uint32 = 1 << 20
 	clientPluginAuthLenenc uint32 = 1 << 21
 	clientSessionTrack     uint32 = 1 << 23
-	capabilities                  = clientLongPassword | clientLongFlag | clientConnectDB | clientProtocol41 | clientTransactions | clientSecureConnection | clientPluginAuth | clientConnectAttrs | clientPluginAuthLenenc | clientSessionTrack
+	capabilities                  = clientLongPassword | clientFoundRows | clientLongFlag | clientConnectDB | clientProtocol41 | clientTransactions | clientSecureConnection | clientPluginAuth | clientConnectAttrs | clientPluginAuthLenenc | clientSessionTrack
 	authPlugin                    = "mysql_native_password"
 	serverVersion                 = "5.7.0-SlopDB"
 )
@@ -154,13 +155,15 @@ func (c *client) handshake() error {
 		}
 		c.writer.sequence = next
 	}
-	if username != c.server.config.Username || !checkPassword(c.server.config.Password, salt[:], auth) {
+	account, authenticated := c.server.authenticate(username, clientHost(c.conn), salt[:], auth)
+	if !authenticated {
 		return c.fail(1045, "28000", "access denied")
 	}
-	if database != "" && database != c.server.config.Database {
-		return c.fail(1049, "42000", fmt.Sprintf("unknown database %q", database))
-	}
+
 	c.selected = database
+	c.username = username
+	c.account = account
+	c.database = c.server.database
 	c.capabilities = flags & serverCapabilities
 	session, err := c.server.database.NewSession()
 	if err != nil {
@@ -169,6 +172,14 @@ func (c *client) handshake() error {
 	c.session = session
 	if err := enableMySQLSession(session); err != nil {
 		return c.fail(1040, "08004", err.Error())
+	}
+	if database != "" {
+		if err := c.switchDatabase(database); err != nil {
+			if p, ok := err.(*protocolError); ok {
+				return c.fail(p.code, p.state, p.message)
+			}
+			return c.fail(1049, "42000", err.Error())
+		}
 	}
 	return c.ok(nil)
 }

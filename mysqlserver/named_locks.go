@@ -141,8 +141,14 @@ func (c *client) mysqlFunction(ctx context.Context, name string, args []sql.Valu
 	case "GET_LOCK", "IS_FREE_LOCK", "IS_USED_LOCK", "RELEASE_LOCK":
 		v, err := c.server.namedLocks.call(ctx, c.id, strings.ToUpper(name), args)
 		return v, true, err
-	case "CURRENT_USER", "USER":
-		return sql.NewTextValue(c.loginName() + "@localhost"), true, nil
+	case "CURRENT_USER":
+		host := "%"
+		if fields := strings.SplitN(c.account, "\x00", 2); len(fields) == 2 {
+			host = fields[1]
+		}
+		return sql.NewTextValue(c.loginName() + "@" + host), true, nil
+	case "USER":
+		return sql.NewTextValue(c.loginName() + "@" + clientHost(c.conn)), true, nil
 	case "DATABASE", "SCHEMA":
 		if c.selected == "" {
 			return sql.NewNullValue(), true, nil

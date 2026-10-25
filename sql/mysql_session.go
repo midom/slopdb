@@ -9,10 +9,14 @@ type MySQLSessionOptions struct {
 	FoundRows         bool
 	Database          string
 	Schemas           []string
+	SchemaNames       func() []string
 	GroupConcatMaxLen int64
 	SQLMode           string
+	FoundRows         bool
+	Warning           func(uint16, string)
 	Function          func(context.Context, string, []Value) (Value, bool, error)
 	SystemTables      map[string]*ResultSet
+	SystemTable       func(string) (*ResultSet, error)
 }
 
 type mysqlSessionKey struct{}

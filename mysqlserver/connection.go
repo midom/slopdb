@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"sync"
 
 	"slopdb/db"
 	"slopdb/sql"
@@ -23,7 +24,12 @@ type client struct {
 	id           uint32
 	selected     string
 	username     string
+	account      string
+	database     *db.Database
 	variables    sessionVariables
+	warningMu    sync.Mutex
+	warnings     []mysqlWarning
+	warningTotal uint64
 	autocommit   bool
 	statements   map[uint32]*prepared
 	nextStmt     uint32
@@ -148,6 +154,7 @@ func (c *client) dispatch(p []byte) error {
 			return c.writeError(err)
 		}
 		c.session = session
+		c.database = c.server.database
 		if err := enableMySQLSession(session); err != nil {
 			return c.writeError(err)
 		}
@@ -159,30 +166,54 @@ func (c *client) dispatch(p []byte) error {
 	}
 }
 func (c *client) use(name string) error {
-	if name != c.server.config.Database {
-		return c.writeError(&protocolError{1049, "42000", fmt.Sprintf("unknown database %q", name)})
+	if err := c.switchDatabase(name); err != nil {
+		return c.writeError(err)
 	}
-	c.selected = name
 	return c.ok(nil)
 }
+
 func scalar(name string, value sql.Value) *db.ExecResult {
 	return &db.ExecResult{Columns: []sql.ColumnDef{{Name: name, ColType: value.Type}}, Rows: []map[string]sql.Value{{name: value}}}
 }
 
 func (c *client) query(query string, stmt *db.Stmt, args []any) (*db.ExecResult, error) {
+	c.beginDiagnostics(query)
 	if stmt == nil {
 		if result, handled, err := c.control(query); handled {
 			return result, err
 		}
-		statements, err := sql.ParseWithOptions(query, c.server.database.ParseOptions())
+		statements, err := sql.ParseWithOptions(query, c.currentDatabase().ParseOptions())
 		if err != nil {
 			return nil, err
 		}
 		if len(statements) != 1 {
 			return nil, &protocolError{1064, "42000", "exactly one SQL statement is required"}
 		}
+		if err := c.authorize(statements[0]); err != nil {
+			return nil, err
+		}
+	} else if !c.isBootstrap() {
+		template, err := sql.PrepareWithOptions(query, c.currentDatabase().ParseOptions())
+		if err != nil {
+			return nil, err
+		}
+		values := make([]sql.Value, template.NumInput())
+		for i := range values {
+			values[i] = sql.NewIntValue(0)
+		}
+		binding, err := template.Bind(values)
+		if err != nil {
+			return nil, err
+		}
+		defer binding.Release()
+		if len(binding.Statements()) != 1 {
+			return nil, errMalformed
+		}
+		if err = c.authorize(binding.Statements()[0]); err != nil {
+			return nil, err
+		}
 	}
-	first := strings.ToUpper(sql.NewTokenizerWithOptions(query, c.server.database.ParseOptions()).Next().Value)
+	first := strings.ToUpper(sql.NewTokenizerWithOptions(query, c.currentDatabase().ParseOptions()).Next().Value)
 	if !c.autocommit && !c.session.InTransaction() && first != "BEGIN" && first != "START" && first != "COMMIT" && first != "ROLLBACK" && first != "WAIT" {
 		if _, err := c.session.ExecContext(c.ctx, "BEGIN"); err != nil {
 			return nil, err
@@ -197,10 +228,13 @@ func (c *client) query(query string, stmt *db.Stmt, args []any) (*db.ExecResult,
 // control implements only settings whose effects the server can honor. Unknown
 // SETs go to the SQL engine and fail; they must never be silently acknowledged.
 func (c *client) control(query string) (*db.ExecResult, bool, error) {
+	if result, handled, err := c.administration(query); handled {
+		return result, true, err
+	}
 	if result, handled, err := c.compatibilityControl(query); handled {
 		return result, true, err
 	}
-	tokenizer := sql.NewTokenizerWithOptions(query, c.server.database.ParseOptions())
+	tokenizer := sql.NewTokenizerWithOptions(query, c.currentDatabase().ParseOptions())
 	var tokens []sql.Token
 	for tok := tokenizer.Next(); tok.Type != sql.TokEOF; tok = tokenizer.Next() {
 		tokens = append(tokens, tok)
@@ -226,11 +260,7 @@ func (c *client) control(query string) (*db.ExecResult, bool, error) {
 	}
 	if word(0, "USE") && len(tokens) == 2 && (tokens[1].Type == sql.TokIdent || tokens[1].Type == sql.TokKeyword) {
 		name := tokens[1].Value
-		if name != c.server.config.Database {
-			return nil, true, &protocolError{1049, "42000", fmt.Sprintf("unknown database %q", name)}
-		}
-		c.selected = name
-		return nil, true, nil
+		return nil, true, c.switchDatabase(name)
 	}
 	if len(tokens) == 2 && word(0, "SHOW") && word(1, "DATABASES") {
 		return scalar("Database", sql.NewTextValue(c.server.config.Database)), true, nil

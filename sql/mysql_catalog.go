@@ -16,7 +16,7 @@ func (s *Schema) resolveMySQLTables(stmt *SelectStmt) (*SelectStmt, error) {
 	copyStmt.Joins = append([]JoinClause(nil), stmt.Joins...)
 	resolve := func(name string) (string, *SelectStmt, error) {
 		lower := strings.ToLower(name)
-		if strings.HasPrefix(lower, "information_schema.") {
+		if strings.HasPrefix(lower, "information_schema.") || lower == "mysql.user" {
 			data, err := s.mysqlCatalogTable(lower, options)
 			if err != nil {
 				return "", nil, err
@@ -70,10 +70,22 @@ func (s *Schema) mysqlCatalogTable(name string, options MySQLSessionOptions) (*R
 	if data := options.SystemTables[name]; data != nil {
 		return copyCTEResult(data), nil
 	}
+	if options.SystemTable != nil {
+		data, err := options.SystemTable(name)
+		if err != nil {
+			return nil, err
+		}
+		if data != nil {
+			return copyCTEResult(data), nil
+		}
+	}
 	switch name {
 	case "information_schema.schemata":
 		r := mysqlCatalog("catalog_name", "schema_name", "default_character_set_name", "default_collation_name", "sql_path")
 		schemas := options.Schemas
+		if options.SchemaNames != nil {
+			schemas = options.SchemaNames()
+		}
 		if len(schemas) == 0 {
 			schemas = []string{options.Database}
 		}
@@ -89,7 +101,7 @@ func (s *Schema) mysqlCatalogTable(name string, options MySQLSessionOptions) (*R
 				row[c.Name] = NewNullValue()
 			}
 			row["table_catalog"], row["table_schema"], row["table_name"] = NewTextValue("def"), NewTextValue(options.Database), NewTextValue(table)
-			row["table_type"], row["engine"], row["row_format"] = NewTextValue("BASE TABLE"), NewTextValue("InnoDB"), NewTextValue("Dynamic")
+			row["table_type"], row["engine"], row["row_format"] = NewTextValue("BASE TABLE"), NewTextValue("LSM"), NewTextValue("Dynamic")
 			row["table_collation"] = NewTextValue("binary")
 			row["table_comment"], row["create_options"] = NewTextValue("SlopDB transactional LSM storage"), NewTextValue("")
 			for _, n := range []string{"version", "table_rows", "avg_row_length", "data_length", "max_data_length", "index_length", "data_free"} {

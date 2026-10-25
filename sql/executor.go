@@ -1135,6 +1135,9 @@ func (s *Schema) findOrderIndex(stmt *SelectStmt, tableName string) *IndexInfo {
 }
 
 func (s *Schema) Explain(stmt *ExplainStmt) (*ResultSet, error) {
+	if result, handled, err := s.mysqlExplain(stmt); handled {
+		return result, err
+	}
 	if !stmt.Analyze {
 		switch stmt.Stmt.(type) {
 		case *CreateIndexStmt, *DropIndexStmt, *AlterTableStmt:
