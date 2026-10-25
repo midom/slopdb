@@ -278,7 +278,11 @@ func TestIndexedSpillPreservesValueMetadata(t *testing.T) {
 	value := NewTextValue("subcat")
 	value.EnumValue, value.EnumOrdinal = true, 2
 	value.Binary, value.Collation = true, Collation("utf8mb4_general_ci")
-	original := map[string]Value{"v": value}
+	literal := NewRealValue(12345678901234567890)
+	literal.NumericText = "12345678901234567890.123456"
+	expression := NewRealValue(1.0 / 3)
+	expression.NumericExact = "1/3"
+	original := map[string]Value{"v": value, "literal": literal, "expression": expression}
 	if err = h.add("key", original); err != nil {
 		t.Fatal(err)
 	}

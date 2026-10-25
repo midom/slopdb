@@ -56,6 +56,7 @@ func TestNativeDecimalLiteralExpressionPrecision(t *testing.T) {
 	for _, q := range []string{
 		"SELECT CAST(-12345678901234567890.123456 AS DECIMAL(30,6)) AS v",
 		"SELECT CAST(-(12345678901234567890.123455+0.000001) AS DECIMAL(30,6)) AS v",
+		"SELECT CAST(-12345678901234567890.123456 AS DECIMAL) AS v",
 	} {
 		if r := exec(q); r.Rows[0]["v"].Text != "-12345678901234567890.123456" {
 			t.Fatal(q, r.Rows)
@@ -94,8 +95,10 @@ func TestMySQLExactDivisionInterpretedPreparedAndTyped(t *testing.T) {
 		"-1/2":                   "-0.5000",
 		"18446744073709551615/2": "9223372036854775807.5000",
 		"CAST(-9223372036854775808 AS SIGNED)/-1": "9223372036854775808.0000",
-		"1/0.0000000001": "10000000000.0000",
-		"1.00/2":         "0.500000",
+		"1/0.0000000001":        "10000000000.0000",
+		"1.00/2":                "0.500000",
+		"CAST(1.5 AS DECIMAL)":  "2",
+		"CAST(-1.5 AS NUMERIC)": "-2",
 	}
 	for expression, want := range cases {
 		r := mysqlTypeExec(t, s, "SELECT "+expression+" AS v")
@@ -117,7 +120,7 @@ func TestMySQLExactDivisionInterpretedPreparedAndTyped(t *testing.T) {
 	if r.Rows[0]["total"].Text != "2.0000" || r.Rows[0]["average"].Text != "1.00000000" {
 		t.Fatal(r.Rows)
 	}
-	for _, q := range []string{"SELECT 1/0", "SELECT 18446744073709551615/0"} {
+	for _, q := range []string{"SELECT 1/0", "SELECT 18446744073709551615/0", "SELECT CAST(10000000000 AS DECIMAL)"} {
 		if _, e = s.Exec(q); e == nil {
 			t.Fatal("zero divisor accepted", q)
 		}

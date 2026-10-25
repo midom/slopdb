@@ -6555,6 +6555,9 @@ func (s *Schema) evalFunc(e *FuncCallExpr, row map[string]Value) (Value, error) 
 		if err != nil {
 			return NewNullValue(), err
 		}
+		if s.mysqlMode && (strings.EqualFold(t.Text, "DECIMAL") || strings.EqualFold(t.Text, "NUMERIC")) {
+			return normalizeDecimal(v, ColumnDef{Name: "CAST", ColType: ColDecimal, Precision: 10, Scale: 0})
+		}
 		return castSQLValue(v, t.Text)
 
 	case "HEX":

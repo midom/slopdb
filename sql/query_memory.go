@@ -55,7 +55,7 @@ func (s *Schema) memoryBudget() int64 {
 func rowMemory(row map[string]Value) int64 {
 	n := int64(64)
 	for k, v := range row {
-		n += int64(128 + len(k) + len(v.Text) + len(v.Blob))
+		n += int64(128 + len(k) + len(v.Text) + len(v.Blob) + len(v.NumericText) + len(v.NumericExact))
 	}
 	return n
 }
@@ -425,6 +425,12 @@ func (h *diskHash) add(key string, row map[string]Value) error {
 		if value.Collation != "" {
 			flags |= 4
 		}
+		if value.NumericText != "" {
+			flags |= 8
+		}
+		if value.NumericExact != "" {
+			flags |= 16
+		}
 		payload = append(payload, flags)
 		if value.EnumValue {
 			payload = binary.AppendVarint(payload, value.EnumOrdinal)
@@ -432,6 +438,12 @@ func (h *diskHash) add(key string, row map[string]Value) error {
 		if value.Collation != "" {
 			payload = binary.AppendUvarint(payload, uint64(len(value.Collation)))
 			payload = append(payload, value.Collation...)
+		}
+		for _, text := range []string{value.NumericText, value.NumericExact} {
+			if text != "" {
+				payload = binary.AppendUvarint(payload, uint64(len(text)))
+				payload = append(payload, text...)
+			}
 		}
 	}
 	if err := h.index.Put(encodedKey, payload); err != nil {
@@ -486,11 +498,12 @@ func decodeSpillMap(data []byte) (map[string]Value, error) {
 			return nil, fmt.Errorf("invalid temporary spill value length")
 		}
 		data = data[size:]
-		if len(data) == 0 || data[0] & ^byte(7) != 0 {
+		if len(data) == 0 || data[0] & ^byte(31) != 0 {
 			return nil, fmt.Errorf("invalid temporary spill value metadata")
 		}
 		value.Binary, value.EnumValue = data[0]&1 != 0, data[0]&2 != 0
 		hasCollation := data[0]&4 != 0
+		hasNumericText, hasNumericExact := data[0]&8 != 0, data[0]&16 != 0
 		data = data[1:]
 		if value.EnumValue {
 			ordinal, used := binary.Varint(data)
@@ -507,6 +520,22 @@ func decodeSpillMap(data []byte) (map[string]Value, error) {
 			}
 			value.Collation = Collation(data[used : used+int(length)])
 			data = data[used+int(length):]
+		}
+		for i, has := range []bool{hasNumericText, hasNumericExact} {
+			if !has {
+				continue
+			}
+			length, used := binary.Uvarint(data)
+			if used <= 0 || length > uint64(len(data)-used) {
+				return nil, fmt.Errorf("invalid temporary spill numeric provenance")
+			}
+			text := string(data[used : used+int(length)])
+			data = data[used+int(length):]
+			if i == 0 {
+				value.NumericText = text
+			} else {
+				value.NumericExact = text
+			}
 		}
 		row[name] = value
 	}
@@ -689,7 +718,7 @@ var errAggregateSpill = errors.New("aggregate working set requires spilling")
 func aggregateGroupMemory(g *aggregateGroup) int64 {
 	n := int64(128 + len(g.states)*192 + len(g.baseValues)*96)
 	for _, v := range g.baseValues {
-		n += int64(len(v.Text) + len(v.Blob))
+		n += int64(len(v.Text) + len(v.Blob) + len(v.NumericText) + len(v.NumericExact))
 	}
 	for _, a := range g.states {
 		n += a.seenBytes + a.partsBytes + int64(len(a.best.Text)+len(a.best.Blob))

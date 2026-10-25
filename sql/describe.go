@@ -384,6 +384,25 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 		if e.BoundParameter || e.Value.Null {
 			return text, nil
 		}
+		if s.mysqlMode && (e.Value.NumericText != "" || e.Value.Type == ColDecimal) {
+			value := e.Value
+			if value.NumericText != "" {
+				var err error
+				value, err = NewDecimalValue(value.NumericText)
+				if err != nil {
+					return text, err
+				}
+			}
+			n, scale, err := valueDecimal(value)
+			if err != nil {
+				return text, err
+			}
+			digits := len(n.String())
+			if n.Sign() < 0 {
+				digits--
+			}
+			return ColumnDef{ColType: ColDecimal, Precision: max(digits, scale), Scale: scale, NotNull: true}, nil
+		}
 		return ColumnDef{ColType: e.Value.Type, NotNull: true}, nil
 	case *ParameterExpr:
 		return text, nil
@@ -484,7 +503,11 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 		name := strings.ToUpper(e.Name)
 		if name == "CAST" && len(e.Args) == 2 {
 			if target, ok := e.Args[1].(*LiteralExpr); ok {
-				return describeType(mysqlCastTarget(target.Value.Text)), nil
+				name := strings.ToUpper(mysqlCastTarget(target.Value.Text))
+				if !s.mysqlMode && (name == "DECIMAL" || name == "NUMERIC") {
+					return ColumnDef{ColType: ColDecimal, Declared: name}, nil
+				}
+				return describeType(name), nil
 			}
 		}
 		var args []ColumnDef
