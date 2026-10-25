@@ -1,5 +1,8 @@
 # MySQL protocol server
 
+See [MySQL functions](mysql-functions.md) for scalar, string, numeric, temporal,
+encoding, session and utility function coverage and compatibility boundaries.
+
 SlopDB can serve an existing database directory to MySQL clients over TCP, a
 Unix socket, or both. MySQL sessions enable the supported MySQL type, expression and affected-row rules; native API sessions retain SlopDB semantics.
 One process owns the database; use client connections instead of opening that

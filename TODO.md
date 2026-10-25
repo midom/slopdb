@@ -15,6 +15,8 @@
 ## Subqueries (5/5 done)
 ## Data Types & Expressions (19/19 done)
 
+- [x] Expanded MySQL string, numeric, temporal, encoding, UUID/IP, digest/compression and connection functions with independent MySQL reference checks; see [function coverage](docs/mysql-functions.md)
+
 - [x] Optional MySQL default quoting for CLI/API input, prepared and streaming queries, with canonical schema persistence and matching SQL exports; see [SQL quoting](docs/sql-quoting.md)
 ## DML Extensions (5/5 done)
 

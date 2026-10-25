@@ -204,6 +204,15 @@ of live sockets and regular files. All artifacts use `t.TempDir()`.
 
 ## MediaWiki and MySQL compatibility
 
+`db/mysql_function_*_test.go` and `sql/mysql_function_*_test.go` cover MySQL
+function values, exact/approximate coercion, seeded randomness, NULLs, binary and
+Unicode inputs, prepared metadata, stored views, cancellation and expansion
+budgets. `sql/testdata/mysql_format_locales.json` contains independent MySQL
+answers for the documented FORMAT locale set. The optional temporal reference
+check uses `SLOPDB_MYSQL_REFERENCE_SOCKET` to compare deterministic generated
+calendar/week queries with an existing isolated MySQL server; ordinary tests
+require no external reference server.
+
 `tests/regression/mediawiki_test.go` loads all 64 tables from the factual
 MediaWiki 1.46.2 schema fixture, then checks binary predicates, GROUP_CONCAT,
 fulltext joins, revision deletion/restoration, reopen and integrity. It needs no
