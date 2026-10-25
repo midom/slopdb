@@ -197,6 +197,8 @@ func (s *Schema) describeStatement(stmt Statement, outer map[string][]ColumnDef,
 		for _, c := range result {
 			aliases[c.Name] = c
 		}
+		s.constrainDescription(st.Where, s.booleanColumn(), aliases)
+		s.constrainDescription(st.Having, s.booleanColumn(), aliases)
 		for _, e := range exprs {
 			if _, err = s.describeExpression(e, aliases, scope, depth+1); err != nil {
 				return nil, err
@@ -471,7 +473,7 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 		if !ok {
 			return text, fmt.Errorf("no such column %s", e.Name)
 		}
-		if c.ColType < 0 {
+		if c.ColType == -1 {
 			return text, fmt.Errorf("ambiguous column %s", e.Name)
 		}
 		return c, nil
@@ -524,12 +526,23 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 		}
 		return s.booleanColumn(), nil
 	case *UnaryExpr:
+		if strings.EqualFold(e.Op, "NOT") {
+			s.constrainDescription(e.Right, s.booleanColumn(), env)
+		}
 		c, err := s.describeExpression(e.Right, env, scope, depth+1)
 		if strings.EqualFold(e.Op, "NOT") {
 			c = s.booleanColumn()
 		}
 		return c, err
 	case *BinaryExpr:
+		switch strings.ToUpper(e.Op) {
+		case "AND", "OR":
+			s.constrainDescription(e.Left, s.booleanColumn(), env)
+			s.constrainDescription(e.Right, s.booleanColumn(), env)
+		case "LIKE", "NOT LIKE", "GLOB", "NOT GLOB", "REGEXP", "NOT REGEXP":
+			s.constrainDescription(e.Left, ColumnDef{ColType: ColText}, env)
+			s.constrainDescription(e.Right, ColumnDef{ColType: ColText}, env)
+		}
 		a, err := s.describeExpression(e.Left, env, scope, depth+1)
 		if err != nil {
 			return text, err

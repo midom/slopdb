@@ -115,7 +115,7 @@ func (s *Schema) DescribePrepared(stmt Statement, options DescribeOptions) (Prep
 	}
 	groups := 0
 	for _, n := range positions {
-		if n < 0 {
+		if n < 0 || n >= max(65535, count) {
 			return PreparedDescription{}, fmt.Errorf("invalid parameter position %d", n)
 		}
 		groups = max(groups, n+1)

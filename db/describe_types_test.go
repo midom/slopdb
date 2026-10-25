@@ -81,6 +81,9 @@ func TestSharedPreparedFunctionAndCastConstraints(t *testing.T) {
 		params []sql.TypeID
 		result sql.TypeID
 	}{
+		{"WITH c AS(SELECT ? AS v) SELECT v FROM c WHERE v=CAST(? AS BIGINT)", []sql.TypeID{sql.TypeInt64, sql.TypeInt64}, sql.TypeInt64},
+		{"SELECT ? AND NOT ?", []sql.TypeID{sql.TypeBoolean, sql.TypeBoolean}, sql.TypeBoolean},
+		{"SELECT ? LIKE ?", []sql.TypeID{sql.TypeText, sql.TypeText}, sql.TypeBoolean},
 		{"SELECT left(?,?)", []sql.TypeID{sql.TypeText, sql.TypeInt32}, sql.TypeText},
 		{"SELECT encode(?,?)", []sql.TypeID{sql.TypeBinary, sql.TypeText}, sql.TypeText},
 		{"SELECT get_byte(?,?)", []sql.TypeID{sql.TypeBinary, sql.TypeInt32}, sql.TypeInt32},
@@ -144,5 +147,24 @@ func TestSharedDescriptionQualifiedParameterCloning(t *testing.T) {
 	}
 	if len(desc.Parameters) != 1 || desc.Parameters[0].Kind != sql.TypeInt64 || desc.Results[0].LogicalType().Kind != sql.TypeInt64 {
 		t.Fatalf("%+v", desc)
+	}
+}
+
+func TestSharedDescriptionRejectsInvalidParameterMaps(t *testing.T) {
+	d := projectionDatabase(t)
+	s, e := d.NewSession()
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	p, e := s.Prepare("SELECT ?")
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer p.Close()
+	for _, opts := range []sql.DescribeOptions{{ParameterPositions: []int{-1}}, {ParameterPositions: []int{int(^uint(0) >> 1)}}, {ParameterPositions: []int{0, 0}}, {ParameterTypes: []sql.LogicalType{{}, {}}}} {
+		if _, e = s.DescribePreparedTypes(context.Background(), p, opts); e == nil {
+			t.Fatalf("accepted %+v", opts)
+		}
 	}
 }
