@@ -1522,16 +1522,20 @@ func (e *emptyIterator) Value() []byte    { return nil }
 func (e *emptyIterator) Close()           {}
 
 type mergeIterator struct {
-	err      error
-	iters    []Iterator
-	pq       mergeHeap
-	lastKey  InternalKey
-	lastVal  []byte
-	valid    bool
-	afterEnd bool
-	reverse  bool
-	closers  []ioCloser
-	ranges   []KeyValue
+	reusable     bool
+	closed       bool
+	groupScratch []byte
+	valueScratch []byte
+	err          error
+	iters        []Iterator
+	pq           mergeHeap
+	lastKey      InternalKey
+	lastVal      []byte
+	valid        bool
+	afterEnd     bool
+	reverse      bool
+	closers      []ioCloser
+	ranges       []KeyValue
 }
 type ioCloser interface{ Close() }
 
@@ -1566,7 +1570,10 @@ func newMergeIteratorAt(iters []Iterator, key []byte, closers ...ioCloser) *merg
 	return newMergeIteratorDirectional(iters, key, false, closers...)
 }
 func newMergeIteratorDirectional(iters []Iterator, key []byte, reverse bool, closers ...ioCloser) *mergeIterator {
-	m := &mergeIterator{iters: iters, closers: closers}
+	return newMergeIteratorDirectionalMode(iters, key, reverse, false, closers...)
+}
+func newMergeIteratorDirectionalMode(iters []Iterator, key []byte, reverse, reusable bool, closers ...ioCloser) *mergeIterator {
+	m := &mergeIterator{iters: iters, closers: closers, reusable: reusable}
 	// Range tombstones may start before Seek's target, so remember them all.
 	for _, it := range iters {
 		m.ranges = append(m.ranges, iteratorRanges(it)...)
@@ -1587,6 +1594,13 @@ func newMergeIteratorDirectional(iters []Iterator, key []byte, reverse bool, clo
 func (m *mergeIterator) Valid() bool { return m.valid }
 func (m *mergeIterator) Err() error  { return m.err }
 func (m *mergeIterator) Next() {
+	if m.closed {
+		return
+	}
+	if m.reusable {
+		m.nextReusable()
+		return
+	}
 	if m.reverse {
 		if !m.valid {
 			return
@@ -1651,6 +1665,9 @@ func (m *mergeIterator) Next() {
 	m.afterEnd = true
 }
 func (m *mergeIterator) Seek(key []byte) {
+	if m.closed {
+		return
+	}
 	m.reverse = false
 
 	if m.err != nil {
@@ -1686,6 +1703,9 @@ func (m *mergeIterator) Value() []byte {
 	return nil
 }
 func (m *mergeIterator) Prev() {
+	if m.closed {
+		return
+	}
 	if m.err != nil {
 		m.valid = false
 		return
@@ -1726,6 +1746,9 @@ func (m *mergeIterator) Prev() {
 // Start directly before an exclusive upper bound, without first merging a
 // forward result and re-seeking every child to change direction.
 func (m *mergeIterator) SeekBefore(key []byte) {
+	if m.closed {
+		return
+	}
 	m.reverse = true
 	m.valid = false
 	m.afterEnd = false
@@ -1752,6 +1775,10 @@ func (m *mergeIterator) SeekBefore(key []byte) {
 	m.prevVisible()
 }
 func (m *mergeIterator) prevVisible() {
+	if m.reusable {
+		m.visibleReusable(true)
+		return
+	}
 	for m.pq.Len() > 0 {
 		key := m.pq[0].iter.Key().UserKey
 		var best KeyValue
@@ -1800,6 +1827,9 @@ func (m *mergeIterator) prevVisible() {
 	m.afterEnd = false
 }
 func (m *mergeIterator) SeekToLast() {
+	if m.closed {
+		return
+	}
 	m.reverse = false
 	m.valid = false
 	m.afterEnd = true
@@ -1825,11 +1855,22 @@ func (m *maxSeqIter) SeekToLast() {
 func (f *fileIterator) SeekToLast() { f.iter.SeekToLast() }
 
 func (m *mergeIterator) Close() {
+	if m.closed {
+		return
+	}
+	m.closed = true
 	for _, it := range m.iters {
 		it.Close()
 	}
 	for _, c := range m.closers {
 		c.Close()
+	}
+	if m.reusable {
+		m.valid = false
+		m.lastKey = InternalKey{}
+		m.lastVal = nil
+		m.groupScratch, m.valueScratch = nil, nil
+		m.pq, m.iters, m.ranges, m.closers = nil, nil, nil, nil
 	}
 }
 

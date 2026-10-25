@@ -177,7 +177,8 @@ type BlockIterator struct {
 	prevValue                []byte
 	valid                    bool
 	err                      error
-	reuseKey                 bool // private point lookups only; public iterator keys stay stable
+	reuseKey                 bool // private lookups and explicitly borrowed streaming iterators
+	reverseKeyScratch        []byte
 	reverseEntries           []blockPosition
 	reverseStart, reverseEnd int
 }
@@ -236,6 +237,7 @@ func (it *BlockIterator) Next() {
 	it.value = it.block.data[it.offset : it.offset+int(size)]
 	it.offset += int(size)
 	it.key = key
+	it.trimReusableScratch()
 	it.prevOffset = start
 	it.valid = true
 }
@@ -268,7 +270,11 @@ func (it *BlockIterator) Prev() {
 		return
 	}
 	start := it.block.restart(lo - 1)
-	scan := BlockIterator{block: it.block, offset: start}
+	scan := BlockIterator{block: it.block, offset: start, reuseKey: it.reuseKey}
+	if it.reuseKey {
+		scan.key = it.reverseKeyScratch[:0]
+	}
+	old := it.reverseEntries
 	it.reverseEntries = it.reverseEntries[:0]
 	for scan.offset < target {
 		offset := scan.offset
@@ -276,7 +282,18 @@ func (it *BlockIterator) Prev() {
 		if !scan.Valid() {
 			break
 		}
-		it.reverseEntries = append(it.reverseEntries, blockPosition{offset: offset, next: scan.offset, key: scan.key, value: scan.value})
+		key := scan.key
+		if it.reuseKey {
+			var dst []byte
+			if len(it.reverseEntries) < cap(old) {
+				dst = old[:cap(old)][len(it.reverseEntries)].key
+			}
+			key = append(dst[:0], key...)
+		}
+		it.reverseEntries = append(it.reverseEntries, blockPosition{offset: offset, next: scan.offset, key: key, value: scan.value})
+	}
+	if it.reuseKey {
+		it.reverseKeyScratch = scan.key
 	}
 	if scan.err != nil {
 		it.err = scan.err
@@ -315,6 +332,7 @@ func (it *BlockIterator) restorePrevious(target int) {
 	}
 	it.value = position.value
 	it.valid = true
+	it.trimReusableScratch()
 }
 
 func (it *BlockIterator) SeekToLast() {

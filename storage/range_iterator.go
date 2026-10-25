@@ -9,10 +9,11 @@ import (
 // files is deferred until traversal reaches them; small LIMITs read no blocks
 // from files beyond their result range. The read view owns every file handle.
 type levelIterator struct {
-	files []viewFile
-	index int
-	iter  *SSTableIterator
-	err   error
+	reusable bool
+	files    []viewFile
+	index    int
+	iter     *SSTableIterator
+	err      error
 }
 
 func (it *levelIterator) open(index int) {
@@ -22,7 +23,7 @@ func (it *levelIterator) open(index int) {
 	it.index = index
 	it.iter = nil
 	if index >= 0 && index < len(it.files) {
-		it.iter = it.files[index].entry.reader.newIterator(false, true, false)
+		it.iter = it.files[index].entry.reader.newIterator(false, true, it.reusable)
 	}
 }
 func (it *levelIterator) Valid() bool { return it.err == nil && it.iter != nil && it.iter.Valid() }

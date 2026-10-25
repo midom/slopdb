@@ -169,7 +169,25 @@ func (l *LSMTree) NewIteratorAtRange(snapshot uint64, lower, upper []byte, rever
 func (l *LSMTree) NewIteratorRange(lower, upper []byte, reverse bool) Iterator {
 	return l.iteratorViewRange(0, true, lower, lower, upper, reverse)
 }
+
+// NewIteratorAtRangeReusable is an opt-in streaming iterator over [lower, upper).
+// Key and Value borrow iterator buffers and remain valid only until movement or
+// Close. Copy retained data, or use IteratorValueInto. The snapshot must remain
+// pinned for the iterator lifetime, just as for NewIteratorAtRange.
+func (l *LSMTree) NewIteratorAtRangeReusable(snapshot uint64, lower, upper []byte, reverse bool) Iterator {
+	return l.iteratorViewRangeMode(snapshot, false, lower, lower, upper, reverse, true)
+}
+
+// NewIteratorRangeReusable reads the latest committed snapshot using borrowed
+// Key and Value buffers. Their lifetime ends on the next movement or Close.
+func (l *LSMTree) NewIteratorRangeReusable(lower, upper []byte, reverse bool) Iterator {
+	return l.iteratorViewRangeMode(0, true, lower, lower, upper, reverse, true)
+}
+
 func (l *LSMTree) iteratorViewRange(snapshot uint64, latest bool, key, lower, upper []byte, reverse bool) Iterator {
+	return l.iteratorViewRangeMode(snapshot, latest, key, lower, upper, reverse, false)
+}
+func (l *LSMTree) iteratorViewRangeMode(snapshot uint64, latest bool, key, lower, upper []byte, reverse, reusable bool) Iterator {
 	v, seq := l.acquireView()
 	if v == nil {
 		return &emptyIterator{err: fmt.Errorf("database closed")}
@@ -213,17 +231,17 @@ func (l *LSMTree) iteratorViewRange(snapshot uint64, latest bool, key, lower, up
 			continue
 		}
 		if v.ordered[level] {
-			iters = append(iters, newMaxSeqIter(&levelIterator{files: selected, index: -1}, snapshot))
+			iters = append(iters, newMaxSeqIter(&levelIterator{files: selected, index: -1, reusable: reusable}, snapshot))
 		} else {
 			for _, slot := range selected {
-				iters = append(iters, newMaxSeqIter(&viewTableIterator{Iterator: slot.entry.reader.newIterator(false, true, false), reader: slot.entry.reader}, snapshot))
+				iters = append(iters, newMaxSeqIter(&viewTableIterator{Iterator: slot.entry.reader.newIterator(false, true, reusable), reader: slot.entry.reader}, snapshot))
 			}
 		}
 	}
 	if reverse {
 		key = upper
 	}
-	merged := newMergeIteratorDirectional(iters, key, reverse, &viewCloser{view: v})
+	merged := newMergeIteratorDirectionalMode(iters, key, reverse, reusable, &viewCloser{view: v})
 	if lower != nil || upper != nil {
 		return BoundIterator(merged, lower, upper)
 	}

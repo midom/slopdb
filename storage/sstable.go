@@ -633,21 +633,25 @@ func decodeZstdBlockInto(payload, destination []byte) ([]byte, error) {
 }
 
 type SSTableIterator struct {
-	reader    *SSTableReader
-	idxIter   *BlockIterator
-	blockIter *BlockIterator
-	valid     bool
-	key       InternalKey
-	value     []byte
-	err       error
-	fillCache bool
-	reuseKeys bool
-	closed    bool
+	reusableBlock BlockIterator
+	reader        *SSTableReader
+	idxIter       *BlockIterator
+	blockIter     *BlockIterator
+	valid         bool
+	key           InternalKey
+	value         []byte
+	err           error
+	fillCache     bool
+	reuseKeys     bool
+	closed        bool
 }
 
 func (it *SSTableIterator) clearBlock() {
 	if it.blockIter != nil {
 		it.blockIter.block.release()
+		if it.reuseKeys {
+			it.reusableBlock.resetReusableBlock()
+		}
 	}
 	it.blockIter = nil
 	it.value = nil
@@ -713,7 +717,14 @@ func (it *SSTableIterator) openBlock(position bool) {
 		it.err = fmt.Errorf("invalid data block")
 		return
 	}
-	it.blockIter = &BlockIterator{block: reader, err: reader.err, reuseKey: it.reuseKeys}
+	if it.reuseKeys {
+		it.reusableBlock.block = reader
+		it.reusableBlock.err = reader.err
+		it.reusableBlock.reuseKey = true
+		it.blockIter = &it.reusableBlock
+	} else {
+		it.blockIter = &BlockIterator{block: reader, err: reader.err}
+	}
 	if position {
 		it.blockIter.Next()
 	}
@@ -789,9 +800,17 @@ func (it *SSTableIterator) Prev() {
 	it.valid = false
 }
 func (it *SSTableIterator) Close() {
+	if it.closed {
+		return
+	}
 	it.clearBlock()
 	it.valid = false
 	it.closed = true
+	if it.reuseKeys {
+		it.key = InternalKey{}
+		it.reusableBlock = BlockIterator{}
+		it.idxIter = nil
+	}
 }
 
 func (it *SSTableIterator) SeekToLast() {
