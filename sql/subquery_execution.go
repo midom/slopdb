@@ -303,6 +303,7 @@ func (s *Schema) clearSelectCaches() {
 	s.selectValues = nil
 	s.selectValueBytes = 0
 	s.likePatterns = nil
+	s.mysqlRegexpPrograms = nil
 	s.fulltextQueries = nil
 	s.fulltextBindings = nil
 	s.fulltextQueryBytes = 0

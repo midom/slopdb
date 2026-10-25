@@ -278,6 +278,9 @@ func mysqlStringFunctions() map[string]mysqlFunctionSpec {
 		return ColumnDef{ColType: ColText}
 	}
 	m["__MYSQL_TRIM"] = spec
+	for name, spec := range mysqlRegexpFunctions() {
+		m[name] = spec
+	}
 	return m
 }
 
@@ -460,7 +463,7 @@ func mysqlStringTransform(s *Schema, name string, a []Value) (Value, error) {
 		}
 		plen := mysqlStringLength(pad, binary)
 		if plen == 0 {
-			return NewNullValue(), nil
+			return mysqlStringResult("", binary), nil
 		}
 		need := n - length
 		copies := need / plen

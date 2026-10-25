@@ -134,6 +134,7 @@ type Schema struct {
 	selectValues         map[string]storage.PointValue
 	selectValueBytes     int
 	likePatterns         map[likePatternKey]likePattern
+	mysqlRegexpPrograms  map[string]*mysqlRegexpProgram
 	fulltextQueries      map[string]*fulltextQuery
 	fulltextBindings     map[*FuncCallExpr]fulltextBinding
 	fulltextQueryBytes   int64

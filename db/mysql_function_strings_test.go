@@ -25,6 +25,7 @@ func TestMySQLStringFunctionFamilies(t *testing.T) {
 		{"RIGHT('abc',18446744073709551615)", "abc"}, {"LEFT('abc','18446744073709551615')", ""},
 		{"LEFT('abcd',CAST(2.5 AS DOUBLE))", "ab"}, {"LEFT('abcd',CAST(2.5 AS DECIMAL(5,1)))", "abc"},
 		{"LPAD('é',4,'xy')", "xyxé"}, {"RPAD('é',4,'xy')", "éxyx"}, {"LPAD('abcdef',3,'x')", "abc"}, {"LPAD('x',0,'')", ""},
+		{"LPAD('a',3,'')", ""}, {"RPAD('a',3,'')", ""},
 		{"REPEAT('ab',1.5)", "abab"}, {"REPEAT('a','1.9')", "a"}, {"REVERSE('café🪐')", "🪐éfac"}, {"SPACE(3)", "   "},
 		{"SUBSTRING_INDEX('a.b.c','.',2)", "a.b"}, {"SUBSTRING_INDEX('a.b.c','.',-2)", "b.c"}, {"SUBSTRING_INDEX('abc','.',-2)", "abc"},
 		{"SUBSTRING_INDEX('a...b','..',-1)", ".b"}, {"SUBSTRING_INDEX('a...b','..',1)", "a"},
@@ -54,7 +55,7 @@ func TestMySQLStringFunctionFamilies(t *testing.T) {
 			t.Errorf("%s = %q (%v), want %q", tc.expression, got, v, tc.want)
 		}
 	}
-	for _, expression := range []string{"CONCAT_WS(NULL,'a')", "LEFT(NULL,2)", "LPAD('a',3,'')", "ELT(0,'a')", "LOCATE(NULL,'a')", "UNHEX('zz')", "FROM_BASE64('YQ==Yg==')", "CHAR(255 USING utf8mb4)", "MAKE_SET(NULL,'a')", "EXPORT_SET(1,'a',NULL)", "TRIM(NULL FROM 'abc')"} {
+	for _, expression := range []string{"CONCAT_WS(NULL,'a')", "LEFT(NULL,2)", "ELT(0,'a')", "LOCATE(NULL,'a')", "UNHEX('zz')", "FROM_BASE64('YQ==Yg==')", "CHAR(255 USING utf8mb4)", "MAKE_SET(NULL,'a')", "EXPORT_SET(1,'a',NULL)", "TRIM(NULL FROM 'abc')"} {
 		r := mysqlTypeExec(t, s, "SELECT "+expression+" AS v")
 		if !r.Rows[0]["v"].Null {
 			t.Errorf("%s must return NULL, got %v", expression, r.Rows)
