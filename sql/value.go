@@ -18,6 +18,9 @@ const (
 	ColText
 	ColReal
 	ColBlob
+	ColUnsigned
+	ColDecimal
+	ColJSON
 )
 
 func (ct ColumnType) String() string {
@@ -28,6 +31,12 @@ func (ct ColumnType) String() string {
 		return "TEXT"
 	case ColReal:
 		return "REAL"
+	case ColUnsigned:
+		return "BIGINT UNSIGNED"
+	case ColDecimal:
+		return "DECIMAL"
+	case ColJSON:
+		return "JSON"
 	case ColBlob:
 		return "BLOB"
 	}
@@ -41,6 +50,8 @@ type ForeignKeyDef struct {
 }
 
 type ColumnDef struct {
+	Precision           int               `json:"decimal_precision,omitempty"`
+	Scale               int               `json:"decimal_scale,omitempty"`
 	Declared            string            `json:"declared_type,omitempty"`
 	Unsigned            bool              `json:"unsigned,omitempty"`
 	IntegerBits         int               `json:"integer_bits,omitempty"`
@@ -72,6 +83,9 @@ type ColumnDef struct {
 func (col ColumnDef) DeclaredType() string {
 	if col.Declared != "" && ((col.Declared != "INTEGER" && col.Declared != "INT" && col.Declared != "BIGINT") || col.MySQL || col.Unsigned) {
 		declared := col.Declared
+		if col.ColType == ColDecimal {
+			declared = fmt.Sprintf("DECIMAL(%d,%d)", col.Precision, col.Scale)
+		}
 		if col.FixedBinary {
 			declared = fmt.Sprintf("BINARY(%d)", col.Length)
 		}
@@ -499,6 +513,8 @@ type Value struct {
 	Binary      bool  `json:"-"` // expression-level BINARY override; never persisted
 	Int         int64
 	Real        float64
+	Uint        uint64
+	NumericText string `json:"-"` // exact source spelling for decimal conversion of numeric literals
 	Text        string
 	Blob        []byte
 	Null        bool
@@ -511,6 +527,10 @@ func (v Value) MarshalJSON() ([]byte, error) {
 	switch v.Type {
 	case ColInteger:
 		return json.Marshal(v.Int)
+	case ColUnsigned:
+		return json.Marshal(v.Uint)
+	case ColDecimal, ColJSON:
+		return []byte(v.Text), nil
 	case ColReal:
 		return json.Marshal(v.Real)
 	case ColText:
@@ -576,6 +596,10 @@ func (v Value) String() string {
 	switch v.Type {
 	case ColInteger:
 		return fmt.Sprintf("%d", v.Int)
+	case ColUnsigned:
+		return strconv.FormatUint(v.Uint, 10)
+	case ColDecimal, ColJSON:
+		return v.Text
 	case ColReal:
 		return fmt.Sprintf("%g", v.Real)
 	case ColText:
@@ -612,6 +636,9 @@ func ValueCompare(a, b Value) int {
 		return 1
 	}
 
+	if (a.Type == ColUnsigned || a.Type == ColDecimal || b.Type == ColUnsigned || b.Type == ColDecimal) && isNumeric(a) && isNumeric(b) {
+		return exactNumericCompare(a, b)
+	}
 	if a.Type == ColInteger && b.Type == ColInteger {
 		if a.Int < b.Int {
 			return -1
@@ -679,11 +706,16 @@ func ValueCompare(a, b Value) int {
 }
 
 func isNumeric(v Value) bool {
-	return v.Type == ColInteger || v.Type == ColReal
+	return v.Type == ColInteger || v.Type == ColReal || v.Type == ColUnsigned || v.Type == ColDecimal
 }
 
 func toFloatVal(v Value) float64 {
 	switch v.Type {
+	case ColUnsigned:
+		return float64(v.Uint)
+	case ColDecimal:
+		f, _ := strconv.ParseFloat(v.Text, 64)
+		return f
 	case ColInteger:
 		return float64(v.Int)
 	case ColReal:
@@ -698,6 +730,12 @@ func ValueSerialize(v Value) []byte {
 		return []byte{0}
 	}
 	switch v.Type {
+	case ColUnsigned:
+		return append([]byte{5}, strconv.FormatUint(v.Uint, 10)...)
+	case ColDecimal:
+		return append([]byte{6}, v.Text...)
+	case ColJSON:
+		return append([]byte{7}, v.Text...)
 	case ColInteger:
 		buf := []byte{1}
 		s := fmt.Sprintf("%d", v.Int)
@@ -722,6 +760,15 @@ func ValueDeserialize(data []byte) Value {
 		return NewNullValue()
 	}
 	switch data[0] {
+	case 5:
+		n, _ := strconv.ParseUint(string(data[1:]), 10, 64)
+		return NewUnsignedValue(n)
+	case 6:
+		v, _ := NewDecimalValue(string(data[1:]))
+		return v
+	case 7:
+		v, _ := NewJSONValue(string(data[1:]))
+		return v
 	case 1:
 		n, _ := strconv.ParseInt(string(data[1:]), 10, 64)
 		return NewIntValue(n)
