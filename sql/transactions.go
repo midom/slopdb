@@ -69,7 +69,7 @@ func (s *Schema) RefreshReadCommitted() error {
 func (s *Schema) StartStatement() error {
 	s.EndStatement()
 	s.consistentIndexDeletes = nil
-	s.statementTime = statementTime(s.ctx)
+	s.statementTime = StatementTime(s.ctx)
 	s.mysqlFunctions.generated = false
 	if s.replicaReadOnly {
 		s.replicaReadOnly = false

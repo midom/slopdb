@@ -150,7 +150,7 @@ func (c *client) runCopy(ctx context.Context, command *copyCommand) (count int64
 	if c.failed {
 		return 0, &protocolError{"25P02", "current transaction is aborted; roll back before continuing"}
 	}
-	ctx = c.postgresContext(ctx)
+	ctx = sql.WithStatementTime(c.postgresContext(ctx), sql.StatementTime(ctx))
 	defer func() {
 		if err != nil && ctx.Err() != nil {
 			err = ctx.Err()
@@ -200,52 +200,56 @@ func (c *client) runCopy(ctx context.Context, command *copyCommand) (count int64
 		}
 	}
 	if command.from {
-		statement, e := c.session.PrepareContext(ctx, query)
-		if e != nil {
-			return 0, e
-		}
-		defer statement.Close()
+
 		if err = c.send(&pgproto3.CopyInResponse{OverallFormat: overall, ColumnFormatCodes: formats}); err != nil {
 			return 0, err
 		}
-		records := copyRecords{reader: bufio.NewReaderSize(&copyInput{client: c, ctx: ctx}, 32*1024), command: command, limit: c.server.config.MaxPacketBytes}
+		input := &copyInput{client: c}
+		records := copyRecords{reader: bufio.NewReaderSize(input, 32*1024), command: command, limit: c.server.config.MaxPacketBytes}
+		columns := make([]string, len(fields))
+		for i, f := range fields {
+			columns[i] = f.name
+		}
 		first := true
-		for {
-			var record []copyField
-			record, err = records.next(len(fields))
-			if err == io.EOF {
-				err = nil
-				break
-			}
-			if err != nil {
-				return 0, copyDataError(err, count+1)
-			}
-			if len(record) != len(fields) {
-				return 0, &protocolError{"22P04", fmt.Sprintf("COPY row %d has %d fields, expected %d", count+1, len(record), len(fields))}
-			}
-			if first && command.header {
-				first = false
-				if command.headerMatch {
-					for i, f := range fields {
-						if string(record[i].data) != f.name {
-							return 0, &protocolError{"22P04", "COPY header does not match table columns"}
+		var rowNumber int64
+		count, err = c.session.BulkInsert(ctx, command.table, columns, func(call context.Context) ([]any, error) {
+			input.ctx = call
+			for {
+				record, e := records.next(len(fields))
+				if e == io.EOF {
+					return nil, io.EOF
+				}
+				if e != nil {
+					return nil, copyDataError(e, rowNumber+1)
+				}
+				if len(record) != len(fields) {
+					return nil, &protocolError{"22P04", fmt.Sprintf("COPY row %d has %d fields, expected %d", rowNumber+1, len(record), len(fields))}
+				}
+				if first && command.header {
+					first = false
+					if command.headerMatch {
+						for i, f := range fields {
+							if string(record[i].data) != f.name {
+								return nil, &protocolError{"22P04", "COPY header does not match table columns"}
+							}
 						}
 					}
+					continue
 				}
-				continue
-			}
-			first = false
-			args := make([]any, len(fields))
-			for i, f := range fields {
-				args[i], err = command.decode(record[i], f)
-				if err != nil {
-					return 0, copyDataError(err, count+1)
+				first = false
+				args := make([]any, len(fields))
+				for i, f := range fields {
+					args[i], e = command.decode(record[i], f)
+					if e != nil {
+						return nil, copyDataError(e, rowNumber+1)
+					}
 				}
+				rowNumber++
+				return args, nil
 			}
-			if _, err = statement.ExecContext(ctx, args...); err != nil {
-				return 0, copyDataError(err, count+1)
-			}
-			count++
+		})
+		if err != nil {
+			return 0, err
 		}
 	} else {
 		rows, e := c.session.QueryContext(ctx, query)

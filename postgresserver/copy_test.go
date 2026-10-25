@@ -586,3 +586,33 @@ func TestCopyPostgres16ReferenceFixtures(t *testing.T) {
 		})
 	}
 }
+
+func TestCopyUsesSharedBulkStatement(t *testing.T) {
+	s := startTestServer(t, "tcp", Config{})
+	c := copyConnection(t, s)
+	ctx := context.Background()
+	if _, e := c.Exec(ctx, "CREATE TABLE forward_copy(id BIGINT PRIMARY KEY,parent BIGINT REFERENCES forward_copy(id),stamp TIMESTAMPTZ DEFAULT statement_timestamp())"); e != nil {
+		t.Fatal(e)
+	}
+	n, e := c.CopyFrom(ctx, pgx.Identifier{"forward_copy"}, []string{"id", "parent"}, pgx.CopyFromRows([][]any{{int64(1), int64(3)}, {int64(2), nil}, {int64(3), nil}}))
+	if e != nil || n != 3 {
+		t.Fatal(n, e)
+	}
+	var stamps int64
+	if e = c.QueryRow(ctx, "SELECT count(DISTINCT stamp) FROM forward_copy").Scan(&stamps); e != nil || stamps != 1 {
+		t.Fatalf("statement defaults: %d %v", stamps, e)
+	}
+	if _, e = c.PgConn().CopyFrom(ctx, strings.NewReader("4\t5\n5\t3\n"), "COPY forward_copy(id,parent) FROM STDIN"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = c.PgConn().CopyFrom(ctx, strings.NewReader("id,parent\n6,7\n7,5\n"), "COPY forward_copy(id,parent) FROM STDIN (FORMAT csv,HEADER)"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = c.PgConn().CopyFrom(ctx, strings.NewReader("8\t999\n9\t3\n"), "COPY forward_copy(id,parent) FROM STDIN"); e == nil {
+		t.Fatal("missing parent accepted")
+	}
+	var rows int64
+	if e = c.QueryRow(ctx, "SELECT count(*) FROM forward_copy").Scan(&rows); e != nil || rows != 7 {
+		t.Fatalf("atomic statement rows %d %v", rows, e)
+	}
+}

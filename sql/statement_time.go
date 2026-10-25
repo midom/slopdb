@@ -15,7 +15,9 @@ func WithStatementTime(ctx context.Context, t time.Time) context.Context {
 	}
 	return context.WithValue(ctx, statementTimeKey{}, t.UTC())
 }
-func statementTime(ctx context.Context) time.Time {
+
+// StatementTime returns the supplied logical statement clock or the current UTC time.
+func StatementTime(ctx context.Context) time.Time {
 	if ctx != nil {
 		if t, ok := ctx.Value(statementTimeKey{}).(time.Time); ok && !t.IsZero() {
 			return t

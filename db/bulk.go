@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"strings"
-	"time"
 
 	"slopdb/sql"
 )
@@ -80,7 +79,7 @@ func (s *Session) bulkInsert(ctx context.Context, table string, columns []string
 		return 0, err
 	}
 	defer s.gate.Unlock()
-	ctx = sql.WithStatementTime(ctx, time.Now().UTC())
+	ctx = sql.WithStatementTime(ctx, sql.StatementTime(ctx))
 	replay := &bulkReplay{next: next, parent: s.db.opt.QueryTempDir, width: len(names)}
 	defer replay.close()
 	stmt := &sql.InsertStmt{Table: strings.ToLower(table), ColumnNames: names, Source: &sql.RowSource{Reset: replay.reset, Next: replay.read}}
@@ -154,7 +153,7 @@ func (r *bulkReplay) read(ctx context.Context) ([]sql.Value, error) {
 		if e != nil {
 			return nil, fmt.Errorf("bulk row %d column %d: %w", r.produced+1, i+1, e)
 		}
-		typed[i] = ownedValue(x)
+		typed[i] = x
 	}
 	if r.file == nil {
 		r.file, err = os.CreateTemp(r.parent, "slopdb-bulk-*")
