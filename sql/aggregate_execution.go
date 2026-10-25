@@ -784,6 +784,12 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 // after emission, so later groups cannot overwrite emitted BLOB results.
 func ownAggregateBest(value Value, buffer []byte) Value {
 	if value.Type == ColBlob && !value.Null {
+		// A large old winner must not hide oversized capacity behind a much
+		// smaller replacement. Keep retained bytes proportional to the live
+		// winner, with a small-buffer allowance for normal reuse.
+		if cap(buffer) > 64<<10 && cap(buffer)/2 > len(value.Blob) {
+			buffer = nil
+		}
 		if buffer == nil {
 			buffer = []byte{}
 		}

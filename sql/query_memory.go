@@ -743,10 +743,10 @@ var errAggregateSpill = errors.New("aggregate working set requires spilling")
 func aggregateGroupMemory(g *aggregateGroup) int64 {
 	n := int64(128 + len(g.states)*192 + len(g.baseValues)*96)
 	for _, v := range g.baseValues {
-		n += int64(len(v.Text) + len(v.Blob) + len(v.NumericText) + len(v.NumericExact))
+		n += int64(len(v.Text) + cap(v.Blob) + len(v.NumericText) + len(v.NumericExact))
 	}
 	for _, a := range g.states {
-		n += a.seenBytes + a.partsBytes + int64(len(a.best.Text)+len(a.best.Blob))
+		n += a.seenBytes + a.partsBytes + int64(len(a.best.Text)+cap(a.best.Blob))
 	}
 	return n
 }
