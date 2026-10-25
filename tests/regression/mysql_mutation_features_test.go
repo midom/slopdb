@@ -293,3 +293,59 @@ func TestMySQLAlterPrefixIndexes(t *testing.T) {
 	defer d.Close()
 	check()
 }
+
+func TestMySQLJoinedTemporaryAndPermanentMutation(t *testing.T) {
+	e := newRegressionEnv(t)
+	d, err := e.openDatabase(e.path("joined-temporary"), storage.DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	s, err := d.NewSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	exec := func(text string) *db.ExecResult {
+		t.Helper()
+		r, err := s.Exec(text)
+		if err != nil {
+			t.Fatalf("%s: %v", text, err)
+		}
+		return r
+	}
+	exec("CREATE TABLE durable(id INTEGER PRIMARY KEY,v INTEGER CHECK(v>0)); INSERT INTO durable VALUES(1,1)")
+	exec("CREATE TEMPORARY TABLE scratch(id INTEGER PRIMARY KEY,v INTEGER); INSERT INTO scratch VALUES(1,2)")
+	exec("BEGIN; UPDATE durable AS d JOIN scratch AS s ON d.id=s.id SET d.v=3,s.v=4; ROLLBACK")
+	if v := exec("SELECT v FROM durable").Rows[0]["v"].Int; v != 1 {
+		t.Fatal(v)
+	}
+	if v := exec("SELECT v FROM scratch").Rows[0]["v"].Int; v != 2 {
+		t.Fatal(v)
+	}
+	exec("UPDATE durable AS d JOIN scratch AS s ON d.id=s.id SET d.v=s.v+1,s.v=d.v+3")
+	if v := exec("SELECT v FROM durable").Rows[0]["v"].Int; v != 3 {
+		t.Fatal(v)
+	}
+	if v := exec("SELECT v FROM scratch").Rows[0]["v"].Int; v != 4 {
+		t.Fatal(v)
+	}
+	if _, err := s.Exec("UPDATE scratch AS s JOIN durable AS d ON s.id=d.id SET s.v=99,d.v=-1"); err == nil {
+		t.Fatal("accepted failing mixed update")
+	}
+	if v := exec("SELECT v FROM scratch").Rows[0]["v"].Int; v != 4 {
+		t.Fatal("private rows survived failed statement", v)
+	}
+	if r := exec("DELETE s FROM scratch AS s JOIN durable AS d ON s.id=d.id"); r.Changes != 1 {
+		t.Fatal(r)
+	}
+	if r, err := d.Exec("SELECT v FROM durable"); err != nil || r.Rows[0]["v"].Int != 3 {
+		t.Fatal(r, err)
+	}
+	if _, err := d.Exec("SELECT * FROM scratch"); err == nil {
+		t.Fatal("temporary definition leaked")
+	}
+	if _, err := d.CheckIntegrity(); err != nil {
+		t.Fatal(err)
+	}
+}
