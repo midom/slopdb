@@ -552,7 +552,7 @@ func (s *Schema) scanJoinTable(table, alias string, info *TableInfo, needed map[
 	count := 0
 	for i, c := range info.Columns {
 		use := needed[c.Name] || needed[alias+"."+c.Name]
-		columns[i] = scanColumn{name: c.Name, needed: use}
+		columns[i] = scanColumn{name: c.Name, needed: use, definition: c}
 		if use {
 			count++
 		}

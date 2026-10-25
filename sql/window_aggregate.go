@@ -68,6 +68,9 @@ func (a *windowAggregate) change(v Value, add bool) error {
 	if a.name != "SUM" && a.name != "AVG" {
 		return nil
 	}
+	if v.EnumValue {
+		v = NewIntValue(v.EnumOrdinal)
+	}
 	if v.Type != ColInteger && v.Type != ColReal {
 		return fmt.Errorf("%s requires numeric arguments", a.name)
 	}

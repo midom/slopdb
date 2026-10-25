@@ -212,7 +212,7 @@ func decodeIntegrityRow(data []byte, info *TableInfo) (map[string]Value, error) 
 		if n != size {
 			return nil, fmt.Errorf("column %s: malformed value", column.Name)
 		}
-		row[column.Name] = value
+		row[column.Name] = decorateColumnValue(value, column)
 		offset += size
 	}
 	if offset != len(data) {

@@ -83,6 +83,9 @@ func addAggregateValue(a *aggregateState, f *FuncCallExpr, v Value) error {
 		a.parts = append(a.parts, part)
 		a.partsBytes += int64(len(part) + 16)
 	case "SUM", "AVG", "TOTAL":
+		if v.EnumValue {
+			v = NewIntValue(v.EnumOrdinal)
+		}
 		if v.Type != ColInteger && v.Type != ColReal {
 			return fmt.Errorf("%s requires numeric arguments", name)
 		}
@@ -146,6 +149,7 @@ type aggregateGroup struct {
 type scanColumn struct {
 	name, qualified string
 	needed          bool
+	definition      ColumnDef
 }
 
 func decodeScanRow(data []byte, columns []scanColumn, row map[string]Value) {
@@ -162,6 +166,7 @@ func decodeScanRow(data []byte, columns []scanColumn, row map[string]Value) {
 		}
 		if c.needed {
 			v, n := decodeValue(data[offset:])
+			v = decorateColumnValue(v, c.definition)
 			offset += n
 			row[c.name] = v
 			if c.qualified != "" {

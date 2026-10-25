@@ -255,6 +255,13 @@ type typedAggregate struct {
 }
 
 func compileTypedAggregate(info *TableInfo, table, alias string, where Expression, group []Expression, functions []*FuncCallExpr, representative map[string]bool) (*typedAggregate, bool) {
+	// ENUM numeric values come from their column declaration, while this
+	// compact decoder intentionally handles only ordinary storage values.
+	for _, col := range info.Columns {
+		if len(col.EnumValues) > 0 {
+			return nil, false
+		}
+	}
 	t := &typedAggregate{slots: make(map[string]int), functions: functions}
 	// Use compact slots only for referenced columns; binding aliases never
 	// increases the per-batch width.

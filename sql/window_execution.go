@@ -284,7 +284,7 @@ func (s *Schema) windowCompare(a, b Value, o OrderByClause) int {
 		}
 		return 1
 	}
-	c := s.valueCompare(a, b)
+	c := s.orderValueCompare(a, b)
 	if o.Desc {
 		return -c
 	}

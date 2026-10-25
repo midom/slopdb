@@ -246,6 +246,9 @@ func tupleOrdered(stmt *SelectStmt, columns []string, constraints map[string]*tu
 		}
 		// Clustered sortable values preserve the default binary collation.
 		// Secondary variable encodings are rejected by buildTuplePlan.
+		if len(col.EnumValues) > 0 {
+			return false, false
+		}
 		nonNull := col.NotNull
 		if c := constraints[name]; c != nil {
 			nonNull = nonNull || c.equal != nil || c.listTerm != nil || c.lower != nil || c.upper != nil

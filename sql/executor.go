@@ -2855,6 +2855,9 @@ func (s *Schema) findMatchingRowsViaIndex(where Expression, tableName string) ([
 	if info, ok := s.tables[tableName]; ok {
 		for _, col := range info.Columns {
 			if col.Name == colName {
+				if len(col.EnumValues) > 0 && (val.Type == ColInteger || val.Type == ColReal) {
+					return nil, false
+				}
 				val = s.comparisonAffinity(val, col)
 				break
 			}
@@ -3007,6 +3010,11 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 	}
 
 	if stmt.Ignore {
+		if s.mysqlMode {
+			previous := s.ctx
+			s.ctx = mysqlIgnoreContext(s.ctx)
+			defer func() { s.ctx = previous }()
+		}
 		copy := *stmt
 		copy.Ignore = false
 		if copy.OnConflict == nil {
@@ -4980,6 +4988,11 @@ func (s *Schema) evalAggregate(fc *FuncCallExpr, rows []map[string]Value) (Value
 		}
 		return NewTextValue(strings.Join(parts, separator)), nil
 	case "SUM", "TOTAL", "AVG":
+		for i, v := range values {
+			if v.EnumValue {
+				values[i] = NewIntValue(v.EnumOrdinal)
+			}
+		}
 		allInt := true
 		var isum int64
 		var total float64
@@ -5440,7 +5453,7 @@ func (s *Schema) compareRows(a, b map[string]Value, orders []OrderByClause) bool
 			return va.Null
 		}
 
-		cmp := s.valueCompare(va, vb)
+		cmp := s.orderValueCompare(va, vb)
 		if cmp != 0 {
 			if o.Desc {
 				return cmp > 0
@@ -5922,6 +5935,9 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 		}
 		if right.Null {
 			return right, nil
+		}
+		if right.EnumValue && (e.Op == "+" || e.Op == "-" || e.Op == "~") {
+			right = NewIntValue(right.EnumOrdinal)
 		}
 		switch e.Op {
 		case "NOT":
@@ -6504,11 +6520,15 @@ func (s *Schema) evalBinary(e *BinaryExpr, row map[string]Value) (Value, error) 
 		}
 		if _, ok := e.Left.(*ColumnRefExpr); ok {
 			if _, literal := e.Right.(*LiteralExpr); literal {
-				rv = applyAffinity(rv, lv.Type)
+				if !lv.EnumValue {
+					rv = applyAffinity(rv, lv.Type)
+				}
 			}
 		} else if _, ok := e.Right.(*ColumnRefExpr); ok {
 			if _, literal := e.Left.(*LiteralExpr); literal {
-				lv = applyAffinity(lv, rv.Type)
+				if !rv.EnumValue {
+					lv = applyAffinity(lv, rv.Type)
+				}
 			}
 		}
 
@@ -6890,6 +6910,9 @@ func appendValueIdentity(buf []byte, v Value) []byte {
 }
 
 func toFloat(v Value) float64 {
+	if v.EnumValue {
+		return float64(v.EnumOrdinal)
+	}
 	switch v.Type {
 	case ColInteger:
 		return float64(v.Int)

@@ -48,6 +48,7 @@ type ColumnDef struct {
 	EnumValues          []string          `json:"enum_values,omitempty"`
 	MySQL               bool              `json:"mysql_affinity,omitempty"`
 	MySQLAutoIncrement  bool              `json:"mysql_auto_increment,omitempty"`
+	TemporalPrecision   int               `json:"temporal_precision,omitempty"`
 	ConstraintNames     map[string]string `json:"constraint_names,omitempty"`
 	Name                string
 	ColType             ColumnType
@@ -73,6 +74,9 @@ func (col ColumnDef) DeclaredType() string {
 		declared := col.Declared
 		if col.FixedBinary {
 			declared = fmt.Sprintf("BINARY(%d)", col.Length)
+		}
+		if col.TemporalPrecision > 0 {
+			declared += fmt.Sprintf("(%d)", col.TemporalPrecision)
 		}
 		if len(col.EnumValues) > 0 {
 			parts := make([]string, len(col.EnumValues))

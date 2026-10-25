@@ -59,7 +59,11 @@ func validateColumnValue(table string, col ColumnDef, v Value) error {
 	if !v.Null && col.Length > 0 {
 		switch col.ColType {
 		case ColText:
-			if int64(utf8.RuneCountInString(v.Text)) > col.Length {
+			n := int64(utf8.RuneCountInString(v.Text))
+			if mysqlTextByteLength(col) {
+				n = int64(len(v.Text))
+			}
+			if n > col.Length {
 				return fmt.Errorf("value too long for %s.%s: %s allows %d characters", table, col.Name, col.DeclaredType(), col.Length)
 			}
 		case ColBlob:

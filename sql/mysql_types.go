@@ -113,6 +113,21 @@ func (p *Parser) parseColumnType(col *ColumnDef) error {
 		col.ColType = ColText
 		col.Declared = word
 		p.advance()
+		if word != "DATE" && p.cur.Type == TokLParen {
+			p.advance()
+			if p.cur.Type != TokInt {
+				return fmt.Errorf("timestamp precision must be 0 through 6")
+			}
+			n, err := strconv.Atoi(p.cur.Value)
+			if err != nil || n < 0 || n > 6 {
+				return fmt.Errorf("timestamp precision must be 0 through 6")
+			}
+			col.TemporalPrecision = n
+			p.advance()
+			if err = p.expect(TokRParen); err != nil {
+				return err
+			}
+		}
 	case "ENUM":
 		col.ColType = ColText
 		col.Declared = word
@@ -162,6 +177,8 @@ func (p *Parser) parseColumnType(col *ColumnDef) error {
 func decorateColumnValue(v Value, col ColumnDef) Value {
 	v.Binary = col.Binary
 	if !v.Null && len(col.EnumValues) > 0 {
+		v.EnumValue = true
+		v.EnumOrdinal = 0
 		for i, x := range col.EnumValues {
 			if v.Text == x {
 				v.EnumValue = true
@@ -171,6 +188,13 @@ func decorateColumnValue(v Value, col ColumnDef) Value {
 		}
 	}
 	return v
+}
+
+func (s *Schema) orderValueCompare(a, b Value) int {
+	if a.EnumValue && b.EnumValue {
+		return ValueCompare(NewIntValue(a.EnumOrdinal), NewIntValue(b.EnumOrdinal))
+	}
+	return s.valueCompare(a, b)
 }
 
 // normalizeColumnValue is shared by inserts, updates and ALTER rewrites, before
@@ -201,6 +225,12 @@ func normalizeColumnValue(v Value, col ColumnDef) (Value, error) {
 			}
 		}
 		if !found {
+			if ordinal, err := strconv.ParseInt(v.Text, 10, 64); err == nil && ordinal >= 1 && ordinal <= int64(len(col.EnumValues)) {
+				v = NewTextValue(col.EnumValues[ordinal-1])
+				found = true
+			}
+		}
+		if !found && !(v.Text == "" && v.EnumValue && v.EnumOrdinal == 0) {
 			return v, fmt.Errorf("invalid ENUM value for %s: %q", col.Name, v.Text)
 		}
 	}
@@ -210,6 +240,9 @@ func normalizeColumnValue(v Value, col ColumnDef) (Value, error) {
 		v.Blob = padded
 	}
 	if (col.Declared == "TIMESTAMP" || col.Declared == "DATETIME" || col.Declared == "DATE") && v.Type == ColText {
+		if col.MySQL && (v.Text == "0000-00-00 00:00:00" || v.Text == "0000-00-00") {
+			return decorateColumnValue(v, col), nil
+		}
 		layouts := []string{"2006-01-02 15:04:05", "20060102150405", time.RFC3339, "2006-01-02"}
 		var parsed time.Time
 		valid := false
@@ -226,8 +259,21 @@ func normalizeColumnValue(v Value, col ColumnDef) (Value, error) {
 		layout := "2006-01-02 15:04:05"
 		if col.Declared == "DATE" {
 			layout = "2006-01-02"
+		} else {
+			unit := time.Second
+			for i := 0; i < col.TemporalPrecision; i++ {
+				unit /= 10
+			}
+			parsed = parsed.Round(unit)
 		}
 		v.Text = parsed.UTC().Format(layout)
+		if col.TemporalPrecision > 0 {
+			digits := fmt.Sprintf("%09d", parsed.Nanosecond())
+			v.Text += "." + digits[:col.TemporalPrecision]
+		}
+	}
+	if col.Declared == "FLOAT" && v.Type == ColReal && math.Abs(v.Real) <= math.MaxFloat32 {
+		v.Real = float64(float32(v.Real))
 	}
 	return decorateColumnValue(v, col), nil
 }
@@ -295,6 +341,11 @@ func (s *Schema) mysqlUpsertChanges() int64 {
 func (s *Schema) normalizeMySQLValue(v Value, col ColumnDef) (Value, error) {
 	if s.mysqlMode {
 		col.MySQL = true
+		var err error
+		v, err = s.mysqlAssignmentValue(v, col)
+		if err != nil {
+			return v, err
+		}
 	}
 	return normalizeColumnValue(v, col)
 }
@@ -361,6 +412,7 @@ func copyColumnType(dst, src *ColumnDef) {
 	dst.IntegerBits = src.IntegerBits
 	dst.FixedBinary = src.FixedBinary
 	dst.EnumValues = append([]string(nil), src.EnumValues...)
+	dst.TemporalPrecision = src.TemporalPrecision
 }
 
 func mysqlBinaryCompare(a, b Value) (int, bool) {

@@ -415,6 +415,24 @@ func (h *diskHash) add(key string, row map[string]Value) error {
 		payload = binary.AppendUvarint(payload, uint64(len(name)))
 		payload = append(payload, name...)
 		payload = appendValue(payload, value)
+		flags := byte(0)
+		if value.Binary {
+			flags |= 1
+		}
+		if value.EnumValue {
+			flags |= 2
+		}
+		if value.Collation != "" {
+			flags |= 4
+		}
+		payload = append(payload, flags)
+		if value.EnumValue {
+			payload = binary.AppendVarint(payload, value.EnumOrdinal)
+		}
+		if value.Collation != "" {
+			payload = binary.AppendUvarint(payload, uint64(len(value.Collation)))
+			payload = append(payload, value.Collation...)
+		}
 	}
 	if err := h.index.Put(encodedKey, payload); err != nil {
 		return err
@@ -467,8 +485,30 @@ func decodeSpillMap(data []byte) (map[string]Value, error) {
 		if used != size {
 			return nil, fmt.Errorf("invalid temporary spill value length")
 		}
-		row[name] = value
 		data = data[size:]
+		if len(data) == 0 || data[0] & ^byte(7) != 0 {
+			return nil, fmt.Errorf("invalid temporary spill value metadata")
+		}
+		value.Binary, value.EnumValue = data[0]&1 != 0, data[0]&2 != 0
+		hasCollation := data[0]&4 != 0
+		data = data[1:]
+		if value.EnumValue {
+			ordinal, used := binary.Varint(data)
+			if used <= 0 || ordinal < 0 {
+				return nil, fmt.Errorf("invalid temporary spill ENUM ordinal")
+			}
+			value.EnumOrdinal = ordinal
+			data = data[used:]
+		}
+		if hasCollation {
+			length, used := binary.Uvarint(data)
+			if used <= 0 || length > uint64(len(data)-used) {
+				return nil, fmt.Errorf("invalid temporary spill collation")
+			}
+			value.Collation = Collation(data[used : used+int(length)])
+			data = data[used+int(length):]
+		}
+		row[name] = value
 	}
 	if len(data) != 0 {
 		return nil, fmt.Errorf("trailing temporary spill bytes")

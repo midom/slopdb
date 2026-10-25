@@ -310,7 +310,7 @@ func (s *Schema) walkAccessRaw(info *TableInfo, needed map[string]bool, paths []
 	columnsFor := func(info *TableInfo) []scanColumn {
 		cols := make([]scanColumn, len(info.Columns))
 		for i, c := range info.Columns {
-			cols[i] = scanColumn{name: c.Name, needed: needed == nil || needed[c.Name]}
+			cols[i] = scanColumn{name: c.Name, needed: needed == nil || needed[c.Name], definition: c}
 		}
 		return cols
 	}

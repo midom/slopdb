@@ -267,3 +267,32 @@ func TestQueryDiskCleanupDetachesOwnership(t *testing.T) {
 		t.Fatalf("cleanup files: %v %v", entries, err)
 	}
 }
+
+func TestIndexedSpillPreservesValueMetadata(t *testing.T) {
+	s := &Schema{queryTempDir: t.TempDir()}
+	h, err := newDiskHash(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h.close()
+	value := NewTextValue("subcat")
+	value.EnumValue, value.EnumOrdinal = true, 2
+	value.Binary, value.Collation = true, Collation("utf8mb4_general_ci")
+	original := map[string]Value{"v": value}
+	if err = h.add("key", original); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	if err = h.walk("key", func(row map[string]Value) error {
+		calls++
+		if !reflect.DeepEqual(row, original) {
+			t.Fatalf("spill lost metadata: %+v", row)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("got %d rows", calls)
+	}
+}
