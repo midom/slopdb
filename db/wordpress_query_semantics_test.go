@@ -25,6 +25,30 @@ func TestWordPressPrimaryKeyGroupedJoinOrdering(t *testing.T) {
 		}
 		s.SetDialect(dialect)
 		for _, prepared := range []bool{false, true} {
+			stock := "SELECT p.ID FROM main.wp_posts p LEFT JOIN main.wp_term_relationships t ON p.ID=t.object_id WHERE p.post_status='publish' GROUP BY p.ID ORDER BY p.post_date DESC LIMIT 1"
+			if dialect == sql.DialectMySQL {
+				stock = "SELECT SQL_CALC_FOUND_ROWS" + stock[len("SELECT"):]
+			}
+			var stockResult *ExecResult
+			if prepared {
+				p, err := s.Prepare(stock)
+				if err != nil {
+					t.Fatal(err)
+				}
+				stockResult, e = p.Exec()
+				p.Close()
+			} else {
+				stockResult, e = s.Exec(stock)
+			}
+			if e != nil || len(stockResult.Rows) != 1 || stockResult.Rows[0][stockResult.Columns[0].Name].Int != 2 {
+				t.Fatalf("stock WordPress shape %s prepared=%v: %v %v", dialect, prepared, stockResult, e)
+			}
+			if dialect == sql.DialectMySQL {
+				r, err := s.Exec("SELECT FOUND_ROWS() AS n")
+				if err != nil || r.Rows[0]["n"].Uint != 2 {
+					t.Fatal("stock WordPress group count", r, err)
+				}
+			}
 			query := "SELECT p.ID AS id,p.post_date AS dt,COUNT(t.term_taxonomy_id) AS n FROM main.wp_posts p LEFT JOIN main.wp_term_relationships t ON p.ID=t.object_id WHERE p.post_status='publish' GROUP BY p.ID ORDER BY p.post_date DESC"
 			var r *ExecResult
 			if prepared {
