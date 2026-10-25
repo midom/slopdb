@@ -41,7 +41,12 @@ func (s *Schema) namespaceAlias(name string) string {
 			return "main"
 		}
 	}
-	return s.Dialect().NamespacePolicy().Resolve(name)
+	if s.expressionMySQL() {
+		if options, ok := SessionContextFrom(s.ctx); ok && options.Database != "" && !s.namespaces[options.Database] && strings.EqualFold(options.Database, name) {
+			return "main"
+		}
+	}
+	return s.ExpressionDialect().NamespacePolicy().Resolve(name)
 }
 func (s *Schema) CurrentSchema() string {
 	if s.defaultSchema == "" {

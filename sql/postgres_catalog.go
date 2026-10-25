@@ -168,6 +168,9 @@ func (s *Schema) PostgresCatalogTable(name string) (*ResultSet, error) {
 	}
 	opts, _ := PostgresSession(s.ctx)
 	database := opts.Database
+	if shared, ok := SessionContextFrom(s.ctx); ok && shared.Database != "" {
+		database = shared.Database
+	}
 	if database == "" {
 		database = "slopdb"
 	}

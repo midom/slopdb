@@ -17,7 +17,7 @@ func (s *Schema) virtualRelationColumns(name string) ([]ColumnDef, bool, error) 
 		}
 	}
 
-	if s.PostgresMode() {
+	if s.expressionPostgres() {
 		if n, ok := postgresCatalogName(name); ok {
 			return pgCatalogFor(n).Columns, true, nil
 		}
@@ -42,7 +42,7 @@ func (s *Schema) virtualRelationColumns(name string) ([]ColumnDef, bool, error) 
 }
 func (s *Schema) resolveCatalogTables(stmt *SelectStmt) (*SelectStmt, error) {
 	mysql, _ := MySQLSession(s.ctx)
-	pg := s.PostgresMode()
+	pg := s.expressionPostgres()
 	cp := *stmt
 	cp.Joins = append([]JoinClause(nil), stmt.Joins...)
 	old := s.catalogView

@@ -130,6 +130,23 @@ MySQL-style introspection remain dialect extensions. Supported CTEs, recursive
 CTEs, window functions and UPSERT now have their own feature documentation. Other unimplemented language features remain outside this
 subset.
 
+## Stored definitions across dialects
+
+New views, triggers, DEFAULT expressions and CHECK constraints retain the SQL
+expression dialect used to define them. Invoking them through another frontend
+preserves their function, operator, cast and catalog-name semantics. Nested
+views and individual defaults/checks restore the invoking expression scope on
+success or error. Connection identity and transaction, locking and temporary
+lifecycle policies continue to belong to the invoking session. Existing catalog
+metadata without an origin retains its earlier caller-dependent behavior.
+
+`alias.*` and `schema.table.*` projections share typed expansion with ordinary
+columns, including prepared metadata and duplicate bare output labels. View
+stars still have the existing dynamic binding behavior: a view declared using
+`SELECT *` or `SELECT alias.*` follows source column additions and renames unless
+it declares an explicit output column list. Frozen star expansion at CREATE VIEW
+is not implemented.
+
 ## Text collation
 
 The database-wide default is `BINARY`, which compares TEXT as bytes and keeps

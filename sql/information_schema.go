@@ -57,10 +57,10 @@ type catalogRelationFact struct {
 }
 
 func (s *Schema) catalogVisibleNamespace(name string) bool {
-	return name == "main" || s.Dialect().NamespacePolicy().Visible(name) && s.namespaceAlias(name) == name
+	return name == "main" || s.ExpressionDialect().NamespacePolicy().Visible(name) && s.namespaceAlias(name) == name
 }
 func (s *Schema) catalogNamespace(name string) string {
-	if name == "main" {
+	if name == "main" && (s.expressionDialect == 0 || s.expressionMySQL()) {
 		if opts, ok := MySQLSession(s.ctx); ok {
 			if opts.RootDatabase != "" {
 				return opts.RootDatabase
@@ -70,18 +70,31 @@ func (s *Schema) catalogNamespace(name string) string {
 			}
 		}
 	}
-	return s.Dialect().NamespacePolicy().Present(name)
+	if name == "main" && s.expressionMySQL() {
+		if opts, ok := SessionContextFrom(s.ctx); ok && opts.Database != "" && (!s.namespaces[opts.Database] || s.schemaAliases[strings.ToLower(opts.Database)] == "main") {
+			return opts.Database
+		}
+	}
+	return s.ExpressionDialect().NamespacePolicy().Present(name)
 }
 func (s *Schema) catalogDatabase() string {
-	if s.PostgresMode() {
+	if s.expressionPostgres() {
+		if opts, ok := SessionContextFrom(s.ctx); ok && opts.Database != "" {
+			return opts.Database
+		}
 		opts, _ := PostgresSession(s.ctx)
 		if opts.Database != "" {
 			return opts.Database
 		}
 		return "slopdb"
 	}
-	if _, ok := MySQLSession(s.ctx); ok {
+	if s.expressionMySQL() {
 		return "def"
+	}
+	if s.expressionDialect == 0 {
+		if _, ok := MySQLSession(s.ctx); ok {
+			return "def"
+		}
 	}
 	return "main"
 }
@@ -243,10 +256,14 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 		return r, nil
 	case "schemata":
 		names := append([]string{"information_schema"}, view.SchemaNames()...)
-		if s.PostgresMode() {
+		if s.expressionPostgres() {
 			names = append(names, "pg_catalog")
-		} else if _, ok := MySQLSession(s.ctx); ok {
+		} else if s.expressionMySQL() {
 			names = append(names, "mysql")
+		} else if s.expressionDialect == 0 {
+			if _, ok := MySQLSession(s.ctx); ok {
+				names = append(names, "mysql")
+			}
 		}
 		sort.Strings(names)
 		seen := map[string]bool{}
@@ -363,7 +380,7 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 				row["column_name"] = c.DeclaredName()
 				row["ordinal_position"] = i + 1
 				row["slopdb_column_ordinal"] = i + 1
-				row["column_default"] = catalogDefault(c, s.PostgresMode())
+				row["column_default"] = catalogDefault(c, s.expressionPostgres())
 				row["slopdb_default_expression"] = catalogDefault(c, true)
 				row["slopdb_declared_type"] = decl
 				row["is_nullable"] = catalogYes(!c.NotNull && !c.PrimaryKey)
@@ -381,7 +398,7 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 					row["extra"] = "auto_increment"
 				}
 				logical := c.LogicalType()
-				if s.PostgresMode() {
+				if s.expressionPostgres() {
 					typ := pgTypeFor(pgTypeOID(c))
 					row["data_type"] = typ.display
 					row["udt_catalog"] = database
@@ -649,7 +666,7 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 			}
 			fields := map[string]any{"trigger_catalog": database, "trigger_schema": ns, "trigger_name": triggerName, "event_manipulation": tr.Event, "event_object_catalog": database, "event_object_schema": ns, "event_object_table": bare, "action_order": 1, "action_condition": condition, "action_statement": strings.Join(tr.Body, "; "), "action_orientation": orientation, "action_timing": timing}
 			if filter.Definitions {
-				fields["slopdb_create_sql"] = s.Dialect().RenderSQL(s.GetTriggerSQL(name))
+				fields["slopdb_create_sql"] = s.ExpressionDialect().RenderSQL(s.GetTriggerSQL(name))
 			}
 			add(fields)
 		}
@@ -763,7 +780,7 @@ func (s *Schema) catalogSystemRelations(filter catalogFilter) map[string][]Colum
 		cols, _ := informationSchemaColumns(name)
 		relations["information_schema."+name] = cols
 	}
-	if s.PostgresMode() {
+	if s.expressionPostgres() {
 		for name := range postgresCatalogSchemas {
 			if filter.Schema != "" && filter.Schema != "pg_catalog" || filter.Table != "" && filter.Table != name {
 				continue
@@ -774,13 +791,13 @@ func (s *Schema) catalogSystemRelations(filter catalogFilter) map[string][]Colum
 	return relations
 }
 func (s *Schema) catalogSystemNamespace(name string) bool {
-	return name == "information_schema" || s.PostgresMode() && name == "pg_catalog"
+	return name == "information_schema" || s.expressionPostgres() && name == "pg_catalog"
 }
 func (s *Schema) catalogCreateSQL(fact catalogRelationFact) Value {
 	text := ""
 	if fact.Relation.Kind == "table" {
 		text = s.getCreateTableSQL(fact.Key, true)
-		if text != "" && s.MySQLMode() {
+		if text != "" && s.expressionMySQL() {
 			text = strings.TrimSuffix(text, ";")
 			if !strings.Contains(strings.ToUpper(text), " ENGINE=") {
 				text += " ENGINE=LSM"
@@ -796,5 +813,5 @@ func (s *Schema) catalogCreateSQL(fact catalogRelationFact) Value {
 	if fact.Relation.Temporary {
 		text = strings.Replace(text, "CREATE TABLE ", "CREATE TEMPORARY TABLE ", 1)
 	}
-	return NewTextValue(s.Dialect().RenderSQL(text))
+	return NewTextValue(s.ExpressionDialect().RenderSQL(text))
 }
