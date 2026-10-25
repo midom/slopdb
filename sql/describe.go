@@ -619,6 +619,25 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 				}
 			}
 		}
+		if expected, known, err := FunctionArgumentTypes(s.Dialect(), name, args); known || err != nil {
+			if err != nil {
+				return text, err
+			}
+			for i, want := range expected {
+				if i < len(e.Args) {
+					s.constrainDescription(e.Args[i], want, env)
+				}
+			}
+			if s.describeTypes != nil {
+				for i, arg := range e.Args {
+					c, err := s.describeExpression(arg, env, scope, depth+1)
+					if err != nil {
+						return text, err
+					}
+					args[i] = c
+				}
+			}
+		}
 		if column, known, err := FunctionMetadata(s.Dialect(), name, args); known || err != nil {
 			return column, err
 		}

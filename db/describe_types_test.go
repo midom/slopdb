@@ -65,3 +65,57 @@ func TestSharedPreparedDescriptionAcrossDialects(t *testing.T) {
 		})
 	}
 }
+
+func TestSharedPreparedFunctionAndCastConstraints(t *testing.T) {
+	d := projectionDatabase(t)
+	s, e := d.NewSession()
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	if e = s.SetDialect(sql.DialectPostgreSQL); e != nil {
+		t.Fatal(e)
+	}
+	cases := []struct {
+		q      string
+		params []sql.TypeID
+		result sql.TypeID
+	}{
+		{"SELECT left(?,?)", []sql.TypeID{sql.TypeText, sql.TypeInt32}, sql.TypeText},
+		{"SELECT encode(?,?)", []sql.TypeID{sql.TypeBinary, sql.TypeText}, sql.TypeText},
+		{"SELECT get_byte(?,?)", []sql.TypeID{sql.TypeBinary, sql.TypeInt32}, sql.TypeInt32},
+		{"SELECT CAST(CAST(? AS BIGINT) AS TEXT)", []sql.TypeID{sql.TypeInt64}, sql.TypeText},
+		{"SELECT CAST(? AS TIMESTAMP WITH TIME ZONE)", []sql.TypeID{sql.TypeTimestampTZ}, sql.TypeTimestampTZ},
+	}
+	for _, tc := range cases {
+		p, e := s.Prepare(tc.q)
+		if e != nil {
+			t.Fatal(e)
+		}
+		desc, e := s.DescribePreparedTypes(context.Background(), p, sql.DescribeOptions{})
+		p.Close()
+		if e != nil {
+			t.Fatalf("%s: %v", tc.q, e)
+		}
+		if len(desc.Parameters) != len(tc.params) {
+			t.Fatal(desc)
+		}
+		for i, want := range tc.params {
+			if desc.Parameters[i].Kind != want {
+				t.Fatalf("%s parameter%d=%+v want%v", tc.q, i, desc.Parameters[i], want)
+			}
+		}
+		if len(desc.Results) != 1 || desc.Results[0].LogicalType().Kind != tc.result {
+			t.Fatalf("%s results %+v", tc.q, desc.Results)
+		}
+	}
+	p, e := s.Prepare("SELECT CAST(? AS BIGINT)")
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer p.Close()
+	desc, e := s.DescribePreparedTypes(context.Background(), p, sql.DescribeOptions{ParameterTypes: []sql.LogicalType{sql.LogicalTypeFromDeclaration("TEXT")}})
+	if e != nil || desc.Parameters[0].Kind != sql.TypeText {
+		t.Fatalf("supplied input type overwritten %+v %v", desc, e)
+	}
+}
