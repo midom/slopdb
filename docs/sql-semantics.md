@@ -208,3 +208,27 @@ checks before and after close/reopen. Results are documented with the load
 [tester](../cmd/tpcc/README.md).
 
 `INSERT ... ON CONFLICT` supports explicit PRIMARY KEY/UNIQUE targets, DO NOTHING, and DO UPDATE with excluded values and an optional WHERE. See [UPSERT semantics](upsert.md) for constraints, triggers, concurrency, generated IDs, and supported target syntax.
+
+
+## Shared full-text indexes
+
+FULLTEXT indexes use LSM inverted postings and a persisted per-index analyzer.
+The native options and scalar spelling work through both protocol frontends:
+
+```sql
+CREATE FULLTEXT INDEX ft ON docs(body) WITH (
+  min_token_length=1, stopword_mode='custom',
+  stopwords='["and","the"]', ranking='term_frequency'
+);
+SELECT id FROM docs WHERE FULLTEXT_MATCH(body,'go') > 0;
+```
+
+Options include `tokenizer` (`unicode` or `whitespace`), `normalization`
+(`fold`, `lower`, `none`), minimum/maximum token lengths, `stopword_mode`
+(`legacy`, `none`, `custom`), a JSON array of stopwords and `ranking`
+(`tf_idf`, `term_frequency`). Index maintenance, search, phrase verification,
+rebuilds, online builds and copied schemas use that same recorded configuration,
+regardless of the querying session dialect. Existing indexes without a config
+keep their original 4–84 character bounds, folding, legacy stopwords and TF-IDF.
+MySQL MATCH/AGAINST remains a syntax adapter over this engine. PostgreSQL
+TSVECTOR/TSQUERY, language dictionaries and stemming are not implied.

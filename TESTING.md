@@ -303,3 +303,13 @@ LSM SQL inspection is covered by `storage/status_test.go`,
 implementations, concurrent publication/snapshot pins, flush/full compaction,
 reopen, passive counters, filters/prepared execution, and actual MySQL/PostgreSQL
 inspection on a Raft leader and follower.
+
+Shared frontend behavior is covered by `tests/regression/dual_protocol_test.go`,
+`internal/cli/wire_server_test.go`, `db/isolation_postgres_test.go`, and
+`postgresserver/isolation_test.go`: independent parser policies on simultaneous
+listeners, cross-protocol visibility, close/reopen, stable snapshot mutation
+conflicts and real SQLSTATE errors after a row-lock wait. Catalog projections
+have owning-package tests for native/MySQL/PG, and typed user variables, stored
+collations, column spelling/table-local indexes, temporary ON COMMIT behavior,
+full-text configurations, shared bulk imports and client-local ingestion each
+have permanent regression suites.

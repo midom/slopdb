@@ -30,7 +30,7 @@ func TestShowLSMStatusSQLPreparedAndFilters(t *testing.T) {
 		names = append(names, n)
 		values[n] = row["Value"].Text
 	}
-	if !sort.StringsAreSorted(names) || values["engine"] != "LSM" || values["counter_scope"] != "since_open" || values["level.6.write_compression"] != "zstd" {
+	if !sort.StringsAreSorted(names) || values["engine"] != "LSM" || values["counter_scope"] != "since_open" || values["level.6.write_compression"] != "zstd" || values["wal.enabled"] != "ON" {
 		t.Fatalf("status %+v", values)
 	}
 	if n, e := strconv.Atoi(values["level.6.files"]); e != nil || n == 0 {

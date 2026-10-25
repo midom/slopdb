@@ -18,13 +18,13 @@ MySQL mode; MySQL sessions use MySQL-specific LENGTH, HEX, ROUND and ABS rules.
 | Date components | YEAR, MONTH, DAY, DAYOFMONTH, DAYOFWEEK, DAYOFYEAR, WEEKDAY, QUARTER, WEEK, WEEKOFYEAR, YEARWEEK, DAYNAME, MONTHNAME, LAST_DAY |
 | Date arithmetic | DATE_ADD, DATE_SUB, ADDDATE, SUBDATE, TIMESTAMPADD, TIMESTAMPDIFF, DATEDIFF, PERIOD_ADD, PERIOD_DIFF, EXTRACT |
 | Time values | HOUR, MINUTE, SECOND, MICROSECOND, ADDTIME, SUBTIME, TIMEDIFF, TIME_TO_SEC, SEC_TO_TIME, MAKETIME |
-| Formatting and calendars | DATE_FORMAT, TIME_FORMAT, STR_TO_DATE, MAKEDATE, FROM_DAYS, TO_DAYS, TO_SECONDS, FROM_UNIXTIME |
+| Formatting and calendars | DATE_FORMAT, TIME_FORMAT, STR_TO_DATE, MAKEDATE, FROM_DAYS, TO_DAYS, TO_SECONDS, FROM_UNIXTIME, GET_FORMAT, CONVERT_TZ |
 | Clocks | CURDATE, CURRENT_DATE, UTC_DATE, CURTIME, CURRENT_TIME, UTC_TIME, UTC_TIMESTAMP, LOCALTIME, LOCALTIMESTAMP |
 | Digests and encryption | MD5, SHA, SHA1, SHA2, RANDOM_BYTES, AES_ENCRYPT, AES_DECRYPT |
 | Compression | COMPRESS, UNCOMPRESS, UNCOMPRESSED_LENGTH |
 | UUIDs | UUID, IS_UUID, UUID_TO_BIN, BIN_TO_UUID |
 | Network addresses | INET_ATON, INET_NTOA, INET6_ATON, INET6_NTOA, IS_IPV4, IS_IPV6, IS_IPV4_COMPAT, IS_IPV4_MAPPED |
-| Session and utility functions | USER, SESSION_USER, SYSTEM_USER, SCHEMA, LAST_INSERT_ID, ROW_COUNT, FOUND_ROWS, IS_USED_LOCK, RELEASE_ALL_LOCKS, ISNULL, CHARSET, COLLATION, SLEEP, BENCHMARK |
+| Session and utility functions | USER, SESSION_USER, SYSTEM_USER, SCHEMA, LAST_INSERT_ID, ROW_COUNT, FOUND_ROWS, IS_USED_LOCK, RELEASE_ALL_LOCKS, ISNULL, CHARSET, COLLATION, SLEEP, BENCHMARK, NAME_CONST |
 
 These extend the previously supported IF, GREATEST, LEAST, CONCAT, SUBSTRING,
 NOW, SYSDATE, CURRENT_TIMESTAMP, UNIX_TIMESTAMP, CONVERT, named locks and JSON
@@ -96,6 +96,14 @@ The generator obtains answers only from that server.
 This is an implementation of the listed functions, not a complete emulation of
 every MySQL function, sql_mode, warning, collation or temporal coercion. Native
 invalid-value, overflow and cancellation policies remain in effect where noted.
-CONVERT_TZ, locale-dependent date-name settings, automatic numeric-context
+Locale-dependent date-name settings, automatic numeric-context
 conversion of temporal TEXT values, uncommon year-zero arithmetic and additional
 cryptographic modes remain outside this function set.
+
+`JSON_SEARCH` supports one/all modes, path restrictions and LIKE patterns.
+`CONVERT_TZ` accepts UTC/GMT, fixed offsets and available IANA time zones,
+including daylight-saving transitions; unknown zones return NULL. Named zones
+use the host time-zone database rather than MySQL timezone tables. `GET_FORMAT`
+provides the documented DATE/TIME/DATETIME format families. Additional independent
+MySQL 8.0.46/PG16.15 facts are checked into `db/testdata/mysql_extra_functions.json`
+and the PostgreSQL scalar fixture, with direct and prepared checks.

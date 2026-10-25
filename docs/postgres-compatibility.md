@@ -133,3 +133,9 @@ participates in transaction and savepoint rollback; `ON COMMIT PRESERVE ROWS`,
 `DELETE ROWS` and `DROP` execute atomically with commit, including otherwise
 empty transactions. Native/MySQL temporary definitions retain their existing
 session lifetime rules. All temporary ranges are cleaned on shutdown/restart.
+
+Additional functions include STARTS_WITH, TO_HEX with integer-width rules,
+BYTEA BIT_COUNT, SHA224/SHA256/SHA384/SHA512, NORMALIZE/IS_NORMALIZED, UNISTR,
+NUM_NULLS/NUM_NONNULLS, GEN_RANDOM_UUID, JSON_STRIP_NULLS and JSONB_SET_LAX.
+The shared resolver preserves PostgreSQL argument signatures, strict NULL
+rules, result descriptors and volatility independently of MySQL aliases.

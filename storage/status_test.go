@@ -36,6 +36,9 @@ func TestLSMStatusMemtablesFilesAndPassiveCounters(t *testing.T) {
 			}
 			before := l.Status()
 			bottom := before.Levels[maxLevels-1]
+			if !before.WALEnabled {
+				t.Fatal("flushing disabled configured WAL durability")
+			}
 			if before.Memtable.Entries != 0 || bottom.FileCount == 0 || bottom.TotalSize == 0 || !bottom.Ordered || bottom.WriteCompression != ZstdCompression || before.CompletedFlushes == 0 {
 				t.Fatalf("compacted status: %+v", before)
 			}
