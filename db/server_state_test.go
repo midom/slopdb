@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 )
 
@@ -34,5 +35,22 @@ func TestRuntimeStatusNativeAndPrepared(t *testing.T) {
 	}
 	if d.ReplicationStorage().ChangeLogEnabled() {
 		t.Fatal("native state enabled CDC")
+	}
+}
+
+func TestLegacyRaftStateDoesNotInvokeActiveAdmission(t *testing.T) {
+	d, e := Open(t.TempDir(), nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer d.Close()
+	var called atomic.Int64
+	d.SetReplicationGuard(&ReplicationGuard{Check: func(context.Context) error { called.Add(1); return nil }})
+	state, e := d.RaftState(context.Background())
+	if e != nil {
+		t.Fatal(e)
+	}
+	if called.Load() != 0 || state.Role != "Unknown" || !state.Enabled || state.Writable {
+		t.Fatalf("legacy state invoked active guard: %+v checks=%d", state, called.Load())
 	}
 }

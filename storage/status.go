@@ -77,6 +77,16 @@ func (l *LSMTree) populateStatusLocked(s *LSMStats) {
 		shard.mu.Unlock()
 	}
 	for level := range s.Levels {
+		if len(s.Levels[level].Files) == 0 {
+			s.Levels[level].WriteCompression, _ = l.opt.compressionType(level)
+			if level > 0 {
+				s.Levels[level].TargetBytes = l.opt.levelSizeMultiplier(level) * 1024 * 1024
+			}
+			if l.view != nil {
+				s.Levels[level].Ordered = l.view.ordered[level]
+			}
+			continue
+		}
 		readers := make(map[uint64]*SSTableReader, len(s.Levels[level].Files))
 		if l.view != nil {
 			for _, slot := range l.view.levels[level] {

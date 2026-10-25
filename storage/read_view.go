@@ -13,18 +13,20 @@ type viewFile struct {
 	level int
 }
 type readView struct {
-	refs       atomic.Int64
-	retired    atomic.Bool
-	closed     atomic.Bool
-	padding    [54]byte // isolate retirement flags from reader reference writes
-	readerRefs [snapshotReaderShards]readerViewRefs
-	mem, imm   *MemTable
-	tableSeq   uint64
-	files      []viewFile
-	levels     [][]viewFile
-	ordered    []bool
-	hasRanges  []bool
-	cache      *tableCache
+	levelBytes      [maxLevels]int64
+	pointIndexBytes int64
+	refs            atomic.Int64
+	retired         atomic.Bool
+	closed          atomic.Bool
+	padding         [54]byte // isolate retirement flags from reader reference writes
+	readerRefs      [snapshotReaderShards]readerViewRefs
+	mem, imm        *MemTable
+	tableSeq        uint64
+	files           []viewFile
+	levels          [][]viewFile
+	ordered         []bool
+	hasRanges       []bool
+	cache           *tableCache
 }
 
 type readerViewRefs struct {
@@ -123,6 +125,8 @@ func (l *LSMTree) publishViewLocked() error {
 			slot := viewFile{meta: f, entry: entry, level: level}
 			v.files = append(v.files, slot)
 			v.levels[level] = append(v.levels[level], slot)
+			v.levelBytes[level] += int64(f.FileSize)
+			v.pointIndexBytes += entry.reader.pointIndexBytes()
 			v.hasRanges[level] = v.hasRanges[level] || len(entry.reader.rangeDeletes) > 0
 		}
 		ordered := v.levels[level]

@@ -57,3 +57,19 @@ func TestShowLSMStatusSQLPreparedAndFilters(t *testing.T) {
 		t.Fatal("status enabled journal")
 	}
 }
+
+func TestLSMStatusFileFilterPruning(t *testing.T) {
+	for _, tc := range []struct {
+		pattern string
+		want    bool
+	}{
+		{"cache.%", false}, {"memtable.%", false}, {"level.%", false}, {"wal.%", false}, {"file", false}, {"FILE.%", true}, {"file.00000000000000000001.bytes", true}, {"%bytes", true}, {"_ile.%", true}, {"f%", true}, {`f\ile.%`, true}, {"", false},
+	} {
+		if got := lsmFileFieldsSelected(&tc.pattern); got != tc.want {
+			t.Errorf("%q selected=%v", tc.pattern, got)
+		}
+	}
+	if !lsmFileFieldsSelected(nil) {
+		t.Fatal("unfiltered status omitted files")
+	}
+}

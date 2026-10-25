@@ -1931,15 +1931,23 @@ type FileStats struct {
 }
 
 func (l *LSMTree) Stats() LSMStats {
-	return l.stats(false)
+	return l.stats(true, false)
 }
+
+// Summary samples counters and cached level totals without copying file
+// metadata or walking the file set. It is suitable for scalar server variables.
+func (l *LSMTree) Summary() LSMStats { return l.stats(false, false) }
 
 // Status includes snapshot, reader and file-layout details. Unlike Stats it
 // walks registration and cache metadata, so it is intended for explicit
 // inspection rather than frequently evaluated scalar variables.
-func (l *LSMTree) Status() LSMStats { return l.stats(true) }
+func (l *LSMTree) Status() LSMStats { return l.StatusWithFiles(true) }
 
-func (l *LSMTree) stats(detailed bool) LSMStats {
+// StatusWithFiles can omit file bounds and reader metadata when a filtered
+// inspection needs only engine, memtable, cache or per-level statistics.
+func (l *LSMTree) StatusWithFiles(files bool) LSMStats { return l.stats(files, true) }
+
+func (l *LSMTree) stats(files, detailed bool) LSMStats {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	blockHits, blockMisses := l.tableCache.blocks.statistics()
@@ -1978,11 +1986,14 @@ func (l *LSMTree) stats(detailed bool) LSMStats {
 		s.ImmSize = l.imm.ApproximateSize()
 	}
 	if l.view != nil {
-		for _, slot := range l.view.files {
-			s.PointIndexBytes += slot.entry.reader.pointIndexBytes()
-		}
+		s.PointIndexBytes = l.view.pointIndexBytes
 	}
 	for lv := 0; lv < maxLevels; lv++ {
+		if !files && l.view != nil {
+			s.Levels[lv].FileCount = len(l.view.levels[lv])
+			s.Levels[lv].TotalSize = l.view.levelBytes[lv]
+			continue
+		}
 		var total int64
 		for _, f := range l.levels[lv] {
 			total += int64(f.FileSize)

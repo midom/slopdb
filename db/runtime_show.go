@@ -23,11 +23,11 @@ func (d *Database) runtimeShow(ctx context.Context, show *sql.ShowStmt) (*ExecRe
 	}
 	var values map[string]string
 	if show.Kind == "LSM STATUS" {
-		v, e := d.LSMStatus(ctx)
+		v, e := d.lsmStatus(ctx, lsmFileFieldsSelected(show.Like))
 		if e != nil {
 			return nil, e
 		}
-		values = lsmVariables(v)
+		values = lsmVariables(v, show.Like)
 	} else if show.Kind == "RAFT STATUS" {
 		v, e := d.RaftState(ctx)
 		if e != nil {

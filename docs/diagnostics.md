@@ -123,4 +123,8 @@ the file layout itself is captured under the engine metadata lock.
 Inspection reads existing metadata and bounded registration/cache structures;
 it neither scans data blocks nor opens SSTables. The detailed snapshot is
 available to Go callers as `Database.LSMStatus(ctx)` or `LSMTree.Status()`;
-`LSMTree.Stats()` retains the lighter frequently sampled statistics path.
+`LSMTree.Stats()` retains the legacy file-layout API; `LSMTree.Summary()`
+uses cached per-level totals and resident index bytes without walking or copying
+file metadata. Ordinary server variables use that summary. Fixed LIKE prefixes
+such as `cache.%`, `memtable.%` and `level.%` omit file metadata from detailed
+inspection, and filtered-out key bounds are not hex-encoded.

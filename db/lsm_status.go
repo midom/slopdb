@@ -5,7 +5,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strconv"
+	"strings"
 
+	"slopdb/sql"
 	"slopdb/storage"
 )
 
@@ -13,6 +15,43 @@ import (
 // journal activation or data-block reads. Counters belong to this open engine
 // instance; metadata gauges describe the current view.
 func (d *Database) LSMStatus(ctx context.Context) (storage.LSMStats, error) {
+	return d.lsmStatus(ctx, true)
+}
+
+// A fixed mismatching prefix proves that a LIKE pattern cannot select file
+// fields. Wildcards are handled conservatively; exact SQL matching still runs
+// when projecting rows, so pruning can never drop a matching field.
+func lsmFileFieldsSelected(pattern *string) bool {
+	if pattern == nil {
+		return true
+	}
+	p := strings.ToLower(*pattern)
+	const prefix = "file."
+	i := 0
+	for pos := 0; pos < len(p); pos++ {
+		c := p[pos]
+		if c == '%' || c == '_' {
+			return true
+		}
+		if c == '\\' {
+			pos++
+			if pos == len(p) {
+				return false
+			}
+			c = p[pos]
+		}
+		if i == len(prefix) {
+			return true
+		}
+		if c != prefix[i] {
+			return false
+		}
+		i++
+	}
+	return false
+}
+
+func (d *Database) lsmStatus(ctx context.Context, files bool) (storage.LSMStats, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -22,14 +61,14 @@ func (d *Database) LSMStatus(ctx context.Context) (storage.LSMStats, error) {
 	if d.closed.Load() {
 		return storage.LSMStats{}, ErrSessionClosed
 	}
-	s := d.currentStorage.Load().Status()
+	s := d.currentStorage.Load().StatusWithFiles(files)
 	if e := ctx.Err(); e != nil {
 		return storage.LSMStats{}, e
 	}
 	return s, nil
 }
 
-func lsmVariables(s storage.LSMStats) map[string]string {
+func lsmVariables(s storage.LSMStats, pattern *string) map[string]string {
 	v := map[string]string{"engine": "LSM", "counter_scope": "since_open", "memtable.size_accounting": "approximate_internal_bytes", "file.key_encoding": "hex", "directory": s.Dir, "background.error": s.BackgroundError, "cache.policy": string(s.BlockCachePolicy), "cache.memory": string(s.BlockCacheMemory)}
 	integer := func(k string, n int64) { v[k] = strconv.FormatInt(n, 10) }
 	unsigned := func(k string, n uint64) { v[k] = strconv.FormatUint(n, 10) }
@@ -83,7 +122,12 @@ func lsmVariables(s storage.LSMStats) map[string]string {
 			integer(key+"level", int64(level))
 			unsigned(key+"bytes", f.Size)
 			unsigned(key+"max_sequence", f.MaxSequence)
-			v[key+"smallest_key_hex"], v[key+"largest_key_hex"] = hex.EncodeToString([]byte(f.Smallest)), hex.EncodeToString([]byte(f.Largest))
+			if pattern == nil || sql.SystemVariableLike(key+"smallest_key_hex", *pattern) {
+				v[key+"smallest_key_hex"] = hex.EncodeToString([]byte(f.Smallest))
+			}
+			if pattern == nil || sql.SystemVariableLike(key+"largest_key_hex", *pattern) {
+				v[key+"largest_key_hex"] = hex.EncodeToString([]byte(f.Largest))
+			}
 			integer(key+"remaining_seeks", int64(f.Seeks))
 			integer(key+"range_tombstones", int64(f.RangeTombstones))
 			integer(key+"index_bytes", int64(f.IndexBytes))

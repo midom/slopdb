@@ -35,6 +35,18 @@ func TestLSMStatusMemtablesFilesAndPassiveCounters(t *testing.T) {
 				t.Fatal(err)
 			}
 			before := l.Status()
+			summary := l.Summary()
+			filtered := l.StatusWithFiles(false)
+			for level, detail := range before.Levels {
+				for _, got := range []LevelStats{summary.Levels[level], filtered.Levels[level]} {
+					if got.FileCount != detail.FileCount || got.TotalSize != detail.TotalSize || len(got.Files) != 0 {
+						t.Fatalf("summary lost level gauges: %+v %+v", got, detail)
+					}
+				}
+			}
+			if summary.PointIndexBytes != before.PointIndexBytes {
+				t.Fatal("summary lost resident point-index bytes")
+			}
 			bottom := before.Levels[maxLevels-1]
 			if !before.WALEnabled {
 				t.Fatal("flushing disabled configured WAL durability")

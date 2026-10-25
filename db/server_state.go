@@ -57,9 +57,6 @@ func (d *Database) RaftState(ctx context.Context) (RaftState, error) {
 		return v, nil
 	}
 	v := RaftState{Enabled: true, Role: "Unknown"}
-	if guard.Check != nil {
-		v.Writable = guard.Check(ctx) == nil
-	}
 	if err := ctx.Err(); err != nil {
 		return RaftState{}, err
 	}
@@ -79,7 +76,7 @@ func (d *Database) ServerState(ctx context.Context) (ServerState, error) {
 	}
 	// Stats owns the storage metadata locks. No SQL session/catalog gate is
 	// acquired here, so expression callbacks cannot re-enter a queued SQL writer.
-	stats := d.currentStorage.Load().Stats()
+	stats := d.currentStorage.Load().Summary()
 	feed, e := d.ChangefeedState(ctx)
 	if e != nil {
 		return ServerState{}, e

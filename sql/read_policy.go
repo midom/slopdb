@@ -16,6 +16,9 @@ func (d Dialect) ReadPolicy() ReadPolicy {
 }
 
 func snapshotControl(statement Statement) bool {
+	if stmt, ok := statement.(*NamespaceStmt); ok {
+		return stmt.Operation == "use" || stmt.Operation == "search_path"
+	}
 	switch statement.(type) {
 	case *BeginStmt, *CommitStmt, *RollbackStmt, *SavepointStmt, *ReleaseStmt, *SetIsolationStmt, *SetConstraintsStmt:
 		return true

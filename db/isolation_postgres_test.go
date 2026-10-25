@@ -65,3 +65,20 @@ func TestPostgresRepeatableReadOwnWritesAndNestedLocking(t *testing.T) {
 	isolationExec(t, a, "COMMIT")
 	isolationValue(t, b, "SELECT sum(v) AS v FROM records", 40)
 }
+
+func TestPostgresRepeatableReadNamespaceControlDoesNotPinSnapshot(t *testing.T) {
+	d, e := Open(t.TempDir(), nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer d.Close()
+	a, b := isolationSession(t, d), isolationSession(t, d)
+	if e = a.SetDialect(sql.DialectPostgreSQL); e != nil {
+		t.Fatal(e)
+	}
+	isolationExec(t, b, "CREATE TABLE namespace_snapshot(id INTEGER PRIMARY KEY,v INTEGER);INSERT INTO namespace_snapshot VALUES(1,10)")
+	isolationExec(t, a, "BEGIN ISOLATION LEVEL REPEATABLE READ; SET search_path=public")
+	isolationExec(t, b, "UPDATE namespace_snapshot SET v=20 WHERE id=1")
+	isolationValue(t, a, "SELECT v FROM namespace_snapshot WHERE id=1", 20)
+	isolationExec(t, a, "ROLLBACK")
+}
