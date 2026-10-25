@@ -731,7 +731,11 @@ func mysqlTimeArithmetic(name string, a []Value) Value {
 		if t.Year() < 0 || t.Year() > 9999 {
 			return NewNullValue()
 		}
-		return NewTextValue(mysqlFormatDate(t, false, max(left.fsp, yf)))
+		precision := 0
+		if t.Nanosecond() != 0 {
+			precision = 6
+		}
+		return NewTextValue(mysqlFormatDate(t, false, precision))
 	} else {
 		if !xok || rightDate.valid {
 			return NewNullValue()
@@ -742,6 +746,12 @@ func mysqlTimeArithmetic(name string, a []Value) Value {
 		x += y
 	}
 	x = mysqlClampTime(x)
+	if name != "TIMEDIFF" {
+		fsp = 0
+		if x%1000000 != 0 {
+			fsp = 6
+		}
+	}
 	return NewTextValue(mysqlFormatTime(x, fsp))
 }
 

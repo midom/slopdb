@@ -186,7 +186,13 @@ func mysqlTimeFormat(s *Schema, n int64, fsp int, format string) Value {
 				piece = fmt.Sprintf("%02d:%02d:%02d %s", h12, minute, second, ampm)
 			case 'T':
 				piece = fmt.Sprintf("%02d:%02d:%02d", hours, minute, second)
-			case 'a', 'b', 'c', 'D', 'd', 'e', 'j', 'M', 'm', 'U', 'u', 'V', 'v', 'W', 'w', 'X', 'x', 'Y', 'y':
+			case 'Y':
+				piece = "0000"
+			case 'y', 'm', 'd':
+				piece = "00"
+			case 'c', 'e':
+				piece = "0"
+			case 'a', 'b', 'D', 'j', 'M', 'U', 'u', 'V', 'v', 'W', 'w', 'X', 'x':
 				return NewNullValue()
 			default:
 				piece = string(format[i])
