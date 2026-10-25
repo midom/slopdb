@@ -78,6 +78,9 @@ func PostgresValueOID(v Value) uint32 { return PostgresColumnOID(ColumnDef{Decla
 
 func postgresColumnDefinition(col *ColumnDef) {
 	col.Postgres = true
+	if col.ColType == ColDecimal && !col.TypeModifiers {
+		col.Precision, col.Scale = 0, 0
+	}
 	if col.Declared == "" {
 		col.Declared = col.ColType.String()
 		if col.ColType == ColText && col.Length > 0 {
@@ -110,7 +113,14 @@ func normalizePostgresColumnValue(v Value, col ColumnDef) (Value, error) {
 		r.PGType = col.Declared
 		return r, e
 	}
-	r, err := CastPostgresValue(v, col.Declared)
+	target := col.Declared
+	if col.TypeModifiers && col.TemporalPrecision >= 0 {
+		switch PostgresColumnOID(col) {
+		case 1083, 1114, 1184, 1266:
+			target = postgresTemporalTypeModifier(target, col.TemporalPrecision)
+		}
+	}
+	r, err := CastPostgresValue(v, target)
 	if err != nil {
 		return NewNullValue(), fmt.Errorf("column %s: %w", col.Name, err)
 	}
@@ -284,20 +294,29 @@ func postgresTemporalValue(v Value, name string, oid uint32) (Value, error) {
 	layouts := []string{}
 	switch oid {
 	case 1082:
-		layouts = []string{"2006-01-02", "2006-1-2"}
+		layouts = []string{"2006-01-02", "2006-1-2", "2006-01-02 15:04:05.999999999", "2006-01-02 15:04:05.999999999Z07:00", "2006-01-02 15:04:05.999999999Z07"}
 	case 1083:
+		if text == "24:00" || text == "24:00:00" || strings.HasPrefix(text, "24:00:00.") && strings.Trim(text[len("24:00:00."):], "0") == "" {
+			return NewTextValue("24:00:00"), nil
+		}
 		layouts = []string{"15:04:05.999999999", "15:04"}
 	case 1266:
 		layouts = []string{"15:04:05.999999999Z07:00", "15:04:05.999999999Z07", "15:04Z07:00"}
 	default:
 		layouts = []string{time.RFC3339Nano, "2006-01-02 15:04:05.999999999Z07:00", "2006-01-02 15:04:05.999999999Z07", "2006-01-02 15:04:05.999999999-07:00:00", "2006-01-02 15:04:05.999999999", "2006-01-02 15:04", "2006-01-02"}
 	}
+	precision := 6
+	if i := strings.IndexByte(name, '('); i >= 0 {
+		if _, e := fmt.Sscanf(name[i+1:], "%d", &precision); e != nil || precision < 0 || precision > 6 {
+			return NewNullValue(), fmt.Errorf("invalid time precision")
+		}
+	}
 	for _, layout := range layouts {
 		t, e := time.Parse(layout, text)
 		if e != nil {
 			continue
 		}
-		t = t.Round(time.Microsecond)
+		t = t.Round(time.Duration(math.Pow10(9 - precision)))
 		switch oid {
 		case 1082:
 			return NewTextValue(t.Format("2006-01-02")), nil
@@ -312,4 +331,29 @@ func postgresTemporalValue(v Value, name string, oid uint32) (Value, error) {
 		}
 	}
 	return NewNullValue(), fmt.Errorf("invalid input syntax for type %s: %q", name, text)
+}
+
+func postgresTemporalTypeModifier(name string, precision int) string {
+	if strings.Contains(name, "(") {
+		return name
+	}
+	if i := strings.IndexByte(name, ' '); i >= 0 {
+		return fmt.Sprintf("%s(%d)%s", name[:i], precision, name[i:])
+	}
+	return fmt.Sprintf("%s(%d)", name, precision)
+}
+func assignmentAffinity(v Value, col ColumnDef) Value {
+	if col.Postgres {
+		return v
+	}
+	return applyAffinity(v, col.ColType)
+}
+
+func postgresDescribeType(name string) ColumnDef {
+	c := describeType(name)
+	if PostgresColumnOID(ColumnDef{Declared: name}) != 0 {
+		c.Declared = strings.ToUpper(name)
+	}
+	postgresColumnDefinition(&c)
+	return c
 }

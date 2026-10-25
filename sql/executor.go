@@ -3326,13 +3326,13 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 				if err != nil {
 					return 0, nil, err
 				}
-				row[col.Name] = s.evalLiteral(&LiteralExpr{Value: v}, col.ColType)
+				row[col.Name] = assignmentAffinity(v, col)
 			} else if col.Default != nil {
 				val, err := s.evalExpr(col.Default, nil)
 				if err != nil {
 					return 0, nil, err
 				}
-				row[col.Name] = applyAffinity(val, col.ColType)
+				row[col.Name] = assignmentAffinity(val, col)
 			} else {
 				row[col.Name] = NewNullValue()
 			}
@@ -3980,7 +3980,7 @@ func (s *Schema) insertFromSelect(stmt *InsertStmt, info *TableInfo) (int64, *Re
 			} else {
 				val = NewNullValue()
 			}
-			row[col.Name] = applyAffinity(val, col.ColType)
+			row[col.Name] = assignmentAffinity(val, col)
 		}
 
 		if err := s.normalizeMySQLRow(info, row); err != nil {
@@ -5968,7 +5968,7 @@ func (s *Schema) applyRowUpdate(table string, info *TableInfo, oldKey []byte, or
 		}
 		for _, col := range info.Columns {
 			if col.Name == strings.ToLower(set.Column) {
-				v = applyAffinity(v, col.ColType)
+				v = assignmentAffinity(v, col)
 				break
 			}
 		}
@@ -6153,7 +6153,7 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 			v.Blob = copyBytes(v.Blob)
 			return v, nil
 		}
-		if s.mysqlMode && e.Value.NumericText != "" && !strings.ContainsAny(e.Value.NumericText, "eE") {
+		if (s.mysqlMode || s.postgresMode) && e.Value.NumericText != "" && !strings.ContainsAny(e.Value.NumericText, "eE") {
 			return NewDecimalValue(e.Value.NumericText)
 		}
 		return e.Value, nil
@@ -6602,7 +6602,7 @@ func (s *Schema) evalFuncResult(e *FuncCallExpr, row map[string]Value) (Value, e
 		return NewRealValue(toJulianDay(t)), nil
 	case "CAST":
 		v, err := s.evalExpr(e.Args[0], row)
-		if err != nil || v.Null {
+		if err != nil {
 			return NewNullValue(), err
 		}
 		t, err := s.evalExpr(e.Args[1], row)
@@ -6610,6 +6610,9 @@ func (s *Schema) evalFuncResult(e *FuncCallExpr, row map[string]Value) (Value, e
 			return NewNullValue(), err
 		}
 		if s.postgresMode {
+			if r, handled, e := s.CastPostgresCatalogValue(v, t.Text); handled {
+				return r, e
+			}
 			return CastPostgresValue(v, t.Text)
 		}
 		if s.mysqlMode && v.HexLiteral {

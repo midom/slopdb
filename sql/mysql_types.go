@@ -64,6 +64,7 @@ func (p *Parser) parseColumnType(col *ColumnDef) error {
 		col.ColType = ColDecimal
 		col.Declared = "DECIMAL"
 		p.advance()
+		col.TypeModifiers = p.cur.Type == TokLParen
 		var err error
 		col.Precision, col.Scale, err = p.parseDecimalParameters()
 		if err != nil {
@@ -133,6 +134,7 @@ func (p *Parser) parseColumnType(col *ColumnDef) error {
 		col.Declared = word
 		p.advance()
 		if word != "DATE" && p.cur.Type == TokLParen {
+			col.TypeModifiers = true
 			p.advance()
 			if p.cur.Type != TokInt {
 				return fmt.Errorf("timestamp precision must be 0 through 6")
@@ -521,6 +523,7 @@ func formatIndexColumns(idx *IndexInfo) string {
 }
 func copyColumnType(dst, src *ColumnDef) {
 	dst.Postgres = src.Postgres
+	dst.TypeModifiers = src.TypeModifiers
 	dst.Declared = src.Declared
 	dst.Precision, dst.Scale = src.Precision, src.Scale
 	dst.Unsigned = src.Unsigned

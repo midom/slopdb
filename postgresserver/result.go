@@ -9,6 +9,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgproto3"
 	"slopdb/db"
@@ -329,6 +330,10 @@ func decodeValue(data []byte, oid uint32, binaryFormat bool) (any, error) {
 	if data == nil {
 		return nil, nil
 	}
+	textual := !binaryFormat || oid == oidText || oid == oidVarchar || oid == 19 || oid == oidJSON || oid == oidJSONB
+	if textual && (!utf8.Valid(data) || bytesContainZero(data)) {
+		return nil, &protocolError{"22021", "invalid byte sequence for PostgreSQL UTF8 text"}
+	}
 	invalid := func() (any, error) { return nil, &protocolError{"22P02", "invalid PostgreSQL parameter value"} }
 	if oid == 26 || oid == 2205 || oid == 2206 || oid == 4089 {
 		var n uint64
@@ -412,13 +417,11 @@ func decodeValue(data []byte, oid uint32, binaryFormat bool) (any, error) {
 	case oidJSON, oidJSONB:
 		return sql.NewJSONValue(string(data))
 	case oidBool:
-		switch strings.ToLower(strings.TrimSpace(string(data))) {
-		case "t", "true", "1", "on", "yes":
-			return sql.Value{Type: sql.ColInteger, Int: 1, PGType: "BOOLEAN"}, nil
-		case "f", "false", "0", "off", "no":
-			return sql.Value{Type: sql.ColInteger, Int: 0, PGType: "BOOLEAN"}, nil
+		v, e := sql.CastPostgresValue(sql.NewTextValue(string(data)), "BOOLEAN")
+		if e != nil {
+			return invalid()
 		}
-		return invalid()
+		return v, nil
 	case oidInt2, oidInt4, oidInt8:
 		bits := 64
 		if oid == oidInt2 {
@@ -457,4 +460,13 @@ func decodeValue(data []byte, oid uint32, binaryFormat bool) (any, error) {
 	default:
 		return string(data), nil
 	}
+}
+
+func bytesContainZero(data []byte) bool {
+	for _, b := range data {
+		if b == 0 {
+			return true
+		}
+	}
+	return false
 }

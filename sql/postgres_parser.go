@@ -95,6 +95,10 @@ func (p *Parser) parsePostgresColumnType(col *ColumnDef) (bool, error) {
 		return true, e
 	}
 	col.Postgres = true
+	col.TypeModifiers = strings.Contains(typ, "(")
+	if i := strings.IndexByte(typ, '('); i >= 0 {
+		fmt.Sscanf(typ[i+1:], "%d", &col.TemporalPrecision)
+	}
 	col.Declared = typ
 	switch PostgresColumnOID(*col) {
 	case 16, 20, 21, 23, 26, 2205, 2206, 4089:
@@ -148,6 +152,9 @@ func (t *Tokenizer) scanPostgresEscapeString() Token {
 				t.pos++
 				out.WriteByte(c)
 				continue
+			}
+			if !utf8.ValidString(out.String()) || strings.IndexByte(out.String(), 0) >= 0 {
+				return Token{Type: TokInvalid, Value: "invalid byte sequence in escape string"}
 			}
 			return Token{Type: TokString, Value: out.String()}
 		}
@@ -211,4 +218,72 @@ func (t *Tokenizer) scanPostgresEscapeString() Token {
 		}
 	}
 	return Token{Type: TokInvalid, Value: "unterminated escape string"}
+}
+
+func (p *Parser) parsePostgresPrimary() (Expression, bool, error) {
+	name := strings.ToUpper(p.cur.Value)
+	switch name {
+	case "CURRENT_DATABASE", "CURRENT_SCHEMA", "CURRENT_USER", "SESSION_USER", "USER":
+		if p.tok.Peek().Type != TokLParen && p.cur.Start < len(p.tok.input) && !strings.ContainsRune("`\"[", rune(p.tok.input[p.cur.Start])) {
+			p.advance()
+			return &FuncCallExpr{Name: name}, true, nil
+		}
+	}
+	if name == "OVERLAY" && p.tok.Peek().Type == TokLParen {
+		p.advance()
+		p.advance()
+		first, e := p.parseExpression()
+		if e != nil {
+			return nil, true, e
+		}
+		args := []Expression{first}
+		if p.showWord("PLACING") {
+			p.advance()
+			replacement, e := p.parseExpression()
+			if e != nil {
+				return nil, true, e
+			}
+			if e = p.expectKeyword("FROM"); e != nil {
+				return nil, true, e
+			}
+			start, e := p.parseExpression()
+			if e != nil {
+				return nil, true, e
+			}
+			args = append(args, replacement, start)
+			if p.showWord("FOR") {
+				p.advance()
+				n, e := p.parseExpression()
+				if e != nil {
+					return nil, true, e
+				}
+				args = append(args, n)
+			}
+		} else {
+			for p.cur.Type == TokComma {
+				p.advance()
+				a, e := p.parseExpression()
+				if e != nil {
+					return nil, true, e
+				}
+				args = append(args, a)
+			}
+		}
+		if e = p.expect(TokRParen); e != nil {
+			return nil, true, e
+		}
+		return &FuncCallExpr{Name: name, Args: args}, true, nil
+	}
+	switch name {
+	case "DATE", "TIME", "TIMESTAMP", "TIMESTAMPTZ", "INTERVAL", "UUID", "JSON", "JSONB", "BOOLEAN":
+	default:
+		return nil, false, nil
+	}
+	if p.tok.Peek().Type != TokString {
+		return nil, false, nil
+	}
+	p.advance()
+	value := NewTextValue(p.cur.Value)
+	p.advance()
+	return &FuncCallExpr{Name: "CAST", Args: []Expression{&LiteralExpr{Value: value}, &LiteralExpr{Value: NewTextValue(name)}}}, true, nil
 }

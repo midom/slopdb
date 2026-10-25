@@ -12,6 +12,13 @@ import (
 )
 
 func (s *Schema) AlterTable(a *AlterTableStmt) error {
+	if s.postgresMode && a.Column != nil {
+		copy := *a
+		col := *a.Column
+		postgresColumnDefinition(&col)
+		copy.Column = &col
+		a = &copy
+	}
 	if !s.inTx {
 		return s.ExecuteStatement(func() error { return s.AlterTable(a) })
 	}
@@ -243,7 +250,7 @@ func (s *Schema) AlterTable(a *AlterTableStmt) error {
 					return err
 				}
 			}
-			row[col.Name] = applyAffinity(v, col.ColType)
+			row[col.Name] = assignmentAffinity(v, col)
 		}
 		if col.PrimaryKey {
 			if len(info.PKColumns) > 0 {
@@ -292,7 +299,11 @@ func (s *Schema) AlterTable(a *AlterTableStmt) error {
 				}
 			}
 			if !v.Null {
-				v, err = castSQLValue(v, target.String())
+				if a.Column.Postgres {
+					v, err = normalizePostgresColumnValue(v, *a.Column)
+				} else {
+					v, err = castSQLValue(v, target.String())
+				}
 				if err != nil {
 					return err
 				}

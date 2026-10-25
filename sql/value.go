@@ -55,6 +55,7 @@ type ForeignKeyDef struct {
 }
 
 type ColumnDef struct {
+	TypeModifiers        bool              `json:"type_modifiers,omitempty"`
 	Postgres             bool              `json:"postgres_type,omitempty"`
 	RefOnDelete          string            `json:"ref_on_delete,omitempty"`
 	RefOnUpdate          string            `json:"ref_on_update,omitempty"`
@@ -100,6 +101,9 @@ func (col ColumnDef) DeclaredType() string {
 		}
 		if col.Length > 0 && col.ColType == ColText {
 			return fmt.Sprintf("VARCHAR(%d)", col.Length)
+		}
+		if col.TypeModifiers && (PostgresColumnOID(col) == 1083 || PostgresColumnOID(col) == 1114 || PostgresColumnOID(col) == 1184 || PostgresColumnOID(col) == 1266) {
+			return postgresTemporalTypeModifier(col.Declared, col.TemporalPrecision)
 		}
 		return col.Declared
 	}

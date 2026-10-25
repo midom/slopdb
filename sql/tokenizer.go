@@ -41,6 +41,7 @@ const (
 	TokJSONPath
 	TokJSONPathText
 	TokTypeCast
+	TokRegex
 )
 
 type Token struct {
@@ -236,6 +237,15 @@ func (t *Tokenizer) Next() (tok Token) {
 		return Token{Type: TokPercent, Value: "%"}
 	case '!':
 		t.pos++
+		if t.pos < len(t.input) && t.input[t.pos] == '~' {
+			t.pos++
+			op := "!~"
+			if t.pos < len(t.input) && t.input[t.pos] == '*' {
+				t.pos++
+				op += "*"
+			}
+			return Token{Type: TokRegex, Value: op}
+		}
 		if t.pos < len(t.input) && t.input[t.pos] == '=' {
 			t.pos++
 			return Token{Type: TokNe, Value: "<>"}

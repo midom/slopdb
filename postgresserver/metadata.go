@@ -377,6 +377,9 @@ func (m *metadata) expression(expr sql.Expression, env map[string]uint32) uint32
 		if e.Value.Null {
 			return oidText
 		}
+		if e.Value.NumericText != "" {
+			return oidNumeric
+		}
 		if oid := sql.PostgresValueOID(e.Value); oid != 0 {
 			return oid
 		}

@@ -1718,6 +1718,26 @@ func (p *Parser) parseComparison() (Expression, error) {
 		return nil, err
 	}
 
+	if p.cur.Type == TokTilde || p.cur.Type == TokRegex {
+		op := p.cur.Value
+		p.advance()
+		if op == "~" && p.cur.Type == TokStar {
+			op += "*"
+			p.advance()
+		}
+		right, e := p.parseBitwise()
+		if e != nil {
+			return nil, e
+		}
+		if strings.HasSuffix(op, "*") {
+			right = &BinaryExpr{Left: &LiteralExpr{Value: NewTextValue("(?i)")}, Op: "||", Right: right}
+		}
+		name := "REGEXP"
+		if strings.HasPrefix(op, "!") {
+			name = "NOT REGEXP"
+		}
+		return &BinaryExpr{Left: left, Op: name, Right: right}, nil
+	}
 	ops := map[TokenType]string{TokEq: "=", TokLt: "<", TokGt: ">", TokLe: "<=", TokGe: ">=", TokNe: "<>"}
 	if op, ok := ops[p.cur.Type]; ok {
 		p.advance()
@@ -2138,6 +2158,9 @@ func (p *Parser) parseUnary() (Expression, error) {
 }
 
 func (p *Parser) parsePrimary() (Expression, error) {
+	if e, handled, err := p.parsePostgresPrimary(); handled {
+		return e, err
+	}
 	if p.showWord("MATCH") && p.tok.Peek().Type == TokLParen {
 		return p.parseFulltextMatch()
 	}

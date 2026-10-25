@@ -411,7 +411,7 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 			}
 			return ColumnDef{ColType: ColDecimal, Precision: max(digits, scale), Scale: scale, NotNull: true}, nil
 		}
-		return ColumnDef{ColType: e.Value.Type, NotNull: true}, nil
+		return ColumnDef{ColType: e.Value.Type, NotNull: true, Declared: e.Value.PGType, Postgres: s.postgresMode && e.Value.PGType != ""}, nil
 	case *ParameterExpr:
 		return text, nil
 	case *ColumnRefExpr:
@@ -473,6 +473,9 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 		}
 		switch strings.ToUpper(e.Op) {
 		case "=", "!=", "<>", "<", ">", "<=", ">=", "AND", "OR", "IS", "IS NOT", "LIKE", "NOT LIKE", "REGEXP", "GLOB":
+			if s.postgresMode {
+				return ColumnDef{ColType: ColInteger, Declared: "BOOLEAN", Postgres: true}, nil
+			}
 			return integer, nil
 		case "||", "->>":
 			return text, nil
@@ -531,7 +534,11 @@ func (s *Schema) describeExpression(expr Expression, env map[string]ColumnDef, s
 				if !s.mysqlMode && (name == "DECIMAL" || name == "NUMERIC") {
 					return ColumnDef{ColType: ColDecimal, Declared: name}, nil
 				}
-				return describeType(name), nil
+				c := describeType(name)
+				if s.postgresMode {
+					c = postgresDescribeType(name)
+				}
+				return c, nil
 			}
 		}
 		var args []ColumnDef

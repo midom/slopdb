@@ -32,3 +32,22 @@ func TestPostgresTypeConversions(t *testing.T) {
 		}
 	}
 }
+
+func TestPostgresParserExtensions(t *testing.T) {
+	for _, query := range []string{
+		`SELECT OVERLAY('abcdef' PLACING 'xy' FROM 2 FOR 3)`,
+		`SELECT CURRENT_DATABASE, CURRENT_SCHEMA, CURRENT_USER, SESSION_USER, USER`,
+		`SELECT pg_catalog.lower('ABC'), 'a' ~* 'A', 'a' !~ 'z', 'a' !~* 'Z'`,
+		`SELECT DATE '2026-10-25', TIMESTAMP '2026-10-25 12:00:00', INTERVAL '1 day'`,
+		`SELECT ('5'::int2)::pg_catalog.int4::text, CAST('12:34:56' AS TIME(0) WITH TIME ZONE)`,
+	} {
+		if _, err := Parse(query); err != nil {
+			t.Errorf("%s: %v", query, err)
+		}
+	}
+	for _, query := range []string{`SELECT E'\u0000'`, `SELECT E'\xFF'`, `SELECT $tag$unterminated`, `SELECT 1::`, `SELECT OVERLAY('x' PLACING 'y' FROM)`} {
+		if _, err := Parse(query); err == nil {
+			t.Errorf("accepted %s", query)
+		}
+	}
+}

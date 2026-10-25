@@ -114,3 +114,22 @@ func TestPostgresPrimitivePreparedAndSimple(t *testing.T) {
 		}
 	}
 }
+
+func TestPostgresPreparedTextEncodingValidation(t *testing.T) {
+	for _, oid := range []uint32{oidText, oidVarchar, oidJSON, oidJSONB} {
+		for _, format := range []bool{false, true} {
+			for _, bad := range [][]byte{{0}, {0xff}} {
+				data := bad
+				if oid == oidJSONB && format {
+					data = append([]byte{1}, bad...)
+				}
+				if _, e := decodeValue(data, oid, format); e == nil {
+					t.Fatalf("accepted %x OID %d binary %v", data, oid, format)
+				}
+			}
+		}
+	}
+	if _, e := decodeValue([]byte{0, 255}, oidBytea, true); e != nil {
+		t.Fatal(e)
+	}
+}
