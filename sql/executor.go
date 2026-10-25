@@ -4146,6 +4146,7 @@ func (s *Schema) buildReturningResult(cols []SelectColumn, rows []map[string]Val
 		rs.Columns = append(rs.Columns, ColumnDef{Name: name})
 		expressions = append(expressions, selectExprCol{name: name, expr: sc.Expr})
 	}
+	uniqueResultColumns(rs.Columns, expressions)
 	for _, row := range rows {
 		projected := make(map[string]Value)
 		for _, ec := range expressions {
@@ -4500,45 +4501,9 @@ func (s *Schema) selectInto(stmt *SelectStmt, dst *ResultSet) (result *ResultSet
 		}
 	}
 
-	exprCols := make([]selectExprCol, 0, len(stmt.Columns))
-	if stmt.SelectAll {
-		if info != nil {
-			rs.Columns = append([]ColumnDef(nil), info.Columns...)
-		}
-		base := append([]ColumnDef(nil), rs.Columns...)
-		for _, jc := range stmt.Joins {
-			s.addJoinColumns(rs, jc, base)
-		}
-	} else {
-		rs.Columns = make([]ColumnDef, 0, len(stmt.Columns))
-		exprIdx := 0
-		for _, sc := range stmt.Columns {
-			if sc.Star {
-				if info != nil {
-					rs.Columns = append(rs.Columns, info.Columns...)
-				}
-				base := append([]ColumnDef(nil), rs.Columns...)
-				for _, jc := range stmt.Joins {
-					s.addJoinColumns(rs, jc, base)
-				}
-				continue
-			}
-			name := sc.Alias
-			if name == "" {
-				switch e := sc.Expr.(type) {
-				case *ColumnRefExpr:
-					name = e.Name
-				case *FuncCallExpr:
-					name = e.Name
-				default:
-					name = fmt.Sprintf("expr%d", exprIdx)
-				}
-			}
-			exprIdx++
-			rs.Columns = append(rs.Columns, ColumnDef{Name: name})
-			exprCols = append(exprCols, selectExprCol{name: name, expr: sc.Expr})
-		}
-	}
+	var exprCols []selectExprCol
+	var duplicateProjection bool
+	rs.Columns, exprCols, duplicateProjection = s.selectProjection(stmt, info)
 	stmt.OrderBy = append([]OrderByClause(nil), stmt.OrderBy...)
 	if err := validateGrouping(stmt, info, rs.Columns); err != nil {
 		return nil, err
@@ -4658,26 +4623,7 @@ func (s *Schema) selectInto(stmt *SelectStmt, dst *ResultSet) (result *ResultSet
 			}
 
 			if !stmt.SelectAll {
-				mixedStar := false
-				for _, c := range stmt.Columns {
-					mixedStar = mixedStar || c.Star
-				}
-				if mixedStar {
-					rs.Columns = nil
-					expression := 0
-					for _, c := range stmt.Columns {
-						if c.Star {
-							rs.Columns = append(rs.Columns, info.Columns...)
-							base := append([]ColumnDef(nil), rs.Columns...)
-							for _, j := range stmt.Joins {
-								s.addJoinColumns(rs, j, base)
-							}
-						} else {
-							rs.Columns = append(rs.Columns, ColumnDef{Name: exprCols[expression].name})
-							expression++
-						}
-					}
-				}
+				rs.Columns, exprCols, duplicateProjection = s.selectProjection(stmt, info)
 			}
 			if err := s.validateQuery(stmt, info); err != nil {
 				return nil, err
@@ -4751,7 +4697,7 @@ func (s *Schema) selectInto(stmt *SelectStmt, dst *ResultSet) (result *ResultSet
 			usedIndex = true
 			conditionSatisfied = true
 		}
-		if plan := s.coveringPlan(stmt, tableName, info); !windowed && !usedIndex && !preferScan && plan != nil {
+		if plan := s.coveringPlan(stmt, tableName, info); !windowed && !duplicateProjection && !usedIndex && !preferScan && plan != nil {
 			var readErr error
 			baseRows, readErr = s.coveringRows(stmt, plan)
 			if readErr != nil {

@@ -41,6 +41,9 @@ func (s *Schema) selectPreparedPoint(stmt *SelectStmt, info *TableInfo, dst *Res
 				}
 				columns = append(columns, ColumnDef{Name: ref.Name})
 			}
+			if uniqueResultColumns(columns, nil) {
+				return nil, false, nil
+			}
 			p.pointProjection = columns
 		}
 		// WHERE can still contain an invalid aggregate alongside the PK equality.

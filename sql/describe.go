@@ -12,6 +12,7 @@ import (
 // session and hold a catalog execution view as for ordinary metadata reads.
 func (s *Schema) Describe(stmt Statement) ([]ColumnDef, error) {
 	cols, err := s.describeStatement(stmt, nil, 0)
+	uniqueResultColumns(cols, nil)
 	for i := range cols {
 		c := &cols[i]
 		c.EnumValues = slices.Clone(c.EnumValues)

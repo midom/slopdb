@@ -55,6 +55,8 @@ type ForeignKeyDef struct {
 }
 
 type ColumnDef struct {
+	// DisplayName preserves a duplicate SQL output label; Name is the unique row-map key.
+	DisplayName          string            `json:"-"`
 	TypeModifiers        bool              `json:"type_modifiers,omitempty"`
 	Postgres             bool              `json:"postgres_type,omitempty"`
 	RefOnDelete          string            `json:"ref_on_delete,omitempty"`

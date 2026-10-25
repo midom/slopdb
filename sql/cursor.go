@@ -2,7 +2,6 @@ package sql
 
 import (
 	"bytes"
-	"fmt"
 	"sort"
 	"strings"
 
@@ -71,31 +70,7 @@ func (s *Schema) OpenRowCursor(stmt *SelectStmt) (*RowCursor, bool, error) {
 		return nil, true, err
 	}
 	c := &RowCursor{schema: s, stmt: stmt, info: info, reverse: reverse}
-	if stmt.SelectAll {
-		c.columns = append([]ColumnDef(nil), info.Columns...)
-	} else {
-		expressionIndex := 0
-		for _, col := range stmt.Columns {
-			if col.Star {
-				c.columns = append(c.columns, info.Columns...)
-				continue
-			}
-			name := col.Alias
-			if name == "" {
-				switch e := col.Expr.(type) {
-				case *ColumnRefExpr:
-					name = e.Name
-				case *FuncCallExpr:
-					name = e.Name
-				default:
-					name = fmt.Sprintf("expr%d", expressionIndex)
-				}
-			}
-			expressionIndex++
-			c.columns = append(c.columns, ColumnDef{Name: name})
-			c.expressions = append(c.expressions, selectExprCol{name: name, expr: col.Expr})
-		}
-	}
+	c.columns, c.expressions, _ = s.selectProjection(stmt, info)
 	if hasFulltextCondition(stmt.Where) {
 		c.fulltext = true
 		return c, true, nil
