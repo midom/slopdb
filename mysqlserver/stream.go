@@ -91,15 +91,25 @@ func (c *client) streamQuery(query string) (bool, error) {
 		return true, &streamWriteError{e}
 	}
 	packet := c.resultPacket[:0]
+	values := c.streamValues[:0]
 	defer func() {
 		if cap(packet) <= maxRetainedResponseBytes {
 			c.resultPacket = packet[:0]
 		} else {
 			c.resultPacket = nil
 		}
+		bytes := 0
+		for _, value := range values {
+			bytes += len(value.Text) + cap(value.Blob)
+		}
+		if cap(values) <= 64 && bytes <= maxRetainedResponseBytes {
+			c.streamValues = values
+		} else {
+			c.streamValues = nil
+		}
 	}()
 	for rows.Next() {
-		values, e := rows.Values()
+		values, e = rows.ValuesInto(values)
 		if e != nil {
 			return true, e
 		}
