@@ -39,18 +39,20 @@ type seedInfo struct {
 }
 
 type config struct {
-	CachePolicy  string
-	CacheMemory  string
-	Dir          string
-	SeedBytes    int64
-	CacheBytes   int
-	Workers      int
-	Duration     time.Duration
-	Samples      int
-	Prewarm      bool
-	ReuseResults bool
-	ProfileDir   string
-	JSON         string
+	API, QueryMode, Endpoint               string
+	ServeMySQL, ServePostgres, StatsListen string
+	CachePolicy                            string
+	CacheMemory                            string
+	Dir                                    string
+	SeedBytes                              int64
+	CacheBytes                             int
+	Workers                                int
+	Duration                               time.Duration
+	Samples                                int
+	Prewarm                                bool
+	ReuseResults                           bool
+	ProfileDir                             string
+	JSON                                   string
 }
 
 type sample struct {
@@ -64,6 +66,7 @@ type sample struct {
 	GCPauseSeconds                                       float64
 	VoluntaryContextSwitches, InvoluntaryContextSwitches int64
 	Before, After                                        storage.LSMStats
+	PoolBefore, PoolAfter                                poolCounters
 }
 
 type report struct {
@@ -77,6 +80,7 @@ type report struct {
 	PrewarmQueries int64
 	PrewarmSeconds float64
 	Samples        []sample
+	ResourceScope  string
 	Error          string `json:",omitempty"`
 }
 
@@ -264,10 +268,16 @@ type workerStats struct {
 }
 
 func run(c config) (r report, err error) {
-	r = report{Config: c, GoVersion: runtime.Version(), GOMAXPROCS: runtime.GOMAXPROCS(0), Started: time.Now().UTC()}
-	r.APIMode = "ExecPrepared"
-	if c.ReuseResults {
-		r.APIMode = "ExecPreparedInto"
+	c, err = accessConfig(c)
+	if err != nil {
+		return r, err
+	}
+	r = report{Config: c, GoVersion: runtime.Version(), GOMAXPROCS: runtime.GOMAXPROCS(0), Started: time.Now().UTC(), APIMode: apiMode(c), ResourceScope: "native process"}
+	if c.API != "native" {
+		r.ResourceScope = "client and server in one process"
+	}
+	if c.Endpoint != "" {
+		r.ResourceScope = "client process only; external server resources recorded separately"
 	}
 	r.RuntimeEnv = make(map[string]string)
 	for _, key := range []string{"GOGC", "GOMEMLIMIT", "GOMAXPROCS"} {
@@ -297,31 +307,46 @@ func run(c config) (r report, err error) {
 	if r.Seed.Rows <= 0 || r.Seed.RowBytes != rowBytes || r.Seed.Rows > (1<<63-1)/rowBytes || r.Seed.LogicalBytes != r.Seed.Rows*rowBytes || r.Seed.Generator != "splitmix64-v1" {
 		return r, fmt.Errorf("unsupported seed")
 	}
-	d, err := db.Open(c.Dir, options(c))
+	var d *db.Database
+	if c.Endpoint == "" {
+		d, err = db.Open(c.Dir, options(c))
+		if err != nil {
+			return r, err
+		}
+		defer func() {
+			if e := d.Close(); err == nil {
+				err = e
+			}
+		}()
+		if d.Stats().PageSize != 4096 {
+			return r, fmt.Errorf("page-spaced warmup requires a 4096-byte seed page size")
+		}
+	}
+	var backend *benchmarkBackend
+	if c.API == "native" {
+		backend, err = newNativeBackend(c, d)
+	} else {
+		backend, err = newWireBackend(c, d)
+	}
 	if err != nil {
 		return r, err
 	}
 	defer func() {
-		e := d.Close()
-		if err == nil {
+		if e := backend.close(); err == nil {
 			err = e
 		}
 	}()
-	if d.Stats().PageSize != 4096 {
-		return r, fmt.Errorf("page-spaced warmup requires a 4096-byte seed page size")
-	}
-	stmt, err := d.Prepare(query)
-	if err != nil {
-		return r, err
-	}
-	defer stmt.Close()
-	sessions := make([]*db.Session, c.Workers)
-	for i := range sessions {
-		sessions[i], err = d.NewSession()
-		if err != nil {
-			return r, err
+	storageStats := func() storage.LSMStats {
+		if d != nil {
+			return d.Stats()
 		}
-		defer sessions[i].Close()
+		return storage.LSMStats{}
+	}
+	poolStats := func() poolCounters {
+		if backend.poolStats != nil {
+			return backend.poolStats()
+		}
+		return poolCounters{}
 	}
 	if c.Prewarm {
 		// At most eight rows between probes visits full 4 KiB data pages.
@@ -330,16 +355,15 @@ func run(c config) (r report, err error) {
 		start := time.Now()
 		var wg sync.WaitGroup
 		results := make([]workerStats, c.Workers)
-		for i, s := range sessions {
+		for i, reader := range backend.readers {
 			wg.Add(1)
-			go func(i int, s *db.Session) {
+			go func(i int, reader benchmarkReader) {
 				defer wg.Done()
 				buf := make([]byte, payloadBytes)
-				var dst db.ExecResult
 				for id := int64(1 + i*8); id <= r.Seed.Rows; id += int64(c.Workers * 8) {
-					out, e := execute(s, stmt, &dst, c.ReuseResults, id)
+					e := reader.query(id)
 					if e == nil {
-						e = check(out, id, buf)
+						e = reader.validate(id, buf)
 					}
 					if e != nil {
 						results[i].err = e
@@ -347,7 +371,7 @@ func run(c config) (r report, err error) {
 					}
 					results[i].n++
 				}
-			}(i, s)
+			}(i, reader)
 		}
 		wg.Wait()
 		for _, w := range results {
@@ -387,28 +411,27 @@ func run(c config) (r report, err error) {
 	}
 	for n := 0; n < c.Samples; n++ {
 		var beforeMem, afterMem runtime.MemStats
-		sample := sample{Before: d.Stats()}
+		sample := sample{Before: storageStats(), PoolBefore: poolStats()}
 		results := make([]workerStats, c.Workers)
 		var stop atomic.Bool
 		startGate := make(chan struct{})
 		var ready, wg sync.WaitGroup
-		for i, s := range sessions {
+		for i, reader := range backend.readers {
 			ready.Add(1)
 			wg.Add(1)
-			go func(i int, s *db.Session) {
+			go func(i int, reader benchmarkReader) {
 				defer wg.Done()
 				rng := rand.New(rand.NewSource(42 + int64(i) + int64(n)*1000))
 				buf := make([]byte, payloadBytes)
-				var dst db.ExecResult
 				ready.Done()
 				<-startGate
 				for !stop.Load() {
 					id := rng.Int63n(r.Seed.Rows) + 1
 					started := time.Now()
-					out, e := execute(s, stmt, &dst, c.ReuseResults, id)
+					e := reader.query(id)
 					elapsed := time.Since(started).Nanoseconds()
 					if e == nil {
-						e = check(out, id, buf)
+						e = reader.validate(id, buf)
 					}
 					if e != nil {
 						results[i].err = e
@@ -419,7 +442,7 @@ func run(c config) (r report, err error) {
 					results[i].ns += elapsed
 					results[i].h.add(elapsed)
 				}
-			}(i, s)
+			}(i, reader)
 		}
 		ready.Wait()
 		// Worker creation, PRNG setup, validation buffers and sample metadata
@@ -463,7 +486,8 @@ func run(c config) (r report, err error) {
 		sample.AllocationsPerQuery = float64(afterMem.Mallocs-beforeMem.Mallocs) / float64(sample.Queries)
 		sample.GCs = afterMem.NumGC - beforeMem.NumGC
 		sample.GCPauseSeconds = float64(afterMem.PauseTotalNs-beforeMem.PauseTotalNs) / 1e9
-		sample.After = d.Stats()
+		sample.After = storageStats()
+		sample.PoolAfter = poolStats()
 		r.Samples = append(r.Samples, sample)
 		fmt.Fprintf(os.Stderr, "sample %d: %.0f SELECT/s; mean %.1f us p99 <= %.1f us; cache %.3f GB; %.1f CPU cores (%.1f%% of host)\n", n+1, sample.QueriesPerSecond, sample.MeanUS, sample.P99US, float64(sample.After.BlockCacheBytes)/1e9, sample.AverageCPUCores, sample.CPUPercent)
 	}
@@ -499,6 +523,12 @@ func writeJSON(path string, v any) error {
 
 func main() {
 	var c config
+	flag.StringVar(&c.API, "api", "native", "native, embedded, mysql, pq or pgx")
+	flag.StringVar(&c.QueryMode, "query-mode", "prepared", "text or prepared")
+	flag.StringVar(&c.Endpoint, "endpoint", "", "external TCP host:port (wire APIs only)")
+	flag.StringVar(&c.ServeMySQL, "serve-mysql", "", "serve benchmark MySQL TCP listener")
+	flag.StringVar(&c.ServePostgres, "serve-postgres", "", "serve benchmark PostgreSQL TCP listener")
+	flag.StringVar(&c.StatsListen, "stats-listen", "127.0.0.1:0", "benchmark server stats HTTP address")
 	flag.StringVar(&c.Dir, "dir", "", "existing seed directory (required)")
 	flag.Int64Var(&c.SeedBytes, "seed-bytes", 0, "create a fresh seed of this many logical bytes; never overwrite")
 	flag.IntVar(&c.CacheBytes, "cache-bytes", 100000000, "decoded page-cache bytes (decimal)")
