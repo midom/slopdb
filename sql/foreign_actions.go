@@ -212,17 +212,40 @@ func (s *Schema) SetConstraints(statement *SetConstraintsStmt) error {
 		s.foreignConstraintModes = map[string]bool{}
 	}
 	matched := map[string]bool{}
+	// Bare constraint names follow the session search path. An explicit schema
+	// selects that namespace even when a different namespace is current.
+	selectedNames := map[string]string{}
+	for _, name := range statement.Names {
+		if strings.Contains(name, ".") {
+			schema, object := SplitSchemaName(name)
+			selectedNames[name] = s.namespaceAlias(schema) + "." + object
+			continue
+		}
+		for _, schema := range s.SearchPath() {
+			found := false
+			for table, keys := range s.lookups().foreign {
+				tableSchema, _ := SplitSchemaName(table)
+				if tableSchema != s.namespaceAlias(schema) {
+					continue
+				}
+				for _, fk := range keys {
+					found = found || fk.Name == name
+				}
+			}
+			if found {
+				selectedNames[name] = s.namespaceAlias(schema) + "." + name
+				break
+			}
+		}
+	}
 	for table, keys := range s.lookups().foreign {
 		info := s.tables[table]
 		for _, fk := range keys {
 			selected := statement.All
 			for _, name := range statement.Names {
 				schema, _ := SplitSchemaName(table)
-				qualified := fk.Name
-				if schema != "main" {
-					qualified = schema + "." + qualified
-				}
-				if name == fk.Name || name == qualified {
+				qualified := schema + "." + fk.Name
+				if selectedNames[name] == qualified {
 					selected = true
 					matched[name] = true
 				}

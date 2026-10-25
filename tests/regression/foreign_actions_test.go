@@ -3,6 +3,7 @@ package regression
 import (
 	"context"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -191,4 +192,77 @@ func TestForeignCascadeConcurrentLocking(t *testing.T) {
 		t.Fatal("missing parent accepted")
 	}
 	foreignCount(t, d, "SELECT COUNT(*) FROM c", 0)
+}
+
+func TestForeignCascadeRereadsChildAfterLockWait(t *testing.T) {
+	d, e := db.Open(filepath.Join(t.TempDir(), "db"), nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer d.Close()
+	alterExec(t, d, "CREATE TABLE p(id INTEGER PRIMARY KEY); CREATE TABLE c(id INTEGER PRIMARY KEY,p INTEGER REFERENCES p(id) ON DELETE CASCADE); CREATE INDEX cp ON c(p); INSERT INTO p VALUES(1),(2); INSERT INTO c VALUES(1,1)")
+	mover, e := d.Begin()
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer mover.Rollback()
+	if _, e = mover.Exec("UPDATE c SET p=2 WHERE id=1"); e != nil {
+		t.Fatal(e)
+	}
+	cascader, e := d.NewSession()
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer cascader.Close()
+	done := make(chan error, 1)
+	go func() { _, err := cascader.Exec("DELETE FROM p WHERE id=1"); done <- err }()
+	deadline := time.Now().Add(5 * time.Second)
+	waiting := false
+	for time.Now().Before(deadline) {
+		for _, wait := range d.LockWaits() {
+			if wait.SessionID == cascader.SessionID() {
+				waiting = true
+				break
+			}
+		}
+		if waiting {
+			break
+		}
+		runtime.Gosched()
+	}
+	if !waiting {
+		t.Fatal("cascade did not wait on the child's row lock")
+	}
+	if e = mover.Commit(); e != nil {
+		t.Fatal(e)
+	}
+	select {
+	case e = <-done:
+		if e != nil {
+			t.Fatal(e)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("cascade did not finish")
+	}
+	foreignCount(t, d, "SELECT p FROM c WHERE id=1", 2)
+	if _, e = d.CheckIntegrity(); e != nil {
+		t.Fatal(e)
+	}
+}
+
+func TestForeignConstraintNamesFollowSearchPath(t *testing.T) {
+	d, e := db.Open(filepath.Join(t.TempDir(), "db"), nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer d.Close()
+	alterExec(t, d, `CREATE SCHEMA other;
+ CREATE TABLE p(id INTEGER PRIMARY KEY); CREATE TABLE c(p INTEGER,CONSTRAINT fk FOREIGN KEY(p) REFERENCES p(id) DEFERRABLE);
+ CREATE TABLE other.p(id INTEGER PRIMARY KEY); CREATE TABLE other.c(p INTEGER,CONSTRAINT fk FOREIGN KEY(p) REFERENCES other.p(id) DEFERRABLE);
+ BEGIN; SET CONSTRAINTS fk DEFERRED; INSERT INTO c VALUES(1)`)
+	alterBad(t, d, "INSERT INTO other.c VALUES(1)")
+	alterExec(t, d, "SET CONSTRAINTS other.fk DEFERRED; INSERT INTO other.c VALUES(1); INSERT INTO p VALUES(1); INSERT INTO other.p VALUES(1); SET CONSTRAINTS main.fk IMMEDIATE; COMMIT")
+	alterExec(t, d, "USE other; BEGIN; SET CONSTRAINTS fk DEFERRED; INSERT INTO c VALUES(2)")
+	alterBad(t, d, "INSERT INTO main.c VALUES(2)")
+	alterExec(t, d, "INSERT INTO p VALUES(2); COMMIT")
 }

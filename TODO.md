@@ -28,6 +28,8 @@
 - [x] EXPLAIN schema-change work and locking; CLI `.plan`, `.explain`, `.locks` and `.status`
 - [x] MySQL-style `SHOW TABLE STATUS` with bounded LSM range sizes and sampled visible row estimates; see [table status](docs/table-status.md)
 ## Constraints (8/8 done)
+
+- [x] Composite/self foreign keys, ON DELETE/UPDATE CASCADE and SET NULL/DEFAULT, DEFERRABLE constraints and SET CONSTRAINTS with transaction/savepoint validation
 ## Schema Operations (5/5 done)
 
 - [x] VARCHAR/VARBINARY limits and catalog-only length increases; `ALLOW EXISTING` shrinking
