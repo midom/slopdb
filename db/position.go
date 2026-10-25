@@ -125,7 +125,7 @@ func (d *Database) execPosition(ctx context.Context, schema *sql.Schema, stmt *s
 	if position == "" {
 		value = sql.NewNullValue()
 	}
-	return &ExecResult{Columns: []sql.ColumnDef{{Name: "Position", ColType: sql.ColText}}, Rows: []map[string]sql.Value{{"Position": value}}}, nil
+	return &ExecResult{Columns: stmt.ResultColumns(), Rows: []map[string]sql.Value{{"Position": value}}}, nil
 }
 
 // CommitWithPosition commits using the cluster's configured durability mode.

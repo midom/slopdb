@@ -312,6 +312,20 @@ func (s *Schema) describeStatement(stmt Statement, outer map[string][]ColumnDef,
 			return nil, err
 		}
 		return s.describeProjection(st.Returning, cols, env, scope, depth, true)
+	case *ReplicationPositionStmt:
+		if st.Operation == "wait" {
+			text := LogicalType{Kind: TypeText}.Column()
+			s.constrainDescription(st.Position, text, nil)
+			s.constrainDescription(st.Timeout, text, nil)
+			for _, expr := range []Expression{st.Position, st.Timeout} {
+				if expr != nil {
+					if _, err := s.describeExpression(expr, nil, scope, depth+1); err != nil {
+						return nil, err
+					}
+				}
+			}
+		}
+		return st.ResultColumns(), nil
 	case *SessionVariableStmt:
 		for _, e := range st.Assignments {
 			if _, err := s.describeExpression(e, nil, scope, depth+1); err != nil {

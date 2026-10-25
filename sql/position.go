@@ -11,6 +11,17 @@ type ReplicationPositionStmt struct {
 
 func (*ReplicationPositionStmt) stmt() {}
 
+// ResultColumns is the fixed protocol-neutral frame shared by execution and
+// prepared description. Waiting is a command and does not produce a rowset.
+func (s *ReplicationPositionStmt) ResultColumns() []ColumnDef {
+	if s.Operation == "wait" {
+		return nil
+	}
+	column := LogicalType{Kind: TypeText}.Column()
+	column.Name = "Position"
+	return []ColumnDef{column}
+}
+
 func (s *Schema) LastCommitPosition() string            { return s.lastCommitPosition }
 func (s *Schema) SetLastCommitPosition(position string) { s.lastCommitPosition = position }
 
