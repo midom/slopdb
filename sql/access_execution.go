@@ -270,6 +270,12 @@ func (s *Schema) accessPaths(where Expression, info *TableInfo) []*accessPath {
 // walkAccess keeps map-based consumers on the same physical reader as typed
 // scans. It reuses one scratch row; visitors must copy values they retain.
 func (s *Schema) walkAccess(info *TableInfo, needed map[string]bool, paths []*accessPath, visit func(map[string]Value) error) error {
+	return s.walkAccessDecoded(info, needed, paths, visit, false)
+}
+
+// Reusable decoding is opt-in: aggregate consumers own retained winners and
+// representative values before returning. Ordinary visitors keep owned BLOBs.
+func (s *Schema) walkAccessDecoded(info *TableInfo, needed map[string]bool, paths []*accessPath, visit func(map[string]Value) error, reusable bool) error {
 	columnCount := 0
 	for _, col := range info.Columns {
 		if needed == nil || needed[col.Name] {
@@ -278,7 +284,7 @@ func (s *Schema) walkAccess(info *TableInfo, needed map[string]bool, paths []*ac
 	}
 	row := make(map[string]Value, columnCount)
 	return s.walkAccessRaw(info, needed, paths, func(data []byte, columns []scanColumn) error {
-		decodeScanRow(data, columns, row)
+		decodeScanRowMode(data, columns, row, reusable)
 		return visit(row)
 	})
 }

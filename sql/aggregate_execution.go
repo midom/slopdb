@@ -192,6 +192,12 @@ type scanColumn struct {
 }
 
 func decodeScanRow(data []byte, columns []scanColumn, row map[string]Value) {
+	decodeScanRowMode(data, columns, row, false)
+}
+
+// Explicit reuse callers relinquish the previous row's values. Aggregate
+// retained winners/representatives own copies before the next decode.
+func decodeScanRowMode(data []byte, columns []scanColumn, row map[string]Value, reusable bool) {
 	offset := 0
 	for _, c := range columns {
 		if offset >= len(data) {
@@ -204,7 +210,17 @@ func decodeScanRow(data []byte, columns []scanColumn, row map[string]Value) {
 			continue
 		}
 		if c.needed {
-			v, n := decodeValue(data[offset:])
+			var v Value
+			var n int
+			if reusable {
+				previous := row[c.name]
+				if cap(previous.Blob) > borrowedAccessScratchLimit {
+					previous.Blob = nil
+				}
+				v, n = decodePointValueInto(data[offset:], previous)
+			} else {
+				v, n = decodeValue(data[offset:])
+			}
 			v = decorateColumnValue(v, c.definition)
 			offset += n
 			row[c.name] = v
@@ -263,10 +279,14 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 		expressions = append(expressions, o.Expr)
 	}
 	safe := true
+	reusableInputs := true
 	for _, expr := range expressions {
 		_ = walkExpression(expr, func(e Expression) (bool, error) {
 			switch e := e.(type) {
 			case *SubqueryExpr, *ExistsExpr:
+				// Memoized subqueries can retain outer-row values. Keep owned
+				// decoder values unless every consumer is local to this aggregate.
+				reusableInputs = false
 				deps, ok := s.expressionDependencies(e)
 				safe = safe && ok
 				for _, name := range deps {
@@ -526,7 +546,7 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 				g.baseValues = g.baseValues[:len(baseNames)]
 			}
 			for i, name := range baseNames {
-				g.baseValues[i] = row[name]
+				g.baseValues[i] = ownAggregateBest(row[name], nil)
 			}
 		}
 		g.inputs++
@@ -600,7 +620,7 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 				readErr = s.walkTypedAggregate(typed, info, bareNeeded, paths, groups, newGroup)
 			}
 		} else {
-			readErr = s.walkFilteredAccess(info, bareNeeded, where, paths, accept)
+			readErr = s.walkAggregateAccess(info, bareNeeded, where, paths, accept, reusableInputs)
 			if ordered && readErr == nil && orderedGroup != nil {
 				readErr = orderedEmit(orderedGroup)
 			}
@@ -757,4 +777,14 @@ func ownAggregateBest(value Value, buffer []byte) Value {
 		value.Blob = append(buffer[:0], value.Blob...)
 	}
 	return value
+}
+
+// The aggregate transition owns retained BLOB winners and representative
+// values. This consumer alone may reuse decoder BLOB/text input buffers;
+// ordinary walkAccess and spill visitors retain their owned-value contracts.
+func (s *Schema) walkAggregateAccess(info *TableInfo, needed map[string]bool, where Expression, paths []*accessPath, visit func(map[string]Value) error, reusableInputs bool) error {
+	if !reusableInputs || hasFulltextCondition(where) {
+		return s.walkFilteredAccess(info, needed, where, paths, visit)
+	}
+	return s.walkAccessDecoded(info, needed, paths, visit, true)
 }

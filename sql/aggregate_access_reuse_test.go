@@ -432,6 +432,91 @@ func TestConstantAggregateKeyOnlyReadAndProfileBytes(t *testing.T) {
 	}
 }
 
+func TestAggregateDecoderReuseKeepsRepresentativeAndOrdinaryValuesOwned(t *testing.T) {
+	s, _ := newAccessReuseSchema(t, 600)
+	if err := s.SetDialect(DialectMySQL); err != nil {
+		t.Fatal(err)
+	}
+	// Group keys are retained representative values too: each BLOB group must
+	// survive later input buffer reuse after its first input row.
+	got := accessReuseSQL(t, s, "SELECT payload,MIN(payload) AS lo,MAX(payload) AS hi,COUNT(*) AS n FROM t GROUP BY payload")
+	want := make(map[string]int64)
+	identity := func(v Value) string {
+		if v.Null {
+			return "null"
+		}
+		return "blob:" + string(v.Blob)
+	}
+	for i := 0; i < 600; i++ {
+		v := NewNullValue()
+		if i%17 != 0 {
+			data := bytes.Repeat([]byte{byte(i % 5)}, 180+i%7)
+			if i%13 == 0 {
+				data = []byte{}
+			}
+			v = NewBlobValue(data)
+		}
+		want[identity(v)]++
+	}
+	if len(got.Rows) != len(want) {
+		t.Fatal("wrong representative groups")
+	}
+	for _, row := range got.Rows {
+		payload := row["payload"]
+		key := identity(payload)
+		if want[key] == 0 || row["n"].Int != want[key] {
+			t.Fatal("representative borrowed scratch", payload)
+		}
+		delete(want, key)
+		for _, name := range []string{"lo", "hi"} {
+			if row[name].Null != payload.Null || !bytes.Equal(row[name].Blob, payload.Blob) {
+				t.Fatal("group winner differs from retained key")
+			}
+		}
+	}
+	// Ordinary access callbacks may retain decoded values, so only the explicit
+	// aggregate consumer may opt into decoder buffer reuse.
+	var held []Value
+	if err := s.walkAccess(s.tables["t"], map[string]bool{"payload": true}, nil, func(row map[string]Value) error { held = append(held, row["payload"]); return nil }); err != nil {
+		t.Fatal(err)
+	}
+	for i, value := range held {
+		if i%17 == 0 {
+			if !value.Null {
+				t.Fatal("ordinary NULL changed")
+			}
+			continue
+		}
+		want := bytes.Repeat([]byte{byte(i % 5)}, 180+i%7)
+		if i%13 == 0 {
+			want = []byte{}
+		}
+		if value.Null || !bytes.Equal(value.Blob, want) {
+			t.Fatal("ordinary decoded BLOB changed", i)
+		}
+	}
+	columns := []scanColumn{{name: "payload", needed: true, definition: ColumnDef{Name: "payload", ColType: ColBlob}}}
+	row := map[string]Value{"payload": {Type: ColBlob, Blob: make([]byte, 0, 256)}}
+	first := row["payload"].Blob[:cap(row["payload"].Blob)]
+	encoded := appendValue(nil, NewBlobValue([]byte{1, 2, 3}))
+	decodeScanRowMode(encoded, columns, row, true)
+	if &row["payload"].Blob[0] != &first[0] {
+		t.Fatal("explicit aggregate decoder did not reuse BLOB")
+	}
+	row["payload"] = Value{Type: ColBlob, Blob: make([]byte, 1, 2*borrowedAccessScratchLimit)}
+	decodeScanRowMode(encoded, columns, row, true)
+	if cap(row["payload"].Blob) > borrowedAccessScratchLimit {
+		t.Fatal("aggregate decoder retained oversized scratch")
+	}
+	// Subquery memoization can retain outer values: its explicit fallback must
+	// preserve those owned inputs while later rows reuse physical reader bytes.
+	correlated := accessReuseSQL(t, s, "SELECT MIN((SELECT x.payload)) AS lo,MAX((SELECT x.payload)) AS hi FROM t AS x")
+	expected := expectedAccessAggregate(600, func(int) bool { return true })
+	if len(correlated.Rows) != 1 || !bytes.Equal(correlated.Rows[0]["lo"].Blob, expected["bmin"].Blob) || !bytes.Equal(correlated.Rows[0]["hi"].Blob, expected["bmax"].Blob) {
+		t.Fatal("subquery-retained aggregate values changed", correlated.Rows)
+	}
+}
+
 func BenchmarkAggregateAccessReuse(b *testing.B) {
 	const n = 4096
 	s, _ := newAccessReuseSchema(b, n)
