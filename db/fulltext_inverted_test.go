@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 )
@@ -258,5 +259,94 @@ func TestStreamingFulltextUsesPostingSnapshot(t *testing.T) {
 	}
 	if len(got) != 2 || got[0] != 3 || got[1] != 1 {
 		t.Fatal(got)
+	}
+}
+
+func TestRepeatableReadFulltextOwnWritesAndCurrentReads(t *testing.T) {
+	d, err := Open(t.TempDir(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	a, b := isolationSession(t, d), isolationSession(t, d)
+	isolationExec(t, b, "CREATE TABLE docs(id INTEGER PRIMARY KEY,body TEXT,FULLTEXT KEY ft(body));INSERT INTO docs VALUES(1,'quasar old'),(2,'archive old')")
+	query := "SELECT id FROM docs WHERE MATCH(body) AGAINST('quasar' IN BOOLEAN MODE) ORDER BY id"
+	check := func(want ...int64) {
+		t.Helper()
+		r := isolationExec(t, a, query)
+		if len(r.Rows) != len(want) {
+			t.Fatal(r.Rows, want)
+		}
+		for i, id := range want {
+			if r.Rows[i]["id"].Int != id {
+				t.Fatal(r.Rows, want)
+			}
+		}
+	}
+	isolationExec(t, a, "BEGIN ISOLATION LEVEL REPEATABLE READ")
+	check(1)
+	isolationExec(t, b, "UPDATE docs SET body='nebula committed' WHERE id=1;UPDATE docs SET body='quasar committed' WHERE id=2;INSERT INTO docs VALUES(3,'quasar inserted')")
+	check(1)
+	r := isolationExec(t, a, "SELECT body FROM docs WHERE id=1 FOR UPDATE")
+	if r.Rows[0]["body"].Text != "nebula committed" {
+		t.Fatal(r.Rows)
+	}
+	isolationExec(t, a, "UPDATE docs SET body='galactic private' WHERE id=1")
+	check()
+	r = isolationExec(t, a, "SELECT id FROM docs WHERE MATCH(body) AGAINST('galactic' IN BOOLEAN MODE)")
+	if len(r.Rows) != 1 || r.Rows[0]["id"].Int != 1 {
+		t.Fatal(r.Rows)
+	}
+	isolationExec(t, a, "UPDATE docs SET body='quasar private' WHERE id=2;SAVEPOINT keep")
+	check(2)
+	r = isolationExec(t, a, "SELECT MATCH(body) AGAINST('quasar' IN NATURAL LANGUAGE MODE) AS score FROM docs WHERE id=2")
+	want := math.Pow(math.Log10(3.0/2.0), 2)
+	if len(r.Rows) != 1 || math.Abs(r.Rows[0]["score"].Real-want) > 1e-12 {
+		t.Fatal(r.Rows, want)
+	}
+	isolationExec(t, a, "UPDATE docs SET body='archive again' WHERE id=2")
+	check()
+	isolationExec(t, a, "ROLLBACK TO keep")
+	check(2)
+	isolationExec(t, a, "ROLLBACK")
+	check(2, 3)
+	if _, err = d.CheckIntegrity(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestVirtualSchemaFulltextAndPrefixesShareLSM(t *testing.T) {
+	dir := t.TempDir()
+	d, err := Open(dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Close() })
+	objectExec(t, d, "CREATE SCHEMA corpus;USE corpus;CREATE TABLE docs(id BIGINT UNSIGNED PRIMARY KEY,body TEXT,title TEXT,KEY prefix_title(title(2)),FULLTEXT KEY ft(body));INSERT INTO docs VALUES(18446744073709551615,'quasar nebula','ab-tail');USE main")
+	check := func() {
+		t.Helper()
+		r := objectExec(t, d, "SELECT title FROM corpus.docs WHERE MATCH(body) AGAINST('quasar' IN BOOLEAN MODE)")
+		if len(r.Rows) != 1 || r.Rows[0]["title"].Text != "ab-tail" {
+			t.Fatal(r.Rows)
+		}
+		r = objectExec(t, d, "SELECT body FROM corpus.docs WHERE title='ab-tail'")
+		if len(r.Rows) != 1 || r.Rows[0]["body"].Text != "quasar nebula" {
+			t.Fatal(r.Rows)
+		}
+	}
+	check()
+	if err = d.Close(); err != nil {
+		t.Fatal(err)
+	}
+	d, err = Open(dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check()
+	if _, err = d.CheckIntegrity(); err != nil {
+		t.Fatal(err)
+	}
+	if err = d.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
