@@ -11,10 +11,12 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/lib/pq"
 )
 
@@ -325,6 +327,58 @@ func TestCopyOptionsNullForceAndEndMarker(t *testing.T) {
 	for _, q := range []string{"COPY opts FROM '/tmp/secret'", "COPY opts TO PROGRAM 'cat'", "COPY opts FROM STDIN (FORMAT unknown)", "COPY opts FROM STDIN (FORMAT binary, DELIMITER ',')", "COPY opts FROM STDIN (FORMAT text, HEADER false)", "COPY opts TO STDOUT (FORMAT csv, FORCE_NULL(a))", "COPY opts FROM STDIN (FORMAT csv, NULL 'a,b')"} {
 		if _, err := parseCopy(q); err == nil {
 			t.Fatalf("invalid options accepted: %s", q)
+		}
+	}
+}
+
+func TestCopyPostgresPrimitiveTypesPGX(t *testing.T) {
+	s := startTestServer(t, "tcp", Config{})
+	c := copyConnection(t, s)
+	ctx := context.Background()
+	_, err := c.Exec(ctx, `CREATE TABLE copy_pg_types(id INTEGER PRIMARY KEY,flag BOOLEAN,u UUID,d DATE,tm TIME,ts TIMESTAMP,tz TIMESTAMP WITH TIME ZONE,iv INTERVAL,small SMALLINT,number NUMERIC(10,2),doc JSONB)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := pgtype.UUID{Bytes: [16]byte{0x55, 0x0e, 0x84, 0, 0xe2, 0x9b, 0x41, 0xd4, 0xa7, 0x16, 0x44, 0x66, 0x55, 0x44, 0, 0}, Valid: true}
+	date := time.Date(2000, 1, 2, 0, 0, 0, 0, time.UTC)
+	stamp := date.Add(3*time.Hour + 4*time.Minute + 5*time.Second + 123456*time.Microsecond)
+	interval := pgtype.Interval{Months: 1, Days: 2, Microseconds: 11045123456, Valid: true}
+	var amount pgtype.Numeric
+	if err = amount.Scan("1234.50"); err != nil {
+		t.Fatal(err)
+	}
+	columns := []string{"id", "flag", "u", "d", "tm", "ts", "tz", "iv", "small", "number", "doc"}
+	n, err := c.CopyFrom(ctx, pgx.Identifier{"copy_pg_types"}, columns, pgx.CopyFromRows([][]any{{int32(1), true, u, date, pgtype.Time{Microseconds: 45296123456, Valid: true}, stamp, stamp, interval, int16(-123), amount, map[string]any{"x": true}}}))
+	if err != nil || n != 1 {
+		t.Fatalf("typed copy %d %v", n, err)
+	}
+	var id int32
+	var flag bool
+	var gotU pgtype.UUID
+	var d, ts, tz time.Time
+	var tm pgtype.Time
+	var iv pgtype.Interval
+	var small int16
+	var gotAmount pgtype.Numeric
+	var doc map[string]any
+	err = c.QueryRow(ctx, "SELECT id,flag,u,d,tm,ts,tz,iv,small,number,doc FROM copy_pg_types").Scan(&id, &flag, &gotU, &d, &tm, &ts, &tz, &iv, &small, &gotAmount, &doc)
+	if err != nil || id != 1 || !flag || gotU != u || !d.Equal(date) || tm.Microseconds != 45296123456 || !ts.Equal(stamp) || !tz.Equal(stamp) || iv != interval || small != -123 || doc["x"] != true {
+		t.Fatalf("typed COPY results id=%d flag=%v uuid=%v date=%v time=%v ts=%v tz=%v iv=%v small=%d numeric=%v json=%v error=%v", id, flag, gotU, d, tm, ts, tz, iv, small, gotAmount, doc, err)
+	}
+	for _, format := range []string{"binary", "text", "csv"} {
+		var out bytes.Buffer
+		if _, err = c.PgConn().CopyTo(ctx, &out, "COPY copy_pg_types TO STDOUT (FORMAT "+format+")"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = c.Exec(ctx, "DELETE FROM copy_pg_types"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = c.PgConn().CopyFrom(ctx, bytes.NewReader(out.Bytes()), "COPY copy_pg_types FROM STDIN (FORMAT "+format+")"); err != nil {
+			t.Fatalf("%s roundtrip: %v data=%x", format, err, out.Bytes())
+		}
+		var text string
+		if err = c.QueryRow(ctx, "SELECT number::text FROM copy_pg_types").Scan(&text); err != nil || text != "1234.50" {
+			t.Fatalf("%s decimal %q %v", format, text, err)
 		}
 	}
 }
