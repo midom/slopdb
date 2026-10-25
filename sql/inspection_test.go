@@ -24,3 +24,36 @@ func TestLocalInspectionRequiresStateAndExcludesDataOperators(t *testing.T) {
 		}
 	}
 }
+
+func TestActivityInspectionRequiresOnlyLiveRelations(t *testing.T) {
+	for _, tc := range []struct {
+		query   string
+		dialect Dialect
+		want    bool
+	}{
+		{"SHOW PROCESSLIST", DialectMySQL, true},
+		{"SHOW FULL PROCESSLIST", DialectMySQL, true},
+		{"SELECT * FROM information_schema.processlist WHERE id=CONNECTION_ID()", DialectMySQL, true},
+		{"SELECT COUNT(*) FROM information_schema.processlist", DialectMySQL, true},
+		{"SELECT p.id,q.info FROM information_schema.processlist p JOIN information_schema.processlist q ON p.id=q.id", DialectMySQL, true},
+		{"SELECT * FROM pg_stat_activity WHERE pid=pg_backend_pid()", DialectPostgreSQL, true},
+		{"SELECT * FROM pg_catalog.pg_stat_activity", DialectPostgreSQL, true},
+		{"SELECT * FROM pg_stat_activity", DialectNative, false},
+		{"SELECT * FROM pg_catalog.pg_stat_activity", DialectMySQL, false},
+		{"SELECT * FROM information_schema.processlist p JOIN private_data d ON p.id=d.id", DialectMySQL, false},
+		{"SELECT (SELECT id FROM private_data) FROM information_schema.processlist", DialectMySQL, false},
+		{"SELECT * FROM information_schema.processlist WHERE id IN (SELECT id FROM private_data)", DialectMySQL, false},
+		{"SELECT * FROM information_schema.processlist FOR UPDATE", DialectMySQL, false},
+		{"SELECT SLEEP(1) FROM information_schema.processlist", DialectMySQL, false},
+		{"SELECT GET_LOCK('x',1) FROM information_schema.processlist", DialectMySQL, false},
+		{"WITH t AS (SELECT * FROM private_data) SELECT * FROM information_schema.processlist", DialectMySQL, false},
+	} {
+		statements, err := ParseWithOptions(tc.query, tc.dialect.ParseOptions(ParseOptions{}))
+		if err != nil {
+			t.Fatal(tc.query, err)
+		}
+		if got := IsLocalInspectionStatement(statements[0], tc.dialect); got != tc.want {
+			t.Errorf("%s (%s): got %v want %v", tc.query, tc.dialect, got, tc.want)
+		}
+	}
+}

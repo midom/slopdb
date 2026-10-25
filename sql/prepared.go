@@ -24,7 +24,9 @@ type PreparedQuery struct {
 
 // LocalInspection reports whether execution can inspect only session/runtime
 // state. The immutable template can be classified without binding or copying.
-func (q *PreparedQuery) LocalInspection() bool { return IsLocalInspectionStatement(q.template) }
+func (q *PreparedQuery) LocalInspection(dialects ...Dialect) bool {
+	return IsLocalInspectionStatement(q.template, dialects...)
+}
 
 const preparedCounterShards = 128
 

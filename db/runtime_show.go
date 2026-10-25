@@ -11,13 +11,21 @@ import (
 
 type localInspectionKey struct{}
 
-func (d *Database) inspectionContext(ctx context.Context, stmt sql.Statement) context.Context {
-	if g := d.replication.Load(); g != nil && g.CheckInspection != nil && sql.IsLocalInspectionStatement(stmt) {
+func (d *Database) inspectionContext(ctx context.Context, stmt sql.Statement, dialects ...sql.Dialect) context.Context {
+	if g := d.replication.Load(); g != nil && g.CheckInspection != nil && sql.IsLocalInspectionStatement(stmt, dialects...) {
 		return context.WithValue(ctx, localInspectionKey{}, true)
 	}
 	return ctx
 }
 func (d *Database) runtimeShow(ctx context.Context, show *sql.ShowStmt) (*ExecResult, error) {
+	if show.Kind == "PROCESSLIST" {
+		activities, err := d.Activity(ctx)
+		if err != nil {
+			return nil, err
+		}
+		r := sql.ProcesslistResult(activities, show.Full, sql.StatementTime(ctx))
+		return &ExecResult{Columns: r.Columns, Rows: r.Rows, Changes: int64(len(r.Rows))}, nil
+	}
 	if show.Where != nil {
 		return nil, fmt.Errorf("runtime status supports LIKE filtering only")
 	}

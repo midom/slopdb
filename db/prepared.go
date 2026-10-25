@@ -15,7 +15,7 @@ var ErrStmtClosed = errors.New("prepared statement closed")
 
 // LocalInspection identifies statements that do not establish a data
 // transaction, even when a protocol has disabled autocommit.
-func (s *Stmt) LocalInspection() bool { return s != nil && s.query.LocalInspection() }
+func (s *Stmt) LocalInspection() bool { return s != nil && s.query.LocalInspection(s.dialect) }
 
 // Stmt is a parsed, parameterized SQL statement with reusable execution plans. Database statements can be
 // shared by concurrent sessions and transactions on that database. Prepare on
@@ -23,6 +23,7 @@ func (s *Stmt) LocalInspection() bool { return s != nil && s.query.LocalInspecti
 // Close rejects new executions; an execution already started may finish.
 type Stmt struct {
 	text       string
+	dialect    sql.Dialect
 	generation uint64
 	db         *Database
 	session    *Session
@@ -84,6 +85,7 @@ func (s *Session) PrepareContext(ctx context.Context, query string) (*Stmt, erro
 	p, err := s.db.prepareContext(ctx, query, s.effectiveParseOptions())
 	if err == nil {
 		p.session = s
+		p.dialect = s.schema.Dialect()
 	}
 	return p, err
 }

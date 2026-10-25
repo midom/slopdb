@@ -194,11 +194,11 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 		return nil, errors.New("Query requires a SELECT statement")
 	}
 	ctx = withSessionReadBarrier(ctx, s.schema)
-	if err = s.db.checkStatementReplication(ctx, statements); err != nil {
+	if err = s.db.checkStatementReplication(ctx, statements, s.schema.Dialect()); err != nil {
 		release()
 		return nil, err
 	}
-	s.schema.SetContext(s.db.inspectionContext(readStatementContext(ctx, s.schema, statements[0]), statements[0]))
+	s.schema.SetContext(s.db.inspectionContext(readStatementContext(ctx, s.schema, statements[0]), statements[0], s.schema.Dialect()))
 	deadline := time.Now().Add(lockTimeout)
 	for {
 		err = s.db.statementCatalogLock(s.schema, statements[0])

@@ -186,7 +186,7 @@ func (s *Session) execParsedInto(ctx context.Context, statements []sql.Statement
 		return nil, err
 	}
 	if !hasReadBarrierSetting(statements) {
-		if err := s.db.checkStatementReplication(withSessionReadBarrier(ctx, s.schema), statements); err != nil {
+		if err := s.db.checkStatementReplication(withSessionReadBarrier(ctx, s.schema), statements, s.schema.Dialect()); err != nil {
 			return nil, err
 		}
 	}

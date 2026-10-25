@@ -224,7 +224,7 @@ func (db *Database) execStatements(ctx context.Context, stmts []sql.Statement, s
 
 func (db *Database) execStatementsInto(ctx context.Context, stmts []sql.Statement, schema *sql.Schema, transactionBound bool, lockTimeout time.Duration, dst *ExecResult, selectTarget *sql.ResultSet) (*ExecResult, error) {
 	if !hasReadBarrierSetting(stmts) {
-		if err := db.checkStatementReplication(withSessionReadBarrier(ctx, schema), stmts); err != nil {
+		if err := db.checkStatementReplication(withSessionReadBarrier(ctx, schema), stmts, schema.Dialect()); err != nil {
 			return nil, err
 		}
 	}
@@ -256,10 +256,10 @@ func (db *Database) execAdmittedStatementsInto(ctx context.Context, stmts []sql.
 		if guard := db.replication.Load(); guard != nil && guard.ReadSnapshot != nil {
 			statementCtx = readStatementContext(ctx, schema, stmt)
 		}
-		statementCtx = db.inspectionContext(statementCtx, stmt)
+		statementCtx = db.inspectionContext(statementCtx, stmt, schema.Dialect())
 		schema.SetContext(statementCtx)
 		if admitEach {
-			if err := db.checkStatementReplication(statementCtx, []sql.Statement{stmt}); err != nil {
+			if err := db.checkStatementReplication(statementCtx, []sql.Statement{stmt}, schema.Dialect()); err != nil {
 				return nil, err
 			}
 		}
@@ -283,7 +283,7 @@ func (db *Database) execAdmittedStatementsInto(ctx context.Context, stmts []sql.
 			}
 			continue
 		}
-		if show, ok := stmt.(*sql.ShowStmt); ok && (show.Kind == "LSM STATUS" || show.Kind == "RAFT STATUS" || show.Kind == "GLOBAL VARIABLES") {
+		if show, ok := stmt.(*sql.ShowStmt); ok && (show.Kind == "LSM STATUS" || show.Kind == "RAFT STATUS" || show.Kind == "GLOBAL VARIABLES" || show.Kind == "PROCESSLIST") {
 			if transactionBound && !schema.InTransaction() {
 				return nil, ErrTxDone
 			}

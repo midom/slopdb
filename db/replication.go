@@ -71,7 +71,7 @@ func (d *Database) checkReplication(ctx context.Context) error {
 	return nil
 }
 
-func (d *Database) checkStatementReplication(ctx context.Context, statements []sql.Statement) error {
+func (d *Database) checkStatementReplication(ctx context.Context, statements []sql.Statement, dialects ...sql.Dialect) error {
 	if err := d.waitMinimumPosition(ctx); err != nil {
 		return err
 	}
@@ -86,7 +86,7 @@ func (d *Database) checkStatementReplication(ctx context.Context, statements []s
 	if g.CheckInspection != nil && len(statements) > 0 {
 		local := true
 		for _, stmt := range statements {
-			local = local && sql.IsLocalInspectionStatement(stmt)
+			local = local && sql.IsLocalInspectionStatement(stmt, dialects...)
 		}
 		if local {
 			return g.CheckInspection(ctx)
