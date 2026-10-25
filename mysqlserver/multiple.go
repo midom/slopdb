@@ -1,6 +1,7 @@
 package mysqlserver
 
 import (
+	"errors"
 	"slopdb/sql"
 	"strings"
 )
@@ -59,6 +60,18 @@ func (c *client) queryResults(query string) error {
 	defer func() { c.moreResults = false }()
 	for i, command := range commands {
 		c.moreResults = i+1 < len(commands)
+
+		if handled, err := c.streamQuery(command); handled {
+			if err != nil {
+				var transport *streamWriteError
+				if errors.As(err, &transport) {
+					return transport.error
+				}
+				c.moreResults = false
+				return c.writeError(err)
+			}
+			continue
+		}
 		result, err := c.query(command, nil, nil)
 		if err != nil {
 			c.moreResults = false

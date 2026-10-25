@@ -258,6 +258,8 @@ func (c *client) runCopy(ctx context.Context, command *copyCommand) (count int64
 		}
 		// Query's snapshot and session gate are released before transaction control.
 		defer rows.Close()
+		stopIOCancel := rows.OnCancel(func() { _ = c.conn.SetWriteDeadline(time.Now()) })
+		defer stopIOCancel()
 		if len(rows.Columns()) != len(fields) {
 			return 0, &protocolError{"0A000", "COPY query result descriptor changed"}
 		}

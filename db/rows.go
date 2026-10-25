@@ -27,6 +27,7 @@ type Rows struct {
 	current              map[string]sql.Value
 	err                  error
 	closed, materialized bool
+	cancelled            bool
 	finish               func()
 	stopCancellation     func() bool
 }
@@ -234,6 +235,20 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 		}
 		if handled {
 			rows.columns = rows.cursor.Columns()
+			// Resolve declaration metadata in this same execution view; protocol
+			// adapters must not describe again after concurrent catalog changes.
+			columns, e := s.schema.Describe(statements[0])
+			if e != nil {
+				release()
+				return nil, e
+			}
+			if len(columns) == len(rows.columns) {
+				for i := range columns {
+					columns[i].Name = rows.columns[i].Name
+					columns[i].DisplayName = rows.columns[i].DisplayName
+				}
+				rows.columns = columns
+			}
 		}
 	}
 	if rows.cursor == nil {
@@ -312,6 +327,7 @@ func (r *Rows) closeLocked() {
 		return
 	}
 	r.closed = true
+	r.cancelled = r.ctx.Err() != nil
 	if r.stopCancellation != nil {
 		r.stopCancellation()
 	}
@@ -458,4 +474,29 @@ func scanValue(dest any, v sql.Value) error {
 		}
 	}
 	return fmt.Errorf("cannot scan SQL %s (NULL=%v) into %T", v.Type, v.Null, dest)
+}
+
+// OnCancel connects a streaming consumer's blocking I/O to session/query
+// cancellation. Normal exhaustion, explicit Close and SQL evaluation errors do
+// not invoke fn. The returned function unregisters and joins an active callback;
+// callers should defer it before releasing external I/O resources.
+func (r *Rows) OnCancel(fn func()) func() {
+	done := make(chan struct{})
+	stop := context.AfterFunc(r.ctx, func() {
+		defer close(done)
+		r.mu.Lock()
+		cancelled := r.cancelled || !r.closed
+		r.mu.Unlock()
+		if cancelled && fn != nil {
+			fn()
+		}
+	})
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			if !stop() {
+				<-done
+			}
+		})
+	}
 }
