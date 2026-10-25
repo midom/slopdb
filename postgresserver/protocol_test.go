@@ -14,15 +14,18 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
+	"slopdb/sql"
 	"slopdb/storage"
 )
 
 type rawClient struct {
+	id       uint32
 	conn     net.Conn
 	frontend *pgproto3.Frontend
 }
 
-func connectRaw(t *testing.T, s *testServer) *rawClient {
+func connectRaw(t *testing.T, s *testServer) *rawClient { return connectRawApplication(t, s, "") }
+func connectRawApplication(t *testing.T, s *testServer, app string) *rawClient {
 	t.Helper()
 	conn, err := net.Dial(s.network, s.address)
 	if err != nil {
@@ -30,14 +33,20 @@ func connectRaw(t *testing.T, s *testServer) *rawClient {
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
-	c := &rawClient{conn, pgproto3.NewFrontend(conn, conn)}
-	c.send(t, &pgproto3.StartupMessage{ProtocolVersion: protocolVersion, Parameters: map[string]string{"user": "slopdb", "database": "slopdb"}})
+	c := &rawClient{conn: conn, frontend: pgproto3.NewFrontend(conn, conn)}
+	parameters := map[string]string{"user": "slopdb", "database": "slopdb"}
+	if app != "" {
+		parameters["application_name"] = app
+	}
+	c.send(t, &pgproto3.StartupMessage{ProtocolVersion: protocolVersion, Parameters: parameters})
 	for {
 		message, err := c.frontend.Receive()
 		if err != nil {
 			t.Fatal(err)
 		}
 		switch m := message.(type) {
+		case *pgproto3.BackendKeyData:
+			c.id = m.ProcessID
 		case *pgproto3.ReadyForQuery:
 			if m.TxStatus != 'I' {
 				t.Fatal(m)
@@ -411,6 +420,10 @@ func TestDeadlockKeepsPostgresTransactionAborted(t *testing.T) {
 	}
 	if second.PgConn().TxStatus() != 'E' {
 		t.Fatalf("deadlock victim status %c", second.PgConn().TxStatus())
+	}
+	victimActivity := wireActivity(t, s, second.PgConn().PID())
+	if victimActivity.State != sql.ActivityIdleInTransactionAborted || victimActivity.TransactionStart.IsZero() {
+		t.Fatal("native rollback lost frontend failed transaction state", victimActivity)
 	}
 	_, err = second.Exec(ctx, "UPDATE t SET n=99 WHERE id=2")
 	pgErr = nil

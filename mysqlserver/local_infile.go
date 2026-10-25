@@ -139,7 +139,7 @@ func (c *client) loadData(query string) (*db.ExecResult, bool, error) {
 	if !c.infileAwaiting || c.capabilities&clientLocalFiles == 0 {
 		return nil, true, &protocolError{1148, "42000", "LOAD DATA LOCAL requires a standalone query and LOCAL INFILE client capability"}
 	}
-	ctx := sql.WithStatementTime(c.mysqlContext(), sql.StatementTime(c.ctx))
+	ctx := sql.WithActivityQuery(sql.WithStatementTime(c.mysqlContext(), sql.StatementTime(c.ctx)), query)
 	snapshot, e := c.session.CatalogSnapshot(ctx)
 	if e != nil {
 		return nil, true, e

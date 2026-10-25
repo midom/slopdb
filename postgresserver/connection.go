@@ -7,6 +7,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgproto3"
 	"slopdb/db"
@@ -14,6 +15,7 @@ import (
 )
 
 type client struct {
+	startedAt                   time.Time
 	incoming                    <-chan frontendPacket
 	server                      *Server
 	conn                        net.Conn
@@ -51,11 +53,12 @@ func (c *client) run() {
 		return
 	}
 	c.session = session
+	defer session.Close()
+	c.syncActivityIdentity()
 	if err := session.SetPostgresMode(true); err != nil {
 		_ = c.fatal("57P01", err.Error())
 		return
 	}
-	defer session.Close()
 	defer c.clearStatements()
 	defer c.clearPortals()
 	c.server.mu.Lock()
@@ -178,6 +181,7 @@ func (c *client) dispatch(ctx context.Context, message pgproto3.FrontendMessage)
 		c.reportPositions = !strings.Contains(m.Query, "$")
 		p, err := c.prepare(ctx, m.Query, m.ParameterOIDs)
 		if err != nil {
+			c.session.TrackActivity(ctx, m.Query)()
 			return err
 		}
 		p.references = 1
@@ -293,7 +297,8 @@ func (c *client) dispatch(ctx context.Context, message pgproto3.FrontendMessage)
 	}
 }
 func (c *client) executeSQL(ctx context.Context, p *prepared, args []any) (*db.ExecResult, string, error) {
-	ctx = c.postgresContext(ctx)
+	ctx = sql.WithActivityQuery(c.postgresContext(ctx), p.original)
+	defer c.syncActivityTransaction()
 	c.currentSQL = p.original
 	c.reportPositions = false
 	wasInTx := c.session.InTransaction()
@@ -386,6 +391,8 @@ func (c *client) executeSQL(ctx context.Context, p *prepared, args []any) (*db.E
 	return result, completion(kind, result), nil
 }
 func (c *client) executePortal(ctx context.Context, p *portal, maxRows uint32) error {
+	ctx = sql.WithActivityQuery(ctx, p.prepared.original)
+	c.currentSQL = p.prepared.original
 	if c.failed && p.prepared.kind != "ROLLBACK" && p.prepared.kind != "COMMIT" {
 		return &protocolError{"25P02", "current transaction is aborted; roll back before continuing"}
 	}
@@ -393,7 +400,7 @@ func (c *client) executePortal(ctx context.Context, p *portal, maxRows uint32) e
 		return c.send(&pgproto3.EmptyQueryResponse{})
 	}
 	if !p.started {
-		if !c.session.InTransaction() && !transactionCommand(p.prepared.kind) && p.prepared.kind != "VACUUM" && p.prepared.kind != "DISCARD" {
+		if !c.session.InTransaction() && !transactionCommand(p.prepared.kind) && p.prepared.kind != "VACUUM" && p.prepared.kind != "DISCARD" && !(p.prepared.stmt != nil && p.prepared.stmt.LocalInspection()) {
 			if _, err := c.session.ExecContext(ctx, "BEGIN"); err != nil {
 				return err
 			}
@@ -455,6 +462,7 @@ func (c *client) executePortal(ctx context.Context, p *portal, maxRows uint32) e
 	return c.send(&pgproto3.CommandComplete{CommandTag: []byte(p.tag)})
 }
 func (c *client) simple(ctx context.Context, query string) error {
+	ctx = sql.WithActivityQuery(ctx, query)
 	if err := c.finishImplicit(ctx); err != nil {
 		return err
 	}
@@ -493,7 +501,7 @@ func (c *client) simple(ctx context.Context, query string) error {
 	successful := false
 	defer func() {
 		if implicit && !successful {
-			_, _ = c.session.Exec("ROLLBACK")
+			_, _ = c.session.ExecContext(sql.WithActivityQuery(context.Background(), c.currentSQL), "ROLLBACK")
 			c.failed = false
 		}
 	}()
@@ -502,6 +510,7 @@ func (c *client) simple(ctx context.Context, query string) error {
 		c.reportPositions = len(parts) == 1 && part == query && !strings.Contains(part, "$")
 		copyCommand, err := parseCopy(part)
 		if err != nil {
+			c.session.TrackActivity(sql.WithActivityQuery(ctx, part), part)()
 			return err
 		}
 		if copyCommand != nil {
@@ -516,6 +525,7 @@ func (c *client) simple(ctx context.Context, query string) error {
 		}
 		native, positions, _, err := translate(part)
 		if err != nil {
+			c.session.TrackActivity(sql.WithActivityQuery(ctx, part), part)()
 			return err
 		}
 		if len(positions) != 0 {
@@ -530,6 +540,7 @@ func (c *client) simple(ctx context.Context, query string) error {
 		} else {
 			statements, err := sql.Parse(native)
 			if err != nil {
+				c.session.TrackActivity(sql.WithActivityQuery(ctx, part), part)()
 				return err
 			}
 			if len(statements) != 1 {
@@ -610,6 +621,8 @@ func transactionCommand(kind string) bool {
 	return false
 }
 func (c *client) finishImplicit(ctx context.Context) error {
+	ctx = sql.WithActivityQuery(ctx, c.currentSQL)
+	defer c.syncActivityTransaction()
 	if !c.extendedImplicit {
 		return nil
 	}
@@ -628,7 +641,7 @@ func (c *client) finishImplicit(ctx context.Context) error {
 		err = c.reportCommitPosition(result)
 	}
 	if err != nil {
-		_, _ = c.session.Exec("ROLLBACK")
+		_, _ = c.session.ExecContext(sql.WithActivityQuery(context.Background(), c.currentSQL), "ROLLBACK")
 	}
 	c.failed = false
 	c.clearPortals()

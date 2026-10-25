@@ -41,7 +41,7 @@ func (s *Schema) namespaceAlias(name string) string {
 			return "main"
 		}
 	}
-	if s.expressionMySQL() {
+	if _, mysqlSpecific := MySQLSession(s.ctx); !mysqlSpecific && s.expressionMySQL() {
 		if options, ok := SessionContextFrom(s.ctx); ok && options.Database != "" && !s.namespaces[options.Database] && strings.EqualFold(options.Database, name) {
 			return "main"
 		}

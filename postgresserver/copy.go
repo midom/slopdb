@@ -150,7 +150,7 @@ func (c *client) runCopy(ctx context.Context, command *copyCommand) (count int64
 	if c.failed {
 		return 0, &protocolError{"25P02", "current transaction is aborted; roll back before continuing"}
 	}
-	ctx = sql.WithStatementTime(c.postgresContext(ctx), sql.StatementTime(ctx))
+	ctx = sql.WithActivityQuery(sql.WithStatementTime(c.postgresContext(ctx), sql.StatementTime(ctx)), c.currentSQL)
 	defer func() {
 		if err != nil && ctx.Err() != nil {
 			err = ctx.Err()
@@ -181,7 +181,7 @@ func (c *client) runCopy(ctx context.Context, command *copyCommand) (count int64
 	}
 	defer func() {
 		if err != nil {
-			cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			cleanup, cancel := context.WithTimeout(sql.WithActivityQuery(context.Background(), c.currentSQL), 5*time.Second)
 			defer cancel()
 			if own {
 				_, _ = c.session.ExecContext(cleanup, "ROLLBACK")

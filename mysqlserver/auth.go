@@ -177,6 +177,7 @@ func (c *client) handshake() error {
 		return c.fail(1040, "08004", err.Error())
 	}
 	c.session = session
+	c.syncActivityIdentity()
 	if err := enableMySQLSession(session); err != nil {
 		return c.fail(1040, "08004", err.Error())
 	}

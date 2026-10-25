@@ -10,7 +10,6 @@ import (
 	"net"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"slopdb/db"
@@ -52,7 +51,6 @@ type Server struct {
 	clients    map[net.Conn]context.CancelFunc
 	wg         sync.WaitGroup
 	done       chan struct{}
-	nextID     atomic.Uint32
 	namedLocks namedLocks
 	accounts   serverAccounts
 	closeError error
@@ -135,7 +133,11 @@ func (s *Server) Serve(listener net.Listener) error {
 		go func() {
 			defer s.wg.Done()
 			defer func() { cancel(); _ = conn.Close(); s.mu.Lock(); delete(s.clients, conn); s.mu.Unlock() }()
-			c := &client{server: s, conn: conn, writer: packetWriter{conn: conn}, ctx: ctx, cancel: cancel, id: s.nextID.Add(1), autocommit: true, statements: make(map[uint32]*prepared)}
+			backendID, err := s.database.ReserveBackendID()
+			if err != nil {
+				return
+			}
+			c := &client{startedAt: time.Now(), server: s, conn: conn, writer: packetWriter{conn: conn}, ctx: ctx, cancel: cancel, id: backendID, autocommit: true, statements: make(map[uint32]*prepared)}
 			c.run()
 		}()
 	}

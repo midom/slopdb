@@ -26,6 +26,7 @@ func (c *client) prepare(query string) error {
 	}
 	stmt, err := c.session.PrepareContext(c.ctx, query)
 	if err != nil {
+		c.session.TrackActivity(c.ctx, query)()
 		return c.writeError(err)
 	}
 	if stmt.NumInput() > math.MaxUint16 {

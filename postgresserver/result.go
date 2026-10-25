@@ -30,6 +30,9 @@ func (c *client) ready() error {
 		c.failed = false
 		c.clearPortals()
 	}
+	if c.session != nil {
+		c.session.SetActivityTransactionState(state != 'I', state == 'E')
+	}
 	return c.send(&pgproto3.ReadyForQuery{TxStatus: state})
 }
 func (c *client) writeError(err error) error {
@@ -87,6 +90,7 @@ func (c *client) writeError(err error) error {
 	if c.explicitTransaction || c.session != nil && c.session.InTransaction() {
 		c.failed = true
 	}
+	c.syncActivityTransaction()
 	response := &pgproto3.ErrorResponse{Severity: "ERROR", SeverityUnlocalized: "ERROR", Code: code, Message: err.Error()}
 	if parse != nil && c.reportPositions {
 		response.Position = int32(len([]rune(c.currentSQL[:min(parse.ByteOffset, len(c.currentSQL))])) + 1)

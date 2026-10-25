@@ -14,6 +14,7 @@ import (
 )
 
 type rawClient struct {
+	id     uint32
 	conn   net.Conn
 	writer packetWriter
 }
@@ -32,10 +33,18 @@ func connectRawWithFlags(t *testing.T, s *testServer, extraFlags uint32) *rawCli
 	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := readPacket(conn, 0, 1<<20); err != nil {
+	handshake, _, err := readPacket(conn, 0, 1<<20)
+	if err != nil {
 		t.Fatal(err)
 	}
-	c := &rawClient{conn: conn, writer: packetWriter{conn: conn, sequence: 1}}
+	h := decoder{data: handshake}
+	h.u8()
+	h.nul()
+	backendID := h.u32()
+	if h.err != nil {
+		t.Fatal(h.err)
+	}
+	c := &rawClient{id: backendID, conn: conn, writer: packetWriter{conn: conn, sequence: 1}}
 	flags := clientProtocol41 | clientSecureConnection | clientPluginAuth | extraFlags
 	p := append32(nil, flags)
 	p = append32(p, 1<<20)

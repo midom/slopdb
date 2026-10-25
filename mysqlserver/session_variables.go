@@ -31,6 +31,9 @@ func (c *client) mysqlContext() context.Context {
 	if len(c.preparedPath) > 0 {
 		ctx = sql.WithNamespaceSearchPath(ctx, c.preparedPath)
 	}
+	if c.activityQuery != "" {
+		ctx = sql.WithActivityQuery(ctx, c.activityQuery)
+	}
 	return ctx
 }
 
@@ -302,6 +305,8 @@ func (c *client) setSessionVariables(tokens []sql.Token) (*db.ExecResult, bool, 
 		if err != nil {
 			return nil, true, err
 		}
+	} else {
+		defer c.session.TrackActivity(c.ctx, c.activityQuery)()
 	}
 	if isolation != "" {
 		if err := c.session.SetIsolationLevel(isolation); err != nil {

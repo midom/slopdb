@@ -15,6 +15,8 @@ import (
 )
 
 type client struct {
+	startedAt                        time.Time
+	activityQuery                    string
 	observation                      *stateObservation
 	infileDecision                   chan infileRequest
 	infilePackets                    chan infilePacket
@@ -191,6 +193,7 @@ func (c *client) dispatch(p []byte) error {
 		return c.eof()
 
 	case 14: // COM_PING
+		defer c.session.TrackActivity(c.ctx, "COM_PING")()
 		if len(p) != 1 {
 			return c.writeError(errMalformed)
 		}
@@ -248,6 +251,7 @@ func (c *client) dispatch(p []byte) error {
 		}
 		c.autocommit = true
 		c.selected = ""
+		c.syncActivityIdentity()
 		return c.ok(nil)
 	default:
 		return c.writeError(&protocolError{1047, "08S01", fmt.Sprintf("unsupported MySQL command %d", p[0])})
@@ -265,6 +269,9 @@ func scalar(name string, value sql.Value) *db.ExecResult {
 }
 
 func (c *client) query(query string, stmt *db.Stmt, args []any) (*db.ExecResult, error) {
+	previousQuery := c.activityQuery
+	c.activityQuery = query
+	defer func() { c.activityQuery = previousQuery }()
 	oldObservation := c.observation
 	c.observation = &stateObservation{}
 	defer func() { c.observation = oldObservation }()
@@ -276,23 +283,24 @@ func (c *client) query(query string, stmt *db.Stmt, args []any) (*db.ExecResult,
 		}
 		statements, err := sql.ParseWithOptions(query, c.parseOptions())
 		if err != nil {
+			c.session.TrackActivity(c.ctx, query)()
 			return nil, err
 		}
 		if len(statements) != 1 {
 			return nil, &protocolError{1064, "42000", "exactly one SQL statement is required"}
 		}
-		local = sql.IsLocalInspectionStatement(statements[0])
+		local = sql.IsLocalInspectionStatement(statements[0], sql.DialectMySQL)
 	}
 	first := strings.ToUpper(sql.NewTokenizerWithOptions(query, c.parseOptions()).Next().Value)
 	if !c.autocommit && !c.session.InTransaction() && !local && first != "BEGIN" && first != "START" && first != "COMMIT" && first != "ROLLBACK" && first != "WAIT" {
-		if _, err := c.session.ExecContext(c.ctx, "BEGIN"); err != nil {
+		if _, err := c.session.ExecContext(c.mysqlContext(), "BEGIN"); err != nil {
 			return nil, err
 		}
 	}
 	if stmt != nil {
-		return stmt.ExecContext(c.mysqlContext(), args...)
+		return stmt.ExecContext(sql.WithActivityQuery(c.mysqlContext(), query), args...)
 	}
-	return c.session.ExecContext(c.mysqlContext(), query)
+	return c.session.ExecContext(sql.WithActivityQuery(c.mysqlContext(), query), query)
 }
 
 // control implements only settings whose effects the server can honor. Unknown
@@ -362,6 +370,7 @@ func (c *client) controlRaw(query string) (*db.ExecResult, bool, error) {
 			if err != nil {
 				return nil, true, err
 			}
+			defer c.session.TrackActivity(c.ctx, query)()
 			if sessionDefault {
 				return nil, true, c.session.SetIsolationLevel(level)
 			}
@@ -378,13 +387,14 @@ func (c *client) controlRaw(query string) (*db.ExecResult, bool, error) {
 				return nil, true, errors.New("autocommit must be 0, 1, ON or OFF")
 			}
 			if enabled && !c.autocommit && c.session.InTransaction() {
-				result, err := c.session.ExecContext(c.ctx, "COMMIT")
+				result, err := c.session.ExecContext(c.mysqlContext(), "COMMIT")
 				if err != nil {
 					return nil, true, err
 				}
 				c.autocommit = enabled
 				return result, true, nil
 			}
+			defer c.session.TrackActivity(c.ctx, query)()
 			c.autocommit = enabled
 			return nil, true, nil
 		}

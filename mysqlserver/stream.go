@@ -35,14 +35,14 @@ func (c *client) streamQuery(query string) (bool, error) {
 	if e = c.authorize(stmt); e != nil {
 		return true, e
 	}
-	if !c.autocommit && !c.session.InTransaction() {
-		if _, e = c.session.ExecContext(c.ctx, "BEGIN"); e != nil {
+	if !c.autocommit && !c.session.InTransaction() && !sql.IsLocalInspectionStatement(stmt, sql.DialectMySQL) {
+		if _, e = c.session.ExecContext(sql.WithActivityQuery(c.mysqlContext(), query), "BEGIN"); e != nil {
 			return true, e
 		}
 	}
 	status := c.status()
 	eof := func() error { return c.writer.write(append16(append16([]byte{0xfe}, c.warningCount()), status)) }
-	rows, e := c.session.QueryContext(c.mysqlContext(), query)
+	rows, e := c.session.QueryContext(sql.WithActivityQuery(c.mysqlContext(), query), query)
 	if e != nil {
 		return true, e
 	}

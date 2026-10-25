@@ -141,6 +141,7 @@ func (c *client) helperMetadata(query string) (helper, bool) {
 func (c *client) runHelper(ctx context.Context, h helper) (*db.ExecResult, error) {
 	result := &db.ExecResult{}
 	if h.kind == "CURRENT_SCHEMA" {
+		defer c.session.TrackActivity(ctx, c.currentSQL)()
 		name, _, err := c.session.NamespaceSettings(ctx)
 		if err != nil {
 			return nil, err
@@ -161,26 +162,32 @@ func (c *client) runHelper(ctx context.Context, h helper) (*db.ExecResult, error
 		return c.session.ExecContext(ctx, h.setting)
 	}
 	if h.kind == "SET" && h.name == "isolation_default" {
+		defer c.session.TrackActivity(ctx, c.currentSQL)()
 		return result, c.session.SetIsolationLevel(sql.IsolationLevel(h.setting))
 	}
 	if h.kind == "DISCARD" {
+		defer c.session.TrackActivity(ctx, c.currentSQL)()
 		if c.session.InTransaction() {
 			return nil, &protocolError{"25001", "DISCARD ALL cannot run inside a transaction"}
 		}
 		c.clearPortals()
 		c.clearStatements()
 		c.applicationName = ""
+		c.syncActivityIdentity()
 		return result, c.send(&pgproto3.ParameterStatus{Name: "application_name", Value: ""})
 	}
 	if h.kind == "SET" {
+		defer c.session.TrackActivity(ctx, c.currentSQL)()
 		if h.name == "application_name" {
 			c.applicationName = h.setting
+			c.syncActivityIdentity()
 			if err := c.send(&pgproto3.ParameterStatus{Name: "application_name", Value: h.setting}); err != nil {
 				return nil, err
 			}
 		}
 		return result, nil
 	}
+	defer c.session.TrackActivity(ctx, c.currentSQL)()
 	if len(h.fields) == 0 {
 		return result, nil
 	}

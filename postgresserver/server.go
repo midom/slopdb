@@ -12,7 +12,6 @@ import (
 	"net"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/xdg-go/scram"
@@ -55,7 +54,6 @@ type Server struct {
 	clients   map[net.Conn]context.CancelFunc
 	wg        sync.WaitGroup
 	done      chan struct{}
-	nextID    atomic.Uint32
 	scram     *scram.Server
 	backends  map[uint32]*client
 }
@@ -155,7 +153,11 @@ func (s *Server) Serve(listener net.Listener) error {
 		go func() {
 			defer s.wg.Done()
 			defer func() { cancel(); _ = conn.Close(); s.mu.Lock(); delete(s.clients, conn); s.mu.Unlock() }()
-			c := &client{server: s, conn: conn, ctx: ctx, cancel: cancel, id: s.nextID.Add(1), statements: make(map[string]*prepared), portals: make(map[string]*portal)}
+			backendID, err := s.database.ReserveBackendID()
+			if err != nil {
+				return
+			}
+			c := &client{startedAt: time.Now(), server: s, conn: conn, ctx: ctx, cancel: cancel, id: backendID, statements: make(map[string]*prepared), portals: make(map[string]*portal)}
 			c.run()
 		}()
 	}
