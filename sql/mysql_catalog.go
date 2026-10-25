@@ -1,7 +1,5 @@
 package sql
 
-import ()
-
 func mysqlCatalog(columns ...string) *ResultSet {
 	r := &ResultSet{}
 	for _, name := range columns {

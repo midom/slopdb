@@ -118,6 +118,9 @@ func (s *Schema) catalogRelations(filter catalogFilter, describeViews bool) ([]c
 			for i := range cols {
 				cols[i].NotNull = false
 				cols[i].PrimaryKey = false
+				cols[i].Unique = false
+				cols[i].AutoIncrement = false
+				cols[i].MySQLAutoIncrement = false
 				cols[i].Default = nil
 				cols[i].DefaultSQL = ""
 			}
@@ -286,10 +289,10 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 				row["slopdb_table_id"] = rel.ID
 			}
 			row["table_type"] = kind
-			row["is_insertable_into"] = pgYes(rel.Kind == "table")
+			row["is_insertable_into"] = catalogYes(rel.Kind == "table")
 			row["is_typed"] = "NO"
 			row["create_options"] = ""
-			row["slopdb_temporary"] = pgYes(rel.Temporary)
+			row["slopdb_temporary"] = catalogYes(rel.Temporary)
 			add(row)
 		case "views":
 			if rel.Kind != "view" {
@@ -318,7 +321,7 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 				row["column_default"] = catalogDefault(c, s.PostgresMode())
 				row["slopdb_default_expression"] = catalogDefault(c, true)
 				row["slopdb_declared_type"] = decl
-				row["is_nullable"] = pgYes(!c.NotNull && !c.PrimaryKey)
+				row["is_nullable"] = catalogYes(!c.NotNull && !c.PrimaryKey)
 				row["data_type"] = dt
 				row["column_type"] = strings.ToLower(decl)
 				row["column_key"] = catalogColumnKey(c, keys)
@@ -328,7 +331,7 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 				row["is_self_referencing"] = "NO"
 				row["is_identity"] = "NO"
 				row["is_generated"] = "NEVER"
-				row["is_updatable"] = pgYes(rel.Kind == "table")
+				row["is_updatable"] = catalogYes(rel.Kind == "table")
 				if c.AutoIncrement || c.MySQLAutoIncrement {
 					row["extra"] = "auto_increment"
 				}
@@ -395,8 +398,8 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 					row["index_schema"] = ns
 					row["index_name"] = key.name
 					row["index_type"] = key.method
-					row["is_unique"] = pgYes(key.unique)
-					row["is_primary"] = pgYes(key.name == "PRIMARY")
+					row["is_unique"] = catalogYes(key.unique)
+					row["is_primary"] = catalogYes(key.name == "PRIMARY")
 					if id > 0 {
 						row["slopdb_index_id"] = id
 					}
@@ -438,8 +441,8 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 				continue
 			}
 			for _, c := range t.Constraints {
-				kind := pgConstraintKind(c.Kind)
-				constraint := pgConstraintName(t, c)
+				kind := catalogConstraintKind(c.Kind)
+				constraint := catalogConstraintName(t, c)
 				common := func() map[string]any {
 					row := base()
 					row["constraint_catalog"] = database
@@ -451,8 +454,8 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 				case "table_constraints":
 					row := common()
 					row["constraint_type"] = kind
-					row["is_deferrable"] = pgYes(c.Deferrable)
-					row["initially_deferred"] = pgYes(c.InitiallyDeferred)
+					row["is_deferrable"] = catalogYes(c.Deferrable)
+					row["initially_deferred"] = catalogYes(c.InitiallyDeferred)
 					row["enforced"] = "YES"
 					row["nulls_distinct"] = "YES"
 					add(row)
@@ -503,7 +506,7 @@ func (s *Schema) informationSchemaTable(name string, filter catalogFilter) (*Res
 					if parent := view.tables[c.RefTable]; parent != nil {
 						for _, candidate := range parent.Constraints {
 							if (candidate.Kind == "PRIMARY" || candidate.Kind == "UNIQUE") && colsEqual(candidate.Columns, c.RefColumns) {
-								row["unique_constraint_name"] = pgConstraintName(parent, candidate)
+								row["unique_constraint_name"] = catalogConstraintName(parent, candidate)
 								break
 							}
 						}
@@ -626,4 +629,24 @@ func (s *Schema) informationSchemaCharsets(r *ResultSet, name string) {
 			add(row)
 		}
 	}
+}
+
+func catalogYes(v bool) string {
+	if v {
+		return "YES"
+	}
+	return "NO"
+}
+func catalogConstraintKind(kind string) string {
+	switch strings.ToUpper(kind) {
+	case "PRIMARY":
+		return "PRIMARY KEY"
+	case "FOREIGN":
+		return "FOREIGN KEY"
+	}
+	return strings.ToUpper(kind)
+}
+func catalogConstraintName(t *TableInfo, c ConstraintDef) string {
+	ns, _ := SplitSchemaName(t.Name)
+	return strings.TrimPrefix(c.Name, ns+".")
 }

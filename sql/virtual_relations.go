@@ -115,6 +115,11 @@ func (s *Schema) resolveCatalogTables(stmt *SelectStmt) (*SelectStmt, error) {
 // Only independent equality conjuncts may reduce catalog enumeration. OR,
 // functions, parameters and other predicates remain in normal SELECT evaluation.
 func catalogPredicateFilter(where Expression, table, alias string, unqualified bool) catalogFilter {
+	// These rows can describe columns of a referenced table in another schema;
+	// owning-constraint predicates do not select the referenced relation.
+	if strings.EqualFold(table, "information_schema.constraint_column_usage") {
+		return catalogFilter{}
+	}
 	f := catalogFilter{}
 	var visit func(Expression)
 	visit = func(e Expression) {

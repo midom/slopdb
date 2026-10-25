@@ -366,15 +366,7 @@ func (s *Schema) CastPostgresCatalogValue(v Value, target string) (Value, bool, 
 	return r, true, e
 }
 
-func pgConstraintKind(kind string) string {
-	switch strings.ToUpper(kind) {
-	case "PRIMARY":
-		return "PRIMARY KEY"
-	case "FOREIGN":
-		return "FOREIGN KEY"
-	}
-	return strings.ToUpper(kind)
-}
+func pgConstraintKind(kind string) string { return catalogConstraintKind(kind) }
 
 func (s *Schema) pgLookupRelation(name string) (int64, bool) {
 	name = strings.ToLower(name)
