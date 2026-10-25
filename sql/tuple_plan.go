@@ -40,7 +40,7 @@ func tupleLiteral(expr Expression) (*LiteralExpr, bool) {
 	}
 	if binary, ok := expr.(*BinaryExpr); ok {
 		switch binary.Op {
-		case "+", "-", "*", "/", "%", "||", "&", "|", "<<", ">>":
+		case "+", "-", "*", "%", "||", "&", "|", "<<", ">>":
 			if _, ok := tupleLiteral(binary.Left); !ok {
 				return nil, false
 			}
@@ -51,6 +51,9 @@ func tupleLiteral(expr Expression) (*LiteralExpr, bool) {
 				return &LiteralExpr{Value: value}, true
 			}
 		}
+		// Division depends on the execution dialect (MySQL 5/2 is decimal).
+		// Leave it to ordinary expression evaluation rather than proving a
+		// key bound with the native dialect's integer quotient.
 		return nil, false
 	}
 	unary, ok := expr.(*UnaryExpr)
