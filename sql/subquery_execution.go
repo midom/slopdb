@@ -298,6 +298,9 @@ func (s *Schema) clearSelectCaches() {
 	s.selectValues = nil
 	s.selectValueBytes = 0
 	s.likePatterns = nil
+	s.fulltextQueries = nil
+	s.fulltextBindings = nil
+	s.fulltextQueryBytes = 0
 }
 
 // EXISTS ignores projection values and stops after the first qualifying row,

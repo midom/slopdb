@@ -122,6 +122,9 @@ func (s *Schema) showKeys(info *TableInfo) []showKey {
 			continue // the auto-created primary-key index is represented above
 		}
 		method := "LSM"
+		if idx.Fulltext {
+			method = "FULLTEXT"
+		}
 		if idx.Auto {
 			method = "CONSTRAINT"
 		}

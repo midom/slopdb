@@ -87,9 +87,10 @@ type CreateTableStmt struct {
 }
 
 type IndexDef struct {
-	Name    string
-	Columns []string
-	Unique  bool
+	Name     string
+	Columns  []string
+	Unique   bool
+	Fulltext bool
 }
 
 type InsertStmt struct {
@@ -230,6 +231,7 @@ type CreateIndexStmt struct {
 	Column                string
 	Columns               []string
 	Unique                bool
+	Fulltext              bool
 	IfNotExists           bool
 }
 
@@ -287,6 +289,7 @@ type ConstraintDef struct {
 	RefColumns []string   `json:"ref_columns,omitempty"`
 	IndexID    uint64     `json:"index_id,omitempty"`
 	Inline     bool       `json:"inline,omitempty"`
+	Fulltext   bool       `json:"fulltext,omitempty"`
 }
 
 type AlterTableStmt struct {

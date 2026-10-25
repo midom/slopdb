@@ -255,7 +255,7 @@ func (p *Parser) parseCreate() (Statement, error) {
 	switch kw {
 	case "TABLE":
 		return p.parseCreateTable()
-	case "INDEX", "UNIQUE":
+	case "INDEX", "UNIQUE", "FULLTEXT":
 		return p.parseCreateIndex()
 	case "VIEW":
 		return p.parseCreateView()
@@ -311,6 +311,19 @@ func (p *Parser) parseCreateTable() (Statement, error) {
 		}
 
 		kw := strings.ToUpper(p.cur.Value)
+		if strings.EqualFold(kw, "FULLTEXT") {
+			p.advance()
+			if p.showWord("INDEX") || p.showWord("KEY") {
+				p.advance()
+			}
+			def, err := p.parseInlineIndex(false, "")
+			if err != nil {
+				return nil, err
+			}
+			def.Fulltext = true
+			stmt.Indexes = append(stmt.Indexes, def)
+			continue
+		}
 		if p.cur.Type == TokKeyword && (kw == "INDEX" || kw == "KEY") {
 			p.advance()
 			def, err := p.parseInlineIndex(false, "")
@@ -791,6 +804,7 @@ func (p *Parser) parseConflictClause() error {
 }
 
 func (p *Parser) parseCreateIndex() (Statement, error) {
+	fulltext := p.optionalAlterWord("FULLTEXT")
 	unique := false
 	if p.cur.Type == TokKeyword && strings.ToUpper(p.cur.Value) == "UNIQUE" {
 		unique = true
@@ -836,7 +850,7 @@ func (p *Parser) parseCreateIndex() (Statement, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &CreateIndexStmt{Index: strings.ToLower(indexName), Table: strings.ToLower(tableName), Column: columns[0], Columns: columns, Unique: unique, IfNotExists: ifNotExists, PublicationAbortAfter: abortAfter}, nil
+	return &CreateIndexStmt{Index: strings.ToLower(indexName), Table: strings.ToLower(tableName), Column: columns[0], Columns: columns, Unique: unique, Fulltext: fulltext, IfNotExists: ifNotExists, PublicationAbortAfter: abortAfter}, nil
 }
 
 // parsePublicationPolicy accepts only quoted Go duration syntax, including an
@@ -1999,6 +2013,9 @@ func (p *Parser) parseUnary() (Expression, error) {
 }
 
 func (p *Parser) parsePrimary() (Expression, error) {
+	if p.showWord("MATCH") && p.tok.Peek().Type == TokLParen {
+		return p.parseFulltextMatch()
+	}
 	// ROWS is also a window-frame keyword; in table-status predicates it
 	// names the output column without requiring identifier quoting.
 	if p.showStatusFilter && p.showWord("ROWS") {
@@ -2711,6 +2728,9 @@ func formatExpr(e Expression) string {
 	case *UnaryExpr:
 		return "(" + x.Op + " " + formatExpr(x.Right) + ")"
 	case *FuncCallExpr:
+		if x.Name == fulltextFunction {
+			return formatFulltextMatch(x)
+		}
 		if strings.EqualFold(x.Name, "CAST") && len(x.Args) == 2 {
 			if typ, ok := x.Args[1].(*LiteralExpr); ok {
 				return "CAST(" + formatExpr(x.Args[0]) + " AS " + typ.Value.Text + ")"

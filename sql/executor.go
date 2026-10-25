@@ -24,6 +24,7 @@ import (
 )
 
 type TableInfo struct {
+	Engine        string          `json:"engine,omitempty"`
 	collation     Collation       `json:"-"`
 	ID            uint64          `json:"id,omitempty"`
 	Constraints   []ConstraintDef `json:"constraints,omitempty"`
@@ -46,6 +47,7 @@ type IndexInfo struct {
 	IsUnique      bool            `json:"is_unique"`
 	Columns       []string        `json:"columns,omitempty"`
 	Auto          bool            `json:"auto,omitempty"`
+	Fulltext      bool            `json:"fulltext,omitempty"`
 }
 
 type ViewInfo struct {
@@ -95,23 +97,26 @@ type Schema struct {
 
 	indexCleanupPending bool // session hint; survives rollback and cleanup failures
 
-	inTx             bool
-	txWrites         []txWrite
-	txLatest         map[string]int
-	txState          *schemaState
-	statementChanges int64
-	subqueryMemos    map[*SelectStmt]*subqueryMemo
-	existsMemos      map[*SelectStmt]*subqueryMemo
-	selectValues     map[string]storage.PointValue
-	selectValueBytes int
-	likePatterns     map[likePatternKey]likePattern
-	subquerySets     map[*ResultSet]*subqueryMembership
-	selectDepth      int
-	profile          *QueryProfile
-	preparedPlan     *preparedExecutionPlan
-	triggerDepth     int
-	viewDepth        int
-	savepoints       []savepoint
+	inTx               bool
+	txWrites           []txWrite
+	txLatest           map[string]int
+	txState            *schemaState
+	statementChanges   int64
+	subqueryMemos      map[*SelectStmt]*subqueryMemo
+	existsMemos        map[*SelectStmt]*subqueryMemo
+	selectValues       map[string]storage.PointValue
+	selectValueBytes   int
+	likePatterns       map[likePatternKey]likePattern
+	fulltextQueries    map[string]*fulltextQuery
+	fulltextBindings   map[*FuncCallExpr]fulltextBinding
+	fulltextQueryBytes int64
+	subquerySets       map[*ResultSet]*subqueryMembership
+	selectDepth        int
+	profile            *QueryProfile
+	preparedPlan       *preparedExecutionPlan
+	triggerDepth       int
+	viewDepth          int
+	savepoints         []savepoint
 
 	// Sessions share a committed catalog, but keep private transaction state.
 	catalogShared      bool
@@ -878,6 +883,9 @@ func (s *Schema) getCreateTableSQL(tableName string, inlineIndexes bool) string 
 			b.WriteString(", ")
 			if idx.IsUnique {
 				b.WriteString("UNIQUE ")
+			}
+			if idx.Fulltext {
+				b.WriteString("FULLTEXT ")
 			}
 			fmt.Fprintf(&b, "KEY %s (%s)", quoteIdent(idx.Name), quotedNames(idx.columnNames()))
 		}
@@ -2321,6 +2329,9 @@ func (s *Schema) GetIndexSQL(name string) string {
 	for i, name := range columns {
 		quoted[i] = quoteIdent(name)
 	}
+	if idx.Fulltext {
+		unique = "FULLTEXT "
+	}
 	return fmt.Sprintf("CREATE %sINDEX %s ON %s(%s)", unique, quoteIdent(idx.Name), quoteIdent(idx.Table), strings.Join(quoted, ", "))
 }
 
@@ -2355,6 +2366,10 @@ func (s *Schema) CreateIndex(stmt *CreateIndexStmt) error {
 	}
 
 	idx := newIndexInfo(idxName, tableName, columns, stmt.Unique)
+	idx.Fulltext = stmt.Fulltext
+	if err := validateFulltextIndex(info, idx); err != nil {
+		return err
+	}
 	s.bindIndexCollation(idx)
 	var err error
 	idx.ID, err = s.allocateObjectID()
@@ -3790,6 +3805,9 @@ func (s *Schema) buildReturningResult(cols []SelectColumn, rows []map[string]Val
 }
 
 func (s *Schema) validateQuery(stmt *SelectStmt, info *TableInfo) error {
+	if err := s.bindFulltextExpressions(stmt); err != nil {
+		return err
+	}
 	p := stmt.prepared
 	if p != nil && p.validated {
 		return nil
@@ -3890,6 +3908,11 @@ func (s *Schema) validateQueryUncached(stmt *SelectStmt, info *TableInfo) error 
 		case *UnaryExpr:
 			return validate(e.Right, allowAlias)
 		case *FuncCallExpr:
+			if e.Name == fulltextFunction {
+				if _, _, err := s.resolveFulltextIndex(e, stmt); err != nil {
+					return err
+				}
+			}
 			for _, arg := range e.Args {
 				if err := validate(arg, allowAlias); err != nil {
 					return err
@@ -5857,6 +5880,9 @@ func (s *Schema) evalExpr(expr Expression, row map[string]Value) (Value, error) 
 }
 
 func (s *Schema) evalFunc(e *FuncCallExpr, row map[string]Value) (Value, error) {
+	if e.Name == fulltextFunction {
+		return s.evalFulltext(e, row)
+	}
 	name := strings.ToUpper(e.Name)
 	if err := validateScalarFunction(e); err != nil {
 		return NewNullValue(), err

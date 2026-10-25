@@ -113,7 +113,7 @@ func (s *Schema) OnlineCreateIndex(stmt Statement) (*CreateIndexStmt, bool, erro
 		if name == "" {
 			name = info.Name + "_" + strings.Join(c.Columns, "_") + "_idx"
 		}
-		return &CreateIndexStmt{Table: info.Name, Index: name, Columns: c.Columns, Unique: c.Kind == "UNIQUE_INDEX", IfNotExists: a.IfNotExists, PublicationAbortAfter: a.PublicationAbortAfter}, true, nil
+		return &CreateIndexStmt{Table: info.Name, Index: name, Columns: c.Columns, Unique: c.Kind == "UNIQUE_INDEX", Fulltext: c.Fulltext, IfNotExists: a.IfNotExists, PublicationAbortAfter: a.PublicationAbortAfter}, true, nil
 	}
 	return nil, false, nil
 }
@@ -148,6 +148,12 @@ func (s *Schema) StartOnlineIndex(stmt *CreateIndexStmt) (*OnlineIndexBuild, err
 		root = root.parent
 	}
 	idx := newIndexInfo(name, table, columns, stmt.Unique)
+	idx.Fulltext = stmt.Fulltext
+	if err := validateFulltextIndex(info, idx); err != nil {
+		log.Close()
+		disk.close()
+		return nil, err
+	}
 	s.bindIndexCollation(idx)
 	b := &OnlineIndexBuild{root: root, idx: idx, info: info, disk: disk, log: log}
 	// Reserve the ID and a cleanup marker durably before any invisible entries

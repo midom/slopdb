@@ -115,7 +115,12 @@ func (s *Schema) prepareInlineIndexes(table string, stmt *CreateTableStmt) ([]*I
 			return nil, fmt.Errorf("index name PRIMARY is reserved")
 		}
 		reserved[name] = true
-		indexes = append(indexes, newIndexInfo(name, table, columns, def.Unique))
+		idx := newIndexInfo(name, table, columns, def.Unique)
+		idx.Fulltext = def.Fulltext
+		if err := validateFulltextIndex(&TableInfo{Columns: stmt.Columns}, idx); err != nil {
+			return nil, err
+		}
+		indexes = append(indexes, idx)
 	}
 	return indexes, nil
 }

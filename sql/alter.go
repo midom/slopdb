@@ -140,7 +140,7 @@ func (s *Schema) AlterTable(a *AlterTableStmt) error {
 		if name == "" {
 			name = info.Name + "_" + strings.Join(c.Columns, "_") + "_idx"
 		}
-		return s.CreateIndex(&CreateIndexStmt{Table: info.Name, Index: name, Columns: c.Columns, Unique: c.Kind == "UNIQUE_INDEX"})
+		return s.CreateIndex(&CreateIndexStmt{Table: info.Name, Index: name, Columns: c.Columns, Unique: c.Kind == "UNIQUE_INDEX", Fulltext: c.Fulltext})
 	case "DROP_INDEX":
 		idx := s.indexes[a.NewName]
 		if idx == nil {

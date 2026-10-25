@@ -133,6 +133,18 @@ func (p *Parser) parseAlterAction(table string) (*AlterTableStmt, error) {
 	var err error
 	switch kw {
 	case "ADD":
+		if p.optionalAlterWord("FULLTEXT") {
+			if p.showWord("INDEX") || p.showWord("KEY") {
+				p.advance()
+			}
+			def, err := p.parseInlineIndex(false, "")
+			if err != nil {
+				return nil, err
+			}
+			a.Operation = "ADD_INDEX"
+			a.Constraint = &ConstraintDef{Name: def.Name, Kind: "INDEX", Columns: def.Columns, Fulltext: true}
+			return a, nil
+		}
 		if p.showWord("UNIQUE") && (strings.EqualFold(p.tok.Peek().Value, "INDEX") || strings.EqualFold(p.tok.Peek().Value, "KEY")) {
 			p.advance()
 			def, e := p.parseInlineIndex(true, "")
