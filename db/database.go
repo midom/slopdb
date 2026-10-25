@@ -20,6 +20,7 @@ import (
 type Database struct {
 	activityRecords    sync.Map // *sql.Schema -> *activityRecord
 	activityIDs        atomic.Uint64
+	diagnosticLocks    atomic.Pointer[lockManager]
 	changeIdentity     atomic.Pointer[changefeedIdentity]
 	currentStorage     atomic.Pointer[storage.LSMTree]
 	replication        atomic.Pointer[ReplicationGuard]
@@ -174,6 +175,7 @@ func (db *Database) ExecContextWithOptions(ctx context.Context, sqlText string, 
 		return nil, err
 	}
 	defer db.defaultGate.Unlock()
+	defer db.beginActivity(db.schema, ctx, sqlText)()
 	if err := db.execution.RLockContextForReader(ctx, db.executionReader); err != nil {
 		return nil, err
 	}

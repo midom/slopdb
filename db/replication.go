@@ -183,6 +183,7 @@ func (d *Database) reloadReplicaCatalog() error {
 	if err != nil {
 		return err
 	}
+	d.activityRecords.Delete(d.schema)
 	d.schema = schema.NewSession()
 	d.locks = newLockManager()
 	d.installLocks(d.schema)

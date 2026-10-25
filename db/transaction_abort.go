@@ -40,6 +40,7 @@ type transactionControl struct {
 }
 
 func (db *Database) syncManagedTransaction(schema *sql.Schema, statementErr error) {
+	db.syncActivity(schema)
 	state := db.locks.state(schema)
 	c := &state.transaction
 	c.mu.Lock()
@@ -109,6 +110,7 @@ func (db *Database) rollbackRequestedTransaction(schema *sql.Schema, request *Tr
 }
 
 func (db *Database) finishManagedCall(schema *sql.Schema, ctx context.Context, err error, pending bool) error {
+	defer db.syncActivity(schema)
 	c := &db.locks.state(schema).transaction
 	c.mu.Lock()
 	c.activeCancel = nil

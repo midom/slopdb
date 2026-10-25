@@ -28,10 +28,13 @@ type LockWaitInfo struct {
 // LockWaits reports current lock waits without requiring a SQL session or an
 // execution gate. The result does not retain references to internal lock data.
 func (db *Database) LockWaits() []LockWaitInfo {
-	if db == nil || db.locks == nil {
+	if db == nil {
 		return nil
 	}
-	m := db.locks
+	m := db.diagnosticLocks.Load()
+	if m == nil {
+		return nil
+	}
 	m.graphMu.Lock()
 	defer m.graphMu.Unlock()
 	var mask uint64

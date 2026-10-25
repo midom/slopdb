@@ -82,6 +82,7 @@ func (db *Database) newSessionContextPolicy(ctx context.Context, inspection bool
 	db.mu.Lock()
 	defer db.mu.Unlock()
 	if db.closed.Load() {
+		db.activityRecords.Delete(session.schema)
 		return nil, errors.New("database closed")
 	}
 	db.sessions[session] = struct{}{}
@@ -137,6 +138,7 @@ func (s *Session) ExecContextWithOptions(ctx context.Context, query string, opti
 		return nil, err
 	}
 	defer s.gate.Unlock()
+	defer s.db.beginActivity(s.schema, ctx, query)()
 	statements, parseErr := sql.ParseWithOptions(query, s.effectiveParseOptions())
 	if parseErr != nil {
 		return nil, fmt.Errorf("parse error: %w", parseErr)
@@ -216,6 +218,7 @@ func (s *Session) Close() error {
 }
 
 func (s *Session) closeLocked() {
+	s.db.activityRecords.Delete(s.schema)
 	if !s.closed {
 		s.closing.Store(true)
 		s.cancelActive()
@@ -254,7 +257,9 @@ func (db *Database) BeginContext(ctx context.Context) (*Tx, error) {
 	}
 	session.transactionHandle = true
 	session.gate.Lock()
+	finishActivity := db.beginActivity(session.schema, ctx, "BEGIN")
 	_, err = session.execParsed(ctx, []sql.Statement{&sql.BeginStmt{}}, cancel, false, lockTimeout)
+	finishActivity()
 	session.gate.Unlock()
 	if err != nil {
 		session.Close()
@@ -286,6 +291,7 @@ func (tx *Tx) ExecContextWithOptions(ctx context.Context, query string, options 
 		return nil, err
 	}
 	defer s.gate.Unlock()
+	defer s.db.beginActivity(s.schema, ctx, query)()
 	statements, err := sql.ParseWithOptions(query, s.effectiveParseOptions())
 	if err != nil {
 		return nil, fmt.Errorf("parse error: %w", err)

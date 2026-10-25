@@ -17,6 +17,8 @@ type activityRecord struct {
 	mu                   sync.Mutex
 	value                sql.SessionActivity
 	identified           bool
+	inTransaction        bool
+	failed               bool
 	lastTransactionStart time.Time
 }
 
@@ -76,6 +78,7 @@ func (s *Session) SetActivityTransactionState(active, failed bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	now := time.Now()
+	r.inTransaction, r.failed = active, failed
 	if active {
 		if r.value.TransactionStart.IsZero() {
 			r.value.TransactionStart = r.lastTransactionStart
@@ -130,32 +133,48 @@ func (d *Database) beginActivity(s *sql.Schema, ctx context.Context, query strin
 	r.value.Query = boundedActivityQuery(query)
 	r.mu.Unlock()
 	return func() {
-		inTx := s.InTransaction()
-		dialect := s.Dialect()
-		path := s.SessionSearchPath()
 		r.mu.Lock()
 		defer r.mu.Unlock()
-		now := time.Now()
 		state := sql.ActivityIdle
-		if inTx {
+		if r.inTransaction {
 			state = sql.ActivityIdleInTransaction
-			if r.value.TransactionStart.IsZero() {
-				r.value.TransactionStart = now
+			if r.failed {
+				state = sql.ActivityIdleInTransactionAborted
 			}
-			r.lastTransactionStart = r.value.TransactionStart
-		} else {
-			if !r.value.TransactionStart.IsZero() {
-				r.lastTransactionStart = r.value.TransactionStart
-			}
-			r.value.TransactionStart = time.Time{}
 		}
 		r.value.State = state
-		r.value.StateChange = now
-		if !r.identified {
-			r.value.Dialect = dialect
-			if len(path) > 0 {
-				r.value.Database = path[0]
-			}
+		r.value.StateChange = time.Now()
+	}
+}
+
+// syncActivity runs only under the owning session gate and lifecycle read view.
+func (d *Database) syncActivity(s *sql.Schema) {
+	r := d.activityRecord(s)
+	if r == nil {
+		return
+	}
+	inTx := s.InTransaction()
+	dialect := s.Dialect()
+	path := s.SessionSearchPath()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.inTransaction = inTx
+	r.failed = false
+	if inTx {
+		if r.value.TransactionStart.IsZero() {
+			r.value.TransactionStart = time.Now()
+		}
+		r.lastTransactionStart = r.value.TransactionStart
+	} else {
+		if !r.value.TransactionStart.IsZero() {
+			r.lastTransactionStart = r.value.TransactionStart
+		}
+		r.value.TransactionStart = time.Time{}
+	}
+	if !r.identified {
+		r.value.Dialect = dialect
+		if len(path) > 0 {
+			r.value.Database = path[0]
 		}
 	}
 }

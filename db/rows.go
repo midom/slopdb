@@ -110,6 +110,11 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 		cancel()
 		return nil, err
 	}
+	source := query
+	if prepared != nil {
+		source = prepared.text
+	}
+	finishActivity := s.db.beginActivity(s.schema, ctx, source)
 	var binding *sql.BoundQuery
 	var rows *Rows
 	var resultStatement sql.Statement = &sql.SelectStmt{}
@@ -137,6 +142,7 @@ func (s *Session) queryRows(ctx context.Context, query string, prepared *Stmt, a
 				_ = s.finishTransactionAbort(err)
 			}
 		}
+		finishActivity()
 		s.clearActive()
 		s.db.execution.RUnlockForReader(s.executionReader)
 		s.gate.Unlock()

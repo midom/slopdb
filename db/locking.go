@@ -145,6 +145,7 @@ func (m *lockManager) state(owner *sql.Schema) *ownerLocks {
 func (m *lockManager) forget(owner *sql.Schema) { m.states.Delete(owner) }
 
 func (db *Database) installLocks(schema *sql.Schema) {
+	db.diagnosticLocks.Store(db.locks)
 	db.registerActivity(schema)
 	db.locks.state(schema)
 	db.installReplicaSnapshotHook(schema)

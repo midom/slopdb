@@ -22,6 +22,7 @@ func (s *Stmt) LocalInspection() bool { return s != nil && s.query.LocalInspecti
 // a Session or Tx instead to bind the statement to that execution context.
 // Close rejects new executions; an execution already started may finish.
 type Stmt struct {
+	text       string
 	generation uint64
 	db         *Database
 	session    *Session
@@ -62,7 +63,7 @@ func (db *Database) prepareContext(ctx context.Context, query string, options sq
 	if db.closed.Load() {
 		return nil, errors.New("database closed")
 	}
-	return &Stmt{db: db, query: p, generation: db.generation.Load()}, nil
+	return &Stmt{text: query, db: db, query: p, generation: db.generation.Load()}, nil
 }
 
 func (s *Session) Prepare(query string) (*Stmt, error) {
@@ -141,6 +142,7 @@ func (s *Stmt) ExecContextWithOptions(ctx context.Context, options ExecOptions, 
 		return nil, err
 	}
 	defer s.db.defaultGate.Unlock()
+	defer s.db.beginActivity(s.db.schema, ctx, s.text)()
 	if err := s.db.execution.RLockContextForReader(ctx, s.db.executionReader); err != nil {
 		return nil, err
 	}
@@ -227,6 +229,11 @@ func (s *Session) execPreparedInto(ctx context.Context, stmt *Stmt, options Exec
 		return nil, err
 	}
 	defer s.gate.Unlock()
+	query := ""
+	if stmt != nil {
+		query = stmt.text
+	}
+	defer s.db.beginActivity(s.schema, ctx, query)()
 	b, err := stmt.bind(s.db, s, bound, args)
 	if err != nil {
 		return nil, err

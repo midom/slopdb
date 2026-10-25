@@ -11,7 +11,15 @@ func (s *Session) SetDialect(d sql.Dialect) error {
 	if s.closed || s.closing.Load() || s.db.closed.Load() {
 		return ErrSessionClosed
 	}
-	return s.schema.SetDialect(d)
+	err := s.schema.SetDialect(d)
+	if err == nil {
+		if r := s.db.activityRecord(s.schema); r != nil {
+			r.mu.Lock()
+			r.value.Dialect = d
+			r.mu.Unlock()
+		}
+	}
+	return err
 }
 
 // Dialect reports this session's selection, serialized with calls on it.
