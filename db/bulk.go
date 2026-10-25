@@ -2,127 +2,177 @@ package db
 
 import (
 	"context"
+	"encoding/gob"
+	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
+	"time"
 
 	"slopdb/sql"
 )
 
-// BulkSource returns the next row's typed bindings, or io.EOF. It is called
-// synchronously and should honor ctx if reading from an external source.
-type BulkSource func(ctx context.Context) ([]any, error)
+// BulkSource returns the next row's bindings, or io.EOF. It runs synchronously
+// while the session is executing and must honor ctx; it must not re-enter that
+// session. Returned buffers may be reused on the next call.
+type BulkSource func(context.Context) ([]any, error)
 
-// BulkInsert inserts all rows in one transaction using batches of 256 rows and prepared INSERT shapes.
-// Defaults, triggers, type/NOT NULL/UNIQUE/CHECK/foreign-key constraints and
-// secondary indexes follow ordinary INSERT semantics. Source, binding, SQL or
-// cancellation errors roll back the entire import. Values and row buffers may
-// be reused after the next source call. Transaction memory grows with the batch;
-// callers needing bounded transactions should invoke BulkInsert in chunks.
-func (db *Database) BulkInsert(ctx context.Context, table string, columns []string, next BulkSource) (int64, error) {
+// BulkInsert executes a streaming INSERT as one atomic SQL statement in a new
+// session using the database's default dialect and namespace path.
+func (d *Database) BulkInsert(ctx context.Context, table string, columns []string, next BulkSource) (int64, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if err := d.defaultGate.LockContext(ctx); err != nil {
+		return 0, err
+	}
+	path, dialect := d.schema.SessionSearchPath(), d.schema.Dialect()
+	d.defaultGate.Unlock()
+	ctx = sql.WithNamespaceSearchPath(ctx, path)
+	s, err := d.newSessionContext(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer s.Close()
+	if err = s.SetDialect(dialect); err != nil {
+		return 0, err
+	}
+	return s.BulkInsert(ctx, table, columns, next)
+}
+
+// BulkInsert executes one INSERT in this session. An existing transaction keeps
+// its earlier writes on failure; outside a transaction the import commits once.
+// Constraints, triggers, indexes and defaults have ordinary statement semantics,
+// including immediate foreign keys to rows later in the same import.
+// Input buffers are bounded to a row. Consumed bindings are replayed from a
+// private temporary spool on lock retries, without repeating source callbacks.
+// Native transaction writes still consume memory proportional to the import.
+func (s *Session) BulkInsert(ctx context.Context, table string, columns []string, next BulkSource) (int64, error) {
+	return s.bulkInsert(ctx, table, columns, next, false)
+}
+func (tx *Tx) BulkInsert(ctx context.Context, table string, columns []string, next BulkSource) (int64, error) {
+	return tx.session.bulkInsert(ctx, table, columns, next, true)
+}
+func (s *Session) bulkInsert(ctx context.Context, table string, columns []string, next BulkSource, bound bool) (int64, error) {
 	if next == nil {
 		return 0, fmt.Errorf("nil bulk source")
 	}
 	if len(columns) == 0 {
 		return 0, fmt.Errorf("bulk insert requires explicit columns")
 	}
-	seen := make(map[string]bool, len(columns))
 	names := make([]string, len(columns))
-	parameters := make([]string, len(columns))
-	for i, name := range columns {
-		normalized := strings.ToLower(name)
-		if seen[normalized] {
-			return 0, fmt.Errorf("duplicate bulk column %s", name)
+	seen := map[string]bool{}
+	for i, n := range columns {
+		n = strings.ToLower(n)
+		if seen[n] {
+			return 0, fmt.Errorf("duplicate bulk column %s", n)
 		}
-		seen[normalized] = true
-		names[i] = quoteIdentifier(name)
-		parameters[i] = "?"
+		seen[n] = true
+		names[i] = n
 	}
-	queryPrefix := db.renderSQL("INSERT INTO " + quoteIdentifier(table) + " (" + strings.Join(names, ",") + ") VALUES ")
-	rowShape := "(" + strings.Join(parameters, ",") + ")"
-	tx, err := db.BeginContext(ctx)
+	ctx, cancel, lockTimeout, err := s.db.queryContext(ctx, ExecOptions{})
 	if err != nil {
 		return 0, err
 	}
-	defer tx.Rollback()
-	// Validate the target and column names even when the source is empty.
-	validation, err := tx.QueryContext(ctx, db.renderSQL("SELECT "+strings.Join(names, ",")+" FROM "+quoteIdentifier(table)+" LIMIT 0"))
-	if err != nil {
+	defer cancel()
+	if err = s.gate.LockContext(ctx); err != nil {
 		return 0, err
 	}
-	_ = validation.Close()
-
-	statements := make(map[int]*Stmt)
-	defer func() {
-		for _, statement := range statements {
-			_ = statement.Close()
+	defer s.gate.Unlock()
+	ctx = sql.WithStatementTime(ctx, time.Now().UTC())
+	replay := &bulkReplay{next: next, parent: s.db.opt.QueryTempDir, width: len(names)}
+	defer replay.close()
+	stmt := &sql.InsertStmt{Table: strings.ToLower(table), ColumnNames: names, Source: &sql.RowSource{Reset: replay.reset, Next: replay.read}}
+	if _, err = s.execParsed(ctx, []sql.Statement{stmt}, cancel, bound, lockTimeout); err != nil {
+		var input *bulkInputError
+		if errors.As(err, &input) {
+			return 0, fmt.Errorf("bulk source row %d: %w", replay.produced+1, input.cause)
 		}
-	}()
-	var count int64
-	batch := make([]any, 0, 256*len(columns))
-	flush := func() error {
-		size := len(batch) / len(columns)
-		if size == 0 {
-			return nil
-		}
-		statement := statements[size]
-		if statement == nil {
-			shapes := make([]string, size)
-			for i := range shapes {
-				shapes[i] = rowShape
-			}
-			var prepareErr error
-			statement, prepareErr = tx.PrepareContext(ctx, queryPrefix+strings.Join(shapes, ","))
-			if prepareErr != nil {
-				return prepareErr
-			}
-			statements[size] = statement
-		}
-		if _, execErr := statement.ExecContext(ctx, batch...); execErr != nil {
-			return fmt.Errorf("bulk rows %d-%d: %w", count+1, count+int64(size), execErr)
-		}
-		count += int64(size)
-		clear(batch)
-		batch = batch[:0]
-		return nil
-	}
-	for {
-		if err = ctx.Err(); err != nil {
-			return 0, err
-		}
-		values, sourceErr := next(ctx)
-		if sourceErr == io.EOF {
-			break
-		}
-		if sourceErr != nil {
-			return 0, fmt.Errorf("bulk source: %w", sourceErr)
-		}
-		if len(values) != len(columns) {
-			return 0, fmt.Errorf("bulk row expected %d values, got %d", len(columns), len(values))
-		}
-		for _, value := range values {
-			switch v := value.(type) {
-			case []byte:
-				value = append([]byte{}, v...)
-			case sql.Value:
-				value = ownedValue(v)
-			}
-			batch = append(batch, value)
-		}
-		if len(batch)/len(columns) == 256 {
-			if err = flush(); err != nil {
-				return 0, err
-			}
-		}
-	}
-	if err = flush(); err != nil {
 		return 0, err
 	}
-	if err = tx.CommitContext(ctx); err != nil {
-		return 0, err
-	}
-	return count, nil
+	return replay.position, nil
 }
+
+// One gob stream retains every exported typed-value field, including transient
+// dialect annotations and exact numeric provenance. ReadAt keeps retries from
+// disturbing the append cursor; resets never rewind the caller's input stream.
+type bulkReplay struct {
+	next               BulkSource
+	parent             string
+	width              int
+	file               *os.File
+	encoder            *gob.Encoder
+	decoder            *gob.Decoder
+	produced, position int64
+	terminal           error
+}
+
+func (r *bulkReplay) close() {
+	if r.file != nil {
+		name := r.file.Name()
+		_ = r.file.Close()
+		_ = os.Remove(name)
+	}
+}
+func (r *bulkReplay) reset() error {
+	r.position = 0
+	if r.file != nil {
+		r.decoder = gob.NewDecoder(io.NewSectionReader(r.file, 0, 1<<63-1))
+	}
+	return nil
+}
+func (r *bulkReplay) read(ctx context.Context) ([]sql.Value, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if r.position < r.produced {
+		var values []sql.Value
+		if err := r.decoder.Decode(&values); err != nil {
+			return nil, fmt.Errorf("bulk replay row %d: %w", r.position+1, err)
+		}
+		r.position++
+		return values, nil
+	}
+	if r.terminal != nil {
+		return nil, r.terminal
+	}
+	values, err := r.next(ctx)
+	if err != nil {
+		if err != io.EOF {
+			err = &bulkInputError{err}
+		}
+		r.terminal = err
+		return nil, err
+	}
+	if len(values) != r.width {
+		return nil, fmt.Errorf("bulk row %d expected %d values, got %d", r.produced+1, r.width, len(values))
+	}
+	typed := make([]sql.Value, len(values))
+	for i, v := range values {
+		x, e := argumentValue(v)
+		if e != nil {
+			return nil, fmt.Errorf("bulk row %d column %d: %w", r.produced+1, i+1, e)
+		}
+		typed[i] = ownedValue(x)
+	}
+	if r.file == nil {
+		r.file, err = os.CreateTemp(r.parent, "slopdb-bulk-*")
+		if err != nil {
+			return nil, err
+		}
+		r.encoder = gob.NewEncoder(r.file)
+	}
+	if err = r.encoder.Encode(typed); err != nil {
+		return nil, fmt.Errorf("bulk spool row %d: %w", r.produced+1, err)
+	}
+	r.produced++
+	r.position++
+	return typed, nil
+}
+
+// External callback errors must not impersonate executor retry sentinels. The
+// public API unwraps them after statement rollback and lifecycle cleanup.
+type bulkInputError struct{ cause error }
+
+func (e *bulkInputError) Error() string { return e.cause.Error() }

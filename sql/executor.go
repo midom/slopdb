@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"maps"
 	"math"
 	"math/big"
@@ -3303,7 +3304,7 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 	if stmt.DefaultValues {
 		allGroups = [][]Expression{nil}
 	}
-	if len(allGroups) == 0 {
+	if len(allGroups) == 0 && stmt.Source == nil {
 		return 0, nil, fmt.Errorf("no values provided")
 	}
 
@@ -3323,7 +3324,44 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 	defer func() { s.lastInsertIDUnsigned = lastUnsigned }()
 	var returningRows []map[string]Value
 
-	for _, group := range allGroups {
+	if stmt.Source != nil {
+		if stmt.Source.Next == nil {
+			return 0, nil, fmt.Errorf("nil row source")
+		}
+		if stmt.Source.Reset != nil {
+			if err := stmt.Source.Reset(); err != nil {
+				return 0, nil, err
+			}
+		}
+	}
+	groupIndex := 0
+	for {
+		var group []Expression
+		if stmt.Source != nil {
+			if err := s.checkInterrupt(); err != nil {
+				return 0, nil, err
+			}
+			values, err := stmt.Source.Next(s.ctx)
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return 0, nil, err
+			}
+			if len(values) != expected {
+				return 0, nil, fmt.Errorf("expected %d values, got %d", expected, len(values))
+			}
+			group = make([]Expression, len(values))
+			for i, v := range values {
+				group[i] = &LiteralExpr{Value: v, BoundParameter: true}
+			}
+		} else {
+			if groupIndex >= len(allGroups) {
+				break
+			}
+			group = allGroups[groupIndex]
+			groupIndex++
+		}
 		row := make(map[string]Value)
 		for ci, col := range info.Columns {
 			if vi, ok := colMap[ci]; ok && vi < len(group) {
@@ -3356,7 +3394,9 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 			if err := s.fireTriggers(tableName, "INSERT", "INSTEAD OF", nil, row); err != nil {
 				return 0, nil, err
 			}
-			returningRows = append(returningRows, row)
+			if len(stmt.Returning) > 0 {
+				returningRows = append(returningRows, row)
+			}
 			continue
 		}
 
@@ -3442,7 +3482,9 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 					if s.MySQLMode() && pkCol != nil && pkCol.AutoIncrement && lastID == 0 {
 						lastID = updated[pkCol.Name].Int
 					}
-					returningRows = append(returningRows, updated)
+					if len(stmt.Returning) > 0 {
+						returningRows = append(returningRows, updated)
+					}
 				}
 				continue
 			}
@@ -3499,7 +3541,9 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 		} else if pkCol != nil && pkCol.AutoIncrement && lastID == 0 {
 			lastID = nextID
 		}
-		returningRows = append(returningRows, row)
+		if len(stmt.Returning) > 0 {
+			returningRows = append(returningRows, row)
+		}
 	}
 
 	var rs *ResultSet

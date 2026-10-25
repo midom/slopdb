@@ -2,6 +2,7 @@ package sql
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -171,7 +172,13 @@ type IndexDef struct {
 	PrefixLengths []int64
 }
 
+type RowSource struct {
+	Reset func() error                           `json:"-"`
+	Next  func(context.Context) ([]Value, error) `json:"-"`
+}
+
 type InsertStmt struct {
+	Source        *RowSource `json:"-"`
 	With          *WithClause
 	Table         string
 	ColumnNames   []string
