@@ -569,6 +569,19 @@ func (s *Schema) walkTypedAggregate(t *typedAggregate, info *TableInfo, needed m
 	for _, g := range groups {
 		groupMemory += aggregateGroupMemory(g)
 	}
+	scalar := len(t.group) == 0 && len(t.baseSlots) == 0
+	for _, f := range t.functions {
+		if f.Distinct {
+			scalar = false
+		}
+		switch strings.ToUpper(f.Name) {
+		case "COUNT", "SUM", "AVG", "TOTAL", "MIN", "MAX":
+		default:
+			scalar = false
+		}
+	}
+	scalarGroup := groups[""]
+	scalar = scalar && scalarGroup != nil
 	var keyBuffer [128]byte
 	keyScratch := keyBuffer[:0]
 	flush := func() error {
@@ -590,30 +603,33 @@ func (s *Schema) walkTypedAggregate(t *typedAggregate, info *TableInfo, needed m
 					continue
 				}
 			}
-			key := keyScratch[:0]
-			for _, p := range t.group {
-				v, err := p.eval(row)
-				if err != nil {
-					return err
-				}
-				if v.Type == ColText && (!binaryGroups || v.Collation != "" && v.Collation != BinaryCollation) {
-					v.Text = valueTextKey(v, s.collation)
-				}
-				key = appendValueIdentity(key, v)
-			}
-			// The conversion in a map lookup borrows key for the lookup only.
-			// Copy it only when a new group retains the identity.
-			g := groups[string(key)]
+			g := scalarGroup
 			var before int64
-			if g != nil {
-				before = aggregateGroupMemory(g)
-			}
-			if g == nil {
-				g = newGroup()
-				groups[string(key)] = g
-			}
-			if cap(key) <= typedScratchLimit {
-				keyScratch = key[:0]
+			if !scalar {
+				key := keyScratch[:0]
+				for _, p := range t.group {
+					v, err := p.eval(row)
+					if err != nil {
+						return err
+					}
+					if v.Type == ColText && (!binaryGroups || v.Collation != "" && v.Collation != BinaryCollation) {
+						v.Text = valueTextKey(v, s.collation)
+					}
+					key = appendValueIdentity(key, v)
+				}
+				// The conversion in a map lookup borrows key for the lookup only.
+				// Copy it only when a new group retains the identity.
+				g = groups[string(key)]
+				if g != nil {
+					before = aggregateGroupMemory(g)
+				}
+				if g == nil {
+					g = newGroup()
+					groups[string(key)] = g
+				}
+				if cap(key) <= typedScratchLimit {
+					keyScratch = key[:0]
+				}
 			}
 			if g.inputs == 0 {
 				g.baseValues = make([]Value, len(t.baseSlots))
@@ -635,10 +651,15 @@ func (s *Schema) walkTypedAggregate(t *typedAggregate, info *TableInfo, needed m
 					return err
 				}
 			}
-			groupMemory += aggregateGroupMemory(g) - before
-			if groupMemory > s.memoryBudget() {
+			if !scalar {
+				groupMemory += aggregateGroupMemory(g) - before
+			}
+			if !scalar && groupMemory > s.memoryBudget() {
 				return errAggregateSpill
 			}
+		}
+		if scalar && aggregateGroupMemory(scalarGroup) > s.memoryBudget() {
+			return errAggregateSpill
 		}
 		// Only this private batch may reuse BLOB storage. Group representatives
 		// and MIN/MAX states own their retained values. Do not pin unusually

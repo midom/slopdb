@@ -263,6 +263,9 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 	if info == nil || stmt.FromExpr != nil || stmt.Lock != nil || stmt.trackRows || stmt.SelectAll || stmt.Virtual != nil || (!hasAggregates(stmt) && len(stmt.GroupBy) == 0 && stmt.Having == nil) {
 		return nil, false, nil
 	}
+	if rows, used, err := s.simpleCount(stmt, info, exprCols); used || err != nil {
+		return rows, used, err
+	}
 	var plan *joinPlan
 	if len(stmt.Joins) > 0 {
 		plan = s.makeJoinPlan(stmt)
@@ -634,7 +637,11 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 			if ordered {
 				readErr = s.walkTypedOrderedAggregate(typed, info, bareNeeded, paths, orderedEmit)
 			} else {
-				readErr = s.walkTypedAggregate(typed, info, bareNeeded, paths, groups, newGroup)
+				var parallel bool
+				parallel, readErr = s.parallelTypedAggregate(typed, info, bareNeeded, paths, groups)
+				if !parallel && readErr == nil {
+					readErr = s.walkTypedAggregate(typed, info, bareNeeded, paths, groups, newGroup)
+				}
 			}
 		} else {
 			readErr = s.walkAggregateAccess(info, bareNeeded, where, paths, accept, reusableInputs)

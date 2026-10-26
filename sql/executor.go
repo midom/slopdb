@@ -98,6 +98,15 @@ type Schema struct {
 	mysqlRand                map[*FuncCallExpr]*mysqlRandState
 	onlineIndexMu            catalogGate
 	onlineIndexBuilds        map[*OnlineIndexBuild]struct{}
+	rowCountLocks            [64]sync.Mutex
+	rowCountBuilds           map[uint64]*rowCountBuild
+	rowCountBuildMu          sync.Mutex
+	parallelScanSlots        atomic.Int64
+	parallelScanQueries      atomic.Int64
+	parallelScanLower        []byte
+	parallelScanUpper        []byte
+	rowCountRead             *rowCountScratch
+	rowCountWrite            *rowCountWriteScratch
 	queryMemoryBytes         int64
 	queryTempDir             string
 	queryDisks               []*diskHash
@@ -205,10 +214,12 @@ func (s *Schema) checkInterrupt() error {
 }
 
 type txWrite struct {
-	previous int
-	key      []byte
-	value    []byte
-	del      bool
+	cardinalityKnown bool
+	baseExists       bool
+	previous         int
+	key              []byte
+	value            []byte
+	del              bool
 }
 
 type savepoint struct {
@@ -827,6 +838,9 @@ func (s *Schema) saveUserVersion() error {
 
 func (s *Schema) UpdateStats() error {
 	for name, info := range s.tables {
+		if err := s.ensureRowCount(info); err != nil {
+			return err
+		}
 		distribution, err := s.analyzeTable(info)
 		if err != nil {
 			return err
@@ -2317,6 +2331,9 @@ func (s *Schema) write(key, value []byte) error {
 	if s.temporaryKey(key) {
 		return s.lsm.WriteBatch([]storage.Mutation{{Key: key, Value: value, NoWAL: true}})
 	}
+	if _, row := rowTableID(key); row {
+		return s.writeBatchWithOnlineIndexes([]storage.Mutation{{Key: key, Value: value}})
+	}
 	return s.lsm.Put(key, value)
 }
 func (s *Schema) remove(key []byte) error {
@@ -2329,6 +2346,9 @@ func (s *Schema) remove(key []byte) error {
 	}
 	if s.temporaryKey(key) {
 		return s.lsm.WriteBatch([]storage.Mutation{{Key: key, Delete: true, NoWAL: true}})
+	}
+	if _, row := rowTableID(key); row {
+		return s.writeBatchWithOnlineIndexes([]storage.Mutation{{Key: key, Delete: true}})
 	}
 	return s.lsm.Delete(key)
 }
@@ -2367,9 +2387,25 @@ func (s *Schema) txAppend(key, value []byte, deleted bool) {
 	}
 	s.txLatest[name] = len(s.txWrites)
 	s.txWrites = append(s.txWrites, txWrite{key: ownedKey, value: copyBytes(value), del: deleted, previous: prev})
+	if prev >= 0 {
+		last := &s.txWrites[len(s.txWrites)-1]
+		last.cardinalityKnown, last.baseExists = s.txWrites[prev].cardinalityKnown, s.txWrites[prev].baseExists
+	}
 }
 func (s *Schema) txPut(key, value []byte) { s.txAppend(key, value, false) }
 func (s *Schema) txDelete(key []byte)     { s.txAppend(key, nil, true) }
+
+// The locked existing row proves initial presence unless an earlier private
+// mutation of that key must supply the transaction's original baseline.
+func (s *Schema) txPutExisting(key, value []byte) { s.txPutBaseline(key, value, true) }
+func (s *Schema) txPutAbsent(key, value []byte)   { s.txPutBaseline(key, value, false) }
+func (s *Schema) txPutBaseline(key, value []byte, exists bool) {
+	s.txAppend(key, value, false)
+	w := &s.txWrites[len(s.txWrites)-1]
+	if w.previous < 0 {
+		w.cardinalityKnown, w.baseExists = true, exists
+	}
+}
 
 // Undo only the discarded suffix; savepoints and failed statements restore
 // prior values without rebuilding or scanning the transaction's write set.
@@ -3691,7 +3727,7 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 
 		data := encodeRow(row, info)
 		if s.inTx {
-			s.txPut(key, data)
+			s.txPutAbsent(key, data)
 		} else {
 			if err := s.write(key, data); err != nil {
 				return 0, nil, err
@@ -4307,7 +4343,7 @@ func (s *Schema) insertFromSelect(stmt *InsertStmt, info *TableInfo) (int64, *Re
 
 		data := encodeRow(row, info)
 		if s.inTx {
-			s.txPut(key, data)
+			s.txPutAbsent(key, data)
 		} else {
 			if err := s.write(key, data); err != nil {
 				return 0, nil, err
@@ -6165,7 +6201,9 @@ func (s *Schema) applyRowUpdate(table string, info *TableInfo, oldKey []byte, or
 			return nil, err
 		}
 	}
-	if err := s.write(key, encodeRow(row, info)); err != nil {
+	if s.inTx && bytes.Equal(key, oldKey) && indexedRow != nil {
+		s.txPutExisting(key, encodeRow(row, info))
+	} else if err := s.write(key, encodeRow(row, info)); err != nil {
 		return nil, err
 	}
 	if len(info.PKColumns) == 1 && !bytes.Equal(key, oldKey) {

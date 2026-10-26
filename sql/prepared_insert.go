@@ -131,7 +131,7 @@ func (s *Schema) insertPreparedValues(stmt *InsertStmt) (int64, bool, error) {
 	if err := s.checkInterrupt(); err != nil {
 		return 0, true, err
 	}
-	s.txPut(p.key, p.encoded)
+	s.txPutAbsent(p.key, p.encoded)
 	if err := s.updateIndexes(info.Name, info, p.row, p.key, true); err != nil {
 		return 0, true, err
 	}

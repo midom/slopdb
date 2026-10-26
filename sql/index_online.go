@@ -57,9 +57,17 @@ func (s *Schema) writeBatchWithOnlineIndexesQueued(batch []storage.Mutation, que
 	}
 	root.onlineIndexMu.RLockForReader(s.snapshotReader)
 	defer root.onlineIndexMu.RUnlockForReader(s.snapshotReader)
+	var err error
+	batch, finishCounts, err := s.prepareRowCounts(batch)
+	if err != nil {
+		return err
+	}
+	published := false
+	defer func() { finishCounts(published) }()
 	if err := s.lsm.WriteBatchWithEnqueue(batch, queued); err != nil {
 		return err
 	}
+	published = true
 	for b := range root.onlineIndexBuilds {
 		b.mu.Lock()
 		for _, w := range batch {
