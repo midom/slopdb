@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"container/heap"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -1435,11 +1436,7 @@ func (f *fileIterator) Close() {
 	}
 }
 func (f *fileIterator) RangeTombstones() []KeyValue { return f.reader.rangeDeletes }
-func (f *fileIterator) SkipUserKey(key []byte) {
-	for f.Valid() && bytes.Equal(f.Key().UserKey, key) {
-		f.Next()
-	}
-}
+func (f *fileIterator) SkipUserKey(key []byte)      { f.iter.SkipUserKey(key) }
 
 func EncodeWALRecord(opType uint8, key, value []byte, seqNum uint64) []byte {
 	buf := make([]byte, 0, 9+2*binary.MaxVarintLen64+len(key)+len(value))
@@ -1522,6 +1519,8 @@ func (e *emptyIterator) Value() []byte    { return nil }
 func (e *emptyIterator) Close()           {}
 
 type mergeIterator struct {
+	scanContext  context.Context
+	scanSteps    uint32
 	keysOnly     bool
 	reusable     bool
 	closed       bool
@@ -1577,7 +1576,10 @@ func newMergeIteratorDirectionalMode(iters []Iterator, key []byte, reverse, reus
 	return newMergeIteratorDirectionalOptions(iters, key, reverse, reusable, false, closers...)
 }
 func newMergeIteratorDirectionalOptions(iters []Iterator, key []byte, reverse, reusable, keysOnly bool, closers ...ioCloser) *mergeIterator {
-	m := &mergeIterator{iters: iters, closers: closers, reusable: reusable, keysOnly: keysOnly}
+	return newMergeIteratorDirectionalContext(iters, key, reverse, reusable, keysOnly, nil, closers...)
+}
+func newMergeIteratorDirectionalContext(iters []Iterator, key []byte, reverse, reusable, keysOnly bool, ctx context.Context, closers ...ioCloser) *mergeIterator {
+	m := &mergeIterator{iters: iters, closers: closers, reusable: reusable, keysOnly: keysOnly, scanContext: ctx}
 	// Range tombstones may start before Seek's target, so remember them all.
 	for _, it := range iters {
 		m.ranges = append(m.ranges, iteratorRanges(it)...)
@@ -1680,6 +1682,13 @@ func (m *mergeIterator) Seek(key []byte) {
 	}
 	m.pq = nil
 	for _, it := range m.iters {
+		if m.scanContext != nil {
+			if err := m.scanContext.Err(); err != nil {
+				m.err = err
+				m.valid = false
+				return
+			}
+		}
 		it.Seek(key)
 		if err := IteratorError(it); err != nil {
 			m.err = err
@@ -1688,7 +1697,7 @@ func (m *mergeIterator) Seek(key []byte) {
 			return
 		}
 		if it.Valid() {
-			heap.Push(&m.pq, &mergeHeapItem{iter: it})
+			heap.Push(&m.pq, m.newHeapItem(it, false))
 		}
 	}
 	m.valid = false
@@ -1739,7 +1748,7 @@ func (m *mergeIterator) Prev() {
 				return
 			}
 			if it.Valid() {
-				heap.Push(&m.pq, &mergeHeapItem{iter: it, reverse: true})
+				heap.Push(&m.pq, m.newHeapItem(it, true))
 			}
 		}
 		m.reverse = true
@@ -1761,6 +1770,12 @@ func (m *mergeIterator) SeekBefore(key []byte) {
 		return
 	}
 	for _, it := range m.iters {
+		if m.scanContext != nil {
+			if err := m.scanContext.Err(); err != nil {
+				m.err = err
+				return
+			}
+		}
 		if key == nil {
 			seekIteratorLast(it)
 		} else {
@@ -1772,7 +1787,7 @@ func (m *mergeIterator) SeekBefore(key []byte) {
 			return
 		}
 		if it.Valid() {
-			m.pq = append(m.pq, &mergeHeapItem{iter: it, reverse: true})
+			m.pq = append(m.pq, m.newHeapItem(it, true))
 		}
 	}
 	heap.Init(&m.pq)
@@ -1875,10 +1890,13 @@ func (m *mergeIterator) Close() {
 		m.lastVal = nil
 		m.groupScratch, m.valueScratch = nil, nil
 		m.pq, m.iters, m.ranges, m.closers = nil, nil, nil, nil
+		m.scanContext = nil
 	}
 }
 
 type mergeHeapItem struct {
+	key     InternalKey
+	cached  bool
 	iter    Iterator
 	reverse bool
 }
@@ -1887,10 +1905,17 @@ type mergeHeap []*mergeHeapItem
 
 func (h mergeHeap) Len() int { return len(h) }
 func (h mergeHeap) Less(i, j int) bool {
-	if h[i].reverse {
-		return bytes.Compare(h[i].iter.Key().UserKey, h[j].iter.Key().UserKey) > 0
+	a, b := h[i].key, h[j].key
+	if !h[i].cached {
+		a = h[i].iter.Key()
 	}
-	return h[i].iter.Key().Compare(h[j].iter.Key()) < 0
+	if !h[j].cached {
+		b = h[j].iter.Key()
+	}
+	if h[i].reverse {
+		return bytes.Compare(a.UserKey, b.UserKey) > 0
+	}
+	return a.Compare(b) < 0
 }
 func (h mergeHeap) Swap(i, j int) { h[i], h[j] = h[j], h[i] }
 func (h *mergeHeap) Push(x interface{}) {

@@ -112,32 +112,48 @@ func (m *mergeIterator) visibleReusable(reverse bool) {
 		m.valid = false
 		return
 	}
-	for m.pq.Len() > 0 {
-		m.groupScratch = append(m.groupScratch[:0], m.pq[0].iter.Key().UserKey...)
+	for len(m.pq) > 0 {
+		if m.pollScanContext() {
+			m.valid = false
+			return
+		}
+		m.groupScratch = append(m.groupScratch[:0], m.pq[0].key.UserKey...)
 		key := m.groupScratch
 		var best InternalKey
 		found := false
-		for m.pq.Len() > 0 && bytes.Equal(m.pq[0].iter.Key().UserKey, key) {
+		for len(m.pq) > 0 && bytes.Equal(m.pq[0].key.UserKey, key) {
 			top := m.pq[0]
-			for top.iter.Valid() && bytes.Equal(top.iter.Key().UserKey, key) {
-				k := top.iter.Key()
+			k, valid := iteratorCurrentKey(top.iter)
+			for valid && bytes.Equal(k.UserKey, key) {
 				if k.OpType != kTypeRangeDelete && (!found || k.SeqNum > best.SeqNum) {
 					best = k
 					best.UserKey = key
 					if !m.keysOnly {
-						m.valueScratch = IteratorValueInto(top.iter, m.valueScratch)
+						m.valueScratch = iteratorCurrentValueInto(top.iter, m.valueScratch)
 					}
 					found = true
 				}
 				if reverse {
+					if m.pollScanContext() {
+						m.valid = false
+						return
+					}
 					top.iter.Prev()
+					k, valid = iteratorCurrentKey(top.iter)
+				} else if k.OpType != kTypeRangeDelete {
+					k, valid = m.skipReusableKey(top.iter, key, k)
+					if m.err != nil {
+						m.valid = false
+						return
+					}
+					break
 				} else {
-					// Forward order puts the newest visible version first.
-					if k.OpType != kTypeRangeDelete {
-						skipIteratorKey(top.iter, key)
-						break
+					if m.pollScanContext() {
+						m.valid = false
+						return
 					}
 					top.iter.Next()
+					k, valid = iteratorCurrentKey(top.iter)
 				}
 			}
 			if err := IteratorError(top.iter); err != nil {
@@ -145,8 +161,15 @@ func (m *mergeIterator) visibleReusable(reverse bool) {
 				m.valid = false
 				return
 			}
-			if top.iter.Valid() {
-				heap.Fix(&m.pq, 0)
+			if valid {
+				top.key = k
+				// A single source is already ordered; avoid heap interface work.
+				if len(m.pq) > 1 {
+					heap.Fix(&m.pq, 0)
+				}
+			} else if len(m.pq) == 1 {
+				m.pq[0] = nil
+				m.pq = m.pq[:0]
 			} else {
 				heap.Pop(&m.pq)
 			}

@@ -195,6 +195,15 @@ func (it *sortedMemTableIterator) Seek(key []byte) {
 	it.afterEnd = it.current == nil
 }
 func (it *sortedMemTableIterator) SkipUserKey(key []byte) {
+	if it.current != nil && bytes.Equal(it.current.key.UserKey, key) {
+		node := it.current.next[0].Load()
+		for node != nil && bytes.Equal(node.key.UserKey, key) {
+			node = node.next[0].Load()
+		}
+		it.current = it.visibleForward(node)
+		it.afterEnd = it.current == nil
+		return
+	}
 	node := it.table.head
 	var next *skipNode
 	for level := int(it.table.height.Load()) - 1; level >= 0; level-- {

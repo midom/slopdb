@@ -341,6 +341,7 @@ func (w *SSTableWriter) Close() error {
 }
 
 type SSTableReader struct {
+	sequenceBoundsKnown bool        // set only after checksummed table metadata validates
 	hasCompressedBlocks atomic.Bool // observed codec hint; mixed blocks remain supported
 	file                *os.File
 	fileSize            uint64
@@ -746,6 +747,13 @@ func (it *SSTableIterator) Seek(key []byte) {
 		if it.blockIter != nil {
 			it.blockIter.Seek(key)
 			it.update()
+			// Data block keys include the version trailer. A shorter user key
+			// can compare above a raw target containing NUL while its user key
+			// is still below that target. Enforce the public user-key bound.
+			for it.valid && bytes.Compare(it.key.UserKey, key) < 0 {
+				it.blockIter.Next()
+				it.update()
+			}
 			if it.valid {
 				return
 			}

@@ -85,6 +85,7 @@ func (r *SSTableReader) decodeTableMetadata(data []byte) error {
 		return fmt.Errorf("trailing table metadata")
 	}
 	r.maxSeq, r.rangeDeletes = maxSeq, ranges
+	r.sequenceBoundsKnown = true
 	r.meta = FileMetaData{FileSize: r.fileSize, Smallest: smallest, Largest: largest, hasRangeDeletes: len(ranges) != 0}
 	return nil
 }

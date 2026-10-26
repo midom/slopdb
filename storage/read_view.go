@@ -2,6 +2,7 @@ package storage
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"sort"
 	"sync/atomic"
@@ -213,6 +214,15 @@ func (l *LSMTree) iteratorViewRangeOptions(snapshot uint64, latest bool, key, lo
 	if latest || snapshot > seq {
 		snapshot = seq
 	}
+	merged := l.iteratorRangeFromView(v, snapshot, key, lower, upper, reverse, reusable, keysOnly, nil, &viewCloser{view: v})
+	if lower != nil || upper != nil {
+		return BoundIterator(merged, lower, upper)
+	}
+	return merged
+}
+
+// The supplied closer owns the caller's already acquired view reference.
+func (l *LSMTree) iteratorRangeFromView(v *readView, snapshot uint64, key, lower, upper []byte, reverse, reusable, keysOnly bool, ctx context.Context, closer ioCloser) *mergeIterator {
 	iters := make([]Iterator, 0, len(v.levels)+2)
 	iters = append(iters, v.mem.NewIteratorAt(snapshot))
 	if v.imm != nil {
@@ -249,21 +259,32 @@ func (l *LSMTree) iteratorViewRangeOptions(snapshot uint64, latest bool, key, lo
 			continue
 		}
 		if v.ordered[level] {
-			iters = append(iters, newMaxSeqIter(&levelIterator{files: selected, index: -1, reusable: reusable}, snapshot))
+			var child Iterator = &levelIterator{files: selected, index: -1, reusable: reusable}
+			allVisible := true
+			for _, slot := range selected {
+				if !slot.entry.reader.sequenceBoundsKnown || slot.entry.reader.maxSeq > snapshot {
+					allVisible = false
+					break
+				}
+			}
+			if !allVisible {
+				child = newMaxSeqIter(child, snapshot)
+			}
+			iters = append(iters, child)
 		} else {
 			for _, slot := range selected {
-				iters = append(iters, newMaxSeqIter(&viewTableIterator{Iterator: slot.entry.reader.newIterator(false, true, reusable), reader: slot.entry.reader}, snapshot))
+				var child Iterator = &viewTableIterator{Iterator: slot.entry.reader.newIterator(false, true, reusable), reader: slot.entry.reader}
+				if !slot.entry.reader.sequenceBoundsKnown || slot.entry.reader.maxSeq > snapshot {
+					child = newMaxSeqIter(child, snapshot)
+				}
+				iters = append(iters, child)
 			}
 		}
 	}
 	if reverse {
 		key = upper
 	}
-	merged := newMergeIteratorDirectionalOptions(iters, key, reverse, reusable, keysOnly, &viewCloser{view: v})
-	if lower != nil || upper != nil {
-		return BoundIterator(merged, lower, upper)
-	}
-	return merged
+	return newMergeIteratorDirectionalContext(iters, key, reverse, reusable, keysOnly, ctx, closer)
 }
 
 type viewCloser struct{ view *readView }

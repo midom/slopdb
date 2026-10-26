@@ -341,6 +341,13 @@ func (it *MemTableIterator) SkipUserKey(key []byte) {
 		it.skip.SkipUserKey(key)
 		return
 	}
+	if it.pos >= 0 && it.pos < len(it.nodes) && bytes.Equal(it.nodes[it.pos].key.UserKey, key) {
+		for it.pos < len(it.nodes) && bytes.Equal(it.nodes[it.pos].key.UserKey, key) {
+			it.pos++
+		}
+		it.skipForward()
+		return
+	}
 	lo, hi := 0, len(it.nodes)
 	for lo < hi {
 		mid := lo + (hi-lo)/2
