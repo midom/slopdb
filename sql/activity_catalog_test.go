@@ -12,7 +12,7 @@ import (
 func TestSessionActivityProjectionFieldsAndTypes(t *testing.T) {
 	now := time.Date(2030, 1, 2, 3, 4, 5, 123456000, time.FixedZone("peer", 2*3600))
 	source := []SessionActivity{
-		{SessionID: 20, ID: 200, Dialect: DialectMySQL, User: "wiki", Database: "tenant", ApplicationName: "client", ClientAddress: "::1", ClientPort: 33061, StartedAt: now.Add(-time.Hour), QueryStart: now.Add(-7500 * time.Millisecond), StateChange: now.Add(-time.Second), State: ActivityActive, Query: "SELECT 1", Waiting: true, WaitKind: "row", WaitResource: "opaque-row-resource"},
+		{SessionID: 20, ID: 200, Dialect: DialectMySQL, User: "compat", Database: "tenant", ApplicationName: "client", ClientAddress: "::1", ClientPort: 33061, StartedAt: now.Add(-time.Hour), QueryStart: now.Add(-7500 * time.Millisecond), StateChange: now.Add(-time.Second), State: ActivityActive, Query: "SELECT 1", Waiting: true, WaitKind: "row", WaitResource: "opaque-row-resource"},
 		{SessionID: 10, ID: 201, Dialect: DialectPostgreSQL, User: "app", Database: "physical", Host: "localhost", ClientPort: -1, StartedAt: now.Add(-time.Hour), TransactionStart: now.Add(-5 * time.Minute), QueryStart: now.Add(-10 * time.Second), StateChange: now.Add(-2 * time.Second), State: ActivityIdleInTransactionAborted, Query: "SELECT 1/0"},
 		{SessionID: 30, ID: 1 << 31, Dialect: DialectNative, State: ActivityIdle, StateChange: now.Add(time.Second)},
 	}

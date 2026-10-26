@@ -28,7 +28,7 @@ func TestMySQLServerMigratesLegacyPhysicalDatabases(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := json.Marshal(administrativeState{Version: 1, Databases: []string{"wiki", "archive"}, Accounts: map[string]mysqlAccount{}})
+	data, err := json.Marshal(administrativeState{Version: 1, Databases: []string{"compat", "archive"}, Accounts: map[string]mysqlAccount{}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -8,7 +8,7 @@ import (
 func TestMySQLVirtualCatalogUsesCurrentSchema(t *testing.T) {
 	s, _ := statisticsSchema(t, t.TempDir())
 	statisticsSQL(t, s, "CREATE TABLE actor(id INTEGER PRIMARY KEY,name TEXT)")
-	s.SetContext(WithMySQLSession(context.Background(), MySQLSessionOptions{Database: "wiki", Schemas: []string{"wiki"}}))
+	s.SetContext(WithMySQLSession(context.Background(), MySQLSessionOptions{Database: "compat", Schemas: []string{"compat"}}))
 	stmt := &SelectStmt{From: "information_schema.tables", Columns: []SelectColumn{{Expr: &ColumnRefExpr{Name: "table_name"}}}, Where: &BinaryExpr{Op: "=", Left: &ColumnRefExpr{Name: "table_name"}, Right: &LiteralExpr{Value: NewTextValue("actor")}}, Limit: 1}
 	r, err := s.Select(stmt)
 	if err != nil || len(r.Rows) != 1 || r.Rows[0]["table_name"].Text != "actor" {
@@ -30,8 +30,8 @@ func TestMySQLVirtualCatalogUsesCurrentSchema(t *testing.T) {
 func TestMySQLCatalogRespectsConfiguredName(t *testing.T) {
 	s, _ := statisticsSchema(t, t.TempDir())
 	statisticsSQL(t, s, "CREATE TABLE actor(id INTEGER)")
-	s.SetContext(WithMySQLSession(context.Background(), MySQLSessionOptions{Database: "wiki"}))
-	r, err := s.Select(&SelectStmt{From: "wiki.actor", SelectAll: true, Columns: []SelectColumn{{Star: true}}, Limit: -1})
+	s.SetContext(WithMySQLSession(context.Background(), MySQLSessionOptions{Database: "compat"}))
+	r, err := s.Select(&SelectStmt{From: "compat.actor", SelectAll: true, Columns: []SelectColumn{{Star: true}}, Limit: -1})
 	if err != nil || len(r.Columns) != 1 {
 		t.Fatalf("qualified table: %+v %v", r, err)
 	}
@@ -43,8 +43,8 @@ func TestMySQLCatalogRespectsConfiguredName(t *testing.T) {
 func TestInformationSchemaDoesNotEvaluateDefaults(t *testing.T) {
 	s, _ := statisticsSchema(t, t.TempDir())
 	statisticsSQL(t, s, "CREATE TABLE catalog_default(id INTEGER DEFAULT (1 / 0))")
-	s.SetContext(WithMySQLSession(context.Background(), MySQLSessionOptions{Database: "wiki"}))
-	r, e := s.informationSchemaTable("columns", catalogFilter{Schema: "wiki", Table: "catalog_default"})
+	s.SetContext(WithMySQLSession(context.Background(), MySQLSessionOptions{Database: "compat"}))
+	r, e := s.informationSchemaTable("columns", catalogFilter{Schema: "compat", Table: "catalog_default"})
 	if e != nil || len(r.Rows) != 1 || r.Rows[0]["column_default"].Null {
 		t.Fatalf("default SQL introspection: %+v %v", r, e)
 	}
@@ -64,8 +64,8 @@ func TestInformationSchemaPointQueryAvoidsUnrelatedViewDescription(t *testing.T)
 	// A damaged/unresolvable view must not poison a point lookup for another
 	// relation. No query execution is needed to discover a catalog's schema.
 	s.views["broken_view"] = &ViewInfo{Name: "broken_view", SQL: "SELECT absent FROM missing_table"}
-	s.SetContext(WithMySQLSession(context.Background(), MySQLSessionOptions{Database: "wiki"}))
-	statements, e := Parse("SELECT column_name FROM information_schema.columns WHERE table_schema='wiki' AND table_name='selected_table'")
+	s.SetContext(WithMySQLSession(context.Background(), MySQLSessionOptions{Database: "compat"}))
+	statements, e := Parse("SELECT column_name FROM information_schema.columns WHERE table_schema='compat' AND table_name='selected_table'")
 	if e != nil {
 		t.Fatal(e)
 	}

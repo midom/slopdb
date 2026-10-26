@@ -8,7 +8,7 @@ import (
 func TestMySQLDeclaredColumnSpelling(t *testing.T) {
 	s := startTestServer(t, "tcp", Config{})
 	pool := s.open(t, "slopdb", "", "slopdb")
-	for _, q := range []string{"CREATE TABLE wp_posts (ID bigint PRIMARY KEY, post_title TEXT)", "INSERT INTO wp_posts VALUES(1,'title')"} {
+	for _, q := range []string{"CREATE TABLE entries (ID bigint PRIMARY KEY, title TEXT)", "INSERT INTO entries VALUES(1,'title')"} {
 		if _, err := pool.Exec(q); err != nil {
 			t.Fatal(q, err)
 		}
@@ -25,11 +25,11 @@ func TestMySQLDeclaredColumnSpelling(t *testing.T) {
 			t.Fatalf("%s: columns %q want %q: %v", q, got, want, err)
 		}
 	}
-	check("SELECT * FROM wp_posts", []string{"ID", "post_title"})
-	check("SELECT ID FROM wp_posts", []string{"ID"})
-	check("SELECT ID AS renamed FROM wp_posts", []string{"renamed"})
-	check("SELECT ID,ID FROM wp_posts", []string{"ID", "ID"})
-	stmt, err := pool.Prepare("SELECT * FROM wp_posts WHERE ID=?")
+	check("SELECT * FROM entries", []string{"ID", "title"})
+	check("SELECT ID FROM entries", []string{"ID"})
+	check("SELECT ID AS renamed FROM entries", []string{"renamed"})
+	check("SELECT ID,ID FROM entries", []string{"ID", "ID"})
+	stmt, err := pool.Prepare("SELECT * FROM entries WHERE ID=?")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,13 +40,13 @@ func TestMySQLDeclaredColumnSpelling(t *testing.T) {
 	cols, err := rows.Columns()
 	rows.Close()
 	stmt.Close()
-	if err != nil || !reflect.DeepEqual(cols, []string{"ID", "post_title"}) {
+	if err != nil || !reflect.DeepEqual(cols, []string{"ID", "title"}) {
 		t.Fatal(cols, err)
 	}
-	for _, q := range []string{"ALTER TABLE wp_posts RENAME COLUMN ID TO PostID", "ALTER TABLE wp_posts ADD ExtraValue TEXT", "ALTER TABLE wp_posts CHANGE ExtraValue FinalValue TEXT"} {
+	for _, q := range []string{"ALTER TABLE entries RENAME COLUMN ID TO PostID", "ALTER TABLE entries ADD ExtraValue TEXT", "ALTER TABLE entries CHANGE ExtraValue FinalValue TEXT"} {
 		if _, err := pool.Exec(q); err != nil {
 			t.Fatal(q, err)
 		}
 	}
-	check("SELECT * FROM wp_posts", []string{"PostID", "post_title", "FinalValue"})
+	check("SELECT * FROM entries", []string{"PostID", "title", "FinalValue"})
 }

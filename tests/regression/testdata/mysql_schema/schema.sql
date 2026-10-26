@@ -1,5 +1,5 @@
--- Factual core table definitions from MediaWiki 1.46.2 sql/mysql/tables-generated.sql.
--- See README.md for provenance. No installer or application code is included.
+-- MySQL schema fixture: types, defaults, composite/prefix indexes and FULLTEXT.
+-- No expected query answers are generated from the database implementation.
 CREATE TABLE `actor` (
   actor_id BIGINT UNSIGNED AUTO_INCREMENT NOT NULL,
   actor_user INT UNSIGNED DEFAULT NULL,
@@ -350,11 +350,11 @@ CREATE TABLE `imagelinks` (
 ) ;
 
 
-CREATE TABLE `interwiki` (
+CREATE TABLE `external_sites` (
   iw_prefix VARCHAR(32) NOT NULL,
   iw_url BLOB NOT NULL,
   iw_api BLOB NOT NULL,
-  iw_wikiid VARCHAR(64) NOT NULL,
+  iw_siteid VARCHAR(64) NOT NULL,
   iw_local TINYINT(1) NOT NULL,
   iw_trans TINYINT DEFAULT 0 NOT NULL,
   PRIMARY KEY(iw_prefix)
@@ -681,7 +681,7 @@ CREATE TABLE `redirect` (
   rd_from INT UNSIGNED DEFAULT 0 NOT NULL,
   rd_namespace INT DEFAULT 0 NOT NULL,
   rd_title VARBINARY(255) DEFAULT '' NOT NULL,
-  rd_interwiki VARCHAR(32) DEFAULT NULL,
+  rd_external_site VARCHAR(32) DEFAULT NULL,
   rd_fragment VARBINARY(255) DEFAULT NULL,
   INDEX rd_ns_title (rd_namespace, rd_title, rd_from),
   PRIMARY KEY(rd_from)

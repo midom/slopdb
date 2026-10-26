@@ -71,7 +71,7 @@ func TestCatalogDeclaredNamesAndEffectiveCollations(t *testing.T) {
 	if e = s.SetDialect(sql.DialectMySQL); e != nil {
 		t.Fatal(e)
 	}
-	ctx := sql.WithMySQLSession(context.Background(), sql.MySQLSessionOptions{Database: "wiki", RootDatabase: "wiki"})
+	ctx := sql.WithMySQLSession(context.Background(), sql.MySQLSessionOptions{Database: "compat", RootDatabase: "compat"})
 	exec := func(q string) *ExecResult {
 		t.Helper()
 		r, e := s.ExecContext(ctx, q)
@@ -81,7 +81,7 @@ func TestCatalogDeclaredNamesAndEffectiveCollations(t *testing.T) {
 		return r
 	}
 	exec("CREATE TABLE parent_names(ID BIGINT PRIMARY KEY);CREATE TABLE named(ID BIGINT PRIMARY KEY,ParentID BIGINT,Word VARCHAR(20),Exact VARCHAR(20) COLLATE utf8mb4_bin,KEY WordIndex(Word(7)),CONSTRAINT parent_fk FOREIGN KEY(ParentID) REFERENCES parent_names(ID)) COLLATE utf8mb4_unicode_520_ci")
-	r := exec("SELECT column_name,collation_name FROM information_schema.columns WHERE table_schema='wiki' AND table_name='named' ORDER BY ordinal_position")
+	r := exec("SELECT column_name,collation_name FROM information_schema.columns WHERE table_schema='compat' AND table_name='named' ORDER BY ordinal_position")
 	if len(r.Rows) != 4 || r.Rows[0]["column_name"].Text != "ID" || r.Rows[2]["collation_name"].Text != "utf8mb4_unicode_520_ci" || r.Rows[3]["collation_name"].Text != "utf8mb4_bin" {
 		t.Fatalf("column display: %+v", r)
 	}
@@ -117,11 +117,11 @@ func TestSharedCatalogNamespacePolicy(t *testing.T) {
 	if e = my.SetDialect(sql.DialectMySQL); e != nil {
 		t.Fatal(e)
 	}
-	ctx := sql.WithMySQLSession(context.Background(), sql.MySQLSessionOptions{Database: "wiki", RootDatabase: "wiki"})
+	ctx := sql.WithMySQLSession(context.Background(), sql.MySQLSessionOptions{Database: "compat", RootDatabase: "compat"})
 	if _, e = my.ExecContext(ctx, "CREATE DATABASE public;CREATE TABLE public.shadow(id BIGINT);CREATE TABLE root_visible(id BIGINT)"); e != nil {
 		t.Fatal(e)
 	}
-	r, e := my.ExecContext(ctx, "SELECT schema_name FROM information_schema.schemata WHERE schema_name IN ('wiki','public') ORDER BY schema_name")
+	r, e := my.ExecContext(ctx, "SELECT schema_name FROM information_schema.schemata WHERE schema_name IN ('compat','public') ORDER BY schema_name")
 	if e != nil || len(r.Rows) != 2 {
 		t.Fatal(r, e)
 	}

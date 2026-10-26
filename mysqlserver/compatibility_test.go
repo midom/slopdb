@@ -10,7 +10,7 @@ import (
 	"slopdb/sql"
 )
 
-func TestMediaWikiSessionVariables(t *testing.T) {
+func TestMySQLSessionVariablesAndGlobalSettings(t *testing.T) {
 	s := startTestServer(t, "tcp", Config{})
 	pool := s.open(t, "slopdb", "", "slopdb")
 	c, err := pool.Conn(context.Background())

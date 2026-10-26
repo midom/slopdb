@@ -202,7 +202,7 @@ replication through SIGKILL/restart and SIGTERM, plus durability flag validation
 `internal/wire/listen_test.go` checks stale Unix socket recovery and preservation
 of live sockets and regular files. All artifacts use `t.TempDir()`.
 
-## MediaWiki and MySQL compatibility
+## MySQL compatibility
 
 `db/mysql_function_*_test.go` and `sql/mysql_function_*_test.go` cover MySQL
 function values, exact/approximate coercion, seeded randomness, NULLs, binary and
@@ -219,9 +219,10 @@ the factual fixture using MySQL alone; never derive expected answers from SlopDB
 Regex tests cover Unicode offsets, occurrence counts, capture replacements,
 empty-match progress, RE2 boundaries, cancellation and statement-cache cleanup.
 
-`tests/regression/mediawiki_test.go` loads all 64 tables from the factual
-MediaWiki 1.46.2 schema fixture, then checks binary predicates, GROUP_CONCAT,
-fulltext joins, revision deletion/restoration, reopen and integrity. It needs no
+`tests/regression/mysql_schema_workflows_test.go` loads all 64 tables from
+`tests/regression/testdata/mysql_schema/schema.sql`, then checks binary predicates,
+GROUP_CONCAT, fulltext joins, revision deletion/restoration, reopen and integrity.
+It needs no
 PHP, MySQL installation or external scripts. Additional tests cover temporary
 isolation, LIKE schema copies, joined mutations, Unicode charset changes and
 ALTER index prefixes. `db/mysql_types_test.go` and `db/mysql_fulltext_test.go`
@@ -262,13 +263,8 @@ GTID auto-positioning and shuts down through SQL. It is optional; the ordinary
 suite needs no reference database server.
 
 ```sh
-go test ./db ./sql ./mysqlserver ./tests/regression -run 'Test(MySQL|MediaWiki|Temporary)' -count=1
+go test ./db ./sql ./mysqlserver ./tests/regression -run 'Test(MySQL|Temporary)' -count=1
 ```
-
-For the separately installed application, `scripts/mediawiki_acceptance.py`
-checks HTTP/API results and redacts credential fields. See
-[MediaWiki compatibility](docs/mediawiki.md) for invocation and limits. Keep its
-reports, application files and test databases outside the repository.
 
 ### PostgreSQL compatibility
 

@@ -34,19 +34,19 @@ func TestMySQLNamedLocksAcrossConnections(t *testing.T) {
 			t.Fatalf("%s = %d want%d: %v", q, got, want, err)
 		}
 	}
-	scalar(owner, "SELECT GET_LOCK('wiki',0)", 1)
-	scalar(owner, "SELECT GET_LOCK('wiki',0)", 1)
-	scalar(other, "SELECT GET_LOCK('wiki',0)", 0)
-	scalar(owner, "SELECT RELEASE_LOCK('wiki')", 1)
-	scalar(other, "SELECT IS_FREE_LOCK('wiki')", 0)
-	scalar(other, "SELECT GET_LOCK('wiki',0.01)", 0)
+	scalar(owner, "SELECT GET_LOCK('compat',0)", 1)
+	scalar(owner, "SELECT GET_LOCK('compat',0)", 1)
+	scalar(other, "SELECT GET_LOCK('compat',0)", 0)
+	scalar(owner, "SELECT RELEASE_LOCK('compat')", 1)
+	scalar(other, "SELECT IS_FREE_LOCK('compat')", 0)
+	scalar(other, "SELECT GET_LOCK('compat',0.01)", 0)
 	if err := owner.Close(); err != nil {
 		t.Fatal(err)
 	}
 	// A bounded real wait also covers asynchronous disconnect cleanup.
-	scalar(other, "SELECT GET_LOCK('wiki',2)", 1)
-	scalar(other, "SELECT RELEASE_LOCK('wiki')", 1)
-	scalar(other, "SELECT IS_FREE_LOCK('wiki')", 1)
+	scalar(other, "SELECT GET_LOCK('compat',2)", 1)
+	scalar(other, "SELECT RELEASE_LOCK('compat')", 1)
+	scalar(other, "SELECT IS_FREE_LOCK('compat')", 1)
 }
 
 func TestMySQLNamedLockWaitCancellation(t *testing.T) {

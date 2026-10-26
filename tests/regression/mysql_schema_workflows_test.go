@@ -11,14 +11,14 @@ import (
 	"slopdb/storage"
 )
 
-// Exercise the complete upstream core schema, then the query shapes whose
-// incorrect results blocked editing, search, user groups and undelete in a real
-// installation. The expected values follow directly from these fixed inserts.
-func TestMediaWikiCoreSchemaAndWorkflows(t *testing.T) {
+// Exercise a large MySQL schema and binary predicates, ordered aggregation,
+// fulltext joins and transactional deletion/restoration. Expected results follow
+// directly from the fixed inserts, independently of the database implementation.
+func TestMySQLSchemaWorkflows(t *testing.T) {
 	e := newRegressionEnv(t)
 	options := storage.DefaultOptions()
 	options.DisableWALSync = true
-	d, err := e.openDatabase(e.path("wiki"), options)
+	d, err := e.openDatabase(e.path("schema-workflows"), options)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func TestMediaWikiCoreSchemaAndWorkflows(t *testing.T) {
 		}
 		return r
 	}
-	schema, err := os.ReadFile("testdata/mediawiki/schema-1.46.2.sql")
+	schema, err := os.ReadFile("testdata/mysql_schema/schema.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,8 +80,8 @@ func TestMediaWikiCoreSchemaAndWorkflows(t *testing.T) {
 		}
 	}
 	check()
-	// The application archives revisions, deletes quoted IDs and later restores
-	// those exact primary keys. Zero-row deletes previously surfaced only at restore.
+	// Delete quoted IDs and restore the exact primary keys in one transaction;
+	// the affected-row count must reflect the deleted rows.
 	exec("BEGIN")
 	if r := exec("DELETE FROM revision WHERE rev_id IN ('1','2')"); r.Changes != 2 {
 		t.Fatalf("archive delete affected %d, want 2", r.Changes)
@@ -94,7 +94,7 @@ func TestMediaWikiCoreSchemaAndWorkflows(t *testing.T) {
 	if err = d.Close(); err != nil {
 		t.Fatal(err)
 	}
-	d, err = e.openDatabase(e.path("wiki"), options)
+	d, err = e.openDatabase(e.path("schema-workflows"), options)
 	if err != nil {
 		t.Fatal(err)
 	}

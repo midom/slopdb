@@ -9,7 +9,7 @@ import (
 func TestMySQLVirtualDatabasesShareStorageAndTransactions(t *testing.T) {
 	path := t.TempDir()
 	s := accountServer(t, path)
-	pool := s.open(t, "owner", "owner-password", "wiki")
+	pool := s.open(t, "owner", "owner-password", "compat")
 	ctx := context.Background()
 	c, err := pool.Conn(ctx)
 	if err != nil {

@@ -6,16 +6,16 @@ import (
 	"testing"
 )
 
-func TestQualifiedColumnLabelsInWordPressTermQueries(t *testing.T) {
+func TestQualifiedColumnLabelsInJoinedQueries(t *testing.T) {
 	s := startTestServer(t, "tcp", Config{})
 	c := s.open(t, "slopdb", "", "slopdb")
 	for _, q := range []string{
-		"CREATE TABLE wp_terms(term_id BIGINT PRIMARY KEY,name TEXT,slug TEXT)",
-		"CREATE TABLE wp_term_taxonomy(term_taxonomy_id BIGINT PRIMARY KEY,term_id BIGINT,taxonomy TEXT)",
+		"CREATE TABLE terms(term_id BIGINT PRIMARY KEY,name TEXT,slug TEXT)",
+		"CREATE TABLE term_groups(term_taxonomy_id BIGINT PRIMARY KEY,term_id BIGINT,taxonomy TEXT)",
 		"CREATE TABLE dotted_label(`a.b` INTEGER)",
 		"INSERT INTO dotted_label VALUES(1)",
-		"INSERT INTO wp_terms VALUES(3,'SlopDB Category','slopdb-category')",
-		"INSERT INTO wp_term_taxonomy VALUES(7,3,'category')",
+		"INSERT INTO terms VALUES(3,'SlopDB Category','slopdb-category')",
+		"INSERT INTO term_groups VALUES(7,3,'category')",
 	} {
 		if _, e := c.Exec(q); e != nil {
 			t.Fatal(e)
@@ -33,9 +33,9 @@ func TestQualifiedColumnLabelsInWordPressTermQueries(t *testing.T) {
 		rows.Close()
 	}
 	for _, q := range []string{
-		"SELECT t.term_id FROM wp_terms t WHERE t.slug='slopdb-category'",
-		"SELECT t.term_id FROM wp_terms t WHERE t.term_id=3",
-		"SELECT t.term_id FROM wp_terms AS t INNER JOIN wp_term_taxonomy AS tt ON t.term_id=tt.term_id WHERE tt.taxonomy IN ('category') AND t.slug IN ('slopdb-category') ORDER BY t.name ASC",
+		"SELECT t.term_id FROM terms t WHERE t.slug='slopdb-category'",
+		"SELECT t.term_id FROM terms t WHERE t.term_id=3",
+		"SELECT t.term_id FROM terms AS t INNER JOIN term_groups AS tt ON t.term_id=tt.term_id WHERE tt.taxonomy IN ('category') AND t.slug IN ('slopdb-category') ORDER BY t.name ASC",
 	} {
 		for _, prepared := range []bool{false, true} {
 			var rows *gosql.Rows
@@ -67,7 +67,7 @@ func TestQualifiedColumnLabelsInWordPressTermQueries(t *testing.T) {
 			rows.Close()
 		}
 	}
-	for _, q := range []string{"SELECT t.term_id,tt.term_id FROM wp_terms t JOIN wp_term_taxonomy tt ON t.term_id=tt.term_id", "SELECT * FROM wp_terms t JOIN wp_term_taxonomy tt ON t.term_id=tt.term_id"} {
+	for _, q := range []string{"SELECT t.term_id,tt.term_id FROM terms t JOIN term_groups tt ON t.term_id=tt.term_id", "SELECT * FROM terms t JOIN term_groups tt ON t.term_id=tt.term_id"} {
 		rows, e := c.Query(q)
 		if e != nil {
 			t.Fatal(e)

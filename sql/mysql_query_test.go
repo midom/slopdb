@@ -89,7 +89,7 @@ func TestMySQLNamedCollationWeightsAndLike(t *testing.T) {
 
 func TestMySQLQuerySyntaxAndCanonicalRoundTrip(t *testing.T) {
 	for _, query := range []string{
-		"SELECT id FROM wiki.actor FORCE INDEX FOR JOIN (actor_name) WHERE id=1",
+		"SELECT id FROM compat.actor FORCE INDEX FOR JOIN (actor_name) WHERE id=1",
 		"SELECT a.id FROM a STRAIGHT_JOIN b ON a.id=b.id",
 		"SELECT a.id FROM a LEFT JOIN (b JOIN c ON b.id=c.id) ON a.id=b.id",
 		"SELECT CONVERT(v USING utf8mb4) COLLATE utf8mb4_general_ci FROM t",

@@ -29,10 +29,10 @@ func TestSharedInformationSchemaFactsAndVisibility(t *testing.T) {
 			root := "main"
 			switch dialect {
 			case sql.DialectMySQL:
-				ctx = sql.WithMySQLSession(ctx, sql.MySQLSessionOptions{Database: "wiki", RootDatabase: "wiki"})
-				root = "wiki"
+				ctx = sql.WithMySQLSession(ctx, sql.MySQLSessionOptions{Database: "compat", RootDatabase: "compat"})
+				root = "compat"
 			case sql.DialectPostgreSQL:
-				ctx = sql.WithPostgresSession(ctx, sql.PostgresSessionOptions{Database: "wiki"})
+				ctx = sql.WithPostgresSession(ctx, sql.PostgresSessionOptions{Database: "compat"})
 				root = "public"
 			}
 			exec := func(q string) *ExecResult {

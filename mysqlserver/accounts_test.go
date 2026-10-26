@@ -19,7 +19,7 @@ func accountServer(t *testing.T, directory string) *testServer {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server, err := New(database, Config{Username: "owner", Password: "owner-password", Database: "wiki"})
+	server, err := New(database, Config{Username: "owner", Password: "owner-password", Database: "compat"})
 	if err != nil {
 		database.Close()
 		t.Fatal(err)
@@ -48,9 +48,9 @@ func accountServer(t *testing.T, directory string) *testServer {
 
 func TestMySQLAuthenticationWithoutPermissionEnforcement(t *testing.T) {
 	s := accountServer(t, t.TempDir())
-	owner := s.open(t, "owner", "owner-password", "wiki")
+	owner := s.open(t, "owner", "owner-password", "compat")
 	mustExec(t, owner, "CREATE USER 'app'@'%' IDENTIFIED BY 'password'")
-	app := s.open(t, "app", "password", "wiki")
+	app := s.open(t, "app", "password", "compat")
 	mustExec(t, app, "CREATE TABLE records(id INT PRIMARY KEY,v TEXT)")
 	mustExec(t, app, "INSERT INTO records VALUES(1,'value')")
 	mustExec(t, app, "UPDATE records SET v='updated'")
@@ -61,7 +61,7 @@ func TestMySQLAuthenticationWithoutPermissionEnforcement(t *testing.T) {
 	mustExec(t, app, "CREATE DATABASE other")
 	mustExec(t, app, "CREATE TABLE other.records(id INT)")
 	mustExec(t, app, "DROP TABLE records")
-	bad := s.open(t, "app", "wrong", "wiki")
+	bad := s.open(t, "app", "wrong", "compat")
 	if err := bad.Ping(); err == nil {
 		t.Fatal("incorrect password accepted")
 	}
@@ -70,17 +70,17 @@ func TestMySQLAuthenticationWithoutPermissionEnforcement(t *testing.T) {
 func TestMySQLAccountAndDatabasePersistence(t *testing.T) {
 	directory := t.TempDir()
 	s := accountServer(t, directory)
-	owner := s.open(t, "owner", "owner-password", "wiki")
+	owner := s.open(t, "owner", "owner-password", "compat")
 	mustExec(t, owner, "CREATE USER 'app'@'%' IDENTIFIED BY 'app-password'")
-	mustExec(t, owner, "CREATE DATABASE wiki_two")
-	mustExec(t, owner, "GRANT ALL PRIVILEGES ON wiki_two.* TO 'app'@'%'")
-	app := s.open(t, "app", "app-password", "wiki_two")
+	mustExec(t, owner, "CREATE DATABASE compat_two")
+	mustExec(t, owner, "GRANT ALL PRIVILEGES ON compat_two.* TO 'app'@'%'")
+	app := s.open(t, "app", "app-password", "compat_two")
 	mustExec(t, app, "CREATE TABLE payloads(id INTEGER PRIMARY KEY,v TEXT)")
 	mustExec(t, app, "INSERT INTO payloads VALUES(1,'durable')")
 	if _, err := owner.Exec("SELECT * FROM payloads"); err == nil {
 		t.Fatal("additional database aliased default tables")
 	}
-	if _, err := app.Exec("USE wiki"); err != nil {
+	if _, err := app.Exec("USE compat"); err != nil {
 		t.Fatal(err)
 	}
 	app.Close()
@@ -92,18 +92,18 @@ func TestMySQLAccountAndDatabasePersistence(t *testing.T) {
 		t.Fatal(err)
 	}
 	reopened := accountServer(t, directory)
-	app = reopened.open(t, "app", "app-password", "wiki_two")
+	app = reopened.open(t, "app", "app-password", "compat_two")
 	var value string
 	if err := app.QueryRow("SELECT v FROM payloads WHERE id=1").Scan(&value); err != nil || value != "durable" {
 		t.Fatal(value, err)
 	}
-	owner = reopened.open(t, "owner", "owner-password", "wiki")
+	owner = reopened.open(t, "owner", "owner-password", "compat")
 	mustExec(t, owner, "ALTER USER 'app'@'%' IDENTIFIED BY 'changed-password'")
-	bad := reopened.open(t, "app", "app-password", "wiki_two")
+	bad := reopened.open(t, "app", "app-password", "compat_two")
 	if err := bad.Ping(); err == nil {
 		t.Fatal("old password accepted")
 	}
-	good := reopened.open(t, "app", "changed-password", "wiki_two")
+	good := reopened.open(t, "app", "changed-password", "compat_two")
 	if err := good.Ping(); err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestMySQLAccountAndDatabasePersistence(t *testing.T) {
 	if _, err := good.Exec("SELECT * FROM payloads"); err != nil {
 		t.Fatal(err)
 	}
-	removed := reopened.open(t, "app", "changed-password", "wiki_two")
+	removed := reopened.open(t, "app", "changed-password", "compat_two")
 	if err := removed.Ping(); err == nil {
 		t.Fatal("dropped account reauthenticated")
 	}
@@ -119,7 +119,7 @@ func TestMySQLAccountAndDatabasePersistence(t *testing.T) {
 
 func TestMySQLUseDoesNotAbandonTransaction(t *testing.T) {
 	s := accountServer(t, t.TempDir())
-	owner := s.open(t, "owner", "owner-password", "wiki")
+	owner := s.open(t, "owner", "owner-password", "compat")
 	mustExec(t, owner, "CREATE DATABASE extra")
 	c, err := owner.Conn(context.Background())
 	if err != nil {
@@ -145,11 +145,11 @@ func TestMySQLUseDoesNotAbandonTransaction(t *testing.T) {
 
 func TestMySQLTemporaryTablesWithoutGrants(t *testing.T) {
 	s := accountServer(t, t.TempDir())
-	owner := s.open(t, "owner", "owner-password", "wiki")
+	owner := s.open(t, "owner", "owner-password", "compat")
 	mustExec(t, owner, "CREATE TABLE source(id INT PRIMARY KEY,v TEXT)")
 	mustExec(t, owner, "INSERT INTO source VALUES(1,'source')")
 	mustExec(t, owner, "CREATE USER 'app'@'%' IDENTIFIED BY 'password'")
-	pool := s.open(t, "app", "password", "wiki")
+	pool := s.open(t, "app", "password", "compat")
 	connection, err := pool.Conn(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -168,12 +168,12 @@ func TestMySQLTemporaryTablesWithoutGrants(t *testing.T) {
 
 func TestMySQLAccountsRefreshAppliedMetadata(t *testing.T) {
 	s := accountServer(t, t.TempDir())
-	owner := s.open(t, "owner", "owner-password", "wiki")
+	owner := s.open(t, "owner", "owner-password", "compat")
 	mustExec(t, owner, "CREATE TABLE guarded(id INT PRIMARY KEY)")
 	mustExec(t, owner, "INSERT INTO guarded VALUES(1)")
 	mustExec(t, owner, "CREATE USER 'reader'@'localhost' IDENTIFIED BY 'password'")
-	mustExec(t, owner, "GRANT SELECT ON wiki.* TO 'reader'@'localhost'")
-	reader := s.open(t, "reader", "password", "wiki")
+	mustExec(t, owner, "GRANT SELECT ON compat.* TO 'reader'@'localhost'")
+	reader := s.open(t, "reader", "password", "compat")
 	var id int
 	if err := reader.QueryRow("SELECT id FROM guarded").Scan(&id); err != nil {
 		t.Fatal(err)

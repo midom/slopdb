@@ -1,7 +1,6 @@
 # Query iteration, bulk loading, backup and integrity
 
-Application compatibility runs: [MediaWiki](mediawiki.md) and
-[WordPress](wordpress.md). Live engine layout and counters are available through
+Live engine layout and counters are available through
 [`SHOW LSM STATUS`](diagnostics.md#lsm-storage-status).
 
 `Database.Query`, `Session.Query`, `Tx.Query` and `Stmt.Query` return `*db.Rows`.

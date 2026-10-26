@@ -1,6 +1,6 @@
 <?php
 mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
-$m=new mysqli('127.0.0.1','root','','wiki',33362);
+$m=new mysqli('127.0.0.1','root','','',33362);
 $weights=[];
 for($start=0;$start<65536;$start+=256){
  $queries=[];

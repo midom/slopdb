@@ -7,13 +7,13 @@ import (
 	"time"
 )
 
-func TestWordPressPrimaryKeyGroupedJoinOrdering(t *testing.T) {
+func TestPrimaryKeyGroupedJoinOrdering(t *testing.T) {
 	d := projectionDatabase(t)
 	for _, q := range []string{
-		"CREATE TABLE wp_posts(ID INTEGER PRIMARY KEY,post_date TEXT,post_status TEXT)",
-		"CREATE TABLE wp_term_relationships(object_id INTEGER,term_taxonomy_id INTEGER)",
-		"INSERT INTO wp_posts VALUES(1,'2026-01-01','publish'),(2,'2026-02-01','publish'),(3,'2026-03-01','draft')",
-		"INSERT INTO wp_term_relationships VALUES(1,10),(1,11),(2,10),(3,10)",
+		"CREATE TABLE entries(ID INTEGER PRIMARY KEY,created_at TEXT,status TEXT)",
+		"CREATE TABLE entry_groups(object_id INTEGER,term_taxonomy_id INTEGER)",
+		"INSERT INTO entries VALUES(1,'2026-01-01','publish'),(2,'2026-02-01','publish'),(3,'2026-03-01','draft')",
+		"INSERT INTO entry_groups VALUES(1,10),(1,11),(2,10),(3,10)",
 		"CREATE TABLE multi(a INTEGER,b INTEGER,stamp TEXT,PRIMARY KEY(a,b));INSERT INTO multi VALUES(1,1,'old'),(1,2,'new')",
 	} {
 		objectExec(t, d, q)
@@ -25,31 +25,31 @@ func TestWordPressPrimaryKeyGroupedJoinOrdering(t *testing.T) {
 		}
 		s.SetDialect(dialect)
 		for _, prepared := range []bool{false, true} {
-			stock := "SELECT p.ID FROM main.wp_posts p LEFT JOIN main.wp_term_relationships t ON p.ID=t.object_id WHERE p.post_status='publish' GROUP BY p.ID ORDER BY p.post_date DESC LIMIT 1"
+			limitedQuery := "SELECT p.ID FROM main.entries p LEFT JOIN main.entry_groups t ON p.ID=t.object_id WHERE p.status='publish' GROUP BY p.ID ORDER BY p.created_at DESC LIMIT 1"
 			if dialect == sql.DialectMySQL {
-				stock = "SELECT SQL_CALC_FOUND_ROWS" + stock[len("SELECT"):]
+				limitedQuery = "SELECT SQL_CALC_FOUND_ROWS" + limitedQuery[len("SELECT"):]
 			}
-			var stockResult *ExecResult
+			var limitedResult *ExecResult
 			if prepared {
-				p, err := s.Prepare(stock)
+				p, err := s.Prepare(limitedQuery)
 				if err != nil {
 					t.Fatal(err)
 				}
-				stockResult, e = p.Exec()
+				limitedResult, e = p.Exec()
 				p.Close()
 			} else {
-				stockResult, e = s.Exec(stock)
+				limitedResult, e = s.Exec(limitedQuery)
 			}
-			if e != nil || len(stockResult.Rows) != 1 || stockResult.Rows[0][stockResult.Columns[0].Name].Int != 2 {
-				t.Fatalf("stock WordPress shape %s prepared=%v: %v %v", dialect, prepared, stockResult, e)
+			if e != nil || len(limitedResult.Rows) != 1 || limitedResult.Rows[0][limitedResult.Columns[0].Name].Int != 2 {
+				t.Fatalf("limited grouped query %s prepared=%v: %v %v", dialect, prepared, limitedResult, e)
 			}
 			if dialect == sql.DialectMySQL {
 				r, err := s.Exec("SELECT FOUND_ROWS() AS n")
 				if err != nil || r.Rows[0]["n"].Uint != 2 {
-					t.Fatal("stock WordPress group count", r, err)
+					t.Fatal("limited grouped result count", r, err)
 				}
 			}
-			query := "SELECT p.ID AS id,p.post_date AS dt,COUNT(t.term_taxonomy_id) AS n FROM main.wp_posts p LEFT JOIN main.wp_term_relationships t ON p.ID=t.object_id WHERE p.post_status='publish' GROUP BY p.ID ORDER BY p.post_date DESC"
+			query := "SELECT p.ID AS id,p.created_at AS dt,COUNT(t.term_taxonomy_id) AS n FROM main.entries p LEFT JOIN main.entry_groups t ON p.ID=t.object_id WHERE p.status='publish' GROUP BY p.ID ORDER BY p.created_at DESC"
 			var r *ExecResult
 			if prepared {
 				p, e := s.Prepare(query)
@@ -65,21 +65,21 @@ func TestWordPressPrimaryKeyGroupedJoinOrdering(t *testing.T) {
 				t.Fatalf("%s prepared=%v: %v %v", dialect, prepared, r, e)
 			}
 		}
-		if _, e = s.Exec("SELECT p.ID,post_date FROM main.wp_posts p JOIN main.wp_term_relationships t ON p.ID=t.object_id GROUP BY p.ID ORDER BY post_date"); e != nil {
+		if _, e = s.Exec("SELECT p.ID,created_at FROM main.entries p JOIN main.entry_groups t ON p.ID=t.object_id GROUP BY p.ID ORDER BY created_at"); e != nil {
 			t.Fatal("unambiguous base dependency rejected", dialect, e)
 		}
 		for _, q := range []string{
-			"SELECT p.ID,p.post_date FROM main.wp_posts p JOIN main.wp_term_relationships t ON p.ID=t.object_id GROUP BY p.post_date",
-			"SELECT p.ID,t.term_taxonomy_id FROM main.wp_posts p JOIN main.wp_term_relationships t ON p.ID=t.object_id GROUP BY p.ID",
-			"SELECT p.ID FROM main.wp_posts p JOIN main.wp_term_relationships t ON p.ID=t.object_id GROUP BY p.ID ORDER BY t.term_taxonomy_id",
+			"SELECT p.ID,p.created_at FROM main.entries p JOIN main.entry_groups t ON p.ID=t.object_id GROUP BY p.created_at",
+			"SELECT p.ID,t.term_taxonomy_id FROM main.entries p JOIN main.entry_groups t ON p.ID=t.object_id GROUP BY p.ID",
+			"SELECT p.ID FROM main.entries p JOIN main.entry_groups t ON p.ID=t.object_id GROUP BY p.ID ORDER BY t.term_taxonomy_id",
 			"SELECT a,stamp FROM main.multi GROUP BY a",
-			"SELECT a,stamp FROM main.multi m JOIN main.wp_term_relationships t ON m.a=t.object_id GROUP BY m.a",
+			"SELECT a,stamp FROM main.multi m JOIN main.entry_groups t ON m.a=t.object_id GROUP BY m.a",
 		} {
 			if _, e = s.Exec(q); e == nil {
 				t.Fatal("invalid grouping accepted", dialect, q)
 			}
 		}
-		if _, e = s.Exec("SELECT m.a,m.b,m.stamp FROM main.multi m JOIN main.wp_term_relationships t ON m.a=t.object_id GROUP BY m.a,m.b ORDER BY m.stamp"); e != nil {
+		if _, e = s.Exec("SELECT m.a,m.b,m.stamp FROM main.multi m JOIN main.entry_groups t ON m.a=t.object_id GROUP BY m.a,m.b ORDER BY m.stamp"); e != nil {
 			t.Fatal("full composite primary key did not imply dependency", dialect, e)
 		}
 		s.Close()

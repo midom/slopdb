@@ -145,7 +145,7 @@ reverse seeks. `VACUUM` flushes writes and compacts SSTables.
 - [x] MySQL TLS 1.2/1.3 with required transport and CA-verified client certificate authentication on both TCP and Unix sockets
 - [x] Persistent MySQL accounts/password hashes; permission enforcement disabled
 - [x] Virtual MySQL databases / PostgreSQL schemas in one physical LSM, cross-schema SQL and per-session default resolution
-- [x] MediaWiki core schema and workflows: MySQL types/coercions, session settings, named locks, fulltext searches, schema copies, temporary tables and joined mutations; see [MediaWiki compatibility](docs/mediawiki.md)
+- [x] MySQL schema workflows: types/coercions, session settings, named locks, fulltext searches, schema copies, temporary tables and joined mutations; see [MySQL server](docs/mysql-server.md)
 - [x] Prepared result metadata before execution without evaluating user expressions
 - [x] MySQL multiple statements/results and zlib protocol compression
 - [x] WAL-less temporary LSM tables, inverted fulltext postings and physical UNIQUE/nonunique prefix indexes
@@ -194,5 +194,4 @@ See [Raft replication](docs/replication.md) for operational limits.
 - [x] Shared typed information_schema facts and SHOW/pg_catalog projections; see docs/catalogs.md
 - [x] Concurrent MySQL/PostgreSQL CLI listeners over one physical database
 - [x] PostgreSQL transactional temporary definitions and ON COMMIT actions
-- [x] Stock WordPress installer, HTTP/REST, media, cron, restart and integrity checks; see [WordPress compatibility](docs/wordpress.md)
 - [x] Qualified stars/labels, table-local MySQL index names, one-execution pagination counts and primary-key-dependent grouping
