@@ -53,8 +53,11 @@ values fall back safely. Strings that must be retained remain owned.
 
 Ungrouped COUNT/SUM/AVG/TOTAL/MIN/MAX without DISTINCT use one accumulator rather
 than hashing the empty group and recalculating group memory for every row.
-Memory checks still run at batch boundaries. Grouping, DISTINCT and spilling
-retain their existing accounting paths.
+A fixed-width filtered COUNT(*) can fuse decoding, predicate evaluation and
+counting into one reusable row instead of staging 128 rows. Predicate programs
+inspect their result register directly, avoiding a returned SQL-value copy.
+Other aggregates keep their batch processing and memory checks; grouping,
+DISTINCT and spilling retain their existing accounting paths.
 
 ## Single-threaded query execution
 
