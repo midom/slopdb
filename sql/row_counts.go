@@ -394,6 +394,11 @@ func (s *Schema) ensureRowCount(info *TableInfo) error {
 
 // The common final projection still applies LIMIT/OFFSET and ownership.
 func (s *Schema) simpleCount(stmt *SelectStmt, info *TableInfo, cols []selectExprCol) ([]map[string]Value, bool, error) {
+	// Profiling uses the ordinary scan, whose Key/Value visits record actual
+	// rows and bytes. A key-only count intentionally does not access either.
+	if s.profile != nil {
+		return nil, false, nil
+	}
 	if stmt.Where != nil || len(stmt.Joins) != 0 || len(stmt.GroupBy) != 0 || stmt.Having != nil || len(stmt.OrderBy) != 0 || len(cols) == 0 {
 		return nil, false, nil
 	}
