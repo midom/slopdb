@@ -1,7 +1,6 @@
 package sql
 
 import (
-	"bytes"
 	"encoding/binary"
 	"math"
 	"strings"
@@ -341,12 +340,6 @@ func (s *Schema) newKeyRangeReader(lower, upper []byte, reverse bool, operator s
 }
 
 func (s *Schema) newBorrowedRangeReaderMode(lower, upper []byte, reverse bool, operator string, keysOnly bool) storage.Iterator {
-	if s.parallelScanLower != nil && bytes.Compare(lower, s.parallelScanLower) < 0 {
-		lower = s.parallelScanLower
-	}
-	if s.parallelScanUpper != nil && (upper == nil || bytes.Compare(upper, s.parallelScanUpper) > 0) {
-		upper = s.parallelScanUpper
-	}
 	keysOnly = keysOnly && s.profile == nil
 	overlay := s.inTx && len(s.txWrites) > 0
 	var base storage.Iterator

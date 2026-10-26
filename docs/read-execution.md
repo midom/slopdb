@@ -22,8 +22,8 @@ count from physical blocks.
 
 Every COUNT reads the visible entries at its statement snapshot. Unfiltered
 simple COUNT(*) and non-NULL literal counts use the storage-owned batched count
-scan, without row decoding, group maps or a SQL callback for every key. Large
-ranges can use the bounded parallel scheduler described below.
+scan, without row decoding, group maps or a SQL callback for every key. Each
+query runs synchronously on its caller's goroutine, including large scans.
 
 Private writes and temporary tables use a key-only cursor with the normal
 transaction overlay, preserving savepoints, REPEATABLE READ and session-local
@@ -56,25 +56,16 @@ than hashing the empty group and recalculating group memory for every row.
 Memory checks still run at batch boundaries. Grouping, DISTINCT and spilling
 retain their existing accounting paths.
 
-## Bounded parallel reads
+## Single-threaded query execution
 
-Large exact scan counts and eligible ungrouped typed COUNT/MIN/MAX scans can use
-multiple workers. Planning reads only resident block indexes, selecting byte
-quantiles across a whole ordered LSM level. It returns complete, disjoint user
-key intervals; each worker reads all overlapping sources at the same pinned
-snapshot. A physical-byte floor avoids tiny tasks.
+Scans and aggregate operators run on the calling query's goroutine. They do not
+partition ranges, spawn query workers, merge worker accumulators or reserve
+shared CPU slots. Independent sessions can execute concurrently.
 
-Workers have separate programs, registers, decode buffers and accumulators.
-Admission borrows a shared CPU budget without waiting or spinning, divides the
-query memory budget, and releases unused reservations when fewer partitions
-are available. Concurrent aggregate queries receive fewer workers; a saturated
-budget uses serial execution. Cancellation waits for every worker to finish
-before releasing the parent snapshot.
-
-Small or memtable-only ranges, private write overlays, profiling, grouped or
-DISTINCT aggregation and variable-width typed inputs retain serial plans.
-SUM/AVG/TOTAL remain serial because regrouping can change overflow and rounding
-behavior. Their scalar accumulator and decoding optimizations still apply.
+The execution paths focus on cached iterator keys, direct visible-key counting,
+partial decoding, private reusable buffers and scalar instruction/accumulator
+work. All operators use the statement snapshot and normal transaction overlay;
+there is no parallel reduction that changes arithmetic order.
 
 ## Mutations and joins
 
@@ -88,4 +79,4 @@ Bounded tuple SELECTs decode only fields needed by projection, ordering,
 grouping and the actual residual predicate. Supported join-stage predicates use
 compact physical-column slots rather than repeated name-map lookup. Unsupported
 and correlated expressions keep the existing evaluator. Retained join outputs,
-BLOB winners and result maps never alias worker scratch.
+BLOB winners and result maps never alias execution scratch.

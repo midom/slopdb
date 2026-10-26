@@ -98,10 +98,6 @@ type Schema struct {
 	mysqlRand                map[*FuncCallExpr]*mysqlRandState
 	onlineIndexMu            catalogGate
 	onlineIndexBuilds        map[*OnlineIndexBuild]struct{}
-	parallelScanSlots        atomic.Int64
-	parallelScanQueries      atomic.Int64
-	parallelScanLower        []byte
-	parallelScanUpper        []byte
 	queryMemoryBytes         int64
 	queryTempDir             string
 	queryDisks               []*diskHash

@@ -2,23 +2,19 @@ package sql
 
 import (
 	"context"
-	"math"
 	"strings"
 
 	"slopdb/storage"
 )
 
-func (s *Schema) executionRoot() *Schema {
-	if s.parent != nil {
-		return s.parent
+// countRange runs synchronously and pins one snapshot for its full traversal.
+func (s *Schema) countRange(ctx context.Context, lower, upper []byte) (int64, error) {
+	snapshot := s.statementSnapshot
+	if !s.statementActive {
+		snapshot = s.lsm.SnapshotForReader(s.snapshotReader)
+		defer s.lsm.ReleaseSnapshotForReader(s.snapshotReader, snapshot)
 	}
-	return s
-}
-func (s *Schema) readSnapshot() uint64 {
-	if s.statementActive {
-		return s.statementSnapshot
-	}
-	return math.MaxUint64
+	return s.lsm.CountRangeAtContext(ctx, snapshot, lower, upper, s.snapshotReader)
 }
 
 // The common final projection still applies LIMIT/OFFSET and ownership.
@@ -59,7 +55,7 @@ func (s *Schema) simpleCount(stmt *SelectStmt, info *TableInfo, cols []selectExp
 		if ctx == nil {
 			ctx = context.Background()
 		}
-		n, err = s.countRangeParallel(ctx, s.readSnapshot(), lower, upper)
+		n, err = s.countRange(ctx, lower, upper)
 	} else {
 		it := s.newKeyRangeReader(lower, upper, false, "Scan")
 		defer it.Close()

@@ -637,11 +637,7 @@ func (s *Schema) streamAggregateScan(stmt *SelectStmt, info *TableInfo, exprCols
 			if ordered {
 				readErr = s.walkTypedOrderedAggregate(typed, info, bareNeeded, paths, orderedEmit)
 			} else {
-				var parallel bool
-				parallel, readErr = s.parallelTypedAggregate(typed, info, bareNeeded, paths, groups)
-				if !parallel && readErr == nil {
-					readErr = s.walkTypedAggregate(typed, info, bareNeeded, paths, groups, newGroup)
-				}
+				readErr = s.walkTypedAggregate(typed, info, bareNeeded, paths, groups, newGroup)
 			}
 		} else {
 			readErr = s.walkAggregateAccess(info, bareNeeded, where, paths, accept, reusableInputs)
