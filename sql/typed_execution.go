@@ -247,6 +247,13 @@ func (p *typedProgram) eval(slots []Value) (Value, error) {
 		var err error
 		switch i.op {
 		case "literal":
+			if i.literal != nil && p.literalReady {
+				literal := &p.literals[i.slot]
+				if literal.err == nil && (literal.value.Type == ColInteger || literal.value.Type == ColReal || literal.value.Type == ColUnsigned) {
+					p.registers[pc] = literal.value
+					continue
+				}
+			}
 			v = i.value
 			if i.literal != nil {
 				if p.literalReady {
@@ -262,8 +269,9 @@ func (p *typedProgram) eval(slots []Value) (Value, error) {
 				v.Blob = copyBytes(v.Blob)
 			}
 		case "slot":
-			v = slots[i.slot]
-			v.HexLiteral = false
+			p.registers[pc] = slots[i.slot]
+			p.registers[pc].HexLiteral = false
+			continue
 		case "branchAND", "branchOR":
 			left := p.registers[i.a]
 			if i.op == "branchAND" && !left.Null && !truthValue(left) || i.op == "branchOR" && truthValue(left) {
@@ -319,6 +327,9 @@ func (p *typedProgram) eval(slots []Value) (Value, error) {
 				v.Int = 1 - v.Int
 			}
 		case "=", "<>", "<", "<=", ">", ">=":
+			if typedIntegerCompare(&p.registers[pc], &p.registers[i.a], &p.registers[i.b], i.op, p.postgresMode) {
+				continue
+			}
 			left, right := p.registers[i.a], p.registers[i.b]
 			if i.affinity == 1 && !left.EnumValue {
 				right = applyAffinity(right, left.Type)
@@ -327,6 +338,9 @@ func (p *typedProgram) eval(slots []Value) (Value, error) {
 			}
 			v = p.compareValues(left, right, i.op)
 		case "IS", "IS NOT":
+			if typedIntegerCompare(&p.registers[pc], &p.registers[i.a], &p.registers[i.b], i.op, p.postgresMode) {
+				continue
+			}
 			left, right := p.registers[i.a], p.registers[i.b]
 			same := left.Null && right.Null || !left.Null && !right.Null && p.valueCompare(left, right) == 0
 			if i.op == "IS NOT" {
@@ -342,7 +356,15 @@ func (p *typedProgram) eval(slots []Value) (Value, error) {
 			if !left.Null && !right.Null {
 				v = NewTextValue(left.String() + right.String())
 			}
-		case "+", "-", "*", "/", "%":
+		case "%":
+			if handled, e := typedIntegerModulo(&p.registers[pc], &p.registers[i.a], &p.registers[i.b]); handled {
+				if e != nil {
+					return NewNullValue(), e
+				}
+				continue
+			}
+			v, err = arithmeticValuesMode(p.mysqlMode, i.op, p.registers[i.a], p.registers[i.b], math.Mod)
+		case "+", "-", "*", "/":
 			v, err = arithmeticValuesMode(p.mysqlMode, i.op, p.registers[i.a], p.registers[i.b], func(a, b float64) float64 {
 				switch i.op {
 				case "+":
