@@ -65,6 +65,10 @@ func preparedNamespaceRequirements(stmt Statement) (namespaceRequirements, bool)
 		if st.prepared != nil {
 			owner = st.prepared.owner
 		}
+	case *InsertStmt:
+		if st.prepared != nil {
+			owner = st.prepared.owner
+		}
 	}
 	if owner == nil {
 		return namespaceRequirements{}, false

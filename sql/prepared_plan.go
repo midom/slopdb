@@ -53,6 +53,7 @@ type preparedExecutionPlan struct {
 	pointPredicateExact, pointPredicateSatisfied bool
 	pointKey                                     []byte
 	pointKeyScratch, pointValueScratch           []byte
+	pointLockResource                            string
 	pointWriteScratch                            []byte
 	pointRowScratch                              map[string]Value
 	pointKeyReady, pointKeyOK                    bool
@@ -61,6 +62,9 @@ type preparedExecutionPlan struct {
 	coverage                                     map[*IndexInfo]bool
 	candidatesReady                              bool
 	pointUpdate                                  *PointUpdate
+	pointUpdateRun                               PointUpdate
+	insert                                       *preparedInsertPlan
+	insertReady                                  bool
 	pointUpdateReady                             bool
 	aggregate                                    *typedAggregate
 	aggregateReady                               bool
@@ -371,6 +375,13 @@ func (p *preparedExecutionPlan) tupleCoverage(s *Schema, stmt *SelectStmt, idx *
 	return p.coverage[idx]
 }
 func (p *preparedExecutionPlan) releaseValues() {
+	p.pointUpdateRun = PointUpdate{}
+	if len(p.pointLockResource) > 64<<10 {
+		p.pointLockResource = ""
+	}
+	if p.insert != nil {
+		p.insert.releaseValues()
+	}
 	// Only private, nonprojected row values may survive between executions.
 	// Bound the pooled scratch; it must never retain a caller's result BLOB.
 	retained := 0

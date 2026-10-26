@@ -2,6 +2,7 @@ package sql
 
 import (
 	"encoding/binary"
+	"errors"
 	"strings"
 )
 
@@ -11,7 +12,18 @@ func (s *Schema) selectPoint(stmt *SelectStmt, info *TableInfo, p *preparedExecu
 	if stmt.CalcFoundRows || len(stmt.OrderBy) != 0 || !p.pointComplete() {
 		return nil, false, nil
 	}
-	ready, err := s.preparePhysicalReadProjection(stmt, info, p)
+	projection := stmt
+	if stmt.Lock != nil {
+		// OFFSET locking behavior remains with the general executor, which may
+		// lock scanned rows before applying pagination.
+		if stmt.Offset != 0 {
+			return nil, false, nil
+		}
+		copy := *stmt
+		copy.Lock = nil
+		projection = &copy
+	}
+	ready, err := s.preparePhysicalReadProjection(projection, info, p)
 	if err != nil {
 		return nil, true, err
 	}
@@ -79,6 +91,16 @@ func (s *Schema) selectPoint(stmt *SelectStmt, info *TableInfo, p *preparedExecu
 	}
 	if err := s.checkInterrupt(); err != nil {
 		return nil, true, err
+	}
+	if stmt.Lock != nil {
+		ownedKey := string(key)
+		if err := s.requestRowLocks([]string{ownedKey}, stmt.Lock); err != nil {
+			if stmt.Lock.Wait == LockSkipLocked && errors.Is(err, ErrLockNotAvailable) {
+				return result, true, nil
+			}
+			return nil, true, err
+		}
+		result.rowKeys = [][]string{{ownedKey}}
 	}
 	result.Rows = append(result.Rows, row)
 	return result, true, nil

@@ -299,6 +299,8 @@ func (s *Schema) ResolveNamespaces(stmt Statement) (Statement, error) {
 			st.prepared = nil
 		case *UpdateStmt:
 			st.prepared = nil
+		case *InsertStmt:
+			st.prepared = nil
 		}
 	})
 	if err := s.resolveNamespaceStatement(copy, nil); err != nil {

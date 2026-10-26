@@ -10,7 +10,10 @@ import (
 // It is internal retry control, rather than a transaction conflict.
 var ErrStatementRetry = errors.New("statement snapshot changed before row locking")
 
-func (s *Schema) validateLockedRow(key []byte) error {
+func (s *Schema) validateLockedRow(key []byte) error { return s.validateLockedRowOwned(key, "") }
+
+// owned is an immutable physical-key string already retained by the row lock.
+func (s *Schema) validateLockedRowOwned(key []byte, owned string) error {
 	if !s.statementActive || s.lockHandler == nil {
 		return nil
 	}
@@ -30,7 +33,11 @@ func (s *Schema) validateLockedRow(key []byte) error {
 		}
 		return ErrStatementRetry
 	}
-	s.validatedRowKey = string(key)
+	if owned != "" {
+		s.validatedRowKey = owned
+	} else {
+		s.validatedRowKey = string(key)
+	}
 	return nil
 }
 
@@ -78,7 +85,7 @@ func (s *Schema) requestRowLocks(keys []string, lock *SelectLock) error {
 			return err
 		}
 		for _, key := range keys {
-			if err := s.validateLockedRow([]byte(key)); err != nil {
+			if err := s.validateLockedRowOwned([]byte(key), key); err != nil {
 				return err
 			}
 		}
@@ -88,7 +95,7 @@ func (s *Schema) requestRowLocks(keys []string, lock *SelectLock) error {
 		if err := s.RequestLock(request); err != nil {
 			return err
 		}
-		if err := s.validateLockedRow([]byte(request.Resource[len("row:"):])); err != nil {
+		if err := s.validateLockedRowOwned([]byte(request.Resource[len("row:"):]), request.Resource[len("row:"):]); err != nil {
 			return err
 		}
 	}
@@ -151,10 +158,11 @@ func (s *Schema) RequestLock(request LockRequest) error {
 }
 
 func (s *Schema) lockRow(table string, info *TableInfo, row map[string]Value, key []byte) error {
-	if err := s.RequestLock(LockRequest{Resource: "row:" + string(key), Exclusive: true}); err != nil {
+	resource := "row:" + string(key)
+	if err := s.RequestLock(LockRequest{Resource: resource, Exclusive: true}); err != nil {
 		return err
 	}
-	if err := s.validateLockedRow(key); err != nil {
+	if err := s.validateLockedRowOwned(key, resource[len("row:"):]); err != nil {
 		return err
 	}
 	for _, idx := range s.tableIndexes(table) {
@@ -176,11 +184,21 @@ func (s *Schema) lockRow(table string, info *TableInfo, row map[string]Value, ke
 		// Integer primary keys have a canonical physical row key. The row lock
 		// already serializes every insert, delete and primary-key change for this
 		// SQL value; a second predicate lock would serialize unrelated inserts.
-		if len(info.PKColumns) == 1 && len(group) == 1 && group[0] == info.PKColumns[0] {
-			if col := s.getPKColumn(info); col != nil && col.ColType == ColInteger {
-				if v := row[col.Name]; !v.Null && v.Type == ColInteger {
-					continue
+		if colsEqual(group, info.PKColumns) {
+			canonical := true
+			for _, name := range group {
+				value := row[name]
+				found := false
+				for _, col := range info.Columns {
+					if col.Name == name {
+						found = col.ColType == ColInteger && !col.Unsigned
+						break
+					}
 				}
+				canonical = canonical && found && !value.Null && value.Type == ColInteger
+			}
+			if canonical {
+				continue
 			}
 		}
 		values := make([]Value, 0, len(group))

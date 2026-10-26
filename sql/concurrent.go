@@ -24,6 +24,7 @@ type PointUpdate struct {
 	targets        []int
 	indexedTargets []int
 	indexes        []*IndexInfo
+	decodeColumns  []bool
 }
 
 func (s *Schema) PreparePointUpdate(stmt *UpdateStmt) *PointUpdate {
@@ -206,6 +207,10 @@ func (s *Schema) preparePointUpdateUncached(stmt *UpdateStmt) *PointUpdate {
 			delete(indexed, name)
 		}
 	}
+	p.decodeColumns = make([]bool, len(info.Columns))
+	for _, column := range p.bindings {
+		p.decodeColumns[column] = true
+	}
 	return p
 }
 func (p *PointUpdate) Key() []byte { return p.key }
@@ -219,7 +224,9 @@ func (p *PointUpdate) Run(ctx context.Context) (int64, error) {
 	var data []byte
 	var found bool
 	var err error
-	if p.schema.inTx || p.schema.temporaryKey(p.key) {
+	if p.schema.inTx && p.stmt.prepared != nil {
+		data, found, err = p.schema.readPreparedMutationInto(p.key, p.stmt.prepared)
+	} else if p.schema.inTx || p.schema.temporaryKey(p.key) {
 		data, found, err = p.schema.schemaGet(p.key)
 	} else if p.stmt.prepared != nil {
 		cached := p.stmt.prepared
@@ -246,6 +253,12 @@ func (p *PointUpdate) Run(ctx context.Context) (int64, error) {
 			values[i] = NewNullValue()
 			continue
 		}
+		if p.decodeColumns != nil && !p.decodeColumns[i] {
+			var n int
+			values[i], n = skipPointUpdateValue(data[offset:])
+			offset += n
+			continue
+		}
 		v, n := decodePointUpdateValue(data[offset:])
 		v = decorateColumnValue(v, p.info.Columns[i])
 		values[i] = v
@@ -265,15 +278,19 @@ func (p *PointUpdate) Run(ctx context.Context) (int64, error) {
 	for name, i := range p.bindings {
 		row[name] = values[i]
 	}
-	match, err := p.schema.evalCondition(p.stmt.Where, row)
+	match := p.stmt.prepared != nil && p.stmt.prepared.pointPredicateSatisfied
+	if !match {
+		match, err = p.schema.evalCondition(p.stmt.Where, row)
+	}
 	if err != nil || !match {
 		return 0, err
 	}
 	if p.schema.inTx {
-		if err := p.schema.RequestLock(LockRequest{Resource: "row:" + string(p.key), Exclusive: true}); err != nil {
+		resource := p.rowLockResource()
+		if err := p.schema.RequestLock(LockRequest{Resource: resource, Exclusive: true}); err != nil {
 			return 0, err
 		}
-		if err := p.schema.validateLockedRow(p.key); err != nil {
+		if err := p.schema.validateLockedRowOwned(p.key, resource[len("row:"):]); err != nil {
 			return 0, err
 		}
 	}
@@ -345,6 +362,14 @@ func (p *PointUpdate) Run(ctx context.Context) (int64, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
+	changes := int64(1)
+	if p.schema.MySQLMode() && !p.schema.mysqlFoundRows() && bytes.Equal(data, encoded) {
+		changes = 0
+	}
+	if p.schema.inTx && len(p.indexes) == 0 {
+		p.schema.txPut(p.key, encoded)
+		return changes, nil
+	}
 	batch := make([]storage.Mutation, 0, 1+2*len(p.indexes))
 	batch = append(batch, storage.Mutation{Key: p.key, Value: encoded})
 	if len(p.indexes) > 0 {
@@ -358,10 +383,6 @@ func (p *PointUpdate) Run(ctx context.Context) (int64, error) {
 			continue
 		}
 		batch = append(batch, storage.Mutation{Key: oldIndexKeys[i], Delete: true}, storage.Mutation{Key: key, Value: p.schema.encodeIndexValue(idx, row)})
-	}
-	changes := int64(1)
-	if p.schema.MySQLMode() && !p.schema.mysqlFoundRows() && bytes.Equal(data, encoded) {
-		changes = 0
 	}
 	if p.schema.inTx {
 		for _, w := range batch {
@@ -391,4 +412,35 @@ func decodePointUpdateValue(data []byte) (Value, int) {
 		}
 	}
 	return decodeValue(data)
+}
+
+// Match the ordinary decoder's NULL/advance behavior for malformed or missing
+// unreferenced fields, without materializing valid strings or BLOBs.
+func skipPointUpdateValue(data []byte) (Value, int) {
+	if len(data) > 0 {
+		switch data[0] {
+		case binTypeInt64, binTypeFloat64, binTypeUint64:
+			if len(data) >= 9 {
+				return Value{}, 9
+			}
+		case binTypeText, binTypeBlob, binTypeDecimal, binTypeJSON:
+			length, n := binary.Uvarint(data[1:])
+			if n > 0 && length <= uint64(len(data)-1-n) {
+				return Value{}, 1 + n + int(length)
+			}
+		}
+	}
+	return NewNullValue(), 1
+}
+
+func (p *PointUpdate) rowLockResource() string {
+	if p.stmt.prepared != nil {
+		cached := p.stmt.prepared
+		if len(cached.pointLockResource) >= 4 && cached.pointLockResource[4:] == string(p.key) {
+			return cached.pointLockResource
+		}
+		cached.pointLockResource = "row:" + string(p.key)
+		return cached.pointLockResource
+	}
+	return "row:" + string(p.key)
 }

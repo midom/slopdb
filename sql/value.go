@@ -188,6 +188,7 @@ type RowSource struct {
 }
 
 type InsertStmt struct {
+	prepared      *preparedExecutionPlan
 	Source        *RowSource `json:"-"`
 	With          *WithClause
 	Table         string

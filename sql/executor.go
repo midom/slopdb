@@ -3414,6 +3414,10 @@ func (s *Schema) Insert(stmt *InsertStmt) (int64, *ResultSet, error) {
 		cp.With = nil
 		return s.Insert(&cp)
 	}
+	if lastID, handled, err := s.insertPreparedValues(stmt); handled {
+		return lastID, nil, err
+	}
+
 	tableName := strings.ToLower(stmt.Table)
 	info, ok := s.tables[tableName]
 	viewInsert := false
@@ -6025,7 +6029,7 @@ func (s *Schema) Update(stmt *UpdateStmt) (int64, *ResultSet, error) {
 		return s.updateJoined(stmt)
 	}
 	if s.inTx && s.lockHandler != nil {
-		if plan := s.PreparePointUpdate(stmt); plan != nil {
+		if plan := s.prepareReusablePointUpdate(stmt); plan != nil {
 			ctx := s.ctx
 			if ctx == nil {
 				ctx = context.Background()

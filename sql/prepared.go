@@ -188,6 +188,10 @@ func (b *BoundQuery) Release() {
 			if st.prepared != nil {
 				st.prepared.releaseValues()
 			}
+		case *InsertStmt:
+			if st.prepared != nil {
+				st.prepared.releaseValues()
+			}
 		}
 	}
 	for _, literal := range b.literals {
@@ -214,6 +218,10 @@ func (q *PreparedQuery) newBound() *BoundQuery {
 	case *UpdateStmt:
 		if st.With == nil {
 			st.prepared = &preparedExecutionPlan{owner: q, counter: counter, where: st.Where}
+		}
+	case *InsertStmt:
+		if st.With == nil {
+			st.prepared = &preparedExecutionPlan{owner: q, counter: counter}
 		}
 	}
 	b.statements = []Statement{stmt}
