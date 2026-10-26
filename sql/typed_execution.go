@@ -21,23 +21,45 @@ type typedInstruction struct {
 	affinity int // 1: right literal, 2: left literal
 	jump     int
 	negate   bool
+	boolean  bool // PostgreSQL marks boolean expression results, including NULL
 }
 
 type typedProgram struct {
-	mysqlMode bool
-	code      []typedInstruction
-	registers []Value
-	result    int
+	mysqlMode    bool
+	postgresMode bool
+	collation    Collation
+	code         []typedInstruction
+	registers    []Value
+	result       int
+	literals     []typedLiteral
+	literalCount int
+	literalReady bool
+}
+
+type typedLiteral struct {
+	value Value
+	err   error
 }
 
 func compileTypedProgram(expr Expression, slots map[string]int) (*typedProgram, bool) {
+	return compileTypedProgramBindings(expr, slots, nil)
+}
+
+func compileTypedProgramBindings(expr Expression, slots map[string]int, bindings map[Expression]int) (*typedProgram, bool) {
 	p := &typedProgram{}
 	var compile func(Expression) (int, bool)
 	emit := func(i typedInstruction) int {
+		if i.literal != nil {
+			i.slot = p.literalCount
+			p.literalCount++
+		}
 		p.code = append(p.code, i)
 		return len(p.code) - 1
 	}
 	compile = func(expr Expression) (int, bool) {
+		if slot, ok := bindings[expr]; ok {
+			return emit(typedInstruction{op: "slot", slot: slot}), true
+		}
 		switch e := expr.(type) {
 		case *LiteralExpr:
 			return emit(typedInstruction{op: "literal", literal: e}), true
@@ -58,7 +80,7 @@ func compileTypedProgram(expr Expression, slots map[string]int) (*typedProgram, 
 			if !ok {
 				return 0, false
 			}
-			return emit(typedInstruction{op: "unary" + e.Op, a: a}), true
+			return emit(typedInstruction{op: "unary" + e.Op, a: a, boolean: e.Op == "NOT"}), true
 		case *BinaryExpr:
 			switch e.Op {
 			case "AND", "OR", "=", "<>", "<", "<=", ">", ">=", "IS", "IS NOT", "+", "-", "*", "/", "%", "||":
@@ -77,7 +99,7 @@ func compileTypedProgram(expr Expression, slots map[string]int) (*typedProgram, 
 			if !ok {
 				return 0, false
 			}
-			i := typedInstruction{op: e.Op, a: a, b: b}
+			i := typedInstruction{op: e.Op, a: a, b: b, boolean: postgresBooleanOperator(e.Op)}
 			if _, col := e.Left.(*ColumnRefExpr); col {
 				if _, lit := e.Right.(*LiteralExpr); lit {
 					i.affinity = 1
@@ -106,7 +128,7 @@ func compileTypedProgram(expr Expression, slots map[string]int) (*typedProgram, 
 			if !ok {
 				return 0, false
 			}
-			return emit(typedInstruction{op: "between", a: a, b: b, c: c, negate: e.Not}), true
+			return emit(typedInstruction{op: "between", a: a, b: b, c: c, negate: e.Not, boolean: true}), true
 		}
 		// Functions, subqueries, CASE and other expressions retain the general
 		// executor. In particular, do not eagerly evaluate conditional branches.
@@ -119,6 +141,86 @@ func compileTypedProgram(expr Expression, slots map[string]int) (*typedProgram, 
 	}
 	p.registers = make([]Value, len(p.code))
 	return p, true
+}
+
+// Instructions and bindings are immutable for one execution. Workers share
+// those recipes, but each owns registers and normalized literal scratch.
+func (p *typedProgram) clonePrivate() *typedProgram {
+	if p == nil {
+		return nil
+	}
+	copy := *p
+	copy.registers = make([]Value, len(p.registers))
+	copy.literals = nil
+	copy.literalReady = false
+	return &copy
+}
+
+func (p *typedProgram) setDialect(s *Schema) {
+	p.mysqlMode, p.postgresMode = s.expressionMySQL(), s.expressionPostgres()
+	p.collation = s.collation
+	if cap(p.literals) < p.literalCount {
+		p.literals = make([]typedLiteral, p.literalCount)
+	} else {
+		p.literals = p.literals[:p.literalCount]
+		clear(p.literals)
+	}
+	for pc := range p.code {
+		instruction := &p.code[pc]
+		if instruction.literal == nil {
+			continue
+		}
+		v := instruction.literal.Value
+		var err error
+		if (p.mysqlMode || p.postgresMode) && v.NumericText != "" && !strings.ContainsAny(v.NumericText, "eE") {
+			v, err = NewDecimalValue(v.NumericText)
+		}
+		// Normalization errors are delivered only if the instruction executes;
+		// AND/OR must still short circuit an invalid or zero-dividing branch.
+		p.literals[instruction.slot] = typedLiteral{value: v, err: err}
+	}
+	p.literalReady = true
+}
+
+func (p *typedProgram) clearRegisters() {
+	if p != nil {
+		clear(p.registers)
+		clear(p.literals)
+		p.literalReady = false
+	}
+}
+
+func (p *typedProgram) valueCompare(a, b Value) int {
+	if p.mysqlMode {
+		if cmp, ok := mysqlMixedNumericCompare(a, b); ok {
+			return cmp
+		}
+		if cmp, ok := mysqlBinaryCompare(a, b); ok {
+			return cmp
+		}
+	}
+	if a.EnumValue && (b.Type == ColInteger || b.Type == ColReal) {
+		a = NewIntValue(a.EnumOrdinal)
+	}
+	if b.EnumValue && (a.Type == ColInteger || a.Type == ColReal) {
+		b = NewIntValue(b.EnumOrdinal)
+	}
+	if !a.Null && !b.Null && a.Type == ColText && b.Type == ColText {
+		if c := explicitValueCollation(a, b); c != "" {
+			return c.Compare(a.Text, b.Text)
+		}
+		if !a.Binary && !b.Binary {
+			return p.collation.Compare(a.Text, b.Text)
+		}
+	}
+	return ValueCompare(a, b)
+}
+
+func (p *typedProgram) compareValues(a, b Value, op string) Value {
+	if a.Null || b.Null {
+		return NewNullValue()
+	}
+	return compareSQLValuesBy(a, b, op, p.valueCompare(a, b))
 }
 
 func typedBoolean(left, right Value, and bool) Value {
@@ -146,9 +248,13 @@ func (p *typedProgram) eval(slots []Value) (Value, error) {
 		case "literal":
 			v = i.value
 			if i.literal != nil {
-				v = i.literal.Value
-				if p.mysqlMode && v.NumericText != "" && !strings.ContainsAny(v.NumericText, "eE") {
-					v, err = NewDecimalValue(v.NumericText)
+				if p.literalReady {
+					v, err = p.literals[i.slot].value, p.literals[i.slot].err
+				} else {
+					v = i.literal.Value
+					if (p.mysqlMode || p.postgresMode) && v.NumericText != "" && !strings.ContainsAny(v.NumericText, "eE") {
+						v, err = NewDecimalValue(v.NumericText)
+					}
 				}
 			}
 			if !v.Null && v.Type == ColBlob {
@@ -164,6 +270,9 @@ func (p *typedProgram) eval(slots []Value) (Value, error) {
 				if i.op == "branchOR" {
 					v.Int = 1
 				}
+				if p.postgresMode {
+					v = v.WithSemanticType(TypeBoolean)
+				}
 				p.registers[i.b] = v
 				pc = i.jump - 1
 			}
@@ -174,6 +283,9 @@ func (p *typedProgram) eval(slots []Value) (Value, error) {
 			v = p.registers[i.a]
 			if p.mysqlMode && v.HexLiteral {
 				v = mysqlHexNumber(v)
+			}
+			if v.EnumValue && i.op != "unaryNOT" {
+				v = NewIntValue(v.EnumOrdinal)
 			}
 			if !v.Null {
 				if i.op == "unaryNOT" {
@@ -191,7 +303,7 @@ func (p *typedProgram) eval(slots []Value) (Value, error) {
 						if v.Int == math.MinInt64 {
 							err = fmt.Errorf("integer overflow")
 						} else {
-							v.Int = -v.Int
+							v = NewIntValue(-v.Int)
 						}
 					} else {
 						v = negateRealValue(v)
@@ -199,23 +311,23 @@ func (p *typedProgram) eval(slots []Value) (Value, error) {
 				}
 			}
 		case "between":
-			a := compareSQLValues(p.registers[i.a], p.registers[i.b], ">=")
-			b := compareSQLValues(p.registers[i.a], p.registers[i.c], "<=")
+			a := p.compareValues(p.registers[i.a], p.registers[i.b], ">=")
+			b := p.compareValues(p.registers[i.a], p.registers[i.c], "<=")
 			v = typedBoolean(a, b, true)
 			if i.negate && !v.Null {
 				v.Int = 1 - v.Int
 			}
 		case "=", "<>", "<", "<=", ">", ">=":
 			left, right := p.registers[i.a], p.registers[i.b]
-			if i.affinity == 1 {
+			if i.affinity == 1 && !left.EnumValue {
 				right = applyAffinity(right, left.Type)
-			} else if i.affinity == 2 {
+			} else if i.affinity == 2 && !right.EnumValue {
 				left = applyAffinity(left, right.Type)
 			}
-			v = compareSQLValues(left, right, i.op)
+			v = p.compareValues(left, right, i.op)
 		case "IS", "IS NOT":
 			left, right := p.registers[i.a], p.registers[i.b]
-			same := left.Null && right.Null || !left.Null && !right.Null && ValueCompare(left, right) == 0
+			same := left.Null && right.Null || !left.Null && !right.Null && p.valueCompare(left, right) == 0
 			if i.op == "IS NOT" {
 				same = !same
 			}
@@ -248,6 +360,9 @@ func (p *typedProgram) eval(slots []Value) (Value, error) {
 		if err != nil {
 			return NewNullValue(), err
 		}
+		if p.postgresMode && i.boolean {
+			v = v.WithSemanticType(TypeBoolean)
+		}
 		p.registers[pc] = v
 	}
 	return p.registers[p.result], nil
@@ -256,12 +371,71 @@ func (p *typedProgram) eval(slots []Value) (Value, error) {
 type typedAggregate struct {
 	slots     map[string]int
 	width     int
+	columns   []typedSlotColumn // immutable physical slot metadata
 	where     *typedProgram
 	group     []*typedProgram
 	args      []*typedProgram // nil represents COUNT(*)
 	functions []*FuncCallExpr
 	baseNames []string
 	baseSlots []int
+	rawWhere  *typedProgram
+	rawText   []typedTextPredicate
+}
+
+type typedSlotColumn struct {
+	kind      TypeID
+	typ       ColumnType
+	binary    bool
+	collation Collation
+}
+
+func (t *typedAggregate) clonePrivate() *typedAggregate {
+	clone := *t
+	clone.where = t.where.clonePrivate()
+	clone.rawWhere = t.rawWhere.clonePrivate()
+	clone.group = make([]*typedProgram, len(t.group))
+	for i, program := range t.group {
+		clone.group[i] = program.clonePrivate()
+	}
+	clone.args = make([]*typedProgram, len(t.args))
+	for i, program := range t.args {
+		clone.args[i] = program.clonePrivate()
+	}
+	return &clone
+}
+
+func (t *typedAggregate) setDialect(s *Schema) {
+	if t.where != nil {
+		t.where.setDialect(s)
+	}
+	if t.rawWhere != nil {
+		t.rawWhere.setDialect(s)
+	}
+	for _, program := range t.group {
+		program.setDialect(s)
+	}
+	for _, program := range t.args {
+		if program != nil {
+			program.setDialect(s)
+		}
+	}
+}
+
+func (t *typedAggregate) clearRegisters() {
+	t.where.clearRegisters()
+	t.rawWhere.clearRegisters()
+	for _, program := range t.group {
+		program.clearRegisters()
+	}
+	for _, program := range t.args {
+		program.clearRegisters()
+	}
+}
+
+func (t *typedAggregate) decorateRow(row []Value) {
+	for slot, column := range t.columns {
+		row[slot] = decorateTypedValue(row[slot], column.kind, column.binary, column.collation, nil)
+	}
 }
 
 func compileTypedAggregate(info *TableInfo, table, alias string, where Expression, group []Expression, functions []*FuncCallExpr, representative map[string]bool) (*typedAggregate, bool) {
@@ -306,6 +480,7 @@ func compileTypedAggregate(info *TableInfo, table, alias string, where Expressio
 		for _, name := range names {
 			t.slots[strings.ToLower(name)] = t.width
 		}
+		t.columns = append(t.columns, typedSlotColumn{kind: col.LogicalType().Kind, typ: col.ColType, binary: col.Binary, collation: col.Collation})
 		t.width++
 	}
 	var ok bool
@@ -348,25 +523,19 @@ func compileTypedAggregate(info *TableInfo, table, alias string, where Expressio
 		t.baseNames = append(t.baseNames, name)
 		t.baseSlots = append(t.baseSlots, slot)
 	}
+	t.compileRawTextWhere(where)
 	return t, true
 }
 
 const typedBatchRows = 128
 
 func (s *Schema) walkTypedAggregate(t *typedAggregate, info *TableInfo, needed map[string]bool, paths []*accessPath, groups map[string]*aggregateGroup, newGroup func() *aggregateGroup) error {
-	if t.where != nil {
-		t.where.mysqlMode = s.expressionMySQL()
-	}
-	for _, p := range t.group {
-		p.mysqlMode = s.expressionMySQL()
-	}
-	for _, p := range t.args {
-		if p != nil {
-			p.mysqlMode = s.expressionMySQL()
-		}
-	}
+	t.setDialect(s)
+	defer t.clearRegisters()
 
 	batch := make([]Value, typedBatchRows*t.width)
+	raw := t.rawScan(s)
+	var rawRows [typedBatchRows]bool
 	rows := 0
 	var groupMemory int64
 	for _, g := range groups {
@@ -381,7 +550,11 @@ func (s *Schema) walkTypedAggregate(t *typedAggregate, info *TableInfo, needed m
 		for n := 0; n < rows; n++ {
 			row := batch[n*t.width : (n+1)*t.width]
 			if t.where != nil {
-				v, err := t.where.eval(row)
+				predicate := t.where
+				if rawRows[n] {
+					predicate = t.rawWhere
+				}
+				v, err := predicate.eval(row)
 				if err != nil {
 					return err
 				}
@@ -395,7 +568,7 @@ func (s *Schema) walkTypedAggregate(t *typedAggregate, info *TableInfo, needed m
 				if err != nil {
 					return err
 				}
-				key = appendValueIdentity(key, v)
+				key = s.appendValueIdentity(key, v)
 			}
 			// The conversion in a map lookup borrows key for the lookup only.
 			// Copy it only when a new group retains the identity.
@@ -465,7 +638,13 @@ func (s *Schema) walkTypedAggregate(t *typedAggregate, info *TableInfo, needed m
 				}
 			}
 		}
-		decodeTypedRow(data, layout, batch[rows*t.width:(rows+1)*t.width])
+		row := batch[rows*t.width : (rows+1)*t.width]
+		if raw != nil {
+			rawRows[rows] = raw.decodeRow(data, layout, row)
+		} else {
+			decodeTypedRow(data, layout, row)
+		}
+		t.decorateRow(row)
 		rows++
 		if rows == typedBatchRows {
 			return flush()

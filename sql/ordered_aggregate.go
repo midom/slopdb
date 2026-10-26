@@ -34,7 +34,11 @@ func resetOrderedAggregate(g *aggregateGroup) {
 // Typed ordered aggregation retains one accumulator and one decode batch.
 // WHERE runs before boundary detection so rejected rows cannot split groups.
 func (s *Schema) walkTypedOrderedAggregate(t *typedAggregate, info *TableInfo, needed map[string]bool, paths []*accessPath, emit func(*aggregateGroup) error) error {
+	t.setDialect(s)
+	defer t.clearRegisters()
 	batch := make([]Value, typedBatchRows*t.width)
+	raw := t.rawScan(s)
+	var rawRows [typedBatchRows]bool
 	rows := 0
 	var keyBuffer [128]byte
 	keyScratch := keyBuffer[:0]
@@ -47,7 +51,11 @@ func (s *Schema) walkTypedOrderedAggregate(t *typedAggregate, info *TableInfo, n
 		for n := 0; n < rows; n++ {
 			row := batch[n*t.width : (n+1)*t.width]
 			if t.where != nil {
-				v, err := t.where.eval(row)
+				predicate := t.where
+				if rawRows[n] {
+					predicate = t.rawWhere
+				}
+				v, err := predicate.eval(row)
 				if err != nil {
 					return err
 				}
@@ -61,7 +69,7 @@ func (s *Schema) walkTypedOrderedAggregate(t *typedAggregate, info *TableInfo, n
 				if err != nil {
 					return err
 				}
-				key = appendValueIdentity(key, v)
+				key = s.appendValueIdentity(key, v)
 			}
 			if current == nil {
 				current = &aggregateGroup{states: make([]aggregateState, len(t.functions))}
@@ -130,7 +138,13 @@ func (s *Schema) walkTypedOrderedAggregate(t *typedAggregate, info *TableInfo, n
 				}
 			}
 		}
-		decodeTypedRow(data, layout, batch[rows*t.width:(rows+1)*t.width])
+		row := batch[rows*t.width : (rows+1)*t.width]
+		if raw != nil {
+			rawRows[rows] = raw.decodeRow(data, layout, row)
+		} else {
+			decodeTypedRow(data, layout, row)
+		}
+		t.decorateRow(row)
 		rows++
 		if rows == typedBatchRows {
 			return flush()
