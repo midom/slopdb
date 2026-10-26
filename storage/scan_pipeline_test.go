@@ -94,6 +94,75 @@ func TestMetadataPartitionFloorAndOwnedBoundaries(t *testing.T) {
 	}
 }
 
+func TestMetadataPartitionsBalanceWholeLevelWithOverlaySources(t *testing.T) {
+	opts := pageTestOptions()
+	opts.PageSize = 4096
+	opts.BaseLevelSize = 1
+	l, err := NewLSMTree(t.TempDir(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = l.Close() })
+	const rows = 16384
+	entries := make([]Mutation, rows)
+	for i := range entries {
+		entries[i] = Mutation{Key: []byte(fmt.Sprintf("key%08d", i)), Value: bytes.Repeat([]byte{'x'}, 240)}
+	}
+	if err := l.WriteBatch(entries); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.CompactRange(); err != nil {
+		t.Fatal(err)
+	}
+	view, _ := l.acquireView()
+	files := len(view.levels[maxLevels-1])
+	view.release()
+	if files < 4 {
+		t.Fatal("fixture did not make multiple bottom files", files)
+	}
+	seq := l.SnapshotForReader(4)
+	defer l.ReleaseSnapshotForReader(4, seq)
+	// An overlapping L0 and private-to-this-view mutable memtable must not
+	// prevent the chosen nonoverlapping level from supplying all split points.
+	for i := 0; i < rows; i += 9 {
+		if err := l.Put(entries[i].Key, bytes.Repeat([]byte{'n'}, 240)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := l.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	for i := rows; i < rows+256; i++ {
+		if err := l.Put([]byte(fmt.Sprintf("key%08d", i)), []byte("new")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := l.Status().DataBlockReadAttempts
+	parts, err := l.PartitionRangeAtContext(nil, seq, []byte("key"), []byte("kez"), 4, 8)
+	if err != nil || len(parts) != 8 || l.Status().DataBlockReadAttempts != before {
+		t.Fatal("whole-level metadata plan", len(parts), err)
+	}
+	var oldTotal, newTotal int64
+	for i, part := range parts {
+		old, err := l.CountRangeAtContext(nil, seq, part.Lower, part.Upper, uint64(10+i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if old < rows/16 || old > rows/4 {
+			t.Fatalf("partition%d owns%d/%d rows: splits collapsed onto one file", i, old, rows)
+		}
+		latest, err := l.CountRangeAtContext(nil, math.MaxUint64, part.Lower, part.Upper, uint64(20+i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		oldTotal += old
+		newTotal += latest
+	}
+	if oldTotal != rows || newTotal != rows+256 {
+		t.Fatal("mixed-source partition coverage changed", oldTotal, newTotal)
+	}
+}
+
 // Compare complete exact counts against the ordinary key-iterator API. Loading,
 // compaction and cache warmup are excluded; every timed result is checked.
 func BenchmarkExactRangeCount(b *testing.B) {
