@@ -185,12 +185,14 @@ func TestAutoIncrementPersistenceModeControlsCounterWrites(t *testing.T) {
 			if r.LastID != 1 {
 				t.Fatal(r)
 			}
-			want := uint64(2)
+			// A row and its exact cardinality shard always publish together;
+			// automatic-ID persistence controls only the additional ID metadata.
+			want := uint64(3)
 			if volatile {
-				want = 1
+				want = 2
 			}
 			if delta := d.Stats().SeqNum - before; delta != want {
-				t.Fatalf("row/counter mutations: got %d want %d", delta, want)
+				t.Fatalf("row/cardinality/automatic-ID mutations: got %d want %d", delta, want)
 			}
 			objectExec(t, d, "DELETE FROM t WHERE id=1")
 			if r = objectExec(t, d, "INSERT INTO t(v) VALUES(2)"); r.LastID != 2 {
