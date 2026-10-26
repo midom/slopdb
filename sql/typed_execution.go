@@ -144,8 +144,8 @@ func compileTypedProgramBindings(expr Expression, slots map[string]int, bindings
 	return p, true
 }
 
-// Instructions and bindings are immutable for one execution. Workers share
-// those recipes, but each owns registers and normalized literal scratch.
+// Instructions and bindings are immutable for one execution. Independent
+// execution state owns registers and normalized literal scratch.
 func (p *typedProgram) clonePrivate() *typedProgram {
 	if p == nil {
 		return nil
@@ -240,7 +240,7 @@ func typedBoolean(left, right Value, and bool) Value {
 	return NewIntValue(0)
 }
 
-func (p *typedProgram) eval(slots []Value) (Value, error) {
+func (p *typedProgram) run(slots []Value) error {
 	for pc := 0; pc < len(p.code); pc++ {
 		i := &p.code[pc]
 		var v Value
@@ -359,7 +359,7 @@ func (p *typedProgram) eval(slots []Value) (Value, error) {
 		case "%":
 			if handled, e := typedIntegerModulo(&p.registers[pc], &p.registers[i.a], &p.registers[i.b]); handled {
 				if e != nil {
-					return NewNullValue(), e
+					return e
 				}
 				continue
 			}
@@ -381,12 +381,19 @@ func (p *typedProgram) eval(slots []Value) (Value, error) {
 			})
 		}
 		if err != nil {
-			return NewNullValue(), err
+			return err
 		}
 		if p.postgresMode && i.boolean {
 			v = v.WithSemanticType(TypeBoolean)
 		}
 		p.registers[pc] = v
+	}
+	return nil
+}
+
+func (p *typedProgram) eval(slots []Value) (Value, error) {
+	if err := p.run(slots); err != nil {
+		return NewNullValue(), err
 	}
 	v := p.registers[p.result]
 	if column := p.outputColumn; column != nil {
@@ -414,21 +421,6 @@ type typedSlotColumn struct {
 	typ       ColumnType
 	binary    bool
 	collation Collation
-}
-
-func (t *typedAggregate) clonePrivate() *typedAggregate {
-	clone := *t
-	clone.where = t.where.clonePrivate()
-	clone.rawWhere = t.rawWhere.clonePrivate()
-	clone.group = make([]*typedProgram, len(t.group))
-	for i, program := range t.group {
-		clone.group[i] = program.clonePrivate()
-	}
-	clone.args = make([]*typedProgram, len(t.args))
-	for i, program := range t.args {
-		clone.args[i] = program.clonePrivate()
-	}
-	return &clone
 }
 
 func (t *typedAggregate) setDialect(s *Schema) {
@@ -581,6 +573,9 @@ const typedBatchRows = 128
 func (s *Schema) walkTypedAggregate(t *typedAggregate, info *TableInfo, needed map[string]bool, paths []*accessPath, groups map[string]*aggregateGroup, newGroup func() *aggregateGroup) error {
 	t.setDialect(s)
 	defer t.clearRegisters()
+	if group := groups[""]; t.scalarCountEligible(group) && aggregateGroupMemory(group) <= s.memoryBudget() {
+		return s.walkTypedScalarCount(t, info, needed, paths, group)
+	}
 	binaryGroups := !s.nonbinaryDefaultCollation()
 
 	batch := make([]Value, typedBatchRows*t.width)
@@ -617,11 +612,11 @@ func (s *Schema) walkTypedAggregate(t *typedAggregate, info *TableInfo, needed m
 				if rawRows[n] {
 					predicate = t.rawWhere
 				}
-				v, err := predicate.eval(row)
+				accepted, err := predicate.evalPredicate(row)
 				if err != nil {
 					return err
 				}
-				if !truthValue(v) {
+				if !accepted {
 					continue
 				}
 			}

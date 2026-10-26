@@ -715,8 +715,7 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 				var ok bool
 				var err error
 				if vectors != nil && vectors.final != nil {
-					value, e := vectors.final.eval(vectors.values)
-					ok, err = truthValue(value), e
+					ok, err = vectors.final.evalPredicate(vectors.values)
 				} else {
 					ok, err = s.evalCondition(p.where, row)
 				}
@@ -794,8 +793,7 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 				var ok bool
 				var e error
 				if vectors != nil && vectors.programs[depth][index] != nil {
-					value, err := vectors.programs[depth][index].eval(vectors.values)
-					ok, e = truthValue(value), err
+					ok, e = vectors.programs[depth][index].evalPredicate(vectors.values)
 				} else {
 					ok, e = s.evalCondition(expr, row)
 				}

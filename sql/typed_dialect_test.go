@@ -56,7 +56,7 @@ func TestTypedProgramLiteralRebindAndPrivateClone(t *testing.T) {
 	}
 	other, err := clone.eval([]Value{NewIntValue(200)})
 	if err != nil || other.Text != "12.00" || p.registers[p.result].Text != "6.00" {
-		t.Fatal("cloned worker registers alias")
+		t.Fatal("independent execution registers alias")
 	}
 	literal := expr.(*BinaryExpr).Right.(*LiteralExpr)
 	literal.Value = NewIntValue(3)

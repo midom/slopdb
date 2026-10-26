@@ -56,11 +56,11 @@ func (s *Schema) walkTypedOrderedAggregate(t *typedAggregate, info *TableInfo, n
 				if rawRows[n] {
 					predicate = t.rawWhere
 				}
-				v, err := predicate.eval(row)
+				accepted, err := predicate.evalPredicate(row)
 				if err != nil {
 					return err
 				}
-				if !truthValue(v) {
+				if !accepted {
 					continue
 				}
 			}
