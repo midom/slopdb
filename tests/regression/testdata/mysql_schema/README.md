@@ -1,4 +1,4 @@
-# MySQL schema fixture
+# MySQL test schema
 
 `schema.sql` contains 64 relational table definitions used by
 `TestMySQLSchemaWorkflows`. It exercises signed and unsigned declarations,

@@ -1,4 +1,4 @@
--- MySQL schema fixture: types, defaults, composite/prefix indexes and FULLTEXT.
+-- MySQL test schema: types, defaults, composite/prefix indexes and FULLTEXT.
 -- No expected query answers are generated from the database implementation.
 CREATE TABLE `actor` (
   actor_id BIGINT UNSIGNED AUTO_INCREMENT NOT NULL,
