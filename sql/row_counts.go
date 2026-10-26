@@ -454,6 +454,13 @@ func (s *Schema) simpleCount(stmt *SelectStmt, info *TableInfo, cols []selectExp
 	}
 	row := make(map[string]Value, len(cols))
 	for _, c := range cols {
+		// Numeric literals can require dialect-specific DECIMAL validation.
+		// Preserve its lazy error on nonempty input without evaluating it per row.
+		if literal, ok := c.expr.(*FuncCallExpr).Args[0].(*LiteralExpr); ok && n > 0 && literal.Value.NumericText != "" {
+			if _, err := s.evalExpr(literal, nil); err != nil {
+				return nil, true, err
+			}
+		}
 		row[c.name] = NewIntValue(n)
 	}
 	return []map[string]Value{row}, true, nil
