@@ -502,6 +502,14 @@ func (s *Schema) tupleRows(stmt *SelectStmt, plan *tupleReadPlan, trackKeys bool
 		return nil, nil, ordered, nil
 	}
 	qualified := needsQualifiedRows(stmt)
+	needed, partial := s.tupleProjection(stmt, plan)
+	var projectedColumns, coveredColumns []pointDecodeMetadata
+	if partial {
+		projectedColumns = tupleProjectionColumns(plan.info, needed)
+		if plan.covered && plan.index != nil {
+			coveredColumns = tupleProjectionColumns(s.lookups().covering[plan.index], needed)
+		}
+	}
 	var seen map[string]bool
 	if variableIndexColumns(plan.info, plan.index) && len(plan.intervals) > 1 {
 		seen = make(map[string]bool)
@@ -517,7 +525,16 @@ func (s *Schema) tupleRows(stmt *SelectStmt, plan *tupleReadPlan, trackKeys bool
 			}
 			seen[identity] = true
 		}
-		row := decodeRow(data, info)
+		var row map[string]Value
+		if partial {
+			columns := projectedColumns
+			if info != plan.info {
+				columns = coveredColumns
+			}
+			row = decodeTupleProjection(data, columns, len(needed))
+		} else {
+			row = decodeRow(data, info)
+		}
 		if qualified {
 			qualifyRow(row, plan.info.Name)
 			qualifyRow(row, stmt.FromAlias)
@@ -572,7 +589,7 @@ func (s *Schema) tupleRows(stmt *SelectStmt, plan *tupleReadPlan, trackKeys bool
 			i = len(plan.intervals) - 1 - position
 		}
 		interval := plan.intervals[i]
-		it := s.newRangeIterator(interval.lower, interval.upper, plan.reverse)
+		it := s.newCursorRangeIterator(interval.lower, interval.upper, plan.reverse)
 		err := func() error {
 			defer it.Close()
 			for it.Valid() {
