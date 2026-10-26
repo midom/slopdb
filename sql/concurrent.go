@@ -367,7 +367,7 @@ func (p *PointUpdate) Run(ctx context.Context) (int64, error) {
 		changes = 0
 	}
 	if p.schema.inTx && len(p.indexes) == 0 {
-		p.schema.txPutExisting(p.key, encoded)
+		p.schema.txPut(p.key, encoded)
 		return changes, nil
 	}
 	batch := make([]storage.Mutation, 0, 1+2*len(p.indexes))
@@ -385,8 +385,7 @@ func (p *PointUpdate) Run(ctx context.Context) (int64, error) {
 		batch = append(batch, storage.Mutation{Key: oldIndexKeys[i], Delete: true}, storage.Mutation{Key: key, Value: p.schema.encodeIndexValue(idx, row)})
 	}
 	if p.schema.inTx {
-		p.schema.txPutExisting(batch[0].Key, batch[0].Value)
-		for _, w := range batch[1:] {
+		for _, w := range batch {
 			if w.Delete {
 				p.schema.txDelete(w.Key)
 			} else {

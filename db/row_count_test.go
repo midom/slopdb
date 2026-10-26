@@ -2,7 +2,6 @@ package db
 
 import (
 	"fmt"
-	"strings"
 	"sync"
 	"testing"
 
@@ -151,43 +150,103 @@ func TestExactRowCountConcurrentWriters(t *testing.T) {
 	assertRowCount(t, d, workers*commits)
 	r := rowCountSQL(t, d, "SELECT (SELECT COUNT(*) FROM counted) AS a,(SELECT COUNT(*) FROM counted WHERE id>=0) AS b")
 	if r.Rows[0]["a"].Int != r.Rows[0]["b"].Int {
-		t.Fatalf("metadata/snapshot scan disagree: %+v", r.Rows)
+		t.Fatalf("count/snapshot scan disagree: %+v", r.Rows)
 	}
 }
 
-func TestExactRowCountLegacyAnalyze(t *testing.T) {
+// COUNT executes against the statement snapshot. Ordinary SQL operations and
+// ANALYZE must never create materialized cardinality records as a side effect.
+func TestCountExecutionNeverMaintainsRowMetadata(t *testing.T) {
+	path := t.TempDir()
 	opt := storage.DefaultOptions()
 	opt.DisableWALSync = true
-	d, err := Open(t.TempDir(), opt)
+	d, err := Open(path, opt)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { d.Close() })
-	rowCountSQL(t, d, "CREATE TABLE counted(id INTEGER PRIMARY KEY,n INTEGER);INSERT INTO counted VALUES(1,1),(2,2)")
-	// Remove only the optional maintained metadata to model a pre-upgrade table.
-	l := d.ReplicationStorage()
-	it := l.NewIterator()
-	var batch []storage.Mutation
-	for it.Valid() {
-		k := it.Key().UserKey
-		if strings.HasPrefix(string(k), "\x00__row_counts_v1__") {
-			batch = append(batch, storage.Mutation{Key: append([]byte(nil), k...), Delete: true})
+	assertNoMetadata := func(stage string) {
+		t.Helper()
+		prefix := []byte("\x00__row_counts")
+		upper := append(append([]byte(nil), prefix...), 255)
+		it := d.ReplicationStorage().NewIteratorRange(prefix, upper, false)
+		defer it.Close()
+		if it.Valid() {
+			t.Fatalf("%s wrote maintained row metadata: %q", stage, it.Key().UserKey)
 		}
-		it.Next()
+		if e := storage.IteratorError(it); e != nil {
+			t.Fatal(e)
+		}
 	}
-	if e := storage.IteratorError(it); e != nil {
-		t.Fatal(e)
+	assertNoMetadata("open")
+	rowCountSQL(t, d, "CREATE TABLE counted(id INTEGER PRIMARY KEY,n INTEGER)")
+	assertNoMetadata("CREATE")
+	rowCountSQL(t, d, "INSERT INTO counted VALUES(1,1),(2,2)")
+	assertRowCount(t, d, 2)
+	assertNoMetadata("INSERT/COUNT")
+	s, err := d.NewSession()
+	if err != nil {
+		t.Fatal(err)
 	}
-	it.Close()
-	if len(batch) != 65 {
-		t.Fatalf("expected65 counter records, got%d", len(batch))
+	t.Cleanup(func() { s.Close() })
+	prepared, err := s.Prepare("INSERT INTO counted VALUES(?,?)")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if err = l.WriteBatch(batch); err != nil {
+	defer prepared.Close()
+	rowCountSQL(t, s, "BEGIN")
+	if _, err = s.ExecPrepared(prepared, 3, 3); err != nil {
+		t.Fatal(err)
+	}
+	assertRowCount(t, s, 3)
+	assertRowCount(t, d, 2)
+	assertNoMetadata("private prepared INSERT")
+	rowCountSQL(t, s, "COMMIT")
+	assertRowCount(t, d, 3)
+	assertNoMetadata("prepared INSERT commit")
+	update, err := s.Prepare("UPDATE counted SET n=n+? WHERE id=?")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer update.Close()
+	rowCountSQL(t, s, "BEGIN")
+	if _, err = s.ExecPrepared(update, 4, 2); err != nil {
+		t.Fatal(err)
+	}
+	rowCountSQL(t, s, "SAVEPOINT saved;DELETE FROM counted WHERE id=1;INSERT INTO counted VALUES(4,4);ROLLBACK TO saved;COMMIT")
+	assertRowCount(t, d, 3)
+	assertNoMetadata("UPDATE/savepoint rollback")
+	rowCountSQL(t, d, "DELETE FROM counted WHERE id=1")
+	assertRowCount(t, d, 2)
+	assertNoMetadata("DELETE")
+	for repeat := 0; repeat < 2; repeat++ {
+		rowCountSQL(t, d, "ANALYZE")
+		assertRowCount(t, d, 2)
+		assertNoMetadata("ANALYZE/COUNT")
+	}
+	if _, err = d.CheckIntegrity(); err != nil {
+		t.Fatal(err)
+	}
+	assertNoMetadata("integrity check")
+	if err = d.ReplicationStorage().CompactRange(); err != nil {
+		t.Fatal(err)
+	}
+	assertNoMetadata("compaction")
+	if err = s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err = d.Close(); err != nil {
+		t.Fatal(err)
+	}
+	d, err = Open(path, opt)
+	if err != nil {
 		t.Fatal(err)
 	}
 	assertRowCount(t, d, 2)
-	rowCountSQL(t, d, "INSERT INTO counted VALUES(3,3);ANALYZE")
-	assertRowCount(t, d, 3)
-	rowCountSQL(t, d, "DELETE FROM counted WHERE id=1;UPDATE counted SET n=5 WHERE id=2")
-	assertRowCount(t, d, 2)
+	assertNoMetadata("reopen/COUNT")
+	rowCountSQL(t, d, "ANALYZE")
+	assertNoMetadata("reopened ANALYZE")
+	if _, err = d.CheckIntegrity(); err != nil {
+		t.Fatal(err)
+	}
 }

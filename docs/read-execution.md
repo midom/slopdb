@@ -18,35 +18,23 @@ versions, point deletions and range tombstones, propagates read errors and check
 cancellation during skipped as well as visible entries. It never estimates a
 count from physical blocks.
 
-## Maintained exact counts
+## Exact counts through execution
 
-New permanent tables have 64 signed count shards and a version marker in the
-same physical LSM. Keys use the table's stable ID under the reserved
-`\x00__row_counts_v1__` metadata prefix. Shards contain canonical JSON integer
-values; the marker is `[1,64]`. A writer updates its session's shard in the same
-atomic WAL/replication batch as its rows. A shard can be negative when another
-session inserted the deleted row; only the sum is the table count.
+Every COUNT reads the visible entries at its statement snapshot. Unfiltered
+simple COUNT(*) and non-NULL literal counts use the storage-owned batched count
+scan, without row decoding, group maps or a SQL callback for every key. Large
+ranges can use the bounded parallel scheduler described below.
 
-Writers serialize only a changed count shard through its publication. Updates
-whose existing-row baseline is proven do not perform another row lookup, change
-counts or take the shard mutex. Final private mutations determine cardinality;
-repeated writes, failed statements and savepoint rewinds do not double count.
-Private commit scratch is reused with bounded retention. Drops retire count
-metadata atomically; renames retain the stable ID and counters.
+Private writes and temporary tables use a key-only cursor with the normal
+transaction overlay, preserving savepoints, REPEATABLE READ and session-local
+temporary visibility. Numeric literals retain their dialect-specific lazy
+validation on nonempty input. Profiling keeps ordinary measured visits so
+EXPLAIN ANALYZE records actual rows and payload bytes.
 
-Unfiltered simple `COUNT(*)` and non-NULL literal counts read the shards at the
-statement snapshot and apply private transaction writes against that snapshot.
-The same rules preserve REPEATABLE READ and old snapshots across compaction.
-No stale ANALYZE statistic substitutes for an exact count. EXPLAIN ANALYZE keeps
-its scan so the reported input visits and bytes remain meaningful.
-
-Legacy tables without markers use exact visible-key scans. `ANALYZE` backfills
-them online using a pinned snapshot and commit-delta capture ordered with the
-online-index publication gate. Ordinary startup and SELECT never initialize
-metadata or perform maintenance writes. Replica maintenance stays disabled.
-Temporary tables continue using their dedicated WAL-less range and exact scan.
-Integrity checking validates counter records and compares maintained totals
-against the independently decoded visible rows.
+Counts are never persisted, cached or maintained by mutations or ANALYZE. No
+cardinality metadata, count-specific commit locks or counter writes are added
+to the data path. ANALYZE statistics remain optimizer estimates, never query
+answers.
 
 ## Typed predicates and aggregates
 
@@ -67,7 +55,7 @@ retain their existing accounting paths.
 
 ## Bounded parallel reads
 
-Large exact key counts and eligible ungrouped typed COUNT/MIN/MAX scans can use
+Large exact scan counts and eligible ungrouped typed COUNT/MIN/MAX scans can use
 multiple workers. Planning reads only resident block indexes, selecting byte
 quantiles across a whole ordered LSM level. It returns complete, disjoint user
 key intervals; each worker reads all overlapping sources at the same pinned

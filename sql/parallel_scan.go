@@ -14,7 +14,7 @@ import (
 // The storage planner limits splits by physical size and never reads data to
 // plan a query. Memory is divided before creating private worker programs.
 func (s *Schema) parallelRanges(ctx context.Context, snapshot uint64, lower, upper []byte, bytesPerWorker int64) ([]storage.KeyRange, func(), error) {
-	root := s.rowCountRoot()
+	root := s.executionRoot()
 	workers := runtime.GOMAXPROCS(0)
 	active := root.parallelScanQueries.Load()
 	if active > 1 {
@@ -46,7 +46,7 @@ func (s *Schema) parallelRanges(ctx context.Context, snapshot uint64, lower, upp
 }
 
 func (s *Schema) countRangeParallel(ctx context.Context, snapshot uint64, lower, upper []byte) (int64, error) {
-	root := s.rowCountRoot()
+	root := s.executionRoot()
 	root.parallelScanQueries.Add(1)
 	defer root.parallelScanQueries.Add(-1)
 	if !s.statementActive {
@@ -132,7 +132,7 @@ func (s *Schema) parallelTypedAggregate(t *typedAggregate, info *TableInfo, need
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	root := s.rowCountRoot()
+	root := s.executionRoot()
 	root.parallelScanQueries.Add(1)
 	defer root.parallelScanQueries.Add(-1)
 	lower := []byte(info.storagePrefix(info.Name))

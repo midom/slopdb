@@ -28,7 +28,7 @@
 ## Views & Triggers (5/5 done)
 ## Query Plan & Introspection (5/5 done)
 
-- [x] Fused LSM reads, snapshot-aware exact count shards, bounded parallel COUNT/MIN/MAX, dialect-safe typed predicates and prepared mutation reuse; see [read execution](docs/read-execution.md)
+- [x] Fused LSM reads, snapshot-aware exact count scans, bounded parallel COUNT/MIN/MAX, dialect-safe typed predicates and prepared mutation reuse; see [read execution](docs/read-execution.md)
 
 
 - [x] SQL syntax locations, live lock waits/session IDs, typed lock timeout/deadlock diagnostics

@@ -21,7 +21,6 @@ type IntegrityReport struct{ Rows, IndexEntries, CatalogObjects int64 }
 func (s *Schema) CheckIntegrity() (report IntegrityReport, err error) {
 	expectedCounts := make(map[string]int64)
 	actualCounts := make(map[string]int64)
-	rowCounts := make(map[uint64]int64)
 	unique := make(map[string]map[string]string)
 	for table, info := range s.tables {
 		if err = s.foreignDefinitions(info); err != nil {
@@ -48,29 +47,6 @@ func (s *Schema) CheckIntegrity() (report IntegrityReport, err error) {
 		}
 		switch key[0] {
 		case 0:
-			if bytes.HasPrefix(key, []byte(rowCountPrefix)) {
-				if len(key) != len(rowCountPrefix)+9 {
-					return report, fmt.Errorf("invalid row counter key")
-				}
-				id := binary.BigEndian.Uint64(key[len(rowCountPrefix):])
-				shard := key[len(key)-1]
-				if s.lookups().tablesByID[id] == nil {
-					return report, fmt.Errorf("row counter references unknown table %d", id)
-				}
-				if shard == 255 {
-					if !bytes.Equal(data, []byte("[1,64]")) {
-						return report, fmt.Errorf("invalid row counter marker")
-					}
-				} else if shard < rowCountShards {
-					if _, e := readRowCount(data); e != nil {
-						return report, e
-					}
-				} else {
-					return report, fmt.Errorf("invalid row counter shard")
-				}
-				iterator.Next()
-				continue
-			}
 			if string(key) != versionPrefix && string(key) != objectIDPrefix && !json.Valid(data) {
 				return report, fmt.Errorf("catalog %q: malformed JSON", key)
 			}
@@ -170,7 +146,6 @@ func (s *Schema) CheckIntegrity() (report IntegrityReport, err error) {
 					expectedCounts[idx.Name]++
 				}
 			}
-			rowCounts[info.ID]++
 			report.Rows++
 		case 3:
 			// Session-owned temporary ranges have no committed shared catalog.
@@ -214,15 +189,6 @@ func (s *Schema) CheckIntegrity() (report IntegrityReport, err error) {
 	for name, count := range actualCounts {
 		if count != expectedCounts[name] {
 			return report, fmt.Errorf("index %s: %d entries, expected %d (extra or orphan entries)", name, count, expectedCounts[name])
-		}
-	}
-	for _, info := range s.tables {
-		n, enabled, e := s.exactRowCount(info)
-		if e != nil {
-			return report, e
-		}
-		if enabled && n != rowCounts[info.ID] {
-			return report, fmt.Errorf("table %s: row counter %d differs from visible rows %d", info.Name, n, rowCounts[info.ID])
 		}
 	}
 	return report, nil
