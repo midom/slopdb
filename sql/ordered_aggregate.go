@@ -36,6 +36,7 @@ func resetOrderedAggregate(g *aggregateGroup) {
 func (s *Schema) walkTypedOrderedAggregate(t *typedAggregate, info *TableInfo, needed map[string]bool, paths []*accessPath, emit func(*aggregateGroup) error) error {
 	t.setDialect(s)
 	defer t.clearRegisters()
+	binaryGroups := !s.nonbinaryDefaultCollation()
 	batch := make([]Value, typedBatchRows*t.width)
 	raw := t.rawScan(s)
 	var rawRows [typedBatchRows]bool
@@ -69,7 +70,10 @@ func (s *Schema) walkTypedOrderedAggregate(t *typedAggregate, info *TableInfo, n
 				if err != nil {
 					return err
 				}
-				key = s.appendValueIdentity(key, v)
+				if v.Type == ColText && (!binaryGroups || v.Collation != "" && v.Collation != BinaryCollation) {
+					v.Text = valueTextKey(v, s.collation)
+				}
+				key = appendValueIdentity(key, v)
 			}
 			if current == nil {
 				current = &aggregateGroup{states: make([]aggregateState, len(t.functions))}
@@ -94,10 +98,7 @@ func (s *Schema) walkTypedOrderedAggregate(t *typedAggregate, info *TableInfo, n
 					current.baseValues = current.baseValues[:len(t.baseSlots)]
 				}
 				for i, slot := range t.baseSlots {
-					current.baseValues[i] = row[slot]
-					if row[slot].Type == ColBlob {
-						current.baseValues[i].Blob = copyBytes(row[slot].Blob)
-					}
+					current.baseValues[i] = t.representativeValue(slot, row[slot])
 				}
 			}
 			current.inputs++
@@ -144,7 +145,6 @@ func (s *Schema) walkTypedOrderedAggregate(t *typedAggregate, info *TableInfo, n
 		} else {
 			decodeTypedRow(data, layout, row)
 		}
-		t.decorateRow(row)
 		rows++
 		if rows == typedBatchRows {
 			return flush()

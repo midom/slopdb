@@ -146,6 +146,7 @@ For a small allocation regression workload that needs no DBGEN installation:
 ```sh
 go test ./sql -run 'Test(TypedAggregateBatchOwnership|TypedOrderedBlobRepresentativeOwnership|TPCHJoinReuseAnswers)$'
 go test ./sql -run '^$' -bench 'Benchmark(TPCHAggregateReuse|TPCHJoinReuse|JoinCandidateReuse)$' -benchmem -count 3
+go test ./sql -run '^$' -bench 'Benchmark(TypedDialectAggregates|TypedRawDatePredicate|JoinPredicateSlots)$' -benchmem -count 3
 ```
 
 These deterministic fixtures exercise Q1/Q6-shaped aggregates, grouped joins,
@@ -158,6 +159,14 @@ Typed scans reuse private BLOB batches, while group representatives and MIN/MAX
 states own retained BLOBs. Join probes reuse key buffers and immutable qualified
 names; the first input streams without materializing every fact row. Regression
 tests cover batch boundaries, forced spill and retained result ownership.
+
+Binary-collation aggregates also use the typed path for MySQL, with the same
+decimal, unsigned, division and mixed comparison rules as the expression
+evaluator. Proven bytewise TEXT predicates compare encoded fields directly;
+changed parameter types/collations and unexpected physical tags fall back.
+Complex supported join predicates bind their referenced columns to compact
+private slots. Functions, subqueries, explicit column collations and ENUMs keep
+their established paths where the corresponding typed proof is unavailable.
 
 Queries follow the qualification definitions in the
 [TPC-H specification](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf)

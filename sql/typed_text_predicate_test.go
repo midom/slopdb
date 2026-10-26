@@ -52,7 +52,6 @@ func TestTypedRawTextPredicateDifferential(t *testing.T) {
 					} else if raw == nil {
 						decodeTypedRow(data, layout, row)
 					}
-					aggregate.decorateRow(row)
 					got, err := program.eval(row)
 					if (err == nil) != (wantErr == nil) || err != nil && err.Error() != wantErr.Error() || err == nil && !reflect.DeepEqual(got, want) {
 						t.Fatalf("dialect %v where %s date %#v n %d: got %#v/%v want %#v/%v", dialect, where, date, number, got, err, want, wantErr)

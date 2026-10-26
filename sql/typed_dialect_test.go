@@ -98,3 +98,22 @@ func TestMySQLTypedAggregateExactSemantics(t *testing.T) {
 		t.Fatal(result.Rows)
 	}
 }
+
+func TestTypedRetainedColumnMetadata(t *testing.T) {
+	s, _ := statisticsSchema(t, t.TempDir())
+	statisticsSQL(t, s, "CREATE TABLE typed_meta(id INTEGER PRIMARY KEY,g TEXT BINARY,n BIGINT)")
+	statisticsSQL(t, s, "INSERT INTO typed_meta VALUES(1,'A',1),(2,'A',2),(3,'B',NULL)")
+	for _, dialect := range []Dialect{DialectNative, DialectMySQL, DialectPostgreSQL} {
+		if err := s.SetDialect(dialect); err != nil {
+			t.Fatal(err)
+		}
+		result := statisticsSQL(t, s, "SELECT g,MIN(n) AS lo,MAX(n) AS hi,MIN(+n) AS plus FROM typed_meta GROUP BY g ORDER BY g")
+		if len(result.Rows) != 2 {
+			t.Fatal(result.Rows)
+		}
+		first := result.Rows[0]
+		if !first["g"].Binary || first["g"].SemanticType != TypeText || first["lo"].SemanticType != TypeInt64 || first["hi"].SemanticType != TypeInt64 || first["plus"].SemanticType != TypeInt64 || first["lo"].Int != 1 || first["hi"].Int != 2 || first["plus"].Int != 1 {
+			t.Fatalf("dialect %v retained metadata %#v", dialect, first)
+		}
+	}
+}

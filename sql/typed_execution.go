@@ -34,6 +34,7 @@ type typedProgram struct {
 	literals     []typedLiteral
 	literalCount int
 	literalReady bool
+	outputColumn *typedSlotColumn // retained MIN/MAX of a transparent column
 }
 
 type typedLiteral struct {
@@ -365,7 +366,11 @@ func (p *typedProgram) eval(slots []Value) (Value, error) {
 		}
 		p.registers[pc] = v
 	}
-	return p.registers[p.result], nil
+	v := p.registers[p.result]
+	if column := p.outputColumn; column != nil {
+		v = decorateTypedValue(v, column.kind, column.binary, column.collation, nil)
+	}
+	return v, nil
 }
 
 type typedAggregate struct {
@@ -432,10 +437,29 @@ func (t *typedAggregate) clearRegisters() {
 	}
 }
 
-func (t *typedAggregate) decorateRow(row []Value) {
-	for slot, column := range t.columns {
-		row[slot] = decorateTypedValue(row[slot], column.kind, column.binary, column.collation, nil)
+func (t *typedAggregate) representativeValue(slot int, value Value) Value {
+	// The binary/no-ENUM proof makes physical tags sufficient for internal
+	// arithmetic and predicates. Attach declared metadata only when values
+	// escape into representatives or transparent MIN/MAX results, rather
+	// than copying/decorating every private Value in every input batch.
+	column := t.columns[slot]
+	value = decorateTypedValue(value, column.kind, column.binary, column.collation, nil)
+	if value.Type == ColBlob {
+		value.Blob = copyBytes(value.Blob)
 	}
+	return value
+}
+
+func (t *typedAggregate) transparentColumn(expr Expression) *typedSlotColumn {
+	if unary, ok := expr.(*UnaryExpr); ok && unary.Op == "+" {
+		return t.transparentColumn(unary.Right)
+	}
+	if ref, ok := expr.(*ColumnRefExpr); ok {
+		if slot, ok := t.slots[strings.ToLower(ref.Name)]; ok {
+			return &t.columns[slot]
+		}
+	}
+	return nil
 }
 
 func compileTypedAggregate(info *TableInfo, table, alias string, where Expression, group []Expression, functions []*FuncCallExpr, representative map[string]bool) (*typedAggregate, bool) {
@@ -511,6 +535,9 @@ func compileTypedAggregate(info *TableInfo, table, alias string, where Expressio
 		if !ok {
 			return nil, false
 		}
+		if strings.EqualFold(f.Name, "MIN") || strings.EqualFold(f.Name, "MAX") {
+			p.outputColumn = t.transparentColumn(f.Args[0])
+		}
 		t.args = append(t.args, p)
 	}
 	for _, name := range sortedAccessNames(representative) {
@@ -532,6 +559,7 @@ const typedBatchRows = 128
 func (s *Schema) walkTypedAggregate(t *typedAggregate, info *TableInfo, needed map[string]bool, paths []*accessPath, groups map[string]*aggregateGroup, newGroup func() *aggregateGroup) error {
 	t.setDialect(s)
 	defer t.clearRegisters()
+	binaryGroups := !s.nonbinaryDefaultCollation()
 
 	batch := make([]Value, typedBatchRows*t.width)
 	raw := t.rawScan(s)
@@ -568,7 +596,10 @@ func (s *Schema) walkTypedAggregate(t *typedAggregate, info *TableInfo, needed m
 				if err != nil {
 					return err
 				}
-				key = s.appendValueIdentity(key, v)
+				if v.Type == ColText && (!binaryGroups || v.Collation != "" && v.Collation != BinaryCollation) {
+					v.Text = valueTextKey(v, s.collation)
+				}
+				key = appendValueIdentity(key, v)
 			}
 			// The conversion in a map lookup borrows key for the lookup only.
 			// Copy it only when a new group retains the identity.
@@ -587,10 +618,7 @@ func (s *Schema) walkTypedAggregate(t *typedAggregate, info *TableInfo, needed m
 			if g.inputs == 0 {
 				g.baseValues = make([]Value, len(t.baseSlots))
 				for i, slot := range t.baseSlots {
-					g.baseValues[i] = row[slot]
-					if row[slot].Type == ColBlob {
-						g.baseValues[i].Blob = copyBytes(row[slot].Blob)
-					}
+					g.baseValues[i] = t.representativeValue(slot, row[slot])
 				}
 			}
 			g.inputs++
@@ -644,7 +672,6 @@ func (s *Schema) walkTypedAggregate(t *typedAggregate, info *TableInfo, needed m
 		} else {
 			decodeTypedRow(data, layout, row)
 		}
-		t.decorateRow(row)
 		rows++
 		if rows == typedBatchRows {
 			return flush()

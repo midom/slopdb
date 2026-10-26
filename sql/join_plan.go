@@ -694,6 +694,8 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 			}
 		}
 	}
+	vectors := s.compileJoinPredicateSlots(p, predicates)
+	defer vectors.close()
 	var walk func(int) error
 	var joinProfiles []int
 	if s.profile != nil {
@@ -710,7 +712,14 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 		}
 		if depth == len(p.order) {
 			if p.where != nil {
-				ok, err := s.evalCondition(p.where, row)
+				var ok bool
+				var err error
+				if vectors != nil && vectors.final != nil {
+					value, e := vectors.final.eval(vectors.values)
+					ok, err = truthValue(value), e
+				} else {
+					ok, err = s.evalCondition(p.where, row)
+				}
 				if err != nil {
 					return err
 				}
@@ -777,9 +786,19 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 					row[k] = v
 				}
 			}
+			if vectors != nil {
+				vectors.bind(depth, candidate)
+			}
 			matched := true
-			for _, expr := range predicates[depth] {
-				ok, e := s.evalCondition(expr, row)
+			for index, expr := range predicates[depth] {
+				var ok bool
+				var e error
+				if vectors != nil && vectors.programs[depth][index] != nil {
+					value, err := vectors.programs[depth][index].eval(vectors.values)
+					ok, e = truthValue(value), err
+				} else {
+					ok, e = s.evalCondition(expr, row)
+				}
 				if e != nil {
 					return e
 				}
@@ -829,6 +848,9 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 					row[k] = NewNullValue()
 				}
 			}
+			if vectors != nil {
+				vectors.reset(depth)
+			}
 			if err := walk(depth + 1); err != nil {
 				return err
 			}
@@ -841,6 +863,9 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 			if p.firstOwner[k] == i {
 				row[k] = NewNullValue()
 			}
+		}
+		if vectors != nil {
+			vectors.reset(depth)
 		}
 		return nil
 	}
