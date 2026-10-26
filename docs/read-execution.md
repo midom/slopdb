@@ -31,17 +31,20 @@ temporary visibility. Numeric literals retain their dialect-specific lazy
 validation on nonempty input. Profiling keeps ordinary measured visits so
 EXPLAIN ANALYZE records actual rows and payload bytes.
 
-Counts are never persisted, cached or maintained by mutations or ANALYZE. No
-cardinality metadata, count-specific commit locks or counter writes are added
-to the data path. ANALYZE statistics remain optimizer estimates, never query
-answers.
+COUNT does not consult persisted totals or caches across statements. Mutations
+and ANALYZE do not maintain count answers, and the data path has no added
+count-specific metadata, commit locks or counter writes. ANALYZE statistics
+remain optimizer estimates, never query answers.
 
 ## Typed predicates and aggregates
 
 Typed aggregate programs bind column slots, types and dialect rules once.
 MySQL uses the common typed path where comparisons, DECIMAL/unsigned arithmetic,
 NULLs and short-circuit evaluation have been proven equivalent. Unsupported
-expressions and collations keep the expression evaluator.
+expressions and collations keep the expression evaluator. Signed integer
+comparisons and remainder operations can read operand registers directly and
+write scalar results without intermediate copies of the full SQL value.
+Mixed numeric types, ENUM/hex values and other coercions retain the common path.
 
 Binary TEXT comparisons, including common date predicates, can inspect encoded
 bytes directly and produce private boolean slots. Every unproven predicate stays
