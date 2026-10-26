@@ -13,6 +13,8 @@ import (
 	"time"
 )
 
+type countRangeBounds struct{ lower, upper []byte }
+
 func modelRangeCount(rows map[string][]byte, lower, upper []byte) int64 {
 	var n int64
 	for key := range rows {
@@ -23,7 +25,7 @@ func modelRangeCount(rows map[string][]byte, lower, upper []byte) int64 {
 	return n
 }
 
-func TestCountRangeExactSnapshotsVersionsTombstonesAndPartitions(t *testing.T) {
+func TestCountRangeExactSnapshotsVersionsTombstones(t *testing.T) {
 	for _, memory := range []BlockCacheMemory{BlockCacheHeap, BlockCacheMmap} {
 		t.Run(string(memory), func(t *testing.T) {
 			l := reusableTestTree(t, memory)
@@ -86,41 +88,13 @@ func TestCountRangeExactSnapshotsVersionsTombstonesAndPartitions(t *testing.T) {
 					seq  uint64
 					rows map[string][]byte
 				}{{seq, old}, {math.MaxUint64, latest}, {0, map[string][]byte{}}} {
-					for _, bounds := range []KeyRange{{nil, nil}, {[]byte("r0000"), []byte("r0350")}, {[]byte("r0050"), []byte("r0250")}, {[]byte("r0100"), []byte("r0100")}, {[]byte("missing"), []byte("n")}, {nil, []byte{}}, {[]byte("a\x00"), []byte("b")}} {
-						want := modelRangeCount(version.rows, bounds.Lower, bounds.Upper)
-						got, err := l.CountRangeAtContext(context.Background(), version.seq, bounds.Lower, bounds.Upper, 12)
+					for _, bounds := range []countRangeBounds{{nil, nil}, {[]byte("r0000"), []byte("r0350")}, {[]byte("r0050"), []byte("r0250")}, {[]byte("r0100"), []byte("r0100")}, {[]byte("missing"), []byte("n")}, {nil, []byte{}}, {[]byte("a\x00"), []byte("b")}} {
+						want := modelRangeCount(version.rows, bounds.lower, bounds.upper)
+						got, err := l.CountRangeAtContext(context.Background(), version.seq, bounds.lower, bounds.upper, 12)
 						if err != nil || got != want {
-							t.Fatalf("compact=%v snapshot=%d [%q,%q): count=%d want=%d error=%v", compact, version.seq, bounds.Lower, bounds.Upper, got, want, err)
+							t.Fatalf("compact=%v snapshot=%d [%q,%q): count=%d want=%d error=%v", compact, version.seq, bounds.lower, bounds.upper, got, want, err)
 						}
-						before := l.Status().DataBlockReadAttempts
-						parts, err := l.PartitionRangeAtContext(nil, version.seq, bounds.Lower, bounds.Upper, 12, 8)
-						if err != nil || len(parts) == 0 || l.Status().DataBlockReadAttempts != before {
-							t.Fatal("partition scanned data or failed", parts, err)
-						}
-						var total int64
-						for i, part := range parts {
-							if i == 0 && !bytes.Equal(part.Lower, bounds.Lower) || i == len(parts)-1 && !bytes.Equal(part.Upper, bounds.Upper) {
-								t.Fatal("partition lost outer bounds")
-							}
-							if i > 0 && !bytes.Equal(parts[i-1].Upper, part.Lower) {
-								t.Fatal("partition gap/overlap")
-							}
-							n, err := l.CountRangeAtContext(nil, version.seq, part.Lower, part.Upper, uint64(30+i))
-							if err != nil {
-								t.Fatal(err)
-							}
-							total += n
-						}
-						if total != want {
-							t.Fatal("partitioned count changed", total, want)
-						}
-						if len(parts) > 1 && len(parts[0].Upper) > 0 {
-							saved := bytes.Clone(parts[1].Lower)
-							parts[0].Upper[0] ^= 0xff
-							if !bytes.Equal(parts[1].Lower, saved) {
-								t.Fatal("adjacent partition bounds alias")
-							}
-						}
+
 					}
 				}
 			}
@@ -177,12 +151,6 @@ func TestCountRangeCancellationErrorsAndViewRelease(t *testing.T) {
 	if _, err := l.CountRangeAtContext(nil, math.MaxUint64, []byte("z"), []byte("a"), 0); err == nil {
 		t.Fatal("backwards count accepted")
 	}
-	if _, err := l.PartitionRangeAtContext(nil, math.MaxUint64, nil, nil, 0, 0); err == nil {
-		t.Fatal("zero partitions accepted")
-	}
-	if _, err := l.PartitionRangeAtContext(nil, math.MaxUint64, []byte("z"), []byte("a"), 0, 2); err == nil {
-		t.Fatal("backwards partition range accepted")
-	}
 	if err := l.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -191,9 +159,6 @@ func TestCountRangeCancellationErrorsAndViewRelease(t *testing.T) {
 	}
 	if _, err := l.CountRangeAtContext(nil, math.MaxUint64, []byte("a"), []byte("a"), 0); err == nil {
 		t.Fatal("closed empty count succeeded")
-	}
-	if _, err := l.PartitionRangeAtContext(nil, math.MaxUint64, nil, nil, 0, 2); err == nil {
-		t.Fatal("closed partition succeeded")
 	}
 }
 
