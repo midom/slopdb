@@ -60,8 +60,15 @@ func (s *Schema) processForeignActions(start int) error {
 			if !exists {
 				continue
 			}
-			after, afterExists := foreignValues(columns, change.after)
-			if change.after != nil && afterExists && s.foreignValuesEqual(before, after) {
+			// MATCH SIMPLE treats NULL child keys as unreferenced, but CASCADE
+			// must still copy every new parent component, including NULLs.
+			var after []Value
+			if change.after != nil {
+				for _, name := range columns {
+					after = append(after, change.after[name])
+				}
+			}
+			if change.after != nil && s.foreignValuesEqual(before, after) {
 				continue
 			}
 			action := reference.key.OnDelete
@@ -118,9 +125,6 @@ func (s *Schema) processForeignActions(start int) error {
 					var value Value
 					switch action {
 					case "CASCADE":
-						if !afterExists {
-							return fmt.Errorf("invalid cascaded parent key")
-						}
 						value = after[i]
 					case "SET NULL":
 						value = NewNullValue()

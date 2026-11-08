@@ -12,7 +12,14 @@
 
 ## Aggregates & Grouping (8/8 done)
 ## Joins (7/7 done)
+
+- [x] Join-aware star projection in views, derived tables and CTEs; NATURAL/USING key coalescing
+- [x] MySQL mixed string/number comparisons across predicates, prepared reads and planned joins
+
 ## Subqueries (5/5 done)
+
+- [x] Lexical alias scopes in correlated aggregates, EXISTS and IN
+
 ## Data Types & Expressions (19/19 done)
 
 - [x] Expanded MySQL string, numeric, temporal, encoding, UUID/IP, digest/compression and connection functions with independent MySQL reference checks; see [function coverage](docs/mysql-functions.md)
@@ -36,10 +43,10 @@
 - [x] MySQL-style `SHOW TABLE STATUS` with bounded LSM range sizes and sampled visible row estimates; see [table status](docs/table-status.md)
 ## Constraints (8/8 done)
 
-- [x] Composite/self foreign keys, ON DELETE/UPDATE CASCADE and SET NULL/DEFAULT, DEFERRABLE constraints and SET CONSTRAINTS with transaction/savepoint validation
+- [x] Composite/self foreign keys, ON DELETE/UPDATE CASCADE (including nullable UNIQUE parent updates) and SET NULL/DEFAULT, DEFERRABLE constraints and SET CONSTRAINTS with transaction/savepoint validation
 ## Schema Operations (5/5 done)
 
-- [x] VARCHAR/VARBINARY limits and catalog-only length increases; `ALLOW EXISTING` shrinking
+- [x] VARCHAR/VARBINARY limits and catalog-only length increases; `ALLOW EXISTING` shrinking preserves unassigned values in MySQL nonstrict UPDATE/UPSERT
 - [x] Online standalone index additions and catalog-only index drops, with atomic publication and recovery cleanup
 - [x] Conditional post-commit index cleanup; ordinary DML commits skip cleanup scans and the catalog writer lock
 - [x] Optional publication policy that rolls back blocking transactions after a configurable grace period

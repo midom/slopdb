@@ -391,14 +391,15 @@ func (s *Schema) cteQueryColumnDefs(query Statement, outer map[string][]ColumnDe
 		}
 		for i, c := range q.Columns {
 			if c.Star {
-				out = append(out, base...)
+				star := append([]ColumnDef(nil), base...)
 				for _, j := range q.Joins {
 					cols := tableCols(j.Table)
 					if j.Subquery != nil {
 						cols = s.cteQueryColumnDefs(j.Subquery, names)
 					}
-					out = append(out, cols...)
+					star = appendJoinColumnDefs(star, cols, j)
 				}
+				out = append(out, star...)
 				continue
 			}
 			name := c.Alias

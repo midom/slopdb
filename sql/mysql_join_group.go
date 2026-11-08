@@ -70,8 +70,7 @@ func (s *Schema) selectJoinGroup(stmt *SelectStmt) (*ResultSet, error) {
 		return nil, err
 	}
 	for _, row := range rows {
-		qualifyRow(row, stmt.From)
-		qualifyRow(row, stmt.FromAlias)
+		qualifyAccessRow(row, stmt.From, stmt.FromAlias)
 	}
 	// SelectAll makes pruning retain every column, including every source's
 	// qualified name. The enclosing query applies its own WHERE afterward.

@@ -263,12 +263,24 @@ func mysqlMixedNumericCompare(a, b Value) (int, bool) {
 	if a.Null || b.Null {
 		return 0, false
 	}
-	numeric := isNumeric
-	stringValue := func(v Value) bool { return v.Type == ColText || v.Type == ColBlob }
-	if numeric(a) && stringValue(b) || numeric(b) && stringValue(a) {
+	if mysqlMixedNumericTypes(a.Type, b.Type) {
 		return ValueCompare(mysqlNumericComparisonValue(a), mysqlNumericComparisonValue(b)), true
 	}
 	return 0, false
+}
+
+// String/number comparisons use numeric conversion in MySQL. Neither string
+// affinity nor a string index's typed keys describe that equality domain.
+func mysqlMixedNumericTypes(a, b ColumnType) bool {
+	stringType := func(t ColumnType) bool { return t == ColText || t == ColBlob }
+	return isNumeric(Value{Type: a}) && stringType(b) || isNumeric(Value{Type: b}) && stringType(a)
+}
+
+func comparisonValueAffinity(v Value, typ ColumnType, mysql bool) Value {
+	if mysql && mysqlMixedNumericTypes(v.Type, typ) {
+		return v
+	}
+	return applyAffinity(v, typ)
 }
 
 // normalizeColumnValue is shared by inserts, updates and ALTER rewrites, before
@@ -456,7 +468,16 @@ func (s *Schema) normalizeMySQLValue(v Value, col ColumnDef) (Value, error) {
 	return normalizeColumnValue(v, col)
 }
 func (s *Schema) normalizeMySQLRow(info *TableInfo, row map[string]Value) error {
+	return s.normalizeMySQLAssignedRow(info, row, nil)
+}
+
+func (s *Schema) normalizeMySQLAssignedRow(info *TableInfo, row map[string]Value, assigned map[string]bool) error {
 	for _, col := range info.Columns {
+		// Stored values already passed assignment normalization. Reapplying it
+		// to an unrelated UPDATE can truncate ALLOW EXISTING values.
+		if assigned != nil && !assigned[col.Name] {
+			continue
+		}
 		v, err := s.normalizeMySQLValue(row[col.Name], col)
 		if err != nil {
 			return err

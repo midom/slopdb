@@ -692,12 +692,12 @@ func qualifyAccessRow(row map[string]Value, table, alias string) {
 	if alias == "" {
 		alias = table
 	}
+	if alias == "" {
+		return
+	}
 	for k, v := range row {
 		if !strings.Contains(k, ".") {
 			row[alias+"."+k] = v
-			if table != alias {
-				row[table+"."+k] = v
-			}
 		}
 	}
 }

@@ -91,8 +91,11 @@ func exactCoveringProjection(stmt *SelectStmt, info *TableInfo) bool {
 
 func coveringColumn(name, table, alias string) string {
 	name = strings.ToLower(name)
+	if alias != "" {
+		table = alias
+	}
 	if qualifier, column, qualified := strings.Cut(name, "."); qualified {
-		if qualifier != table && (alias == "" || qualifier != alias) {
+		if qualifier != table {
 			return ""
 		}
 		return column
@@ -431,8 +434,7 @@ func (s *Schema) coveringRows(stmt *SelectStmt, plan *coveringReadPlan) ([]map[s
 			}
 			row := decodeRow(data[1:], plan.info)
 			if needQualified {
-				qualifyRow(row, plan.index.Table)
-				qualifyRow(row, stmt.FromAlias)
+				qualifyAccessRow(row, plan.index.Table, stmt.FromAlias)
 			}
 			matches := true
 			if stmt.Where != nil && !conditionSatisfied {

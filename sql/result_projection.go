@@ -55,20 +55,47 @@ func uniqueResultColumns(columns []ColumnDef, expressions []selectExprCol) bool 
 	return changed
 }
 
+// Star expansion uses the same join shape in execution, views, derived tables,
+// and static descriptions. USING/NATURAL expose each shared key only once;
+// ordinary joins retain both columns with distinct row-map keys.
+func appendJoinColumnDefs(left, right []ColumnDef, join JoinClause) []ColumnDef {
+	names := make(map[string]bool, len(left)+len(right))
+	for _, col := range left {
+		names[col.Name] = true
+	}
+	alias := join.Alias
+	if alias == "" {
+		alias = join.Table
+	}
+	for _, col := range right {
+		name := col.Name
+		if containsColumn(join.Using, name) || join.Type == "NATURAL" && names[name] {
+			continue
+		}
+		if names[name] && alias != "" {
+			name = alias + "." + name
+		}
+		label := col.ResultName()
+		col.Name, col.DisplayName = name, label
+		left = append(left, col)
+		names[name] = true
+	}
+	return left
+}
+
 func (s *Schema) selectProjection(stmt *SelectStmt, info *TableInfo) ([]ColumnDef, []selectExprCol, bool) {
 	var columns []ColumnDef
 	var expressions []selectExprCol
 	appendStar := func() {
 		start := len(columns)
+		rs := ResultSet{}
 		if info != nil {
-			columns = append(columns, info.Columns...)
+			rs.Columns = append(rs.Columns, info.Columns...)
 		}
-		base := append([]ColumnDef(nil), columns...)
-		rs := ResultSet{Columns: columns}
 		for _, j := range stmt.Joins {
-			s.addJoinColumns(&rs, j, base)
+			s.addJoinColumns(&rs, j)
 		}
-		columns = rs.Columns
+		columns = append(columns, rs.Columns...)
 		if !stmt.SelectAll {
 			for _, col := range columns[start:] {
 				expressions = append(expressions, selectExprCol{name: col.Name, expr: &ColumnRefExpr{Name: col.Name}})

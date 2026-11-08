@@ -536,8 +536,7 @@ func (s *Schema) tupleRows(stmt *SelectStmt, plan *tupleReadPlan, trackKeys bool
 			row = decodeRow(data, info)
 		}
 		if qualified {
-			qualifyRow(row, plan.info.Name)
-			qualifyRow(row, stmt.FromAlias)
+			qualifyAccessRow(row, plan.info.Name, stmt.FromAlias)
 		}
 		if plan.residual != nil {
 			match, err := s.evalCondition(plan.residual, row)

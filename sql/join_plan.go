@@ -314,13 +314,13 @@ func (s *Schema) loadJoinRelation(r *joinRelation) error {
 // Visitors consume the access reader's private scratch synchronously. Retained
 // hash/cache/materialized rows must be copied by their respective consumers.
 func (s *Schema) walkJoinRelation(r *joinRelation, visit func(map[string]Value) error) error {
-	type filterColumn struct{ name, alias, table string }
+	type filterColumn struct{ name, alias string }
 	var filterColumns []filterColumn
 	var qualified map[string]Value
 	if r.qualifiedFilter {
 		qualified = make(map[string]Value, len(r.needed)*3)
 		for name := range r.needed {
-			filterColumns = append(filterColumns, filterColumn{name, r.alias + "." + name, r.table + "." + name})
+			filterColumns = append(filterColumns, filterColumn{name, r.alias + "." + name})
 		}
 	}
 	return s.walkFilteredAccess(r.info, r.needed, r.filter, r.paths, func(row map[string]Value) error {
@@ -331,7 +331,6 @@ func (s *Schema) walkJoinRelation(r *joinRelation, visit func(map[string]Value) 
 					v := row[column.name]
 					qualified[column.name] = v
 					qualified[column.alias] = v
-					qualified[column.table] = v
 				}
 				q = qualified
 			}
@@ -505,6 +504,14 @@ func (s *Schema) joinReader(r *joinRelation, pairs []joinKeyPair) *joinReader {
 	return reader
 }
 
+func (s *Schema) joinPlanReader(p *joinPlan, relation int, mask uint64) *joinReader {
+	pairs := p.pairs(relation, mask)
+	if p.pairsHaveExplicitCollation(relation, pairs) || s.expressionMySQL() && !p.mysqlJoinHashCompatible(relation, pairs) {
+		pairs = nil
+	}
+	return s.joinReader(p.relations[relation], pairs)
+}
+
 func joinTypedValue(v Value, typ ColumnType) (Value, bool) {
 	if v.Null {
 		return v, true
@@ -643,11 +650,7 @@ func (s *Schema) walkJoinPlan(p *joinPlan, visit func(map[string]Value) error) e
 	var mask uint64
 	estimatedLeft := 1.0
 	for depth, i := range p.order {
-		pairs := p.pairs(i, mask)
-		if p.pairsHaveExplicitCollation(i, pairs) {
-			pairs = nil
-		}
-		readers[depth] = s.joinReader(p.relations[i], pairs)
+		readers[depth] = s.joinPlanReader(p, i, mask)
 		r := p.relations[i]
 		names := make(map[string]string, len(r.needed))
 		for name := range r.needed {

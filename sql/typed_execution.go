@@ -332,9 +332,9 @@ func (p *typedProgram) run(slots []Value) error {
 			}
 			left, right := p.registers[i.a], p.registers[i.b]
 			if i.affinity == 1 && !left.EnumValue {
-				right = applyAffinity(right, left.Type)
+				right = comparisonValueAffinity(right, left.Type, p.mysqlMode)
 			} else if i.affinity == 2 && !right.EnumValue {
-				left = applyAffinity(left, right.Type)
+				left = comparisonValueAffinity(left, right.Type, p.mysqlMode)
 			}
 			v = p.compareValues(left, right, i.op)
 		case "IS", "IS NOT":
@@ -477,6 +477,9 @@ func (t *typedAggregate) transparentColumn(expr Expression) *typedSlotColumn {
 }
 
 func compileTypedAggregate(info *TableInfo, table, alias string, where Expression, group []Expression, functions []*FuncCallExpr, representative map[string]bool) (*typedAggregate, bool) {
+	if alias != "" {
+		table = alias
+	}
 	if tableHasExplicitCollation(info) {
 		return nil, false
 	}
@@ -507,7 +510,7 @@ func compileTypedAggregate(info *TableInfo, table, alias string, where Expressio
 		needed[strings.ToLower(name)] = true
 	}
 	for _, col := range info.Columns {
-		names := []string{col.Name, table + "." + col.Name, alias + "." + col.Name}
+		names := []string{col.Name, table + "." + col.Name}
 		use := false
 		for _, name := range names {
 			use = use || needed[strings.ToLower(name)]

@@ -71,6 +71,9 @@ func (s *Schema) describeTable(name string, scope map[string][]ColumnDef, depth 
 	return nil, fmt.Errorf("table %q does not exist", name)
 }
 func describeEnv(cols []ColumnDef, table, alias string, env map[string]ColumnDef) {
+	if alias != "" {
+		table = alias
+	}
 	for _, c := range cols {
 		if _, exists := env[c.Name]; exists {
 			env[c.Name] = ColumnDef{ColType: ColumnType(-1)}
@@ -79,9 +82,6 @@ func describeEnv(cols []ColumnDef, table, alias string, env map[string]ColumnDef
 		}
 		if table != "" {
 			env[table+"."+c.Name] = c
-		}
-		if alias != "" {
-			env[alias+"."+c.Name] = c
 		}
 	}
 }
@@ -173,8 +173,19 @@ func (s *Schema) describeStatement(stmt Statement, outer map[string][]ColumnDef,
 					cols[i].NotNull = false
 				}
 			}
+			shared := make(map[string]ColumnDef)
+			for _, col := range cols {
+				if containsColumn(j.Using, col.Name) || j.Type == "NATURAL" {
+					if previous, ok := env[col.Name]; ok {
+						shared[col.Name] = previous
+					}
+				}
+			}
 			describeEnv(cols, j.Table, j.Alias, env)
-			all = append(all, cols...)
+			for name, col := range shared {
+				env[name] = col
+			}
+			all = appendJoinColumnDefs(all, cols, j)
 		}
 		for _, c := range scope["\x00outer"] {
 			if _, exists := env[c.Name]; !exists {

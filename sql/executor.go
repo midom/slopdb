@@ -1414,7 +1414,7 @@ func (s *Schema) Explain(stmt *ExplainStmt) (*ResultSet, error) {
 			var mask uint64
 			for _, i := range join.order {
 				r := join.relations[i]
-				reader := s.joinReader(r, join.pairs(i, mask))
+				reader := s.joinPlanReader(join, i, mask)
 				access := "SCAN"
 				if len(reader.columns) > 0 {
 					access = "PRIMARY"
@@ -3272,6 +3272,9 @@ func (s *Schema) findMatchingRowsViaIndex(where Expression, tableName string) ([
 	if info, ok := s.tables[tableName]; ok {
 		for _, col := range info.Columns {
 			if col.Name == colName {
+				if s.expressionMySQL() && mysqlMixedNumericTypes(val.Type, col.ColType) {
+					return nil, false
+				}
 				if len(col.EnumValues) > 0 && (val.Type == ColInteger || val.Type == ColReal) {
 					return nil, false
 				}
@@ -4908,8 +4911,7 @@ func (s *Schema) selectInto(stmt *SelectStmt, dst *ResultSet) (result *ResultSet
 				}
 			}
 			for _, row := range subRows {
-				qualifyRow(row, tableName)
-				qualifyRow(row, stmt.FromAlias)
+				qualifyAccessRow(row, tableName, stmt.FromAlias)
 			}
 			if len(stmt.Joins) > 0 {
 				var joinErr error
@@ -5024,8 +5026,7 @@ func (s *Schema) selectInto(stmt *SelectStmt, dst *ResultSet) (result *ResultSet
 
 		if needQualified {
 			for _, row := range baseRows {
-				qualifyRow(row, tableName)
-				qualifyRow(row, stmt.FromAlias)
+				qualifyAccessRow(row, tableName, stmt.FromAlias)
 			}
 		}
 		if len(stmt.Joins) > 0 {
@@ -5684,48 +5685,18 @@ func qualifyRow(row map[string]Value, alias string) {
 	}
 }
 
-func (s *Schema) addJoinColumns(rs *ResultSet, jc JoinClause, baseColumns []ColumnDef) {
-	alias := jc.Alias
-	if alias == "" && jc.Subquery != nil {
-		return
-	}
+func (s *Schema) addJoinColumns(rs *ResultSet, jc JoinClause) {
+	var columns []ColumnDef
 	if jc.Subquery != nil {
-		for _, col := range s.cteQueryColumnDefs(jc.Subquery, cteScopeColumns(s.cteScope)) {
-			name := col.Name
-			exists := false
-			for _, ec := range rs.Columns {
-				if ec.Name == name {
-					exists = true
-					break
-				}
-			}
-			if exists && alias != "" {
-				name = alias + "." + name
-			}
-			label := col.ResultName()
-			col.Name, col.DisplayName = name, label
-			rs.Columns = append(rs.Columns, col)
-		}
-		return
+		columns = s.cteQueryColumnDefs(jc.Subquery, cteScopeColumns(s.cteScope))
+	} else if info := s.tables[strings.ToLower(jc.Table)]; info != nil {
+		columns = info.Columns
+	} else if view := s.views[strings.ToLower(jc.Table)]; view != nil {
+		columns = s.viewColumnDefs(view)
+	} else if cte := s.cteScope[strings.ToLower(jc.Table)]; cte != nil {
+		columns = cte.Columns
 	}
-	info, ok := s.tables[strings.ToLower(jc.Table)]
-	if !ok {
-		return
-	}
-	baseExist := make(map[string]bool)
-	for _, col := range baseColumns {
-		baseExist[col.Name] = true
-	}
-	for _, col := range info.Columns {
-		name := col.Name
-		if baseExist[name] {
-			name = alias + "." + name
-		}
-		label := col.ResultName()
-		col.Name, col.DisplayName = name, label
-		rs.Columns = append(rs.Columns, col)
-		baseExist[name] = true
-	}
+	rs.Columns = appendJoinColumnDefs(rs.Columns, columns, jc)
 }
 func (s *Schema) getJoinRows(jc JoinClause, locking bool, needed map[string]bool) ([]map[string]Value, []ColumnDef, [][]string, error) {
 	if jc.Subquery != nil {
@@ -6118,7 +6089,7 @@ func (s *Schema) applyRowUpdate(table string, info *TableInfo, oldKey []byte, or
 		}
 		row[strings.ToLower(set.Column)] = v
 	}
-	if err := s.normalizeMySQLRow(info, row); err != nil {
+	if err := s.normalizeMySQLAssignedRow(info, row, assigned); err != nil {
 		return nil, err
 	}
 	if pk := s.getPKColumn(info); pk != nil && pk.AutoIncrement && pk.Unsigned {
@@ -6989,13 +6960,13 @@ func (s *Schema) evalBinary(e *BinaryExpr, row map[string]Value) (Value, error) 
 		if _, ok := e.Left.(*ColumnRefExpr); ok {
 			if _, literal := e.Right.(*LiteralExpr); literal {
 				if !lv.EnumValue {
-					rv = applyAffinity(rv, lv.Type)
+					rv = comparisonValueAffinity(rv, lv.Type, s.expressionMySQL())
 				}
 			}
 		} else if _, ok := e.Right.(*ColumnRefExpr); ok {
 			if _, literal := e.Left.(*LiteralExpr); literal {
 				if !rv.EnumValue {
-					lv = applyAffinity(lv, rv.Type)
+					lv = comparisonValueAffinity(lv, rv.Type, s.expressionMySQL())
 				}
 			}
 		}
@@ -7918,9 +7889,6 @@ func (s *Schema) viewColumnDefs(vi *ViewInfo) []ColumnDef {
 	if s.viewDepth > 100 {
 		return nil
 	}
-	if vi.Parsed != nil && (vi.Parsed.With != nil || vi.Parsed.Compound != nil) && len(vi.Columns) == 0 {
-		return s.cteQueryColumnDefs(vi.Parsed, nil)
-	}
 	if len(vi.Columns) > 0 {
 		cols := make([]ColumnDef, len(vi.Columns))
 		for i, name := range vi.Columns {
@@ -7929,53 +7897,7 @@ func (s *Schema) viewColumnDefs(vi *ViewInfo) []ColumnDef {
 		return cols
 	}
 
-	var cols []ColumnDef
-	for i, sc := range vi.Parsed.Columns {
-		if sc.Star {
-			fromName := strings.ToLower(vi.Parsed.From)
-			if fromName != "" {
-				if fromVi, ok := s.views[fromName]; ok {
-					return s.viewColumnDefs(fromVi)
-				}
-				if fromInfo, ok := s.tables[fromName]; ok {
-					return fromInfo.Columns
-				}
-			}
-			continue
-		}
-		name := ""
-		if i < len(vi.Columns) {
-			name = vi.Columns[i]
-		}
-		if name == "" {
-			name = sc.Alias
-		}
-		if name == "" {
-			if cr, ok := sc.Expr.(*ColumnRefExpr); ok {
-				name = cr.Name
-			} else if fc, ok := sc.Expr.(*FuncCallExpr); ok {
-				name = fc.Name
-			} else {
-				name = fmt.Sprintf("expr%d", i)
-			}
-		}
-		if name != "" {
-			cols = append(cols, ColumnDef{Name: name, ColType: ColInteger})
-		}
-	}
-	if len(cols) == 0 && len(vi.Parsed.Columns) > 0 && vi.Parsed.Columns[0].Star {
-		fromName := strings.ToLower(vi.Parsed.From)
-		if fromName != "" {
-			if fromVi, ok := s.views[fromName]; ok {
-				return s.viewColumnDefs(fromVi)
-			}
-			if fromInfo, ok := s.tables[fromName]; ok {
-				return fromInfo.Columns
-			}
-		}
-		cols = append(cols, ColumnDef{Name: "col0", ColType: ColInteger})
-	}
-	return cols
+	return s.cteQueryColumnDefs(vi.Parsed, nil)
 }
 
 type selectExprCol struct {
